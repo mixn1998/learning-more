@@ -12,6 +12,7 @@
   "dependencies": {
     "@learning-more/contracts": "workspace:*",
     "fastify": "5.10.0",
+    "pdfjs-dist": "6.1.200",
     "zod": "4.4.3"
   },
   "devDependencies": {
