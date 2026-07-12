@@ -86,8 +86,28 @@ describe('local CourseAuthoring application', () => {
     await expect(local.frameLog.readAfter(generation.taskId, 0)).resolves.toMatchObject({
       frames: expect.arrayContaining([expect.objectContaining({ type: 'artifact.ready' })]),
     });
+    const scheduled = await app.inject({
+      method: 'POST',
+      url: '/api/v1/schedule-assignments',
+      headers: { ...baseHeaders, 'idempotency-key': 'schedule_01' },
+      payload: {
+        courseId: confirmation.courseId,
+        lessonId: course!.lessonIds[0],
+        startAt: '2026-07-14T11:00:00.000Z',
+        endAt: '2026-07-14T12:00:00.000Z',
+        timezoneAtCreation: 'Asia/Shanghai',
+      },
+    });
+    expect(scheduled.statusCode).toBe(201);
+    const history = await app.inject({ method: 'GET', url: '/api/v1/history' });
+    expect(history.statusCode).toBe(200);
+    expect(
+      history
+        .json<{ entries: Array<{ factType: string }> }>()
+        .entries.map((entry) => entry.factType),
+    ).toEqual(expect.arrayContaining(['CourseCreatedFact', 'ScheduleConfirmedFact']));
     await app.close();
-  });
+  }, 15_000);
 
   it('recovers a persisted committing lesson closure when the local service restarts', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-recovery-'));

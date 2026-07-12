@@ -56,6 +56,7 @@ export function createPlanFlowService(options: {
   nextPlanFlowId(): string;
   nextScheduleItemId(): string;
   now(): Date;
+  providerId?: string;
 }) {
   async function save(flow: PlanFlow): Promise<PlanFlow> {
     await options.unitOfWork.execute({ transactionId: `tx_plan_flow_${randomUUID()}` }, (tx) =>
@@ -94,7 +95,7 @@ export function createPlanFlowService(options: {
         taskKind: 'plan-flow-preview',
         taskGroup: 'background',
         ownerRef: id,
-        providerId: 'current',
+        providerId: options.providerId ?? 'current',
         priority: 30,
         prompt: JSON.stringify({
           templateRef: 'plan-flow-preview@v1',

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import { EVENT_TYPES, type LearningEventEnvelope } from '@learning-more/contracts';
+
 import { createMockProvider, type MockProviderStep } from '../ai-providers/mock-provider.js';
 import { createCandidateGenerationCoordinator } from '../modules/course-authoring/implementation/candidate-generation-coordinator.js';
 import { createCourseAuthoringFacade } from '../modules/course-authoring/implementation/course-authoring-facade.js';
@@ -12,6 +14,15 @@ import { createSessionGenerationCoordinator } from '../modules/learning-session/
 import { createSessionModule } from '../modules/learning-session/implementation/session-module.js';
 import { createSupplementarySessionModule } from '../modules/learning-session/implementation/supplementary-session-module.js';
 import { abandonLesson } from '../modules/learning-session/implementation/abandon-lesson.js';
+import { createFactProjector } from '../modules/learning-facts/implementation/fact-projector.js';
+import type { LearningFact } from '../modules/learning-facts/interface.js';
+import { createCalendarProjection } from '../modules/learning-facts/implementation/projections/calendar.js';
+import { createCourseSummaryProjection } from '../modules/learning-facts/implementation/projections/course-summary.js';
+import { createHistoryProjection } from '../modules/learning-facts/implementation/projections/history.js';
+import { createStatisticsProjection } from '../modules/learning-facts/implementation/projections/statistics.js';
+import { createWeeklyProjection } from '../modules/learning-facts/implementation/projections/weekly.js';
+import { createPlanFlowService } from '../modules/planning/implementation/plan-flow-service.js';
+import { createPlanningModule } from '../modules/planning/implementation/planning-module.js';
 import { createCourseReviewWorkflow } from '../modules/review-closure/implementation/course-review.js';
 import { createLessonClosureWorkflow } from '../modules/review-closure/implementation/lesson-closure.js';
 import {
@@ -25,13 +36,19 @@ import { createEventDispatcher } from '../persistence/event-dispatcher.js';
 import { createEventLog } from '../persistence/event-log.js';
 import { createLocalFileRepositories } from '../persistence/local-file-repositories.js';
 import { createLocalFileLearningSessionRepositories } from '../persistence/learning-session-repositories.js';
+import { createLocalFileFactRepository } from '../persistence/learning-facts-repositories.js';
 import { createMarkdownArtifactStore } from '../persistence/markdown-artifact-store.js';
 import { createOutbox } from '../persistence/outbox.js';
 import { createStorePaths, initializeStoreLayout } from '../persistence/paths.js';
+import {
+  createLocalFilePlanFlowRepository,
+  createLocalFileScheduleRepository,
+} from '../persistence/planning-repositories.js';
 import { recoverTransactions } from '../persistence/recover-transactions.js';
 import { createLocalFileReviewClosureRepositories } from '../persistence/review-closure-repositories.js';
 import { createLocalFileSupplementarySessionRepository } from '../persistence/supplementary-session-repository.js';
 import { createUnitOfWork } from '../persistence/unit-of-work.js';
+import { createLocalFileWeeklyReportRepository } from '../persistence/weekly-report-repositories.js';
 import type { ServerDependencies } from './app.js';
 
 function candidateMarkdown(version: number): string {
@@ -94,12 +111,23 @@ export async function createLocalApplication(options: {
     frameLog,
     nextCandidateId: () => `candidate_${randomUUID()}`,
   });
+  const eventLog = createEventLog(dataRoot);
+  const eventDispatcher = createEventDispatcher();
+  const factRepository = createLocalFileFactRepository(dataRoot);
+  const factProjector = createFactProjector({ repository: factRepository, unitOfWork });
+  for (const eventType of EVENT_TYPES) {
+    eventDispatcher.register(eventType, async (event) => {
+      await factProjector.project(event);
+    });
+  }
+  for (const event of await eventLog.readAll()) await factProjector.project(event);
   const outbox = createOutbox({
     dataRoot,
     unitOfWork,
-    eventLog: createEventLog(dataRoot),
-    dispatcher: createEventDispatcher(),
+    eventLog,
+    dispatcher: eventDispatcher,
   });
+  await outbox.dispatchPending(10_000);
   const nextId = (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment') =>
     `${kind}_${randomUUID()}`;
   const courseAuthoring = createCourseAuthoringFacade({
@@ -227,6 +255,85 @@ export async function createLocalApplication(options: {
       expectedVersion: learning.resourceVersion,
       pageInstanceId,
     });
+  }
+  const scheduleRepository = createLocalFileScheduleRepository(dataRoot);
+  const planFlowRepository = createLocalFilePlanFlowRepository(dataRoot);
+  const weeklyReportRepository = createLocalFileWeeklyReportRepository(dataRoot);
+  async function scheduleVersion() {
+    let version = 0;
+    for await (const item of scheduleRepository.list()) version += item.resourceVersion;
+    return version;
+  }
+  const planning = createPlanningModule({
+    repository: scheduleRepository,
+    unitOfWork,
+    isLessonCompleted: async (lessonId) =>
+      (await learningRepositories.get(lessonId))?.learning.progress === 'completed',
+    nextScheduleItemId: () => `schedule_${randomUUID()}`,
+    now: () => new Date(),
+    async recordEvent(event, tx) {
+      const envelope: LearningEventEnvelope = {
+        id: `event_${randomUUID()}`,
+        schema_version: 1,
+        type: event.type,
+        occurred_at: event.occurredAt,
+        recorded_at: new Date().toISOString(),
+        source: 'Planning',
+        target_refs: {
+          scheduleItemId: event.scheduleItemId,
+          courseId: event.courseId,
+          lessonId: event.lessonId,
+        },
+        payload: { scheduleItemId: event.scheduleItemId },
+        idempotency_key: `${event.type}:${event.scheduleItemId}:${event.occurredAt}`,
+        correlation_id: `${event.type}:${event.scheduleItemId}`,
+      };
+      await outbox.enqueue(tx, [envelope]);
+    },
+  });
+  const planFlows = createPlanFlowService({
+    repository: planFlowRepository,
+    scheduleRepository,
+    unitOfWork,
+    generationRuntime,
+    getScheduleVersion: scheduleVersion,
+    lessonExists: async (lessonId) =>
+      (await courseRepositories.lessons.get(lessonId)) !== undefined,
+    nextPlanFlowId: () => `plan_flow_${randomUUID()}`,
+    nextScheduleItemId: () => `schedule_${randomUUID()}`,
+    now: () => new Date(),
+    providerId: 'mock',
+  });
+  async function facts() {
+    await outbox.dispatchPending(10_000);
+    const result: LearningFact[] = [];
+    for await (const fact of factRepository.list()) result.push(fact);
+    return result;
+  }
+  async function historyView() {
+    const projection = createHistoryProjection();
+    projection.apply(await facts());
+    return projection.view();
+  }
+  async function courseSummaryView() {
+    const projection = createCourseSummaryProjection();
+    projection.apply(await facts());
+    return projection.view();
+  }
+  async function statisticsView() {
+    const projection = createStatisticsProjection('Asia/Shanghai');
+    projection.apply(await facts());
+    return projection.view();
+  }
+  async function calendarView() {
+    const projection = createCalendarProjection('Asia/Shanghai');
+    projection.apply(await facts());
+    return projection.view();
+  }
+  async function weeklyView() {
+    const projection = createWeeklyProjection('Asia/Shanghai');
+    projection.apply(await facts());
+    return projection.view();
   }
   async function resolveSession(sessionId: string) {
     let found;
@@ -445,6 +552,23 @@ export async function createLocalApplication(options: {
       nextCommandId: () => `command_${randomUUID()}`,
       nextCorrelationId: () => `correlation_${randomUUID()}`,
       now: () => new Date(),
+    },
+    planning: {
+      planning,
+      planFlows,
+      nextCommandId: () => `command_${randomUUID()}`,
+      nextCorrelationId: () => `correlation_${randomUUID()}`,
+      now: () => new Date(),
+    },
+    learningFacts: {
+      queries: {
+        getHistory: historyView,
+        getCourseSummary: courseSummaryView,
+        getStatistics: statisticsView,
+        getCalendar: calendarView,
+        getWeekly: weeklyView,
+        getWeeklyReport: (localWeekKey) => weeklyReportRepository.get(localWeekKey),
+      },
     },
     generationFrameLog: frameLog,
     localSecurity: {

@@ -35,7 +35,10 @@ export function mapApplicationError(error: unknown, correlationId: string): Appl
     if (typeof candidate === 'string' && declaredCodes.has(candidate))
       code = candidate as ErrorCode;
     if (code === 'resource_not_found' || code === 'session_not_found') status = 404;
-    else if (code === 'version_conflict') {
+    else if (code === 'projection_incomplete') {
+      status = 503;
+      retryable = true;
+    } else if (code === 'version_conflict') {
       status = 412;
       retryable = true;
     } else if (code === 'idempotency_conflict') status = 409;

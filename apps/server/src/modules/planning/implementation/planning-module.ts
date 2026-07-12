@@ -27,6 +27,8 @@ class PlanningError extends Error {
 type ScheduleEvent = Readonly<{
   type: 'SchedulePlanned' | 'ScheduleChanged' | 'ScheduleCancelled';
   scheduleItemId: string;
+  courseId: string;
+  lessonId: string;
   occurredAt: string;
 }>;
 
@@ -71,7 +73,13 @@ export function createPlanningModule(options: {
       async (tx) => {
         await options.repository.save(tx, item, item.resourceVersion);
         await options.recordEvent?.(
-          { type: eventType, scheduleItemId: item.id, occurredAt: options.now().toISOString() },
+          {
+            type: eventType,
+            scheduleItemId: item.id,
+            courseId: item.courseId,
+            lessonId: item.lessonId,
+            occurredAt: options.now().toISOString(),
+          },
           tx,
         );
       },

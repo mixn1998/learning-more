@@ -137,7 +137,8 @@ export function createWeeklyReportService(options: {
       });
     },
 
-    async retry(localWeekKey: string, _commandId: string) {
+    async retry(localWeekKey: string, commandId: string) {
+      void commandId;
       const current = await options.repository.get(localWeekKey);
       if (current === undefined) throw new WeeklyReportError('weekly_report_not_found');
       if (current.state === 'finalized') throw new WeeklyReportError('weekly_report_immutable');

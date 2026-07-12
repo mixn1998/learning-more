@@ -17,6 +17,11 @@ import {
   registerReviewClosureRoutes,
   type ReviewClosureRouteOptions,
 } from '../http/routes/review-closure.js';
+import { registerPlanningRoutes, type PlanningRouteOptions } from '../http/routes/planning.js';
+import {
+  registerLearningFactsRoutes,
+  type LearningFactsRouteOptions,
+} from '../http/routes/learning-facts.js';
 
 export interface ServerDependencies {
   getRuntimeReadiness(): Promise<RuntimeReady | unknown>;
@@ -25,6 +30,8 @@ export interface ServerDependencies {
   readonly localSecurity?: Readonly<{ allowedOrigin: string; csrfToken: string }>;
   readonly learningSession?: LearningSessionRouteOptions;
   readonly reviewClosure?: ReviewClosureRouteOptions;
+  readonly planning?: PlanningRouteOptions;
+  readonly learningFacts?: LearningFactsRouteOptions;
 }
 
 export async function buildApp(dependencies: ServerDependencies): Promise<FastifyInstance> {
@@ -57,6 +64,12 @@ export async function buildApp(dependencies: ServerDependencies): Promise<Fastif
   }
   if (dependencies.reviewClosure !== undefined) {
     await registerReviewClosureRoutes(app, dependencies.reviewClosure);
+  }
+  if (dependencies.planning !== undefined) {
+    await registerPlanningRoutes(app, dependencies.planning);
+  }
+  if (dependencies.learningFacts !== undefined) {
+    await registerLearningFactsRoutes(app, dependencies.learningFacts);
   }
   await app.ready();
   return app;

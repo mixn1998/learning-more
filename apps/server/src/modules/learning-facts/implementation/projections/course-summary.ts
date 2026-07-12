@@ -1,4 +1,4 @@
-import type { LearningFact, ReadModelStatus } from '../../interface.js';
+import type { ReadModelStatus } from '../../interface.js';
 import { actualSeconds, createFactAccumulator, status } from './shared.js';
 
 type CourseSummary = Readonly<{
