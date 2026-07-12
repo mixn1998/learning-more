@@ -76,6 +76,15 @@ export function decide(
     }
     return [{ type: 'CandidateVersionCreated', candidateVersionId: command.candidateVersionId }];
   }
+  if (command.type === 'candidateGenerationFailed') {
+    if (
+      session.state !== 'generating-candidates' ||
+      session.activeCandidateTaskId !== command.generationTaskId
+    ) {
+      throw new CourseAuthoringError('candidate_stale');
+    }
+    return [{ type: 'CandidateGenerationFailed', generationTaskId: command.generationTaskId }];
+  }
   if (command.type === 'confirmCandidate') {
     if (session.state === 'confirming' || session.state === 'confirmed') {
       throw new CourseAuthoringError('confirmation_in_progress');
@@ -114,6 +123,11 @@ export function evolve(session: OutlineSession, event: OutlineSessionEvent): Out
       latestCandidateVersionId: event.candidateVersionId,
       candidateVersionIds: [...session.candidateVersionIds, event.candidateVersionId],
     };
+  }
+  if (event.type === 'CandidateGenerationFailed') {
+    const { activeCandidateTaskId: _failedTask, ...withoutActiveTask } = session;
+    void _failedTask;
+    return { ...withoutActiveTask, state: 'ready-for-candidates' };
   }
   if (event.type === 'CandidateConfirmationStarted') {
     return {

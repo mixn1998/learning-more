@@ -19,5 +19,6 @@ export type OutlineSessionCommand =
       generationTaskId: string;
       candidateVersionId: string;
     }>
+  | Readonly<{ type: 'candidateGenerationFailed'; generationTaskId: string }>
   | Readonly<{ type: 'confirmCandidate'; candidateVersionId: string }>
   | Readonly<{ type: 'completeConfirmation'; courseId: string }>;
