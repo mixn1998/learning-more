@@ -7,6 +7,11 @@ export type LearningSessionCommand =
       messageId: string;
       establishesEvidence: boolean;
     }>
+  | Readonly<{
+      type: 'commitAssistantMessage';
+      messageId: string;
+      establishesEvidence: boolean;
+    }>
   | Readonly<{ type: 'startGeneration'; taskId: string }>
   | Readonly<{ type: 'stopGeneration' }>
   | Readonly<{ type: 'abandon' }>

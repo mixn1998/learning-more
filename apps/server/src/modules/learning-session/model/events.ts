@@ -10,6 +10,12 @@ export type LearningSessionEvent =
         messageId: string;
         establishesEvidence: boolean;
       }>)
+  | (EventBase &
+      Readonly<{
+        type: 'AssistantMessageCommitted';
+        messageId: string;
+        establishesEvidence: boolean;
+      }>)
   | (EventBase & Readonly<{ type: 'GenerationStarted'; taskId: string }>)
   | (EventBase & Readonly<{ type: 'GenerationStopped' }>)
   | (EventBase & Readonly<{ type: 'EvidencedLessonAbandoned' }>)

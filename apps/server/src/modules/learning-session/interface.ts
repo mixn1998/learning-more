@@ -1,12 +1,33 @@
 import type { CommandContext, CommandResult, QueryContext } from '@learning-more/contracts';
 
-import type { LearningSessionCommand as DomainCommand } from './model/commands.js';
 import type { LessonLearning } from './model/learning-session.js';
 
-export type LearningSessionCommand = Readonly<{
-  lessonId: string;
-  action: DomainCommand;
-}>;
+type LessonCommand = Readonly<{ lessonId: string }>;
+
+export type LearningSessionCommand =
+  | (LessonCommand & Readonly<{ type: 'StartLesson' }>)
+  | (LessonCommand & Readonly<{ type: 'PauseLesson' }>)
+  | (LessonCommand & Readonly<{ type: 'ResumeLesson' }>)
+  | (LessonCommand &
+      Readonly<{
+        type: 'AppendUserMessage';
+        messageId: string;
+        contentArtifactRef: string;
+        establishesEvidence: boolean;
+      }>)
+  | (LessonCommand &
+      Readonly<{
+        type: 'CommitAssistantMessage';
+        messageId: string;
+        contentArtifactRef: string;
+        generationTaskId: string;
+        establishesEvidence?: boolean;
+      }>)
+  | (LessonCommand & Readonly<{ type: 'StartSessionGeneration'; taskId: string }>)
+  | (LessonCommand & Readonly<{ type: 'StopSessionGeneration' }>)
+  | (LessonCommand & Readonly<{ type: 'AbandonLesson' }>)
+  | (LessonCommand & Readonly<{ type: 'RestoreLesson' }>)
+  | (LessonCommand & Readonly<{ type: 'CommitFinalReview'; reviewId: string }>);
 
 export type LearningSessionQuery = Readonly<{
   type: 'GetLessonLearning';
@@ -18,9 +39,15 @@ export type LearningSessionResult = Readonly<{
   progress: LessonLearning['progress'];
   sessionId?: string;
   resourceVersion: number;
+  writable: boolean;
+  leaseToken?: string;
 }>;
 
-export type LearningSessionView = LessonLearning & Readonly<{ resourceVersion: number }>;
+export type LearningSessionView = Readonly<{
+  learning: LessonLearning;
+  resourceVersion: number;
+  actualSeconds: number;
+}>;
 
 export interface LearningSessionModule {
   execute(

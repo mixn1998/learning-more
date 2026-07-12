@@ -87,12 +87,15 @@ export function decide(
     if (session.state !== 'paused') throw new LearningSessionError('session_not_writable');
     return [event(commandId, { type: 'OriginalSessionResumed' })];
   }
-  if (command.type === 'appendUserMessage') {
+  if (command.type === 'appendUserMessage' || command.type === 'commitAssistantMessage') {
     if (session.state !== 'active') throw new LearningSessionError('session_not_writable');
     if (session.messageIds.includes(command.messageId)) return [];
     return [
       event(commandId, {
-        type: 'UserMessageAppended',
+        type:
+          command.type === 'appendUserMessage'
+            ? 'UserMessageAppended'
+            : 'AssistantMessageCommitted',
         messageId: command.messageId,
         establishesEvidence: command.establishesEvidence,
       }),
@@ -167,7 +170,7 @@ export function evolve(learning: LessonLearning, event: LearningSessionEvent): L
       processedCommandIds,
     };
   }
-  if (event.type === 'UserMessageAppended') {
+  if (event.type === 'UserMessageAppended' || event.type === 'AssistantMessageCommitted') {
     return {
       ...learning,
       session: {
