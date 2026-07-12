@@ -8,12 +8,13 @@
     "node": ">=24.17.0 <25"
   },
   "scripts": {
+    "architecture:check": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm --filter @learning-more/architecture build && node tools/architecture/dist/check-architecture.js",
     "build": "corepack pnpm -r --if-present build",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "corepack pnpm -r --if-present typecheck",
-    "verify": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
+    "typecheck": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm -r --if-present typecheck",
+    "verify": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm architecture:check && corepack pnpm test && corepack pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

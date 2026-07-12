@@ -39,6 +39,19 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
 
+  tools/architecture:
+    dependencies:
+      '@learning-more/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
 packages:
 
   '@emnapi/core@1.11.1':
