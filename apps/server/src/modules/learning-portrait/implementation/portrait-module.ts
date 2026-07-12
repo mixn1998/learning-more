@@ -1,13 +1,16 @@
 import type { TransactionContext, UnitOfWork } from '../../../persistence/unit-of-work.js';
-import type { CandidateEvidenceRepository } from '../../profile-evidence/ports/evidence-repository.js';
-import type { PackedPortraitEvidence, PortraitVersion } from '../interface.js';
+import type {
+  PackedPortraitEvidence,
+  PortraitEvidenceSource,
+  PortraitVersion,
+} from '../interface.js';
 import type { PortraitRepository } from '../ports/portrait-repository.js';
 import { createPortraitInputManifest } from './portrait-input-manifest.js';
 import { validatePortraitOutput } from './portrait-validator.js';
 
 export function createPortraitModule(options: {
   repository: PortraitRepository;
-  evidenceRepository: CandidateEvidenceRepository;
+  evidenceRepository: PortraitEvidenceSource;
   unitOfWork: UnitOfWork;
   generationRuntime: {
     submit(request: {

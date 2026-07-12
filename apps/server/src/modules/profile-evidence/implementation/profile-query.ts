@@ -1,11 +1,10 @@
-import type { FactRepository } from '../../learning-facts/ports/fact-repository.js';
-import type { CandidateEvidenceRepository } from '../ports/evidence-repository.js';
+import type { ProfileEvidenceSource, ProfileFactSource } from '../interface.js';
 import type { ProfileWindow } from './global-learning-profile.js';
 import { createGlobalLearningProfileProjection } from './profile-projection.js';
 
 export async function queryGlobalLearningProfile(options: {
-  factRepository: FactRepository;
-  evidenceRepository: CandidateEvidenceRepository;
+  factRepository: ProfileFactSource;
+  evidenceRepository: ProfileEvidenceSource;
   timeZone: string;
   window: ProfileWindow;
 }) {

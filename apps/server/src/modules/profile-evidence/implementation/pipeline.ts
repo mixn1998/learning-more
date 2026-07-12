@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 
-import type { FactRepository } from '../../learning-facts/ports/fact-repository.js';
 import type { LearningFact } from '../../learning-facts/interface.js';
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
-import type { CandidateEvidence, EvidenceSourceGroup } from '../interface.js';
+import type { CandidateEvidence, EvidenceSourceGroup, ProfileFactSource } from '../interface.js';
 import type { EvidenceRepositories } from '../ports/evidence-repository.js';
 import { parseCandidateEvidence, supersedeCandidateEvidence } from './candidate-evidence.js';
 import { FACT_EVIDENCE_EXTRACTORS, type EvidenceDraft } from './extractors/index.js';
@@ -46,7 +45,7 @@ function sameLogicalSource(left: CandidateEvidence, right: CandidateEvidence): b
 }
 
 export function createProfileEvidencePipeline(options: {
-  factRepository: FactRepository;
+  factRepository: ProfileFactSource;
   repositories: EvidenceRepositories;
   unitOfWork: UnitOfWork;
   extractorVersion: string;

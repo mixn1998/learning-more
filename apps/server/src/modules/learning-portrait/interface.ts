@@ -70,3 +70,8 @@ export type PortraitTaskReceipt = Readonly<{
   manifestId: string;
   createdAt: string;
 }>;
+
+export interface PortraitEvidenceSource {
+  get(evidenceId: string): Promise<CandidateEvidence | undefined>;
+}
+import type { CandidateEvidence } from '../profile-evidence/interface.js';

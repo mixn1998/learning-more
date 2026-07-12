@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { appendFile, readFile, rename, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { appendFile, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { GenerationStreamEventSchema, type GenerationStreamEvent } from '@learning-more/contracts';
@@ -14,9 +14,34 @@ function prefix(dataRoot: DataRoot, taskId: string): string {
 }
 
 async function writeAtomic(filePath: string, value: string): Promise<void> {
-  const temporary = `${filePath}.tmp`;
-  await writeFile(temporary, value, 'utf8');
-  await rename(temporary, filePath);
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, value, 'utf8');
+    await rename(temporary, filePath);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
+function reconciledMeta(
+  stored: GenerationFrameMeta,
+  frames: readonly GenerationStreamEvent[],
+): GenerationFrameMeta {
+  const last = frames.at(-1);
+  if (last === undefined) return stored;
+  const state =
+    last.type === 'task.completed'
+      ? 'completed'
+      : last.type === 'task.failed'
+        ? 'failed'
+        : last.type === 'task.cancelled'
+          ? 'cancelled'
+          : stored.state;
+  return {
+    taskId: stored.taskId,
+    state,
+    lastSequence: Math.max(stored.lastSequence, last.sequence),
+  };
 }
 
 export function createGenerationFrameLog(
@@ -60,7 +85,9 @@ export function createGenerationFrameLog(
       }
     },
     async append(taskId, type, data) {
-      const meta = await readMeta(taskId);
+      const storedMeta = await readMeta(taskId);
+      const existingFrames = await readFrames(taskId);
+      const meta = reconciledMeta(storedMeta, existingFrames);
       const frame = GenerationStreamEventSchema.parse({
         taskId,
         sequence: meta.lastSequence + 1,
@@ -84,12 +111,17 @@ export function createGenerationFrameLog(
       if (type === 'task.completed') meta.state = 'completed';
       else if (type === 'task.failed') meta.state = 'failed';
       else if (type === 'task.cancelled') meta.state = 'cancelled';
-      await writeAtomic(`${prefix(dataRoot, taskId)}.meta.json`, encodeJson(meta));
+      try {
+        await writeAtomic(`${prefix(dataRoot, taskId)}.meta.json`, encodeJson(meta));
+      } catch {
+        // Frames are append-only and authoritative; readAfter reconciles stale metadata.
+      }
       return frame;
     },
     async readAfter(taskId, sequence) {
-      const meta = await readMeta(taskId);
+      const storedMeta = await readMeta(taskId);
       const frames = await readFrames(taskId);
+      const meta = reconciledMeta(storedMeta, frames);
       const firstSequence = frames[0]?.sequence ?? meta.lastSequence + 1;
       return {
         reset: sequence < firstSequence - 1,

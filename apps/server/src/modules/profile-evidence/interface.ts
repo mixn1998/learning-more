@@ -1,6 +1,6 @@
 import type { DataKey } from '@learning-more/contracts';
 
-import type { LearningFactType } from '../learning-facts/interface.js';
+import type { LearningFact, LearningFactType } from '../learning-facts/interface.js';
 
 export type EvidenceSourceGroup = 'behavior' | 'outcome' | 'reflection' | 'planning' | 'review';
 
@@ -49,3 +49,12 @@ export type RejectedEvidenceRecord = Readonly<{
   rejectedAt: string;
   resourceVersion: number;
 }>;
+
+export interface ProfileFactSource {
+  list(): AsyncIterable<LearningFact>;
+}
+
+export interface ProfileEvidenceSource {
+  get(evidenceId: string): Promise<CandidateEvidence | undefined>;
+  list(): AsyncIterable<CandidateEvidence>;
+}

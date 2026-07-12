@@ -2,7 +2,6 @@ import type { DataKey } from '@learning-more/contracts';
 
 import { checksumJson } from '../../../persistence/json-codec.js';
 import type { LearningFact } from '../../learning-facts/interface.js';
-import { localDate } from '../../learning-facts/implementation/projections/shared.js';
 import type { CandidateEvidence } from '../interface.js';
 import {
   type GlobalLearningProfile,
@@ -18,6 +17,17 @@ function factOrder(left: LearningFact, right: LearningFact): number {
 
 function inWindow(value: string, window: ProfileWindow): boolean {
   return value >= window.from && value < window.to;
+}
+
+function localDate(value: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value));
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 function withFactCursor<T extends object>(value: T, asOfFactId: string | undefined) {

@@ -22,6 +22,8 @@ import {
   registerLearningFactsRoutes,
   type LearningFactsRouteOptions,
 } from '../http/routes/learning-facts.js';
+import { registerProfileRoutes, type ProfileRouteOptions } from '../http/routes/profile.js';
+import { registerPortraitRoutes, type PortraitRouteOptions } from '../http/routes/portraits.js';
 
 export interface ServerDependencies {
   getRuntimeReadiness(): Promise<RuntimeReady | unknown>;
@@ -32,6 +34,8 @@ export interface ServerDependencies {
   readonly reviewClosure?: ReviewClosureRouteOptions;
   readonly planning?: PlanningRouteOptions;
   readonly learningFacts?: LearningFactsRouteOptions;
+  readonly profile?: ProfileRouteOptions;
+  readonly portraits?: PortraitRouteOptions;
 }
 
 export async function buildApp(dependencies: ServerDependencies): Promise<FastifyInstance> {
@@ -70,6 +74,12 @@ export async function buildApp(dependencies: ServerDependencies): Promise<Fastif
   }
   if (dependencies.learningFacts !== undefined) {
     await registerLearningFactsRoutes(app, dependencies.learningFacts);
+  }
+  if (dependencies.profile !== undefined) {
+    await registerProfileRoutes(app, dependencies.profile);
+  }
+  if (dependencies.portraits !== undefined) {
+    await registerPortraitRoutes(app, dependencies.portraits);
   }
   await app.ready();
   return app;

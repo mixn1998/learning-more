@@ -115,6 +115,25 @@ describe('local CourseAuthoring application', () => {
         .json<{ entries: Array<{ factType: string }> }>()
         .entries.map((entry) => entry.factType),
     ).toEqual(expect.arrayContaining(['CourseCreatedFact', 'ScheduleConfirmedFact']));
+    const profile = await app.inject({ method: 'GET', url: '/api/v1/profile-facts' });
+    expect(profile.statusCode).toBe(200);
+    expect(profile.json()).toMatchObject({
+      profileSchemaVersion: 1,
+      sufficiency: { status: 'insufficient' },
+    });
+    const portrait = await app.inject({
+      method: 'POST',
+      url: '/api/v1/portrait-refreshes',
+      headers: { ...baseHeaders, 'idempotency-key': 'portrait_01' },
+      payload: { tokenBudget: 2_000 },
+    });
+    expect(portrait.statusCode).toBe(201);
+    expect(portrait.json()).toMatchObject({
+      state: 'completed',
+      title: '学习画像证据不足',
+      claims: [],
+    });
+    expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
     await app.close();
   }, 15_000);
 

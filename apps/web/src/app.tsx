@@ -9,6 +9,7 @@ import { CourseRoute } from './routes/course-route.js';
 import { LessonRoute } from './routes/lesson-route.js';
 import { PlanningRoute } from './routes/planning-route.js';
 import { HistoryRoute } from './routes/history-route.js';
+import { ProfileRoute } from './routes/profile-route.js';
 
 type RuntimeViewState =
   | Readonly<{ kind: 'loading' }>
@@ -74,6 +75,7 @@ export function App() {
         <Route path="/lessons/:lessonId" element={<LessonRoute />} />
         <Route path="/planning" element={<PlanningRoute />} />
         <Route path="/history" element={<HistoryRoute />} />
+        <Route path="/profile" element={<ProfileRoute />} />
         <Route path="*" element={<RuntimeHome />} />
       </Routes>
     </BrowserRouter>

@@ -93,6 +93,18 @@ function validOutput(evidenceIds = ['e1', 'e2']) {
 }
 
 describe('PortraitModule', () => {
+  it('commits a zero-claim result instead of inventing a template personality when evidence is insufficient', async () => {
+    const { module, packedEvidence } = await fixture([]);
+    const generating = await module.requestRefresh({ ...request, packedEvidence });
+    const completed = await module.finalize(generating.versionId, 'task_portrait_01', {
+      title: '学习画像证据不足',
+      summary: '当前没有满足复合证据规则的可靠洞察。',
+      claims: [],
+    });
+    expect(completed).toMatchObject({ state: 'completed', claims: [] });
+    expect(JSON.stringify(completed)).not.toMatch(/personality|人格|学习风格/i);
+  });
+
   it('freezes the manifest before submit and joins the same idempotency key', async () => {
     const { module, portraits, submit, packedEvidence } = await fixture();
     submit.mockImplementationOnce(async () => {

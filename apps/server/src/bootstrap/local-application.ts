@@ -24,6 +24,11 @@ import { createStatisticsProjection } from '../modules/learning-facts/implementa
 import { createWeeklyProjection } from '../modules/learning-facts/implementation/projections/weekly.js';
 import { createWeeklyReportScheduler } from '../modules/learning-facts/implementation/weekly-report-scheduler.js';
 import { createWeeklyReportService } from '../modules/learning-facts/implementation/weekly-report-service.js';
+import { createProfileEvidencePipeline } from '../modules/profile-evidence/implementation/pipeline.js';
+import { queryGlobalLearningProfile } from '../modules/profile-evidence/implementation/profile-query.js';
+import { packPortraitEvidence } from '../modules/learning-portrait/implementation/evidence-packer.js';
+import { independentSourceKey } from '../modules/learning-portrait/implementation/evidence-policy.js';
+import { createPortraitModule } from '../modules/learning-portrait/implementation/portrait-module.js';
 import { createPlanFlowService } from '../modules/planning/implementation/plan-flow-service.js';
 import { createPlanningModule } from '../modules/planning/implementation/planning-module.js';
 import { createCourseReviewWorkflow } from '../modules/review-closure/implementation/course-review.js';
@@ -52,6 +57,8 @@ import { createLocalFileReviewClosureRepositories } from '../persistence/review-
 import { createLocalFileSupplementarySessionRepository } from '../persistence/supplementary-session-repository.js';
 import { createUnitOfWork } from '../persistence/unit-of-work.js';
 import { createLocalFileWeeklyReportRepository } from '../persistence/weekly-report-repositories.js';
+import { createLocalFileEvidenceRepositories } from '../persistence/profile-evidence-repositories.js';
+import { createLocalFilePortraitRepository } from '../persistence/portrait-repositories.js';
 import type { ServerDependencies } from './app.js';
 
 function candidateMarkdown(version: number): string {
@@ -120,6 +127,8 @@ export async function createLocalApplication(options: {
   const eventLog = createEventLog(dataRoot);
   const eventDispatcher = createEventDispatcher();
   const factRepository = createLocalFileFactRepository(dataRoot);
+  const evidenceRepositories = createLocalFileEvidenceRepositories(dataRoot);
+  const portraitRepository = createLocalFilePortraitRepository(dataRoot);
   const factProjector = createFactProjector({ repository: factRepository, unitOfWork });
   for (const eventType of EVENT_TYPES) {
     eventDispatcher.register(eventType, async (event) => {
@@ -489,6 +498,120 @@ export async function createLocalApplication(options: {
     projection.apply(await facts());
     return projection.view();
   }
+  const evidencePipeline = createProfileEvidencePipeline({
+    factRepository,
+    repositories: evidenceRepositories,
+    unitOfWork,
+    extractorVersion: 'facts@1',
+    now: runtimeNow,
+    nextTransactionId: () => `tx_evidence_${randomUUID()}`,
+  });
+  let evidenceBarrier: Promise<void> = Promise.resolve();
+  async function syncProfileEvidence(): Promise<void> {
+    const synchronization = evidenceBarrier.then(async () => {
+      await dispatchOutbox();
+      let batch;
+      do {
+        batch = await evidencePipeline.processFacts({ limit: 100 });
+      } while (batch.processed > 0);
+    });
+    evidenceBarrier = synchronization.catch(() => undefined);
+    await synchronization;
+  }
+  function globalProfileWindow() {
+    return {
+      from: '1970-01-01T00:00:00.000Z',
+      to: new Date(runtimeNow().getTime() + 86_400_000).toISOString(),
+    };
+  }
+  async function globalProfile() {
+    await syncProfileEvidence();
+    return queryGlobalLearningProfile({
+      factRepository,
+      evidenceRepository: evidenceRepositories.evidence,
+      timeZone: 'Asia/Shanghai',
+      window: globalProfileWindow(),
+    });
+  }
+  const portraitModule = createPortraitModule({
+    repository: portraitRepository,
+    evidenceRepository: evidenceRepositories.evidence,
+    unitOfWork,
+    generationRuntime,
+    providerId: 'mock',
+    nextVersionId: () => `portrait_${randomUUID()}`,
+    nextTransactionId: () => `tx_portrait_${randomUUID()}`,
+    now: runtimeNow,
+    async recordCreated(event, tx) {
+      const eventId = `event_${randomUUID()}`;
+      const timestamp = runtimeNow().toISOString();
+      await outbox.enqueue(tx, [
+        {
+          id: eventId,
+          schema_version: 1,
+          type: 'PortraitVersionCommitted',
+          occurred_at: timestamp,
+          recorded_at: timestamp,
+          source: 'LearningPortrait',
+          target_refs: { portraitVersionId: event.versionId },
+          payload: { manifestId: event.manifestId },
+          idempotency_key: `portrait-version:${event.versionId}`,
+          correlation_id: eventId,
+        },
+      ]);
+    },
+  });
+  async function requestPortraitRefresh(input: { idempotencyKey: string; tokenBudget: number }) {
+    const profile = await globalProfile();
+    const candidates = [];
+    for await (const candidate of evidenceRepositories.evidence.list()) candidates.push(candidate);
+    const packedEvidence = packPortraitEvidence({
+      evidence: candidates,
+      tokenBudget: input.tokenBudget,
+      dimensionPriority: [],
+    });
+    const requested = await portraitModule.requestRefresh({
+      profileVersion: profile.profileSchemaVersion,
+      packedEvidence,
+      window: profile.window,
+      promptTemplateVersion: 'portrait@1',
+      providerConfigFingerprint: createHash('sha256').update('mock').digest('hex'),
+      idempotencyKey: input.idempotencyKey,
+    });
+    if (requested.state === 'completed' || requested.state === 'failed') return requested;
+    if (requested.generationTaskId === undefined) return requested;
+    await generationRuntime.cancel(requested.generationTaskId);
+    const included = candidates.filter((candidate) =>
+      packedEvidence.includedEvidenceIds.includes(candidate.evidenceId),
+    );
+    const byDimension = new Map<string, typeof included>();
+    for (const candidate of included) {
+      const group = byDimension.get(candidate.claimDimension) ?? [];
+      group.push(candidate);
+      byDimension.set(candidate.claimDimension, group);
+    }
+    const claims = [...byDimension.entries()]
+      .filter(
+        ([, group]) => new Set(group.map((candidate) => independentSourceKey(candidate))).size >= 2,
+      )
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([dimension, group], index) => ({
+        claimId: `claim_${index + 1}`,
+        markdown: `在多个独立学习情境中观察到与 ${dimension} 相关的局部模式。`,
+        evidenceIds: group.map((candidate) => candidate.evidenceId).sort(),
+        confidence: 0.65,
+        limitations: ['该观察仅适用于当前证据窗口，不构成稳定人格或能力标签。'],
+        counterEvidenceChecked: true as const,
+      }));
+    return portraitModule.finalize(requested.versionId, requested.generationTaskId, {
+      title: claims.length === 0 ? '学习画像证据不足' : '当前学习画像',
+      summary:
+        claims.length === 0
+          ? '当前尚无满足复合证据规则的可靠洞察。'
+          : '以下洞察仅基于当前窗口内可追溯的复合证据。',
+      claims,
+    });
+  }
   async function resolveSession(sessionId: string) {
     let found;
     for await (const record of learningRepositories.list()) {
@@ -748,6 +871,28 @@ export async function createLocalApplication(options: {
           return { ...report, ...(markdown === undefined ? {} : { markdown }) };
         },
       },
+    },
+    profile: {
+      getGlobalProfile: globalProfile,
+      async listEvidence() {
+        await syncProfileEvidence();
+        const evidence = [];
+        for await (const candidate of evidenceRepositories.evidence.list()) {
+          evidence.push(candidate);
+        }
+        return evidence;
+      },
+    },
+    portraits: {
+      requestRefresh: requestPortraitRefresh,
+      async getCurrent() {
+        const cursor = await portraitRepository.getCurrent();
+        return cursor === undefined
+          ? undefined
+          : portraitRepository.getVersion(cursor.currentVersionId);
+      },
+      getVersion: (versionId) => portraitRepository.getVersion(versionId),
+      nextCorrelationId: () => `correlation_${randomUUID()}`,
     },
     generationFrameLog: frameLog,
     localSecurity: {
