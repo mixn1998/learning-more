@@ -14,6 +14,7 @@
     "equivalence:check": "corepack pnpm --filter @learning-more/architecture build && node tools/architecture/dist/check-equivalence.js",
     "format:check": "prettier --check .",
     "lint": "eslint .",
+    "playwright:test": "playwright test",
     "schema:check": "corepack pnpm --filter @learning-more/contracts schema:check",
     "schema:generate": "corepack pnpm --filter @learning-more/contracts schema:generate",
     "test": "vitest run --passWithNoTests",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@playwright/test": "1.61.1",
     "@types/node": "24.13.3",
     "eslint": "9.39.5",
     "globals": "17.7.0",

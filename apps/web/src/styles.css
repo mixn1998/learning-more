@@ -17,6 +17,72 @@ button {
   cursor: pointer;
 }
 
+.authoring-workspace {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 6rem;
+}
+
+.authoring-panel {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid #d9d4c7;
+  border-radius: 1rem;
+  background: #fffefa;
+}
+
+.authoring-panel label {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.authoring-panel input,
+.authoring-panel textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #9e9787;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.authoring-panel fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+  border: 0;
+  padding: 0;
+}
+
+.authoring-panel fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.authoring-panel fieldset input {
+  width: auto;
+}
+
+.candidate-markdown {
+  line-height: 1.65;
+}
+
+.dialog {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  z-index: 10;
+  width: min(30rem, calc(100% - 2rem));
+  padding: 1.5rem;
+  border: 1px solid #625c50;
+  border-radius: 1rem;
+  background: white;
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 20%);
+  transform: translate(-50%, -50%);
+}
+
 .app-shell {
   width: min(42rem, calc(100% - 3rem));
   margin: 12vh auto;

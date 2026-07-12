@@ -112,7 +112,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OutlineSessionResponse"
+                  "$ref": "#/components/schemas/OutlineSessionViewResponse"
                 }
               }
             }
@@ -206,7 +206,14 @@
         },
         "responses": {
           "200": {
-            "description": "Message accepted"
+            "description": "Message accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlineMessageResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "Application problem",
@@ -659,12 +666,129 @@
           },
           "state": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 100
+            "enum": [
+              "collecting-input",
+              "assessing",
+              "ready-for-candidates",
+              "generating-candidates",
+              "candidate-ready",
+              "confirming",
+              "confirmed"
+            ]
           }
         },
         "required": [
           "outlineSessionId",
+          "resourceVersion",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "OutlineSessionViewResponse": {
+        "type": "object",
+        "properties": {
+          "outlineSessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "collecting-input",
+              "assessing",
+              "ready-for-candidates",
+              "generating-candidates",
+              "candidate-ready",
+              "confirming",
+              "confirmed"
+            ]
+          },
+          "topic": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "courseMode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "brainstorm",
+              "argument_clash",
+              "case_study",
+              "business_insight",
+              "process_decomposition",
+              "decision_analysis",
+              "cross_explore",
+              "reading_seminar"
+            ]
+          },
+          "candidateVersionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "candidateVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "candidateMarkdown": {
+            "type": "string"
+          },
+          "confirmedCourseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "outlineSessionId",
+          "resourceVersion",
+          "state",
+          "topic",
+          "courseMode",
+          "candidateVersionIds"
+        ],
+        "additionalProperties": false
+      },
+      "OutlineMessageResponse": {
+        "type": "object",
+        "properties": {
+          "outlineSessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "collecting-input",
+              "assessing",
+              "ready-for-candidates",
+              "generating-candidates",
+              "candidate-ready",
+              "confirming",
+              "confirmed"
+            ]
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "outlineSessionId",
+          "state",
           "resourceVersion"
         ],
         "additionalProperties": false

@@ -23,6 +23,9 @@ function isApprovedWebFrameworkImport(target: string): boolean {
     target.startsWith('react/') ||
     target === 'react-dom' ||
     target.startsWith('react-dom/') ||
+    target === 'react-router-dom' ||
+    target === 'react-markdown' ||
+    target === 'rehype-sanitize' ||
     target === 'vite' ||
     target === '@vitejs/plugin-react'
   );

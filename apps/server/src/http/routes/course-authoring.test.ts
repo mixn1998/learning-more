@@ -34,7 +34,7 @@ describe('CourseAuthoring HTTP contract', () => {
       commandId: 'command_01',
       outcome: 'completed',
       resourceVersion: 1,
-      value: { kind: 'outline-session', outlineSessionId: 'session_01' },
+      value: { kind: 'outline-session', outlineSessionId: 'session_01', state: 'assessing' },
     });
     const response = await appWith(execute).inject({
       method: 'POST',
@@ -139,6 +139,11 @@ describe('CourseAuthoring HTTP contract', () => {
       outlineSessionId: 'session_01',
       resourceVersion: 7,
       state: 'candidate-ready',
+      topic: 'probability theory',
+      courseMode: 'standard',
+      candidateVersionIds: ['candidate_01'],
+      candidateVersionId: 'candidate_01',
+      candidateMarkdown: '# Candidate',
     });
     const response = await appWith(vi.fn(), query).inject({
       method: 'GET',

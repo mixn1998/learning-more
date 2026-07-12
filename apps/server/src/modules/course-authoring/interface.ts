@@ -45,7 +45,12 @@ export type CourseAuthoringView = Readonly<{
   outlineSessionId: string;
   resourceVersion: number;
   state: string;
-  [key: string]: unknown;
+  topic: string;
+  courseMode: CourseMode;
+  candidateVersionIds: readonly string[];
+  candidateVersionId?: string;
+  candidateMarkdown?: string;
+  confirmedCourseId?: string;
 }>;
 
 export interface CourseAuthoring {

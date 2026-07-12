@@ -2,33 +2,11 @@ import { createHash } from 'node:crypto';
 import { appendFile, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import {
-  GenerationStreamEventSchema,
-  type GenerationStreamEvent,
-  type GenerationStreamEventType,
-} from '@learning-more/contracts';
+import { GenerationStreamEventSchema, type GenerationStreamEvent } from '@learning-more/contracts';
 
 import { DataRoot } from '../../../persistence/data-root.js';
 import { checksumJson, encodeJson, StorageDocumentError } from '../../../persistence/json-codec.js';
-
-interface FrameMeta {
-  readonly taskId: string;
-  state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
-  lastSequence: number;
-}
-
-export interface GenerationFrameLog {
-  ensureTask(taskId: string, state: FrameMeta['state']): Promise<void>;
-  append(
-    taskId: string,
-    type: GenerationStreamEventType,
-    data: unknown,
-  ): Promise<GenerationStreamEvent>;
-  readAfter(
-    taskId: string,
-    sequence: number,
-  ): Promise<{ reset: boolean; frames: GenerationStreamEvent[]; meta: FrameMeta }>;
-}
+import type { GenerationFrameLog, GenerationFrameMeta } from '../interface.js';
 
 function prefix(dataRoot: DataRoot, taskId: string): string {
   const hash = createHash('sha256').update(taskId).digest('hex');
@@ -45,8 +23,10 @@ export function createGenerationFrameLog(
   dataRoot: DataRoot,
   options: { readonly maxFrames: number } = { maxFrames: 1_000 },
 ): GenerationFrameLog {
-  async function readMeta(taskId: string): Promise<FrameMeta> {
-    return JSON.parse(await readFile(`${prefix(dataRoot, taskId)}.meta.json`, 'utf8')) as FrameMeta;
+  async function readMeta(taskId: string): Promise<GenerationFrameMeta> {
+    return JSON.parse(
+      await readFile(`${prefix(dataRoot, taskId)}.meta.json`, 'utf8'),
+    ) as GenerationFrameMeta;
   }
   async function readFrames(taskId: string): Promise<GenerationStreamEvent[]> {
     try {

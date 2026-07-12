@@ -10,6 +10,7 @@ export default defineConfig(
     '.corepack/**',
     '.pnpm-home/**',
     '.npm-cache/**',
+    '.playwright-browsers/**',
     '.superpowers/**',
     '**/coverage/**',
     '**/dist/**',

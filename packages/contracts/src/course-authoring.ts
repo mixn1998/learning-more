@@ -2,6 +2,15 @@ import { z } from 'zod';
 
 const identifierSchema = z.string().trim().min(1).max(200);
 const resourceVersionSchema = z.number().int().nonnegative();
+const outlineSessionStateSchema = z.enum([
+  'collecting-input',
+  'assessing',
+  'ready-for-candidates',
+  'generating-candidates',
+  'candidate-ready',
+  'confirming',
+  'confirmed',
+]);
 
 export const COURSE_MODES = [
   'standard',
@@ -47,7 +56,25 @@ export const CourseParamsSchema = z.strictObject({
 export const OutlineSessionResponseSchema = z.strictObject({
   outlineSessionId: identifierSchema,
   resourceVersion: resourceVersionSchema,
-  state: z.string().trim().min(1).max(100).optional(),
+  state: outlineSessionStateSchema,
+});
+
+export const OutlineSessionViewResponseSchema = z.strictObject({
+  outlineSessionId: identifierSchema,
+  resourceVersion: resourceVersionSchema,
+  state: outlineSessionStateSchema,
+  topic: z.string().trim().min(1).max(2_000),
+  courseMode: CourseModeSchema,
+  candidateVersionIds: z.array(identifierSchema),
+  candidateVersionId: identifierSchema.optional(),
+  candidateMarkdown: z.string().optional(),
+  confirmedCourseId: identifierSchema.optional(),
+});
+
+export const OutlineMessageResponseSchema = z.strictObject({
+  outlineSessionId: identifierSchema,
+  state: outlineSessionStateSchema,
+  resourceVersion: resourceVersionSchema,
 });
 
 export const GenerationAcceptedResponseSchema = z.strictObject({

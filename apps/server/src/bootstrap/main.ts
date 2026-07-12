@@ -1,27 +1,21 @@
-import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { RuntimeReady } from '@learning-more/contracts';
-
 import { buildApp, type ServerDependencies } from './app.js';
+import { createLocalApplication } from './local-application.js';
 
-const defaultReadiness: RuntimeReady = {
-  status: 'ready',
-  instanceId: randomUUID(),
-  buildId: 'development',
-  protocolVersion: '1',
-  storeStatus: 'ready',
-  projectionStatus: 'ready',
-  providerStatus: 'unconfigured',
-};
-
-export async function startServer(
-  dependencies: ServerDependencies = {
-    getRuntimeReadiness: async () => defaultReadiness,
-  },
-  port = 43_120,
-): Promise<void> {
-  const app = await buildApp(dependencies);
+export async function startServer(dependencies?: ServerDependencies, port = 43_120): Promise<void> {
+  const resolvedDependencies =
+    dependencies ??
+    (
+      await createLocalApplication({
+        dataRoot: process.env.LEARNING_MORE_DATA_ROOT ?? path.resolve('.learning-more-data'),
+        csrfToken: process.env.LEARNING_MORE_CSRF_TOKEN ?? 'development-csrf',
+        allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
+        mockFailOnce: process.env.LEARNING_MORE_MOCK_FAIL_ONCE === '1',
+      })
+    ).serverDependencies;
+  const app = await buildApp(resolvedDependencies);
   await app.listen({ host: '127.0.0.1', port });
 }
 

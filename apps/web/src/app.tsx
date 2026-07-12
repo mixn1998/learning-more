@@ -1,8 +1,10 @@
 import type { RuntimeReady } from '@learning-more/contracts';
 import { StatusBanner, type StatusBannerStatus } from '@learning-more/ui';
 import { useEffect, useState } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 
 import { fetchRuntimeReadiness } from './client/runtime-client.js';
+import { CourseAuthoringRoute } from './routes/course-authoring-route.js';
 
 type RuntimeViewState =
   | Readonly<{ kind: 'loading' }>
@@ -23,7 +25,7 @@ function bannerStatus(readiness: RuntimeReady): StatusBannerStatus {
   return 'ready';
 }
 
-export function App() {
+function RuntimeHome() {
   const [requestVersion, setRequestVersion] = useState(0);
   const [runtime, setRuntime] = useState<RuntimeViewState>({ kind: 'loading' });
 
@@ -56,5 +58,16 @@ export function App() {
         </section>
       ) : null}
     </main>
+  );
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/courses/new" element={<CourseAuthoringRoute />} />
+        <Route path="*" element={<RuntimeHome />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

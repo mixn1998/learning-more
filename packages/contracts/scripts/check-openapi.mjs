@@ -11,8 +11,10 @@ import {
   ConfirmOutlineCandidateBodySchema,
   CreateOutlineSessionBodySchema,
   GenerationAcceptedResponseSchema,
+  OutlineMessageResponseSchema,
   OutlineRevisionResponseSchema,
   OutlineSessionResponseSchema,
+  OutlineSessionViewResponseSchema,
   RequestCandidateGenerationBodySchema,
   ReviseCourseOutlineBodySchema,
 } from '../dist/index.js';
@@ -84,7 +86,7 @@ function document() {
           operationId: 'getOutlineSession',
           parameters: [sessionParameter],
           responses: {
-            200: response('OutlineSession view', 'OutlineSessionResponse'),
+            200: response('OutlineSession view', 'OutlineSessionViewResponse'),
             ...errorResponses(),
           },
         },
@@ -94,7 +96,10 @@ function document() {
           operationId: 'appendOutlineSessionMessage',
           parameters: [sessionParameter],
           requestBody: jsonBody('AppendOutlineSessionMessageBody'),
-          responses: { 200: { description: 'Message accepted' }, ...errorResponses() },
+          responses: {
+            200: response('Message accepted', 'OutlineMessageResponse'),
+            ...errorResponses(),
+          },
         },
       },
       '/api/v1/outline-sessions/{sessionId}/candidate-generations': {
@@ -139,6 +144,8 @@ function document() {
         ConfirmOutlineCandidateBody: embeddedSchema(ConfirmOutlineCandidateBodySchema),
         ReviseCourseOutlineBody: embeddedSchema(ReviseCourseOutlineBodySchema),
         OutlineSessionResponse: embeddedSchema(OutlineSessionResponseSchema),
+        OutlineSessionViewResponse: embeddedSchema(OutlineSessionViewResponseSchema),
+        OutlineMessageResponse: embeddedSchema(OutlineMessageResponseSchema),
         GenerationAcceptedResponse: embeddedSchema(GenerationAcceptedResponseSchema),
         ConfirmationResponse: embeddedSchema(ConfirmationResponseSchema),
         OutlineRevisionResponse: embeddedSchema(OutlineRevisionResponseSchema),

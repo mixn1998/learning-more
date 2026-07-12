@@ -22,6 +22,7 @@ export function createCourseAuthoringModule(options: {
     }): Promise<{ taskId: string }>;
   };
   readonly draftStore: { saveDraft(artifactRef: string, markdown: string): Promise<void> };
+  readonly providerId?: string;
   readonly now?: () => Date;
 }) {
   const now = options.now ?? (() => new Date());
@@ -65,7 +66,7 @@ export function createCourseAuthoringModule(options: {
         taskKind: 'outline-candidate',
         taskGroup: 'interactive',
         ownerRef: input.outlineSessionId,
-        providerId: 'current',
+        providerId: options.providerId ?? 'current',
         priority: 100,
         prompt: JSON.stringify({
           templateRef: 'course-outline-candidate@v1',

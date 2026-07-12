@@ -7,9 +7,11 @@ import {
   CourseParamsSchema,
   CreateOutlineSessionBodySchema,
   GenerationAcceptedResponseSchema,
+  OutlineMessageResponseSchema,
   OutlineRevisionResponseSchema,
   OutlineSessionParamsSchema,
   OutlineSessionResponseSchema,
+  OutlineSessionViewResponseSchema,
   RequestCandidateGenerationBodySchema,
   ReviseCourseOutlineBodySchema,
 } from '@learning-more/contracts';
@@ -86,7 +88,13 @@ export async function registerCourseAuthoringRoutes(
           { type: 'AppendOutlineSessionMessage', outlineSessionId: sessionId, ...body },
           context,
         );
-        return etag(reply, result.resourceVersion).code(200).send(result.value);
+        if (result.value.kind !== 'message') throw new Error('unexpected_module_result');
+        const response = OutlineMessageResponseSchema.parse({
+          outlineSessionId: result.value.outlineSessionId,
+          state: result.value.state,
+          resourceVersion: result.resourceVersion,
+        });
+        return etag(reply, result.resourceVersion).code(200).send(response);
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);
@@ -174,7 +182,8 @@ export async function registerCourseAuthoringRoutes(
           { type: 'GetOutlineSession', outlineSessionId: sessionId },
           buildQueryContext(correlation, options.now()),
         );
-        return etag(reply, view.resourceVersion).code(200).send(view);
+        const response = OutlineSessionViewResponseSchema.parse(view);
+        return etag(reply, view.resourceVersion).code(200).send(response);
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);

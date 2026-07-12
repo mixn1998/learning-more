@@ -6,7 +6,7 @@ import {
   type GenerationStreamEvent,
 } from '@learning-more/contracts';
 
-import type { GenerationFrameLog } from '../../modules/generation-runtime/implementation/frame-log.js';
+import type { GenerationFrameLog } from '../../modules/generation-runtime/interface.js';
 
 function sse(frame: GenerationStreamEvent): string {
   return `id: ${formatLastEventId(frame.taskId, frame.sequence)}\nevent: ${frame.type}\ndata: ${JSON.stringify(frame.data)}\n\n`;

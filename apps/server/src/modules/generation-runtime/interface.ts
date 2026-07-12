@@ -1,3 +1,5 @@
+import type { GenerationStreamEvent, GenerationStreamEventType } from '@learning-more/contracts';
+
 import type { GenerationTask } from './ports/generation-task-repository.js';
 
 export interface GenerationRequest {
@@ -21,4 +23,27 @@ export interface GenerationRuntime {
   cancel(taskId: string): Promise<GenerationTask>;
   get(taskId: string): Promise<GenerationTask>;
   recoverExpiredLeases(): Promise<number>;
+}
+
+export interface GenerationFrameMeta {
+  readonly taskId: string;
+  state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
+  lastSequence: number;
+}
+
+export interface GenerationFrameLog {
+  ensureTask(taskId: string, state: GenerationFrameMeta['state']): Promise<void>;
+  append(
+    taskId: string,
+    type: GenerationStreamEventType,
+    data: unknown,
+  ): Promise<GenerationStreamEvent>;
+  readAfter(
+    taskId: string,
+    sequence: number,
+  ): Promise<{
+    reset: boolean;
+    frames: GenerationStreamEvent[];
+    meta: GenerationFrameMeta;
+  }>;
 }
