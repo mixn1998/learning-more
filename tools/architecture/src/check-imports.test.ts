@@ -38,6 +38,13 @@ describe('import boundary checks', () => {
     });
   });
 
+  it.each(['react', 'react-dom/client', 'vite', '@vitejs/plugin-react'])(
+    'allows the approved web framework dependency %s',
+    (target) => {
+      expect(checkImport('apps/web/src/app.tsx', target)).toBeUndefined();
+    },
+  );
+
   it('finds static, dynamic, and re-export module specifiers', () => {
     const source = [
       "import { a } from './a.js';",

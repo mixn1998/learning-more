@@ -1,0 +1,19 @@
+{
+  "name": "@learning-more/server",
+  "version": "0.0.0-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/bootstrap/main.ts",
+    "test": "corepack pnpm --filter @learning-more/contracts build && vitest run --root ../.. apps/server",
+    "typecheck": "corepack pnpm --filter @learning-more/contracts build && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@learning-more/contracts": "workspace:*",
+    "fastify": "5.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
+  }
+}

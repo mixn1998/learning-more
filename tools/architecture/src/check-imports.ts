@@ -17,6 +17,17 @@ function serverModule(filePath: string): string | undefined {
   return /^apps\/server\/src\/modules\/([^/]+)\//.exec(filePath)?.[1];
 }
 
+function isApprovedWebFrameworkImport(target: string): boolean {
+  return (
+    target === 'react' ||
+    target.startsWith('react/') ||
+    target === 'react-dom' ||
+    target.startsWith('react-dom/') ||
+    target === 'vite' ||
+    target === '@vitejs/plugin-react'
+  );
+}
+
 export function checkImport(sourcePath: string, targetPath: string): ImportIssue | undefined {
   const source = normalize(sourcePath);
   const target = normalize(targetPath);
@@ -25,7 +36,8 @@ export function checkImport(sourcePath: string, targetPath: string): ImportIssue
     const allowed =
       target.startsWith('apps/web/') ||
       target.startsWith('packages/contracts/') ||
-      target.startsWith('packages/ui/');
+      target.startsWith('packages/ui/') ||
+      isApprovedWebFrameworkImport(target);
     if (!allowed) {
       return {
         code: 'FORBIDDEN_IMPORT',

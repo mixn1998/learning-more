@@ -10,6 +10,7 @@
   "scripts": {
     "architecture:check": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm --filter @learning-more/architecture build && node tools/architecture/dist/check-architecture.js",
     "build": "corepack pnpm -r --if-present build",
+    "dev": "corepack pnpm --parallel --filter @learning-more/server --filter @learning-more/web run dev",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
@@ -22,6 +23,7 @@
     "eslint": "9.39.5",
     "globals": "17.7.0",
     "prettier": "3.9.5",
+    "tsx": "4.23.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.63.0",
     "vitest": "4.1.9"

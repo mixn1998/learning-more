@@ -1,0 +1,41 @@
+:root {
+  color: #342f2b;
+  background: #f4f0e8;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  border: 0;
+  border-radius: 0.65rem;
+  padding: 0.7rem 1rem;
+  color: #fffaf4;
+  background: #a75c42;
+  cursor: pointer;
+}
+
+.app-shell {
+  width: min(42rem, calc(100% - 3rem));
+  margin: 12vh auto;
+  padding: 2.5rem;
+  border: 1px solid #ded5c8;
+  border-radius: 1.25rem;
+  background: #fffdf8;
+  box-shadow: 0 1.2rem 3rem rgb(72 57 42 / 8%);
+}
+
+.eyebrow {
+  color: #8d7769;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.runtime-error {
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+}

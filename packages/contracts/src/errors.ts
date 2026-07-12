@@ -26,6 +26,7 @@ export const ERROR_CODES = [
   'provider_validation_failed',
   'projection_incomplete',
   'storage_corrupted',
+  'internal_error',
 ] as const;
 
 export const RECOVERY_ACTIONS = [
