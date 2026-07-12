@@ -17,6 +17,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "schema:check": "pnpm build && node scripts/check-openapi.mjs",
+    "schema:generate": "pnpm build && node scripts/check-openapi.mjs --write",
     "test": "vitest run --root ../.. packages/contracts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }

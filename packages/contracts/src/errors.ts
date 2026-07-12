@@ -1,14 +1,21 @@
 import { z } from 'zod';
 
 export const ERROR_CODES = [
+  'request_invalid',
+  'precondition_required',
+  'resource_not_found',
+  'local_request_forbidden',
   'topic_required',
   'message_required',
   'session_not_found',
   'session_closed',
+  'assessment_required',
   'candidate_invalid',
   'candidate_stale',
   'confirmation_in_progress',
   'confirmation_failed',
+  'outline_session_transition_invalid',
+  'immutable_resource',
   'version_conflict',
   'idempotency_conflict',
   'lesson_not_startable',

@@ -12,3 +12,4 @@ test-results/
 CONTEXT.md
 PROJECT_CONTEXT.md
 pnpm-lock.yaml
+packages/contracts/openapi/*.openapi.json

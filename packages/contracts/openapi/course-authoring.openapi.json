@@ -1,0 +1,868 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Learning MORE CourseAuthoring API",
+    "version": "1"
+  },
+  "paths": {
+    "/api/v1/outline-sessions": {
+      "post": {
+        "operationId": "createOutlineSession",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOutlineSessionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "OutlineSession created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlineSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/outline-sessions/{sessionId}": {
+      "get": {
+        "operationId": "getOutlineSession",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OutlineSession view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlineSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/outline-sessions/{sessionId}/messages": {
+      "post": {
+        "operationId": "appendOutlineSessionMessage",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendOutlineSessionMessageBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message accepted"
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/outline-sessions/{sessionId}/candidate-generations": {
+      "post": {
+        "operationId": "requestCandidateGeneration",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCandidateGenerationBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Generation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/outline-sessions/{sessionId}/confirmations": {
+      "post": {
+        "operationId": "confirmOutlineCandidate",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmOutlineCandidateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Course created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{courseId}/outline-revisions": {
+      "post": {
+        "operationId": "reviseCourseOutline",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseCourseOutlineBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Outline revision created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlineRevisionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateOutlineSessionBody": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "courseMode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "brainstorm",
+              "argument_clash",
+              "case_study",
+              "business_insight",
+              "process_decomposition",
+              "decision_analysis",
+              "cross_explore",
+              "reading_seminar"
+            ]
+          }
+        },
+        "required": [
+          "topic",
+          "courseMode"
+        ],
+        "additionalProperties": false
+      },
+      "AppendOutlineSessionMessageBody": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "additionalProperties": false
+      },
+      "RequestCandidateGenerationBody": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "ConfirmOutlineCandidateBody": {
+        "type": "object",
+        "properties": {
+          "candidateVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "candidateVersionId"
+        ],
+        "additionalProperties": false
+      },
+      "ReviseCourseOutlineBody": {
+        "type": "object",
+        "properties": {
+          "sourceCandidateVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "sourceCandidateVersionId"
+        ],
+        "additionalProperties": false
+      },
+      "OutlineSessionResponse": {
+        "type": "object",
+        "properties": {
+          "outlineSessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "outlineSessionId",
+          "resourceVersion"
+        ],
+        "additionalProperties": false
+      },
+      "GenerationAcceptedResponse": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "draftArtifactRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "taskId",
+          "state",
+          "resourceVersion"
+        ],
+        "additionalProperties": false
+      },
+      "ConfirmationResponse": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "outlineVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "courseId",
+          "resourceVersion"
+        ],
+        "additionalProperties": false
+      },
+      "OutlineRevisionResponse": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "outlineVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "courseId",
+          "outlineVersionId",
+          "resourceVersion"
+        ],
+        "additionalProperties": false
+      },
+      "ApplicationProblem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "request_invalid",
+              "precondition_required",
+              "resource_not_found",
+              "local_request_forbidden",
+              "topic_required",
+              "message_required",
+              "session_not_found",
+              "session_closed",
+              "assessment_required",
+              "candidate_invalid",
+              "candidate_stale",
+              "confirmation_in_progress",
+              "confirmation_failed",
+              "outline_session_transition_invalid",
+              "immutable_resource",
+              "version_conflict",
+              "idempotency_conflict",
+              "lesson_not_startable",
+              "lesson_not_restorable",
+              "lesson_not_closable",
+              "write_lease_lost",
+              "final_review_immutable",
+              "course_not_closable",
+              "course_closed",
+              "generation_in_progress",
+              "generation_capacity_exceeded",
+              "generation_cancelled",
+              "generation_timeout",
+              "ai_unavailable",
+              "provider_validation_failed",
+              "projection_incomplete",
+              "storage_corrupted",
+              "internal_error"
+            ]
+          },
+          "messageKey": {
+            "type": "string",
+            "pattern": "^errors\\.[A-Za-z][A-Za-z0-9]*$"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "fieldErrors": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "currentVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recovery": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "retry",
+                  "refresh",
+                  "reconnect_ai",
+                  "take_over_lease",
+                  "resume_learning",
+                  "return_home"
+                ]
+              },
+              "resourceRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "type",
+          "status",
+          "code",
+          "messageKey",
+          "retryable",
+          "correlationId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}
