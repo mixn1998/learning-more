@@ -103,7 +103,7 @@ export function createUnitOfWork(options: UnitOfWorkOptions): UnitOfWork {
         const result = await work(context);
         journal.operations.push(
           ...[...operations.entries()]
-            .sort(([left], [right]) => left.localeCompare(right, 'en-US'))
+            .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
             .map(([relativePath, kind]) => ({ relativePath, kind, state: 'pending' as const })),
         );
         journal.state = 'prepared';

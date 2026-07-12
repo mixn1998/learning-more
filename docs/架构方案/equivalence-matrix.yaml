@@ -71,6 +71,6 @@
 - { id: EQ-GEN-01, sourceHeading: 并发, assertion: 任务 join/reject 和全局上限正确, ownerModule: GenerationRuntime, testLevel: domain, automatedTest: apps/server/src/modules/generation-runtime/tests/scheduler.test.ts, status: unimplemented }
 - { id: EQ-GEN-02, sourceHeading: 取消超时, assertion: 状态、错误码和指标完整, ownerModule: GenerationRuntime, testLevel: module, automatedTest: apps/server/src/modules/generation-runtime/tests/scheduler.test.ts, status: unimplemented }
 - { id: EQ-GEN-03, sourceHeading: 恢复, assertion: 页面刷新后从服务端恢复运行任务, ownerModule: GenerationRuntime, testLevel: e2e, automatedTest: tests/e2e/generation-recovery.spec.ts, status: unimplemented }
-- { id: EQ-DATA-01, sourceHeading: Repository 合同, assertion: 文件 adapter 与未来数据库 adapter 行为一致, ownerModule: LearningFacts, testLevel: repository, automatedTest: packages/test-kit/src/repository-contract.test.ts, status: unimplemented }
-- { id: EQ-DATA-02, sourceHeading: 原子写入, assertion: 失败时不暴露半个 JSON/Markdown, ownerModule: LearningFacts, testLevel: repository, automatedTest: packages/local-file/src/atomic-write.test.ts, status: unimplemented }
+- { id: EQ-DATA-01, sourceHeading: Repository 合同, assertion: 文件 adapter 与未来数据库 adapter 行为一致, ownerModule: LearningFacts, testLevel: repository, automatedTest: apps/server/src/persistence/local-file-repository.contract.test.ts, status: passing }
+- { id: EQ-DATA-02, sourceHeading: 原子写入, assertion: 失败时不暴露半个 JSON/Markdown, ownerModule: LearningFacts, testLevel: repository, automatedTest: apps/server/src/persistence/unit-of-work.test.ts, status: passing }
 - { id: EQ-I18N-01, sourceHeading: 文本安全, assertion: 无乱码、无内部字段泄漏、无未绑定操作, ownerModule: CourseAuthoring, testLevel: e2e, automatedTest: tests/e2e/text-safety.spec.ts, status: unimplemented }

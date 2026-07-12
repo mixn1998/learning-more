@@ -25,7 +25,7 @@ afterEach(async () => {
   );
 });
 
-describe('UnitOfWork', () => {
+describe('UnitOfWork [EQ-DATA-02]', () => {
   it('atomically commits staged JSON, text, and deletion operations', async () => {
     const root = await temporaryDataRoot();
     await mkdir(path.join(root.absolutePath, 'work'), { recursive: true });
