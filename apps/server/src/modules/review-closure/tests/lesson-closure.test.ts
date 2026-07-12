@@ -1,0 +1,195 @@
+import { describe, expect, it } from 'vitest';
+
+import { createInMemoryLearningSessionRepositories } from '../../../persistence/learning-session-repositories.js';
+import { createInMemoryMessageLog } from '../../learning-session/implementation/message-log.js';
+import { createSessionModule } from '../../learning-session/implementation/session-module.js';
+import { createSupplementarySession } from '../../learning-session/model/supplementary-session.js';
+import {
+  createInMemoryLessonClosureRepository,
+  createLessonClosureWorkflow,
+} from '../implementation/lesson-closure.js';
+
+const tx = {
+  stageJson: async () => undefined,
+  stageText: async () => undefined,
+  deleteOnCommit: async () => undefined,
+};
+const unitOfWork = {
+  async execute<T>(_request: unknown, work: (context: typeof tx) => Promise<T>) {
+    return work(tx);
+  },
+};
+const baseContext = {
+  correlationId: 'correlation_01',
+  idempotencyKey: 'idem_01',
+  actor: 'local-user' as const,
+  requestedAt: '2026-07-13T00:00:00.000Z',
+  receivedAt: '2026-07-13T00:00:00.000Z',
+  pageInstanceId: 'page_01',
+};
+
+async function fixture(crashAfterLearningCommit = false) {
+  const repositories = createInMemoryLearningSessionRepositories();
+  const sessionModule = createSessionModule({
+    repositories,
+    messageLog: createInMemoryMessageLog(),
+    unitOfWork,
+    instanceId: 'instance_01',
+    nextSessionId: () => 'session_01',
+    nextIntervalId: () => 'interval_01',
+    nextLeaseToken: () => 'lease_01',
+    now: () => new Date('2026-07-13T00:00:00.000Z'),
+  });
+  await sessionModule.execute(
+    { type: 'StartLesson', lessonId: 'lesson_01' },
+    { ...baseContext, commandId: 'start' },
+  );
+  await sessionModule.execute(
+    {
+      type: 'AppendUserMessage',
+      lessonId: 'lesson_01',
+      messageId: 'message_01',
+      contentArtifactRef: 'artifact:user:01',
+      establishesEvidence: true,
+    },
+    { ...baseContext, commandId: 'message', expectedVersion: 1 },
+  );
+  const closureRepository = createInMemoryLessonClosureRepository();
+  let crashed = false;
+  const workflow = createLessonClosureWorkflow({
+    repository: closureRepository,
+    unitOfWork,
+    sessionModule,
+    generationRuntime: { submit: async () => ({ taskId: 'task_01' }) },
+    nextTransactionId: () => 'closure_01',
+    nextReviewId: () => 'review_final_01',
+    now: () => new Date('2026-07-13T00:01:00.000Z'),
+    ...(crashAfterLearningCommit
+      ? {
+          afterLearningCommit: () => {
+            if (!crashed) {
+              crashed = true;
+              throw new Error('simulated crash');
+            }
+          },
+        }
+      : {}),
+  });
+  return { workflow, closureRepository, sessionModule };
+}
+
+const snapshot = {
+  lessonId: 'lesson_01',
+  sessionId: 'session_01',
+  sourceSessionIds: ['session_01'],
+  sourceMessageIds: ['message_01'],
+  messageRangeChecksum: 'a'.repeat(64),
+  endIntent: 'finish lesson',
+  expectedSessionVersion: 2,
+};
+const review = {
+  artifactRef: 'artifact:final-review',
+  markdown: '# Final Review\nSolid progress.',
+  sourceSessionIds: ['session_01'],
+  messageRangeChecksum: 'a'.repeat(64),
+  contentSha256: 'b'.repeat(64),
+};
+
+describe('lesson closure workflow', () => {
+  it('rejects an empty source session and retains a retryable generation failure', async () => {
+    const { workflow, closureRepository } = await fixture();
+    await expect(workflow.begin({ ...snapshot, sourceMessageIds: [] })).rejects.toMatchObject({
+      code: 'lesson_not_completable',
+    });
+    const started = await workflow.begin(snapshot);
+    await workflow.fail(started.transactionId, 'ai_unavailable', 'draft_01');
+    await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
+      state: 'generating-failed',
+      errorCode: 'ai_unavailable',
+      draftArtifactRef: 'draft_01',
+    });
+    await expect(workflow.retry(started.transactionId, 'retry_01')).resolves.toMatchObject({
+      transactionId: 'closure_01',
+      state: 'generating',
+    });
+  });
+
+  it('rejects tampered source checksums and makes a completed final Review immutable', async () => {
+    const { workflow, sessionModule } = await fixture();
+    const started = await workflow.begin(snapshot);
+    await workflow.markReviewReady(started.transactionId, review);
+    await expect(
+      workflow.commit(started.transactionId, 'c'.repeat(64), {
+        ...baseContext,
+        commandId: 'commit',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ code: 'source_snapshot_changed' });
+    await workflow.commit(started.transactionId, 'a'.repeat(64), {
+      ...baseContext,
+      commandId: 'commit',
+      expectedVersion: 2,
+    });
+    await expect(
+      sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+        { ...baseContext, correlationId: 'query' },
+      ),
+    ).resolves.toMatchObject({
+      learning: {
+        progress: 'completed',
+        session: { state: 'closed', finalReviewId: 'review_final_01' },
+      },
+    });
+    await expect(workflow.retry(started.transactionId, 'late_retry')).rejects.toMatchObject({
+      code: 'final_review_immutable',
+    });
+  });
+
+  it('recovers a crash after the LearningSession commit without duplicating the final artifact', async () => {
+    const { workflow, closureRepository, sessionModule } = await fixture(true);
+    const started = await workflow.begin(snapshot);
+    await workflow.markReviewReady(started.transactionId, review);
+    await expect(
+      workflow.commit(started.transactionId, snapshot.messageRangeChecksum, {
+        ...baseContext,
+        commandId: 'commit',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow('simulated crash');
+    await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
+      state: 'committing',
+    });
+    await workflow.recover(started.transactionId, snapshot.messageRangeChecksum, {
+      ...baseContext,
+      commandId: 'commit',
+      expectedVersion: 3,
+    });
+    await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
+      state: 'completed',
+      finalReviewId: 'review_final_01',
+    });
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+      { ...baseContext, correlationId: 'query' },
+    );
+    expect(view.learning.session?.finalReviewId).toBe('review_final_01');
+  });
+
+  it('keeps supplementary learning separate from the original final Review', () => {
+    const supplementary = createSupplementarySession({
+      id: 'supplementary_01',
+      courseId: 'course_01',
+      lessonId: 'lesson_01',
+      finalReviewId: 'review_final_01',
+      createdAt: '2026-07-13T00:02:00.000Z',
+    });
+    expect(supplementary).toMatchObject({
+      id: 'supplementary_01',
+      sourceFinalReviewId: 'review_final_01',
+      status: 'active',
+      messageIds: [],
+    });
+    expect(supplementary).not.toHaveProperty('originalSessionId');
+  });
+});

@@ -1,6 +1,6 @@
 import type { TransactionContext } from '../../persistence/unit-of-work.js';
 
-import type { StageReviewState } from './model/review-state.js';
+import type { LessonClosureRecord, StageReviewState } from './model/review-state.js';
 
 export interface ReviewStateRepository {
   get(reviewId: string): Promise<StageReviewState | undefined>;
@@ -27,4 +27,13 @@ export interface StageReviewWorkflow {
     artifactRef: string;
     contentSha256: string;
   }): Promise<void>;
+}
+
+export interface LessonClosureRepository {
+  get(transactionId: string): Promise<LessonClosureRecord | undefined>;
+  save(
+    tx: TransactionContext,
+    closure: LessonClosureRecord,
+    expectedVersion: number,
+  ): Promise<void>;
 }

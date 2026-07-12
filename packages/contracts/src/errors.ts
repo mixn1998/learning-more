@@ -12,6 +12,7 @@ export const ERROR_CODES = [
   'assessment_required',
   'candidate_invalid',
   'candidate_stale',
+  'source_snapshot_changed',
   'confirmation_in_progress',
   'confirmation_failed',
   'outline_session_transition_invalid',

@@ -29,7 +29,15 @@ export type LearningSessionCommand =
   | (LessonCommand & Readonly<{ type: 'AbandonLesson' }>)
   | (LessonCommand & Readonly<{ type: 'RestoreLesson' }>)
   | (LessonCommand & Readonly<{ type: 'CommitStageReview'; reviewId: string }>)
-  | (LessonCommand & Readonly<{ type: 'CommitFinalReview'; reviewId: string }>);
+  | (LessonCommand &
+      Readonly<{
+        type: 'CommitFinalReview';
+        reviewId: string;
+        artifactRef: string;
+        contentSha256: string;
+        sourceSessionIds: readonly string[];
+        messageRangeChecksum: string;
+      }>);
 
 export type LearningSessionQuery = Readonly<{
   type: 'GetLessonLearning';

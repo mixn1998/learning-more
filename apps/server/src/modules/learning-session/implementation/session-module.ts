@@ -208,6 +208,18 @@ export function createSessionModule(options: {
         learning,
         intervals,
         ...(writeLease === undefined ? {} : { writeLease }),
+        ...(command.type === 'CommitFinalReview'
+          ? {
+              finalReview: {
+                id: command.reviewId,
+                artifactRef: command.artifactRef,
+                contentSha256: command.contentSha256,
+                sourceSessionIds: command.sourceSessionIds,
+                messageRangeChecksum: command.messageRangeChecksum,
+                committedAt: now.toISOString(),
+              },
+            }
+          : {}),
       };
       await options.unitOfWork.execute(
         { transactionId: `tx_learning_${randomUUID()}` },

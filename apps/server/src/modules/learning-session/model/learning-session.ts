@@ -27,7 +27,8 @@ export type LearningSessionErrorCode =
   | 'lesson_not_completable'
   | 'session_not_writable'
   | 'session_conflict'
-  | 'generation_in_progress';
+  | 'generation_in_progress'
+  | 'final_review_immutable';
 
 export class LearningSessionError extends Error {
   constructor(readonly code: LearningSessionErrorCode) {
@@ -54,6 +55,9 @@ export function decide(
 ): readonly LearningSessionEvent[] {
   if (learning.processedCommandIds.includes(commandId)) return [];
   if (learning.progress === 'completed') {
+    if (command.type === 'commitFinalReview') {
+      throw new LearningSessionError('final_review_immutable');
+    }
     throw new LearningSessionError('lesson_not_startable');
   }
 

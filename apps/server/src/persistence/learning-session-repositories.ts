@@ -17,6 +17,14 @@ export type LearningSessionRecord = Readonly<{
   learning: LessonLearning;
   intervals: readonly LearningTimeInterval[];
   writeLease?: SessionWriteLease;
+  finalReview?: Readonly<{
+    id: string;
+    artifactRef: string;
+    contentSha256: string;
+    sourceSessionIds: readonly string[];
+    messageRangeChecksum: string;
+    committedAt: string;
+  }>;
   resourceVersion: number;
 }>;
 
@@ -88,6 +96,16 @@ const RecordSchema = z.strictObject({
   learning: LessonLearningSchema,
   intervals: z.array(IntervalSchema),
   writeLease: LeaseSchema.optional(),
+  finalReview: z
+    .strictObject({
+      id: z.string().min(1),
+      artifactRef: z.string().min(1),
+      contentSha256: z.string().regex(/^[a-f0-9]{64}$/),
+      sourceSessionIds: z.array(z.string().min(1)),
+      messageRangeChecksum: z.string().regex(/^[a-f0-9]{64}$/),
+      committedAt: z.iso.datetime({ offset: true }),
+    })
+    .optional(),
   resourceVersion: z.number().int().nonnegative(),
 });
 
