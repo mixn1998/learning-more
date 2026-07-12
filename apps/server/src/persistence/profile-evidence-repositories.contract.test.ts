@@ -25,6 +25,7 @@ function evidence(id: string, dedupKey = 'a'.repeat(64)) {
     {
       evidenceId: id,
       claimDimension: 'learning.recovery_behavior',
+      summary: 'This lesson was explicitly restored after an abandon event.',
       sourceGroup: 'behavior',
       sourceGroupId: 'lesson:lesson_01',
       dependentSourceGroupIds: [],
@@ -95,6 +96,15 @@ function repositoryContract(
           },
           0,
         );
+        await repositories.rejections.save(tx, {
+          rejectionId: 'rejection_01',
+          factId: 'fact_invalid',
+          sourceGroup: 'behavior',
+          extractorVersion: 'behavior@1',
+          errorCode: 'evidence_source_invalid',
+          rejectedAt: '2026-07-13T00:00:00.000Z',
+          resourceVersion: 1,
+        });
       });
       const ids: string[] = [];
       for await (const item of repositories.evidence.list()) ids.push(item.evidenceId);
@@ -102,6 +112,9 @@ function repositoryContract(
       await expect(repositories.checkpoints.get('checkpoint_behavior')).resolves.toMatchObject({
         lastFactId: 'fact_01',
         resourceVersion: 1,
+      });
+      await expect(repositories.rejections.get('rejection_01')).resolves.toMatchObject({
+        factId: 'fact_invalid',
       });
     });
 

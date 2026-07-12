@@ -41,6 +41,7 @@ export const CandidateEvidenceSchema = z.strictObject({
     .min(3)
     .max(200)
     .regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/),
+  summary: z.string().trim().min(8).max(1_000),
   sourceGroup: z.enum(['behavior', 'outcome', 'reflection', 'planning', 'review']),
   sourceGroupId: z.string().min(1).max(300),
   dependentSourceGroupIds: z.array(z.string().min(1).max(300)),

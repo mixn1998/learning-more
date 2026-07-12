@@ -2,13 +2,21 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { CandidateEvidence, SourceCheckpoint } from '../modules/profile-evidence/interface.js';
+import type {
+  CandidateEvidence,
+  RejectedEvidenceRecord,
+  SourceCheckpoint,
+} from '../modules/profile-evidence/interface.js';
 import { CandidateEvidenceSchema } from '../modules/profile-evidence/implementation/candidate-evidence.js';
-import { SourceCheckpointSchema } from '../modules/profile-evidence/implementation/source-checkpoint.js';
+import {
+  RejectedEvidenceRecordSchema,
+  SourceCheckpointSchema,
+} from '../modules/profile-evidence/implementation/source-checkpoint.js';
 import {
   EvidenceDuplicateError,
   type CandidateEvidenceRepository,
   type EvidenceRepositories,
+  type RejectedEvidenceRepository,
   type SourceCheckpointRepository,
 } from '../modules/profile-evidence/ports/evidence-repository.js';
 import { DataRoot, assertSafePathSegment } from './data-root.js';
@@ -19,7 +27,7 @@ function shard(id: string): string {
   return createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 2);
 }
 
-function relativePath(kind: 'candidates' | 'checkpoints', id: string): string {
+function relativePath(kind: 'candidates' | 'checkpoints' | 'rejections', id: string): string {
   assertSafePathSegment(id);
   return `portrait-evidence/${kind}/${shard(id)}/${id}.json`;
 }
@@ -38,7 +46,7 @@ async function listIds(root: string): Promise<string[]> {
 function document(
   entityType: string,
   entityId: string,
-  data: CandidateEvidence | SourceCheckpoint,
+  data: CandidateEvidence | SourceCheckpoint | RejectedEvidenceRecord,
 ) {
   const now = 'updatedAt' in data ? data.updatedAt : new Date().toISOString();
   return {
@@ -57,6 +65,7 @@ function document(
 export function createLocalFileEvidenceRepositories(dataRoot: DataRoot): EvidenceRepositories {
   const evidenceRoot = path.join(dataRoot.absolutePath, 'portrait-evidence', 'candidates');
   const checkpointRoot = path.join(dataRoot.absolutePath, 'portrait-evidence', 'checkpoints');
+  const rejectionRoot = path.join(dataRoot.absolutePath, 'portrait-evidence', 'rejections');
   const evidence: CandidateEvidenceRepository = {
     async get(evidenceId: string) {
       try {
@@ -133,5 +142,40 @@ export function createLocalFileEvidenceRepositories(dataRoot: DataRoot): Evidenc
       }
     },
   };
-  return { evidence, checkpoints };
+  const rejections: RejectedEvidenceRepository = {
+    async get(rejectionId) {
+      try {
+        return decodeAggregateDocument(
+          await readFile(
+            path.join(dataRoot.absolutePath, relativePath('rejections', rejectionId)),
+            'utf8',
+          ),
+          RejectedEvidenceRecordSchema,
+        ).data as RejectedEvidenceRecord;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+        throw error;
+      }
+    },
+    async save(tx, record) {
+      const existing = await rejections.get(record.rejectionId);
+      if (existing !== undefined) {
+        if (JSON.stringify(existing) !== JSON.stringify(record)) {
+          throw new Error('EVIDENCE_REJECTION_ID_COLLISION');
+        }
+        return;
+      }
+      await tx.stageJson(
+        relativePath('rejections', record.rejectionId),
+        document('evidence-rejection', record.rejectionId, record),
+      );
+    },
+    async *list() {
+      for (const id of await listIds(rejectionRoot)) {
+        const record = await rejections.get(id);
+        if (record !== undefined) yield record;
+      }
+    },
+  };
+  return { evidence, checkpoints, rejections };
 }

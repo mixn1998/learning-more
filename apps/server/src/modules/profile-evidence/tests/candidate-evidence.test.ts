@@ -12,6 +12,7 @@ function candidate(overrides: Record<string, unknown> = {}) {
   return {
     evidenceId: 'evidence_01',
     claimDimension: 'learning.recovery_behavior',
+    summary: 'This lesson was explicitly restored after an abandon event.',
     sourceGroup: 'behavior',
     sourceGroupId: 'lesson:lesson_01',
     dependentSourceGroupIds: [],

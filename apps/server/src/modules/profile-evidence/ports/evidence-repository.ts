@@ -1,6 +1,6 @@
 import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
 import type { TransactionContext } from '../../../persistence/unit-of-work.js';
-import type { CandidateEvidence, SourceCheckpoint } from '../interface.js';
+import type { CandidateEvidence, RejectedEvidenceRecord, SourceCheckpoint } from '../interface.js';
 
 export class EvidenceDuplicateError extends Error {
   readonly code = 'evidence_duplicate';
@@ -28,14 +28,22 @@ export interface SourceCheckpointRepository {
   list(): AsyncIterable<SourceCheckpoint>;
 }
 
+export interface RejectedEvidenceRepository {
+  get(rejectionId: string): Promise<RejectedEvidenceRecord | undefined>;
+  save(tx: TransactionContext, record: RejectedEvidenceRecord): Promise<void>;
+  list(): AsyncIterable<RejectedEvidenceRecord>;
+}
+
 export type EvidenceRepositories = Readonly<{
   evidence: CandidateEvidenceRepository;
   checkpoints: SourceCheckpointRepository;
+  rejections: RejectedEvidenceRepository;
 }>;
 
 export function createInMemoryEvidenceRepositories(): EvidenceRepositories {
   const evidenceRecords = new Map<string, CandidateEvidence>();
   const checkpoints = new Map<string, SourceCheckpoint>();
+  const rejections = new Map<string, RejectedEvidenceRecord>();
   const evidence: CandidateEvidenceRepository = {
     get: async (id) => structuredClone(evidenceRecords.get(id)),
     async findByDedupKey(dedupKey) {
@@ -82,5 +90,27 @@ export function createInMemoryEvidenceRepositories(): EvidenceRepositories {
       }
     },
   };
-  return { evidence, checkpoints: checkpointRepository };
+  const rejectionRepository: RejectedEvidenceRepository = {
+    get: async (id) => structuredClone(rejections.get(id)),
+    async save(_tx, record) {
+      const existing = rejections.get(record.rejectionId);
+      if (existing !== undefined) {
+        if (JSON.stringify(existing) !== JSON.stringify(record)) {
+          throw new Error('EVIDENCE_REJECTION_ID_COLLISION');
+        }
+        return;
+      }
+      rejections.set(record.rejectionId, structuredClone(record));
+    },
+    async *list() {
+      for (const id of [...rejections.keys()].sort()) {
+        yield structuredClone(rejections.get(id)!);
+      }
+    },
+  };
+  return {
+    evidence,
+    checkpoints: checkpointRepository,
+    rejections: rejectionRepository,
+  };
 }

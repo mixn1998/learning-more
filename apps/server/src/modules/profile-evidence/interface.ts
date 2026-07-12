@@ -12,6 +12,7 @@ export type EvidenceStrength = Readonly<{
 export type CandidateEvidence = Readonly<{
   evidenceId: string;
   claimDimension: string;
+  summary: string;
   sourceGroup: EvidenceSourceGroup;
   sourceGroupId: string;
   dependentSourceGroupIds: readonly string[];
@@ -36,5 +37,15 @@ export type SourceCheckpoint = Readonly<{
   processedFactCount: number;
   rejectedFactCount: number;
   updatedAt: string;
+  resourceVersion: number;
+}>;
+
+export type RejectedEvidenceRecord = Readonly<{
+  rejectionId: string;
+  factId: string;
+  sourceGroup: EvidenceSourceGroup;
+  extractorVersion: string;
+  errorCode: string;
+  rejectedAt: string;
   resourceVersion: number;
 }>;
