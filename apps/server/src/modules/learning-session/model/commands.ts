@@ -16,4 +16,5 @@ export type LearningSessionCommand =
   | Readonly<{ type: 'stopGeneration' }>
   | Readonly<{ type: 'abandon' }>
   | Readonly<{ type: 'restore' }>
+  | Readonly<{ type: 'commitStageReview'; reviewId: string }>
   | Readonly<{ type: 'commitFinalReview'; reviewId: string }>;

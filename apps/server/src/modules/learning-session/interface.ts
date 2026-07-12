@@ -28,6 +28,7 @@ export type LearningSessionCommand =
   | (LessonCommand & Readonly<{ type: 'StopSessionGeneration' }>)
   | (LessonCommand & Readonly<{ type: 'AbandonLesson' }>)
   | (LessonCommand & Readonly<{ type: 'RestoreLesson' }>)
+  | (LessonCommand & Readonly<{ type: 'CommitStageReview'; reviewId: string }>)
   | (LessonCommand & Readonly<{ type: 'CommitFinalReview'; reviewId: string }>);
 
 export type LearningSessionQuery = Readonly<{

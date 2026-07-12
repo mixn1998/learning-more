@@ -56,6 +56,7 @@ const OriginalSessionSchema = z.strictObject({
   messageIds: z.array(z.string()),
   evidenceCheckpoint: z.boolean(),
   activeGenerationTaskId: z.string().optional(),
+  stageReviewId: z.string().optional(),
   finalReviewId: z.string().optional(),
 });
 const LessonLearningSchema = z.strictObject({

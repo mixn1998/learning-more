@@ -10,6 +10,7 @@ export type OriginalLearningSession = Readonly<{
   messageIds: readonly string[];
   evidenceCheckpoint: boolean;
   activeGenerationTaskId?: string;
+  stageReviewId?: string;
   finalReviewId?: string;
 }>;
 
@@ -72,6 +73,13 @@ export function decide(
       throw new LearningSessionError('lesson_not_restorable');
     }
     return [event(commandId, { type: 'AbandonedLessonRestored' })];
+  }
+
+  if (command.type === 'commitStageReview') {
+    if (learning.session === undefined || learning.session.state === 'closed') {
+      throw new LearningSessionError('session_not_writable');
+    }
+    return [event(commandId, { type: 'StageReviewCommitted', reviewId: command.reviewId })];
   }
 
   const session = learning.session;
@@ -192,6 +200,13 @@ export function evolve(learning: LessonLearning, event: LearningSessionEvent): L
     return {
       ...learning,
       session: withoutActiveGeneration(session),
+      processedCommandIds,
+    };
+  }
+  if (event.type === 'StageReviewCommitted') {
+    return {
+      ...learning,
+      session: { ...session, stageReviewId: event.reviewId },
       processedCommandIds,
     };
   }

@@ -59,6 +59,9 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
   if (command.type === 'StopSessionGeneration') return { type: 'stopGeneration' };
   if (command.type === 'AbandonLesson') return { type: 'abandon' };
   if (command.type === 'RestoreLesson') return { type: 'restore' };
+  if (command.type === 'CommitStageReview') {
+    return { type: 'commitStageReview', reviewId: command.reviewId };
+  }
   return { type: 'commitFinalReview', reviewId: command.reviewId };
 }
 
@@ -188,6 +191,17 @@ export function createSessionModule(options: {
           sessionId: learning.session.id,
           now,
         });
+      } else if (command.type === 'AbandonLesson') {
+        intervals =
+          learning.session === undefined ? [] : closeLearningIntervals(intervals, now, 'abandoned');
+      } else if (command.type === 'RestoreLesson' && learning.session !== undefined) {
+        intervals = openLearningInterval(intervals, {
+          id: options.nextIntervalId(),
+          sessionId: learning.session.id,
+          now,
+        });
+      } else if (command.type === 'CommitFinalReview') {
+        intervals = closeLearningIntervals(intervals, now, 'completed');
       }
       const stored = {
         ...base,
