@@ -36,6 +36,7 @@ export interface LessonClosureRepository {
     closure: LessonClosureRecord,
     expectedVersion: number,
   ): Promise<void>;
+  list(): AsyncIterable<LessonClosureRecord>;
 }
 
 export type CourseReviewInputManifest = Readonly<{

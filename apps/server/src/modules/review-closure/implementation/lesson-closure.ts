@@ -32,6 +32,9 @@ export function createInMemoryLessonClosureRepository(): LessonClosureRepository
         structuredClone({ ...closure, resourceVersion: expectedVersion + 1 }),
       );
     },
+    async *list() {
+      for (const id of [...closures.keys()].sort()) yield structuredClone(closures.get(id)!);
+    },
   };
 }
 
@@ -52,7 +55,7 @@ export function createLessonClosureWorkflow(options: {
     }): Promise<{ taskId: string }>;
   };
   readonly nextTransactionId: () => string;
-  readonly nextReviewId: () => string;
+  readonly nextReviewId: (lessonId: string) => string;
   readonly now: () => Date;
   readonly afterLearningCommit?: () => void | Promise<void>;
 }) {
@@ -101,15 +104,16 @@ export function createLessonClosureWorkflow(options: {
     }
     if (record.review === undefined) throw new LessonClosureError('lesson_not_completable');
     const review = record.review;
+    const finalReviewId = record.finalReviewId ?? options.nextReviewId(record.lessonId);
     let committing = record;
     if (record.state === 'review-ready') {
       committing = await save({
         ...record,
         state: 'committing',
+        finalReviewId,
         updatedAt: options.now().toISOString(),
       });
     }
-    const finalReviewId = committing.finalReviewId ?? options.nextReviewId();
     const currentView = await options.sessionModule.query(
       { type: 'GetLessonLearning', lessonId: committing.lessonId },
       {
@@ -129,7 +133,12 @@ export function createLessonClosureWorkflow(options: {
         sourceSessionIds: review.sourceSessionIds,
         messageRangeChecksum: review.messageRangeChecksum,
       },
-      { ...context, expectedVersion: currentView.resourceVersion },
+      {
+        ...context,
+        commandId: `commit_final_review_${committing.transactionId}`,
+        idempotencyKey: `commit_final_review_${committing.transactionId}`,
+        expectedVersion: currentView.resourceVersion,
+      },
     );
     await options.afterLearningCommit?.();
     return save({

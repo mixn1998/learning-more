@@ -4,7 +4,7 @@ import { RepositoryVersionConflictError } from '../../../persistence/repository-
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { ReviewStateRepository, StageReviewWorkflow } from '../interface.js';
 
-function stableReviewId(lessonId: string): string {
+export function reviewIdForLesson(lessonId: string): string {
   return `review_${createHash('sha256').update(lessonId, 'utf8').digest('hex').slice(0, 32)}`;
 }
 
@@ -44,11 +44,12 @@ export function createStageReviewWorkflow(options: {
     }): Promise<{ taskId: string }>;
   };
   readonly now: () => Date;
+  readonly providerId?: string;
   readonly commitToLearningSession?: (lessonId: string, reviewId: string) => Promise<void>;
 }): StageReviewWorkflow {
   return {
     async request(input) {
-      const reviewId = stableReviewId(input.lessonId);
+      const reviewId = reviewIdForLesson(input.lessonId);
       const current = await options.repository.get(reviewId);
       const receipt = current?.requestReceipts[input.commandId];
       if (receipt !== undefined) return { reviewId, taskId: receipt };
@@ -59,7 +60,7 @@ export function createStageReviewWorkflow(options: {
         taskKind: 'stage-review',
         taskGroup: 'background',
         ownerRef: reviewId,
-        providerId: 'current',
+        providerId: options.providerId ?? 'current',
         priority: 50,
         prompt: JSON.stringify({
           templateRef: 'stage-review@v1',

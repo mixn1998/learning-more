@@ -100,9 +100,10 @@ export function createSessionGenerationCoordinator(options: {
       await options.frameLog.ensureTask(task.taskId, 'running');
       if (!started.has(task.taskId)) {
         started.add(task.taskId);
-        void finish(task.taskId, input.lessonId, context).finally(() =>
-          started.delete(task.taskId),
-        );
+        void finish(task.taskId, input.lessonId, {
+          ...context,
+          expectedVersion: startedGeneration.value.resourceVersion,
+        }).finally(() => started.delete(task.taskId));
       }
       return { taskId: task.taskId, resourceVersion: startedGeneration.value.resourceVersion };
     },

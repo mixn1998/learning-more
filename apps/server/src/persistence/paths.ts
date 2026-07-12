@@ -9,6 +9,7 @@ const entityTypes = [
   'lesson-progress',
   'lesson-sessions',
   'reviews',
+  'lesson-closures',
   'course-reviews',
   'schedules',
   'plan-flows',

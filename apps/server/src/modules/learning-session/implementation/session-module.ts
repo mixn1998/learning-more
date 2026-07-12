@@ -268,6 +268,7 @@ export function createSessionModule(options: {
         learning: record.learning,
         resourceVersion: record.resourceVersion,
         actualSeconds: actualLearningSeconds(record.intervals),
+        ...(record.finalReview === undefined ? {} : { finalReview: record.finalReview }),
       };
     },
   };

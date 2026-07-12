@@ -40,6 +40,7 @@ function fixture() {
       state: 'generating',
       resourceVersion: 2,
     }),
+    getCourseReview: vi.fn().mockResolvedValue(undefined),
   };
   const app = Fastify();
   void registerReviewClosureRoutes(app, {

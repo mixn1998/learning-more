@@ -57,6 +57,14 @@ export type LearningSessionView = Readonly<{
   learning: LessonLearning;
   resourceVersion: number;
   actualSeconds: number;
+  finalReview?: Readonly<{
+    id: string;
+    artifactRef: string;
+    contentSha256: string;
+    sourceSessionIds: readonly string[];
+    messageRangeChecksum: string;
+    committedAt: string;
+  }>;
 }>;
 
 export interface LearningSessionModule {

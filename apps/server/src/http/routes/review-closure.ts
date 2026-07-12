@@ -43,6 +43,12 @@ export type ReviewClosureRouteOptions = Readonly<{
       transactionId: string,
       context: CommandContext,
     ): Promise<{ resourceVersion: number } & Record<string, unknown>>;
+    getCourseReview(
+      courseId: string,
+      context: ReturnType<typeof buildQueryContext>,
+    ): Promise<
+      Readonly<{ state: string; artifactRef?: string; resourceVersion: number }> | undefined
+    >;
   };
   nextCommandId(): string;
   nextCorrelationId(): string;
@@ -181,6 +187,33 @@ export async function registerReviewClosureRoutes(
           commandContext(request, correlation, options),
         );
         return reply.header('etag', `"${result.resourceVersion}"`).code(202).send(result);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.get<{ Params: { courseId: string } }>(
+    '/api/v1/courses/:courseId/review',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const result = await options.services.getCourseReview(
+          request.params.courseId,
+          buildQueryContext(correlation, options.now()),
+        );
+        if (result === undefined) {
+          return reply
+            .code(404)
+            .send(
+              mapApplicationError(
+                Object.assign(new Error('not found'), { code: 'resource_not_found' }),
+                correlation,
+              ),
+            );
+        }
+        return reply.header('etag', `"${result.resourceVersion}"`).code(200).send(result);
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);

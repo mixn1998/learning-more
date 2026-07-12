@@ -4,6 +4,9 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { DataRoot } from '../persistence/data-root.js';
+import { createLocalFileReviewClosureRepositories } from '../persistence/review-closure-repositories.js';
+import { createUnitOfWork } from '../persistence/unit-of-work.js';
 import { buildApp } from './app.js';
 import { createLocalApplication } from './local-application.js';
 
@@ -84,5 +87,89 @@ describe('local CourseAuthoring application', () => {
       frames: expect.arrayContaining([expect.objectContaining({ type: 'artifact.ready' })]),
     });
     await app.close();
+  });
+
+  it('recovers a persisted committing lesson closure when the local service restarts', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-recovery-'));
+    roots.push(directory);
+    const first = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
+    const module = first.serverDependencies.learningSession!.module;
+    const context = {
+      correlationId: 'correlation_01',
+      idempotencyKey: 'idem_01',
+      actor: 'local-user' as const,
+      requestedAt: '2026-07-13T00:00:00.000Z',
+      receivedAt: '2026-07-13T00:00:00.000Z',
+      pageInstanceId: 'page_01',
+    };
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_recovery' },
+      { ...context, commandId: 'start' },
+    );
+    await module.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_recovery',
+        messageId: 'message_01',
+        contentArtifactRef: 'artifact_user_01',
+        establishesEvidence: true,
+      },
+      { ...context, commandId: 'message', expectedVersion: 1 },
+    );
+
+    const dataRoot = DataRoot.create(directory);
+    const repositories = createLocalFileReviewClosureRepositories(dataRoot);
+    const unitOfWork = createUnitOfWork({ dataRoot });
+    await unitOfWork.execute({ transactionId: 'tx_pending_closure' }, (tx) =>
+      repositories.lessonClosures.save(
+        tx,
+        {
+          transactionId: 'closure_recovery',
+          lessonId: 'lesson_recovery',
+          sessionId: 'lesson_session_recovery',
+          state: 'committing',
+          sourceSessionIds: ['lesson_session_recovery'],
+          sourceMessageIds: ['message_01'],
+          messageRangeChecksum: 'a'.repeat(64),
+          endIntent: 'finish lesson',
+          expectedSessionVersion: 2,
+          generationTaskId: 'task_review_01',
+          review: {
+            artifactRef: 'final_review_artifact_01',
+            markdown: '# Final Review',
+            sourceSessionIds: ['lesson_session_recovery'],
+            messageRangeChecksum: 'a'.repeat(64),
+            contentSha256: 'b'.repeat(64),
+          },
+          finalReviewId: 'review_final_recovery',
+          updatedAt: '2026-07-13T00:01:00.000Z',
+          resourceVersion: 0,
+        },
+        0,
+      ),
+    );
+
+    const restarted = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
+    await expect(
+      restarted.serverDependencies.learningSession!.module.query(
+        { type: 'GetLessonLearning', lessonId: 'lesson_recovery' },
+        {
+          correlationId: 'query_recovered',
+          actor: 'local-user',
+          requestedAt: '2026-07-13T00:02:00.000Z',
+          receivedAt: '2026-07-13T00:02:00.000Z',
+        },
+      ),
+    ).resolves.toMatchObject({
+      learning: { progress: 'completed', session: { finalReviewId: 'review_final_recovery' } },
+    });
+    await expect(
+      restarted.serverDependencies.reviewClosure!.services.getClosure('closure_recovery', {
+        correlationId: 'query_closure',
+        actor: 'local-user',
+        requestedAt: '2026-07-13T00:02:00.000Z',
+        receivedAt: '2026-07-13T00:02:00.000Z',
+      }),
+    ).resolves.toMatchObject({ state: 'completed', finalReviewId: 'review_final_recovery' });
   });
 });

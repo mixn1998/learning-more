@@ -6,6 +6,8 @@ export type SupplementarySession = Readonly<{
   status: 'active' | 'archived';
   messageIds: readonly string[];
   createdAt: string;
+  updatedAt: string;
+  resourceVersion: number;
 }>;
 
 export function createSupplementarySession(input: {
@@ -23,5 +25,7 @@ export function createSupplementarySession(input: {
     status: 'active',
     messageIds: [],
     createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+    resourceVersion: 0,
   };
 }

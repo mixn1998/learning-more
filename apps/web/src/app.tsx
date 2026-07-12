@@ -5,6 +5,8 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 
 import { fetchRuntimeReadiness } from './client/runtime-client.js';
 import { CourseAuthoringRoute } from './routes/course-authoring-route.js';
+import { CourseRoute } from './routes/course-route.js';
+import { LessonRoute } from './routes/lesson-route.js';
 
 type RuntimeViewState =
   | Readonly<{ kind: 'loading' }>
@@ -66,6 +68,8 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/courses/new" element={<CourseAuthoringRoute />} />
+        <Route path="/courses/:courseId" element={<CourseRoute />} />
+        <Route path="/lessons/:lessonId" element={<LessonRoute />} />
         <Route path="*" element={<RuntimeHome />} />
       </Routes>
     </BrowserRouter>

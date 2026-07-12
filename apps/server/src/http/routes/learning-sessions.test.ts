@@ -94,6 +94,22 @@ describe('LearningSession HTTP contract', () => {
     expect(options.generation.request).toHaveBeenCalledTimes(1);
   });
 
+  it('resumes the same original session through an explicit command endpoint', async () => {
+    const { app, execute } = fixture();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/lesson-sessions/session_01/resumptions',
+      headers: { ...headers, 'if-match': '"1"' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith(
+      { type: 'ResumeLesson', lessonId: 'lesson_01' },
+      expect.objectContaining({ expectedVersion: 1, pageInstanceId: 'page_01' }),
+    );
+  });
+
   it('returns the stopped draft and maps write lease loss without leaking internals', async () => {
     const lost = Object.assign(new Error('lost'), { code: 'write_lease_lost' });
     const { app } = fixture({

@@ -9,12 +9,22 @@ import {
 } from '../http/routes/course-authoring.js';
 import { registerGenerationRoutes } from '../http/routes/generation.js';
 import { registerHealthRoutes } from '../http/routes/health.js';
+import {
+  registerLearningSessionRoutes,
+  type LearningSessionRouteOptions,
+} from '../http/routes/learning-sessions.js';
+import {
+  registerReviewClosureRoutes,
+  type ReviewClosureRouteOptions,
+} from '../http/routes/review-closure.js';
 
 export interface ServerDependencies {
   getRuntimeReadiness(): Promise<RuntimeReady | unknown>;
   readonly courseAuthoring?: CourseAuthoringRouteOptions;
   readonly generationFrameLog?: GenerationFrameLog;
   readonly localSecurity?: Readonly<{ allowedOrigin: string; csrfToken: string }>;
+  readonly learningSession?: LearningSessionRouteOptions;
+  readonly reviewClosure?: ReviewClosureRouteOptions;
 }
 
 export async function buildApp(dependencies: ServerDependencies): Promise<FastifyInstance> {
@@ -41,6 +51,12 @@ export async function buildApp(dependencies: ServerDependencies): Promise<Fastif
   }
   if (dependencies.generationFrameLog !== undefined) {
     await registerGenerationRoutes(app, { frameLog: dependencies.generationFrameLog });
+  }
+  if (dependencies.learningSession !== undefined) {
+    await registerLearningSessionRoutes(app, dependencies.learningSession);
+  }
+  if (dependencies.reviewClosure !== undefined) {
+    await registerReviewClosureRoutes(app, dependencies.reviewClosure);
   }
   await app.ready();
   return app;

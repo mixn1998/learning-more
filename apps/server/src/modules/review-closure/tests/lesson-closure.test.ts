@@ -140,6 +140,10 @@ describe('lesson closure workflow', () => {
         progress: 'completed',
         session: { state: 'closed', finalReviewId: 'review_final_01' },
       },
+      finalReview: {
+        id: 'review_final_01',
+        artifactRef: 'artifact:final-review',
+      },
     });
     await expect(workflow.retry(started.transactionId, 'late_retry')).rejects.toMatchObject({
       code: 'final_review_immutable',
@@ -159,10 +163,11 @@ describe('lesson closure workflow', () => {
     ).rejects.toThrow('simulated crash');
     await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
       state: 'committing',
+      finalReviewId: 'review_final_01',
     });
     await workflow.recover(started.transactionId, snapshot.messageRangeChecksum, {
       ...baseContext,
-      commandId: 'commit',
+      commandId: 'recovery_uses_a_new_http_command',
       expectedVersion: 3,
     });
     await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
@@ -174,6 +179,7 @@ describe('lesson closure workflow', () => {
       { ...baseContext, correlationId: 'query' },
     );
     expect(view.learning.session?.finalReviewId).toBe('review_final_01');
+    expect(view.resourceVersion).toBe(3);
   });
 
   it('keeps supplementary learning separate from the original final Review', () => {

@@ -37,9 +37,15 @@ export async function registerGenerationRoutes(
         frames.push(...result.frames);
       }
       if (frames.length === 0 && result.meta.state === 'running') {
-        await new Promise((resolve) => setTimeout(resolve, options.heartbeatIntervalMs ?? 15_000));
-        frames.push(await options.frameLog.append(request.params.taskId, 'heartbeat', {}));
-        result = await options.frameLog.readAfter(request.params.taskId, frames.at(-1)!.sequence);
+        const heartbeatAt = Date.now() + (options.heartbeatIntervalMs ?? 15_000);
+        while (frames.length === 0 && result.meta.state === 'running' && Date.now() < heartbeatAt) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          result = await options.frameLog.readAfter(request.params.taskId, last?.sequence ?? 0);
+          frames.push(...result.frames);
+        }
+        if (frames.length === 0 && result.meta.state === 'running') {
+          frames.push(await options.frameLog.append(request.params.taskId, 'heartbeat', {}));
+        }
       }
       return reply
         .header('content-type', 'text/event-stream; charset=utf-8')

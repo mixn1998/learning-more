@@ -2,12 +2,15 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import {
   AppendLessonMessageBodySchema,
+  AppendSupplementaryMessageBodySchema,
   EmptyLearningSessionCommandBodySchema,
   GenerationStoppedResponseSchema,
   GenerationTaskAcceptedResponseSchema,
   LessonSessionStartedResponseSchema,
   StartLessonSessionBodySchema,
+  StartSupplementarySessionBodySchema,
   StopLessonGenerationBodySchema,
+  SupplementarySessionResponseSchema,
 } from '@learning-more/contracts';
 
 import type {
@@ -25,10 +28,29 @@ export type LearningSessionRouteOptions = Readonly<{
   generation: SessionGenerationCoordinator;
   resolveSession(sessionId: string): Promise<SessionReference>;
   saveUserMessage(messageId: string, markdown: string): Promise<string>;
+  loadArtifactMarkdown?(artifactRef: string): Promise<string | undefined>;
   nextCommandId(): string;
   nextCorrelationId(): string;
   nextMessageId(): string;
   now(): Date;
+  supplementary?: {
+    execute(
+      command:
+        | { type: 'StartSupplementarySession'; lessonId: string }
+        | {
+            type: 'AppendSupplementaryMessage';
+            supplementarySessionId: string;
+            messageId: string;
+            expectedVersion: number;
+          }
+        | {
+            type: 'ArchiveSupplementarySession';
+            supplementarySessionId: string;
+            expectedVersion: number;
+          },
+    ): Promise<unknown>;
+    get(id: string): Promise<unknown>;
+  };
 }>;
 
 function correlationId(request: FastifyRequest, options: LearningSessionRouteOptions): string {
@@ -42,6 +64,68 @@ export async function registerLearningSessionRoutes(
   app: FastifyInstance,
   options: LearningSessionRouteOptions,
 ): Promise<void> {
+  if (options.supplementary !== undefined) {
+    app.post<{ Params: { lessonId: string } }>(
+      '/api/v1/lessons/:lessonId/supplementary-sessions',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          StartSupplementarySessionBodySchema.parse(request.body ?? {});
+          buildCommandContext(request, {
+            commandId: options.nextCommandId(),
+            correlationId: correlation,
+            now: options.now(),
+            requirePageInstanceId: true,
+          });
+          const session = SupplementarySessionResponseSchema.parse(
+            await options.supplementary!.execute({
+              type: 'StartSupplementarySession',
+              lessonId: request.params.lessonId,
+            }),
+          );
+          return reply
+            .header('location', `/api/v1/supplementary-sessions/${session.id}`)
+            .header('etag', `"${session.resourceVersion}"`)
+            .code(201)
+            .send(session);
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+
+    app.post<{ Params: { sessionId: string } }>(
+      '/api/v1/supplementary-sessions/:sessionId/messages',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          const body = AppendSupplementaryMessageBodySchema.parse(request.body);
+          const context = buildCommandContext(request, {
+            commandId: options.nextCommandId(),
+            correlationId: correlation,
+            now: options.now(),
+            requireIfMatch: true,
+            requirePageInstanceId: true,
+          });
+          const messageId = options.nextMessageId();
+          await options.saveUserMessage(messageId, body.markdown);
+          const session = SupplementarySessionResponseSchema.parse(
+            await options.supplementary!.execute({
+              type: 'AppendSupplementaryMessage',
+              supplementarySessionId: request.params.sessionId,
+              messageId,
+              expectedVersion: context.expectedVersion!,
+            }),
+          );
+          return reply.header('etag', `"${session.resourceVersion}"`).code(200).send(session);
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+  }
   app.post<{ Params: { lessonId: string } }>(
     '/api/v1/lessons/:lessonId/sessions',
     async (request, reply) => {
@@ -123,6 +207,7 @@ export async function registerLearningSessionRoutes(
 
   for (const [suffix, type] of [
     ['pauses', 'PauseLesson'],
+    ['resumptions', 'ResumeLesson'],
     ['lease-transfers', 'TransferSessionLease'],
   ] as const) {
     app.post<{ Params: { sessionId: string } }>(
@@ -196,7 +281,24 @@ export async function registerLearningSessionRoutes(
           { type: 'GetLessonLearning', lessonId: reference.lessonId },
           buildQueryContext(correlation, options.now()),
         );
-        return reply.header('etag', `"${view.resourceVersion}"`).code(200).send(view);
+        const markdown =
+          view.finalReview === undefined
+            ? undefined
+            : await options.loadArtifactMarkdown?.(view.finalReview.artifactRef);
+        return reply
+          .header('etag', `"${view.resourceVersion}"`)
+          .code(200)
+          .send({
+            ...view,
+            ...(view.finalReview === undefined
+              ? {}
+              : {
+                  finalReview: {
+                    ...view.finalReview,
+                    ...(markdown === undefined ? {} : { markdown }),
+                  },
+                }),
+          });
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);
