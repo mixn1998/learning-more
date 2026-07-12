@@ -8,6 +8,7 @@ export type LearningSessionCommand =
   | (LessonCommand & Readonly<{ type: 'StartLesson' }>)
   | (LessonCommand & Readonly<{ type: 'PauseLesson' }>)
   | (LessonCommand & Readonly<{ type: 'ResumeLesson' }>)
+  | (LessonCommand & Readonly<{ type: 'TransferSessionLease' }>)
   | (LessonCommand &
       Readonly<{
         type: 'AppendUserMessage';
@@ -55,4 +56,26 @@ export interface LearningSessionModule {
     context: CommandContext,
   ): Promise<CommandResult<LearningSessionResult>>;
   query(query: LearningSessionQuery, context: QueryContext): Promise<LearningSessionView>;
+}
+
+export type SessionGenerationInputManifest = Readonly<{
+  courseId: string;
+  lessonId: string;
+  sessionId: string;
+  lessonDefinitionId: string;
+  outlineVersionId: string;
+  userMessageId: string;
+  completedReviewRefs: readonly string[];
+  currentMessageRefs: readonly string[];
+}>;
+
+export interface SessionGenerationCoordinator {
+  request(
+    input: SessionGenerationInputManifest,
+    context: CommandContext,
+  ): Promise<{ taskId: string; resourceVersion: number }>;
+  stop(
+    input: { lessonId: string; sessionId: string; taskId: string },
+    context: CommandContext,
+  ): Promise<{ taskId: string; draftArtifactRef: string; resourceVersion: number }>;
 }

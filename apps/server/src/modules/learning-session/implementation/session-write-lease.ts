@@ -40,3 +40,17 @@ export function ownsWriteLease(
     lease !== undefined && pageInstanceId !== undefined && lease.pageInstanceId === pageInstanceId
   );
 }
+
+export function transferSessionWriteLease(
+  current: SessionWriteLease,
+  request: { pageInstanceId: string; instanceId: string; token: string; now: Date },
+): SessionWriteLease {
+  return {
+    token: request.token,
+    pageInstanceId: request.pageInstanceId,
+    instanceId: request.instanceId,
+    generation: current.generation + 1,
+    heartbeatAt: request.now.toISOString(),
+    visibilityState: 'visible',
+  };
+}

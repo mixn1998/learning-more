@@ -5,6 +5,7 @@ export * from './errors.js';
 export * from './events.js';
 export * from './generation.js';
 export * from './http.js';
+export * from './learning-session.js';
 export * from './metadata.js';
 export * from './queries.js';
 export * from './result.js';

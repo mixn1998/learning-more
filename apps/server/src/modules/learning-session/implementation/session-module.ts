@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { CommandResult } from '@learning-more/contracts';
 
 import type { LearningSessionRepositories } from '../../../persistence/learning-session-repositories.js';
+import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type {
   LearningSessionCommand,
@@ -22,7 +23,11 @@ import {
   closeLearningIntervals,
   openLearningInterval,
 } from './time-intervals.js';
-import { acquireSessionWriteLease, ownsWriteLease } from './session-write-lease.js';
+import {
+  acquireSessionWriteLease,
+  ownsWriteLease,
+  transferSessionWriteLease,
+} from './session-write-lease.js';
 
 function domainCommand(command: LearningSessionCommand, sessionId?: string): DomainCommand {
   if (command.type === 'StartLesson') {
@@ -31,6 +36,9 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
   }
   if (command.type === 'PauseLesson') return { type: 'pause' };
   if (command.type === 'ResumeLesson') return { type: 'resume' };
+  if (command.type === 'TransferSessionLease') {
+    throw new Error('TRANSFER_HANDLED_BY_MODULE');
+  }
   if (command.type === 'AppendUserMessage') {
     return {
       type: 'appendUserMessage',
@@ -64,12 +72,23 @@ export function createSessionModule(options: {
   readonly nextLeaseToken: () => string;
   readonly now: () => Date;
 }): LearningSessionModule {
+  class WriteLeaseLostError extends Error {
+    readonly code = 'write_lease_lost';
+  }
   return {
     async execute(command, context) {
       const current = await options.repositories.get(command.lessonId);
       const now = options.now();
       const pageInstanceId = context.pageInstanceId;
       if (pageInstanceId === undefined) throw new LearningSessionError('session_not_writable');
+      if (
+        command.type !== 'StartLesson' &&
+        current !== undefined &&
+        context.expectedVersion !== undefined &&
+        context.expectedVersion !== current.resourceVersion
+      ) {
+        throw new RepositoryVersionConflictError(current.resourceVersion);
+      }
 
       if (command.type === 'StartLesson' && current !== undefined) {
         const acquired = acquireSessionWriteLease(current.writeLease, {
@@ -91,8 +110,49 @@ export function createSessionModule(options: {
         return { commandId: context.commandId, outcome: 'completed', value };
       }
 
+      if (command.type === 'TransferSessionLease') {
+        if (current?.writeLease === undefined || current.learning.session === undefined) {
+          throw new LearningSessionError('session_not_writable');
+        }
+        const lease = transferSessionWriteLease(current.writeLease, {
+          pageInstanceId,
+          instanceId: options.instanceId,
+          token: options.nextLeaseToken(),
+          now,
+        });
+        let intervals = closeLearningIntervals(current.intervals, now, 'lease_lost');
+        if (current.learning.session.state === 'active') {
+          intervals = openLearningInterval(intervals, {
+            id: options.nextIntervalId(),
+            sessionId: current.learning.session.id,
+            now,
+          });
+        }
+        await options.unitOfWork.execute({ transactionId: `tx_learning_${randomUUID()}` }, (tx) =>
+          options.repositories.save(
+            tx,
+            { ...current, writeLease: lease, intervals },
+            current.resourceVersion,
+          ),
+        );
+        const resourceVersion = current.resourceVersion + 1;
+        return {
+          commandId: context.commandId,
+          outcome: 'completed',
+          resourceVersion,
+          value: {
+            lessonId: command.lessonId,
+            progress: current.learning.progress,
+            sessionId: current.learning.session.id,
+            resourceVersion,
+            writable: true,
+            leaseToken: lease.token,
+          },
+        };
+      }
+
       if (current !== undefined && !ownsWriteLease(current.writeLease, pageInstanceId)) {
-        throw new LearningSessionError('session_not_writable');
+        throw new WriteLeaseLostError();
       }
       const sessionId = command.type === 'StartLesson' ? options.nextSessionId() : undefined;
       const base =

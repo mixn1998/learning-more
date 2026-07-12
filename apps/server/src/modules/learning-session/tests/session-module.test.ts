@@ -4,6 +4,7 @@ import { createInMemoryLearningSessionRepositories } from '../../../persistence/
 import { createInMemoryMessageLog } from '../implementation/message-log.js';
 import { createSessionModule } from '../implementation/session-module.js';
 import { recoverOpenIntervals } from '../implementation/time-intervals.js';
+import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
 
 const tx = {
   stageJson: async () => undefined,
@@ -130,6 +131,45 @@ describe('LearningSession module', () => {
     await expect(repositories.get('lesson_01')).resolves.toMatchObject({
       learning: { session: { id: 'session_01' } },
     });
+  });
+
+  it('explicitly transfers the lease and rejects the old writer', async () => {
+    const { module } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start', 'page_a'),
+    );
+    const transferred = await module.execute(
+      { type: 'TransferSessionLease', lessonId: 'lesson_01' },
+      { ...context('transfer', 'page_b'), expectedVersion: 1 },
+    );
+    expect(transferred.value).toMatchObject({ writable: true, resourceVersion: 2 });
+    await expect(
+      module.execute(
+        {
+          type: 'AppendUserMessage',
+          lessonId: 'lesson_01',
+          messageId: 'old_writer',
+          contentArtifactRef: 'artifact:old',
+          establishesEvidence: true,
+        },
+        { ...context('old', 'page_a'), expectedVersion: 2 },
+      ),
+    ).rejects.toMatchObject({ code: 'write_lease_lost' });
+  });
+
+  it('rejects stale expected versions before mutation', async () => {
+    const { module } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start', 'page_a'),
+    );
+    await expect(
+      module.execute(
+        { type: 'PauseLesson', lessonId: 'lesson_01' },
+        { ...context('pause', 'page_a'), expectedVersion: 0 },
+      ),
+    ).rejects.toBeInstanceOf(RepositoryVersionConflictError);
   });
 
   it('counts only the closed active interval and does not accrue while paused', async () => {

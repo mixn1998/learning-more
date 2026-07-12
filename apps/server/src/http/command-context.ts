@@ -34,6 +34,7 @@ export function buildCommandContext(
     readonly correlationId: string;
     readonly now: Date;
     readonly requireIfMatch?: boolean;
+    readonly requirePageInstanceId?: boolean;
   },
 ): CommandContext {
   const idempotencyKey = scalarHeader(request.headers['idempotency-key']);
@@ -41,6 +42,9 @@ export function buildCommandContext(
     throw new HttpContractError('request_invalid', 400);
   }
   const pageInstanceId = scalarHeader(request.headers['x-page-instance-id']);
+  if (options.requirePageInstanceId === true && pageInstanceId === undefined) {
+    throw new HttpContractError('request_invalid', 400);
+  }
   const timestamp = options.now.toISOString();
   const version = expectedVersion(request, options.requireIfMatch ?? false);
   return {
