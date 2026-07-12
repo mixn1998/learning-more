@@ -23,3 +23,9 @@ export interface LearningFact<TPayload = Readonly<Record<string, unknown>>> {
   readonly payload: TPayload;
   readonly schemaVersion: number;
 }
+
+export interface ReadModelStatus {
+  readonly asOfEventId?: string;
+  readonly projectionVersion: number;
+  readonly freshness: 'current' | 'stale' | 'rebuilding';
+}
