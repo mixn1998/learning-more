@@ -1,0 +1,28 @@
+{
+  "name": "learning-more",
+  "version": "0.0.0-development",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.3",
+  "engines": {
+    "node": ">=24.17.0 <25"
+  },
+  "scripts": {
+    "build": "corepack pnpm -r --if-present build",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "verify": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.13.3",
+    "eslint": "9.39.5",
+    "globals": "17.7.0",
+    "prettier": "3.9.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.63.0",
+    "vitest": "4.1.9"
+  }
+}

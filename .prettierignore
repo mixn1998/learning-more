@@ -1,0 +1,14 @@
+.git/
+.corepack/
+.pnpm-home/
+.npm-cache/
+.superpowers/
+coverage/
+dist/
+docs/
+node_modules/
+playwright-report/
+test-results/
+CONTEXT.md
+PROJECT_CONTEXT.md
+pnpm-lock.yaml
