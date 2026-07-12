@@ -8,8 +8,15 @@ import {
   createInMemoryScheduleRepository,
   type ScheduleRepository,
 } from '../modules/planning/ports/schedule-repository.js';
+import {
+  createInMemoryPlanFlowRepository,
+  type PlanFlowRepository,
+} from '../modules/planning/ports/plan-flow-repository.js';
 import { DataRoot } from './data-root.js';
-import { createLocalFileScheduleRepository } from './planning-repositories.js';
+import {
+  createLocalFilePlanFlowRepository,
+  createLocalFileScheduleRepository,
+} from './planning-repositories.js';
 import { createStorePaths, initializeStoreLayout } from './paths.js';
 import { RepositoryVersionConflictError } from './repository-errors.js';
 import { createUnitOfWork, type UnitOfWork } from './unit-of-work.js';
@@ -36,6 +43,7 @@ async function localFixture() {
   const dataRoot = DataRoot.create(directory);
   await initializeStoreLayout(createStorePaths(dataRoot));
   return {
+    dataRoot,
     repository: createLocalFileScheduleRepository(dataRoot),
     unitOfWork: createUnitOfWork({ dataRoot }),
   };
@@ -73,6 +81,38 @@ async function contract(repository: ScheduleRepository, unitOfWork: UnitOfWork) 
   expect(ids).toEqual(['schedule_01']);
 }
 
+async function planFlowContract(repository: PlanFlowRepository, unitOfWork: UnitOfWork) {
+  const flow = {
+    id: 'plan_flow_01',
+    state: 'preview-ready' as const,
+    constraintsArtifactRef: 'constraints_01',
+    courseRefs: ['course_01'],
+    lessonRefs: ['lesson_01'],
+    timeWindowRefs: ['window_01'],
+    existingScheduleSnapshotRef: 'schedule_snapshot_01',
+    baseScheduleVersion: 0,
+    generationTaskId: 'task_01',
+    suggestions: [],
+    conflicts: [],
+    confirmationReceipts: {},
+    confirmedScheduleItemIds: [],
+    source: 'plan-flow' as const,
+    createdAt: '2026-07-13T00:00:00.000Z',
+    updatedAt: '2026-07-13T00:00:00.000Z',
+    resourceVersion: 0,
+  };
+  await unitOfWork.execute({ transactionId: 'tx_create_plan_flow' }, (tx) =>
+    repository.save(tx, flow, 0),
+  );
+  await expect(repository.get(flow.id)).resolves.toMatchObject({
+    state: 'preview-ready',
+    resourceVersion: 1,
+  });
+  const ids: string[] = [];
+  for await (const saved of repository.list()) ids.push(saved.id);
+  expect(ids).toEqual(['plan_flow_01']);
+}
+
 describe('ScheduleRepository contracts', () => {
   it('passes for InMemory', async () => {
     await contract(createInMemoryScheduleRepository(), memoryUnitOfWork);
@@ -81,5 +121,11 @@ describe('ScheduleRepository contracts', () => {
   it('passes for LocalFile', async () => {
     const fixture = await localFixture();
     await contract(fixture.repository, fixture.unitOfWork);
+  });
+
+  it('persists PlanFlow for InMemory and LocalFile', async () => {
+    await planFlowContract(createInMemoryPlanFlowRepository(), memoryUnitOfWork);
+    const local = await localFixture();
+    await planFlowContract(createLocalFilePlanFlowRepository(local.dataRoot), local.unitOfWork);
   });
 });
