@@ -87,13 +87,21 @@ export async function createLocalApplication(options: {
   readonly allowedOrigin?: string;
   readonly mockFailOnce?: boolean;
   readonly now?: () => Date;
+  readonly runtimeIdentity?: Readonly<{
+    instanceId: string;
+    generation: number;
+    startedAt: string;
+    identityFingerprint: string;
+    buildId: string;
+    protocolVersion: string;
+  }>;
 }) {
   const dataRoot = DataRoot.create(options.dataRoot);
   await initializeStoreLayout(createStorePaths(dataRoot));
   await recoverTransactions(dataRoot);
   const unitOfWork = createUnitOfWork({ dataRoot });
   const runtimeNow = options.now ?? (() => new Date());
-  const runtimeInstanceId = `instance_${randomUUID()}`;
+  const runtimeInstanceId = options.runtimeIdentity?.instanceId ?? `instance_${randomUUID()}`;
   const authoringRepositories = createLocalFileCourseAuthoringRepositories(dataRoot);
   const courseRepositories = createLocalFileCourseCreationRepositories(dataRoot);
   const localRepositories = createLocalFileRepositories(dataRoot);
@@ -645,11 +653,18 @@ export async function createLocalApplication(options: {
     getRuntimeReadiness: async () => ({
       status: 'ready',
       instanceId: runtimeInstanceId,
-      buildId: 'development',
-      protocolVersion: '1',
+      buildId: options.runtimeIdentity?.buildId ?? 'development',
+      protocolVersion: options.runtimeIdentity?.protocolVersion ?? '1',
       storeStatus: 'ready',
       projectionStatus: 'ready',
       providerStatus: 'ready',
+      ...(options.runtimeIdentity === undefined
+        ? {}
+        : {
+            generation: options.runtimeIdentity.generation,
+            startedAt: options.runtimeIdentity.startedAt,
+            identityFingerprint: options.runtimeIdentity.identityFingerprint,
+          }),
     }),
     courseAuthoring: {
       module: courseAuthoring,

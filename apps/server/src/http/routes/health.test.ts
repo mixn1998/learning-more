@@ -11,6 +11,10 @@ const readiness = {
   storeStatus: 'ready',
   projectionStatus: 'ready',
   providerStatus: 'unconfigured',
+  generation: 2,
+  startedAt: '2026-07-13T00:00:00.000Z',
+  identityFingerprint: 'a'.repeat(64),
+  reasonCode: 'provider_unconfigured',
 } as const;
 
 describe('GET /api/v1/runtime/ready', () => {

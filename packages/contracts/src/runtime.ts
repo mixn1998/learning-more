@@ -8,6 +8,16 @@ export const RuntimeReadySchema = z.strictObject({
   storeStatus: z.enum(['ready', 'recovering', 'degraded']),
   projectionStatus: z.enum(['ready', 'rebuilding', 'degraded']),
   providerStatus: z.enum(['ready', 'degraded', 'unconfigured']),
+  generation: z.number().int().positive().optional(),
+  startedAt: z.iso.datetime({ offset: true }).optional(),
+  identityFingerprint: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  reasonCode: z
+    .string()
+    .regex(/^[a-z0-9_]+$/)
+    .optional(),
 });
 
 export type RuntimeReady = Readonly<z.infer<typeof RuntimeReadySchema>>;

@@ -16,6 +16,8 @@ tests/.tmp/
 !.env.example
 data-root/
 runtime/
+!apps/server/src/runtime/
+!apps/server/src/runtime/**
 secrets/
 *.tsbuildinfo
 .DS_Store
