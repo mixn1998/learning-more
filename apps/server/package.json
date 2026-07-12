@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@learning-more/contracts": "workspace:*",
-    "fastify": "5.10.0"
+    "fastify": "5.10.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "24.13.3"
+    "@types/node": "24.13.3",
+    "fast-check": "4.8.0"
   }
 }
