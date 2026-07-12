@@ -68,7 +68,7 @@
 - { id: EQ-SELF-01, sourceHeading: 实例识别, assertion: 错端口/错根目录/错 instanceId 不判健康, ownerModule: GenerationRuntime, testLevel: e2e, automatedTest: tests/e2e/runtime-self-healing.spec.ts, status: unimplemented }
 - { id: EQ-SELF-02, sourceHeading: 一键重连, assertion: 服务恢复后状态和数据重新拉取, ownerModule: GenerationRuntime, testLevel: e2e, automatedTest: tests/e2e/runtime-self-healing.spec.ts, status: unimplemented }
 - { id: EQ-SELF-03, sourceHeading: 外部端口占用, assertion: 不强杀外部进程, ownerModule: GenerationRuntime, testLevel: recovery, automatedTest: tests/recovery/runtime-port-ownership.test.ts, status: unimplemented }
-- { id: EQ-GEN-01, sourceHeading: 并发, assertion: 任务 join/reject 和全局上限正确, ownerModule: GenerationRuntime, testLevel: domain, automatedTest: apps/server/src/modules/generation-runtime/tests/scheduler.test.ts, status: unimplemented }
+- { id: EQ-GEN-01, sourceHeading: 并发, assertion: 任务 join/reject 和全局上限正确, ownerModule: GenerationRuntime, testLevel: domain, automatedTest: apps/server/src/modules/generation-runtime/tests/scheduler.test.ts, status: passing }
 - { id: EQ-GEN-02, sourceHeading: 取消超时, assertion: 状态、错误码和指标完整, ownerModule: GenerationRuntime, testLevel: module, automatedTest: apps/server/src/modules/generation-runtime/tests/scheduler.test.ts, status: unimplemented }
 - { id: EQ-GEN-03, sourceHeading: 恢复, assertion: 页面刷新后从服务端恢复运行任务, ownerModule: GenerationRuntime, testLevel: e2e, automatedTest: tests/e2e/generation-recovery.spec.ts, status: unimplemented }
 - { id: EQ-DATA-01, sourceHeading: Repository 合同, assertion: 文件 adapter 与未来数据库 adapter 行为一致, ownerModule: LearningFacts, testLevel: repository, automatedTest: apps/server/src/persistence/local-file-repository.contract.test.ts, status: passing }

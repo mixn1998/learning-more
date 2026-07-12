@@ -56,6 +56,17 @@ const GenerationTaskSchema: z.ZodType<GenerationTask> = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   resourceVersion: z.number().int().nonnegative(),
+  taskKind: z.string().optional(),
+  taskGroup: z.enum(['interactive', 'background']).optional(),
+  ownerRef: z.string().optional(),
+  inputSnapshotHash: z.string().optional(),
+  priority: z.number().optional(),
+  providerId: z.string().optional(),
+  prompt: z.string().optional(),
+  draftMarkdown: z.string().optional(),
+  resultRef: z.string().optional(),
+  errorCode: z.string().optional(),
+  leaseExpiresAt: z.string().optional(),
 });
 
 export interface InMemoryRepositoryBacking {

@@ -51,6 +51,17 @@ const GenerationTaskSchema = z.strictObject({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
   resourceVersion: versionSchema,
+  taskKind: z.string().optional(),
+  taskGroup: z.enum(['interactive', 'background']).optional(),
+  ownerRef: z.string().optional(),
+  inputSnapshotHash: z.string().optional(),
+  priority: z.number().optional(),
+  providerId: z.string().optional(),
+  prompt: z.string().optional(),
+  draftMarkdown: z.string().optional(),
+  resultRef: z.string().optional(),
+  errorCode: z.string().optional(),
+  leaseExpiresAt: z.string().optional(),
 });
 
 export class RepositoryVersionConflictError extends Error {

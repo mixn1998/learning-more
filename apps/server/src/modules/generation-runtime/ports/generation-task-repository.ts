@@ -7,6 +7,17 @@ export interface GenerationTask {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly resourceVersion: number;
+  readonly taskKind?: string | undefined;
+  readonly taskGroup?: 'interactive' | 'background' | undefined;
+  readonly ownerRef?: string | undefined;
+  readonly inputSnapshotHash?: string | undefined;
+  readonly priority?: number | undefined;
+  readonly providerId?: string | undefined;
+  readonly prompt?: string | undefined;
+  readonly draftMarkdown?: string | undefined;
+  readonly resultRef?: string | undefined;
+  readonly errorCode?: string | undefined;
+  readonly leaseExpiresAt?: string | undefined;
 }
 
 export interface GenerationTaskRepository {
