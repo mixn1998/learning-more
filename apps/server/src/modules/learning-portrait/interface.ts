@@ -19,3 +19,54 @@ export type PackedPortraitEvidence = Readonly<{
   policyVersion: string;
   tokenEstimatorVersion: string;
 }>;
+
+export type PortraitInputManifest = Readonly<{
+  manifestId: string;
+  profileVersion: number;
+  evidencePackChecksum: string;
+  includedEvidenceIds: readonly string[];
+  window: Readonly<{ from: string; to: string }>;
+  policyVersion: string;
+  promptTemplateVersion: string;
+  providerConfigFingerprint: string;
+  manifestChecksum: string;
+  createdAt: string;
+}>;
+
+export type PortraitClaim = Readonly<{
+  claimId: string;
+  markdown: string;
+  evidenceIds: readonly string[];
+  confidence: number;
+  limitations: readonly string[];
+  counterEvidenceChecked: true;
+}>;
+
+export type PortraitVersion = Readonly<{
+  versionId: string;
+  manifestId: string;
+  state: 'preparing' | 'generating' | 'failed' | 'completed';
+  generationTaskId?: string;
+  title?: string;
+  summary?: string;
+  claims: readonly PortraitClaim[];
+  errorCode?: string;
+  draftArtifactRef?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  resourceVersion: number;
+}>;
+
+export type PortraitCurrentCursor = Readonly<{
+  currentVersionId: string;
+  updatedAt: string;
+  resourceVersion: number;
+}>;
+
+export type PortraitTaskReceipt = Readonly<{
+  idempotencyKey: string;
+  versionId: string;
+  manifestId: string;
+  createdAt: string;
+}>;
