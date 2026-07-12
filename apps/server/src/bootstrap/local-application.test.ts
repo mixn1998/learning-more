@@ -99,8 +99,17 @@ describe('local CourseAuthoring application', () => {
       },
     });
     expect(scheduled.statusCode).toBe(201);
-    const history = await app.inject({ method: 'GET', url: '/api/v1/history' });
-    expect(history.statusCode).toBe(200);
+    const [history, statistics, calendar] = await Promise.all([
+      app.inject({ method: 'GET', url: '/api/v1/history' }),
+      app.inject({ method: 'GET', url: '/api/v1/history/stats' }),
+      app.inject({
+        method: 'GET',
+        url: '/api/v1/history/calendar?from=2026-01-01&to=2026-12-31',
+      }),
+    ]);
+    expect([history.statusCode, statistics.statusCode, calendar.statusCode]).toEqual([
+      200, 200, 200,
+    ]);
     expect(
       history
         .json<{ entries: Array<{ factType: string }> }>()

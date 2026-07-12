@@ -12,6 +12,7 @@ import { createGenerationRuntime } from '../modules/generation-runtime/implement
 import { createLocalFileMessageLog } from '../modules/learning-session/implementation/message-log.js';
 import { createSessionGenerationCoordinator } from '../modules/learning-session/implementation/session-generation.js';
 import { createSessionModule } from '../modules/learning-session/implementation/session-module.js';
+import { actualLearningSeconds } from '../modules/learning-session/implementation/time-intervals.js';
 import { createSupplementarySessionModule } from '../modules/learning-session/implementation/supplementary-session-module.js';
 import { abandonLesson } from '../modules/learning-session/implementation/abandon-lesson.js';
 import { createFactProjector } from '../modules/learning-facts/implementation/fact-projector.js';
@@ -21,6 +22,8 @@ import { createCourseSummaryProjection } from '../modules/learning-facts/impleme
 import { createHistoryProjection } from '../modules/learning-facts/implementation/projections/history.js';
 import { createStatisticsProjection } from '../modules/learning-facts/implementation/projections/statistics.js';
 import { createWeeklyProjection } from '../modules/learning-facts/implementation/projections/weekly.js';
+import { createWeeklyReportScheduler } from '../modules/learning-facts/implementation/weekly-report-scheduler.js';
+import { createWeeklyReportService } from '../modules/learning-facts/implementation/weekly-report-service.js';
 import { createPlanFlowService } from '../modules/planning/implementation/plan-flow-service.js';
 import { createPlanningModule } from '../modules/planning/implementation/planning-module.js';
 import { createCourseReviewWorkflow } from '../modules/review-closure/implementation/course-review.js';
@@ -76,11 +79,13 @@ export async function createLocalApplication(options: {
   readonly csrfToken: string;
   readonly allowedOrigin?: string;
   readonly mockFailOnce?: boolean;
+  readonly now?: () => Date;
 }) {
   const dataRoot = DataRoot.create(options.dataRoot);
   await initializeStoreLayout(createStorePaths(dataRoot));
   await recoverTransactions(dataRoot);
   const unitOfWork = createUnitOfWork({ dataRoot });
+  const runtimeNow = options.now ?? (() => new Date());
   const runtimeInstanceId = `instance_${randomUUID()}`;
   const authoringRepositories = createLocalFileCourseAuthoringRepositories(dataRoot);
   const courseRepositories = createLocalFileCourseCreationRepositories(dataRoot);
@@ -95,6 +100,7 @@ export async function createLocalApplication(options: {
     unitOfWork,
     providers: [provider],
     nextId: () => `task_${randomUUID()}`,
+    now: runtimeNow,
   });
   const artifactStore = createMarkdownArtifactStore(dataRoot, unitOfWork);
   const authoringModule = createCourseAuthoringModule({
@@ -127,7 +133,15 @@ export async function createLocalApplication(options: {
     eventLog,
     dispatcher: eventDispatcher,
   });
-  await outbox.dispatchPending(10_000);
+  let outboxBarrier: Promise<void> = Promise.resolve();
+  async function dispatchOutbox(): Promise<void> {
+    const dispatch = outboxBarrier.then(async () => {
+      await outbox.dispatchPending(10_000);
+    });
+    outboxBarrier = dispatch.catch(() => undefined);
+    await dispatch;
+  }
+  await dispatchOutbox();
   const nextId = (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment') =>
     `${kind}_${randomUUID()}`;
   const courseAuthoring = createCourseAuthoringFacade({
@@ -153,6 +167,58 @@ export async function createLocalApplication(options: {
     nextIntervalId: () => `interval_${randomUUID()}`,
     nextLeaseToken: () => `lease_${randomUUID()}`,
     now: () => new Date(),
+    async recordEvents(tx, events, record) {
+      const lesson = await courseRepositories.lessons.get(record.lessonId);
+      const sessionId = record.learning.session?.id;
+      const publicEvents: LearningEventEnvelope[] = [];
+      const occurredAt = new Date().toISOString();
+      const append = (type: LearningEventEnvelope['type'], payload: Record<string, unknown>) => {
+        const eventId = `event_${randomUUID()}`;
+        publicEvents.push({
+          id: eventId,
+          schema_version: 1,
+          type,
+          occurred_at: occurredAt,
+          recorded_at: occurredAt,
+          source: 'LearningSession',
+          target_refs: {
+            ...(lesson === undefined ? {} : { courseId: lesson.courseId }),
+            lessonId: record.lessonId,
+            ...(sessionId === undefined ? {} : { sessionId }),
+          },
+          payload,
+          idempotency_key: eventId,
+          correlation_id: eventId,
+        });
+      };
+      for (const event of events) {
+        if (event.type === 'OriginalSessionStarted') {
+          append('LessonSessionStarted', { sessionId: event.sessionId });
+        } else if (event.type === 'OriginalSessionPaused') {
+          append('LessonSessionPaused', { sessionId });
+        } else if (
+          event.type === 'EvidencedLessonAbandoned' ||
+          event.type === 'EvidenceFreeLessonAbandoned'
+        ) {
+          append('LessonAbandoned', {
+            sessionId,
+            evidenceCheckpoint: event.type === 'EvidencedLessonAbandoned',
+          });
+        } else if (event.type === 'AbandonedLessonRestored') {
+          append('LessonRestored', { sessionId });
+        } else if (event.type === 'StageReviewCommitted') {
+          append('ReviewCreated', { reviewId: event.reviewId, reviewType: 'stage' });
+        } else if (event.type === 'FinalReviewCommitted') {
+          append('ReviewFinalized', { reviewId: event.reviewId, reviewType: 'final' });
+          append('LessonSessionCompleted', {
+            sessionId,
+            reviewId: event.reviewId,
+            actualSeconds: actualLearningSeconds(record.intervals),
+          });
+        }
+      }
+      await outbox.enqueue(tx, publicEvents);
+    },
   });
   const sessionGeneration = createSessionGenerationCoordinator({
     runtime: generationRuntime,
@@ -303,9 +369,97 @@ export async function createLocalApplication(options: {
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
     providerId: 'mock',
+    async recordConfirmed(items, planFlowId, tx) {
+      const timestamp = new Date().toISOString();
+      await outbox.enqueue(
+        tx,
+        items.map((item) => {
+          const eventId = `event_${randomUUID()}`;
+          return {
+            id: eventId,
+            schema_version: 1,
+            type: 'SchedulePlanned',
+            occurred_at: timestamp,
+            recorded_at: timestamp,
+            source: 'Planning',
+            target_refs: {
+              scheduleItemId: item.id,
+              courseId: item.courseId,
+              lessonId: item.lessonId,
+              planFlowId,
+            },
+            payload: { scheduleItemId: item.id, planFlowId, source: 'plan-flow' },
+            idempotency_key: eventId,
+            correlation_id: eventId,
+          } satisfies LearningEventEnvelope;
+        }),
+      );
+    },
   });
+  const weeklyReports = createWeeklyReportService({
+    repository: weeklyReportRepository,
+    factRepository,
+    unitOfWork,
+    generationRuntime,
+    finalizeArtifact: (input, tx) => artifactStore.stageFinalize(tx, input),
+    async recordFinalized(event, tx) {
+      const eventId = `event_${randomUUID()}`;
+      const timestamp = runtimeNow().toISOString();
+      await outbox.enqueue(tx, [
+        {
+          id: eventId,
+          schema_version: 1,
+          type: event.type,
+          occurred_at: timestamp,
+          recorded_at: timestamp,
+          source: 'LearningFacts',
+          target_refs: { weeklyReportId: event.localWeekKey },
+          payload: {
+            localWeekKey: event.localWeekKey,
+            artifactRef: event.artifactRef,
+          },
+          idempotency_key: `weekly-report-finalized:${event.localWeekKey}`,
+          correlation_id: eventId,
+        },
+      ]);
+    },
+    providerId: 'mock',
+    timeZone: 'Asia/Shanghai',
+    now: runtimeNow,
+  });
+  const weeklyReportScheduler = createWeeklyReportScheduler({
+    timeZone: 'Asia/Shanghai',
+    hasReport: async (localWeekKey) =>
+      (await weeklyReportRepository.get(localWeekKey))?.state === 'finalized',
+    async enqueue(command) {
+      let report = await weeklyReportRepository.get(command.localWeekKey);
+      report ??= await weeklyReports.generate({
+        ...command,
+        commandId: `generate_weekly_${command.localWeekKey}`,
+      });
+      if (report.state === 'failed') {
+        report = await weeklyReports.retry(
+          command.localWeekKey,
+          `retry_weekly_${command.localWeekKey}`,
+        );
+      }
+      if (report.state !== 'generating') return;
+      await generationRuntime.cancel(report.generationTaskId);
+      const completedLessons = report.factSnapshot.length;
+      const actualSeconds = report.factSnapshot.reduce(
+        (total, fact) => total + fact.actualSeconds,
+        0,
+      );
+      await weeklyReports.finalize(
+        command.localWeekKey,
+        report.generationTaskId,
+        `# Weekly Review\n\n本周完成 ${completedLessons} 个课节，共学习 ${actualSeconds} 秒。`,
+      );
+    },
+  });
+  await weeklyReportScheduler.tick(runtimeNow());
   async function facts() {
-    await outbox.dispatchPending(10_000);
+    await dispatchOutbox();
     const result: LearningFact[] = [];
     for await (const fact of factRepository.list()) result.push(fact);
     return result;
@@ -555,7 +709,24 @@ export async function createLocalApplication(options: {
     },
     planning: {
       planning,
-      planFlows,
+      planFlows: {
+        async requestPreview(input, commandId) {
+          const requested = await planFlows.requestPreview(input, commandId);
+          await generationRuntime.cancel(requested.generationTaskId);
+          return planFlows.markPreviewReady(
+            requested.id,
+            input.lessonRefs.map((lessonId, index) => ({
+              courseId: input.courseRefs[0]!,
+              lessonId,
+              startAt: new Date(Date.UTC(2026, 6, 20 + index, 11)).toISOString(),
+              endAt: new Date(Date.UTC(2026, 6, 20 + index, 12)).toISOString(),
+              timezoneAtCreation: 'Asia/Shanghai',
+              explanation: '符合用户时间窗并保持课节顺序',
+            })),
+          );
+        },
+        confirm: planFlows.confirm,
+      },
       nextCommandId: () => `command_${randomUUID()}`,
       nextCorrelationId: () => `correlation_${randomUUID()}`,
       now: () => new Date(),
@@ -567,7 +738,15 @@ export async function createLocalApplication(options: {
         getStatistics: statisticsView,
         getCalendar: calendarView,
         getWeekly: weeklyView,
-        getWeeklyReport: (localWeekKey) => weeklyReportRepository.get(localWeekKey),
+        async getWeeklyReport(localWeekKey) {
+          const report = await weeklyReportRepository.get(localWeekKey);
+          if (report === undefined) return undefined;
+          const markdown =
+            report.artifactRef === undefined
+              ? undefined
+              : (await artifactStore.read(report.artifactRef))?.content;
+          return { ...report, ...(markdown === undefined ? {} : { markdown }) };
+        },
       },
     },
     generationFrameLog: frameLog,

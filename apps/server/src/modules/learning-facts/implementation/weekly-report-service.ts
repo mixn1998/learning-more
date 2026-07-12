@@ -44,6 +44,7 @@ export function createWeeklyReportService(options: {
     event: Readonly<{ type: 'WeeklyReportFinalized'; localWeekKey: string; artifactRef: string }>,
     tx: TransactionContext,
   ): Promise<void>;
+  providerId?: string;
   timeZone: string;
   now(): Date;
 }) {
@@ -61,7 +62,7 @@ export function createWeeklyReportService(options: {
       taskKind: 'weekly-report',
       taskGroup: 'background',
       ownerRef: record.localWeekKey,
-      providerId: 'current',
+      providerId: options.providerId ?? 'current',
       priority: 20,
       prompt: JSON.stringify({
         templateRef: 'weekly-report@v1',

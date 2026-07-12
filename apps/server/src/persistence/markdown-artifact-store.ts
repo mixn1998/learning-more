@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { DataRoot, assertSafePathSegment } from './data-root.js';
 import { ImmutableResourceError } from './local-file-repositories.js';
-import type { UnitOfWork } from './unit-of-work.js';
+import type { TransactionContext, UnitOfWork } from './unit-of-work.js';
 
 interface ArtifactDocument {
   readonly artifactId: string;
@@ -36,6 +36,28 @@ export function createMarkdownArtifactStore(dataRoot: DataRoot, unitOfWork: Unit
       throw error;
     }
   }
+  async function stageFinalize(
+    tx: TransactionContext,
+    input: { artifactId: string; kind: string; content: string; immutable: boolean },
+  ): Promise<void> {
+    const existing = await readOptional(`${basePath(input.artifactId)}/artifact.json`);
+    if (existing !== undefined && (JSON.parse(existing) as { immutable?: boolean }).immutable) {
+      throw new ImmutableResourceError();
+    }
+    const contentSha256 = hash(input.content);
+    await tx.stageText(`${basePath(input.artifactId)}/content.md`, input.content);
+    await tx.stageJson(`${basePath(input.artifactId)}/artifact.json`, {
+      schemaVersion: 1,
+      artifactId: input.artifactId,
+      kind: input.kind,
+      contentFile: 'content.md',
+      contentSha256,
+      immutable: input.immutable,
+      completionStatus: 'complete',
+      createdAt: new Date().toISOString(),
+    });
+    await tx.deleteOnCommit(draftPath(input.artifactId));
+  }
   return {
     async saveDraft(artifactId: string, content: string) {
       await unitOfWork.execute({ transactionId: `tx_artifact_${randomUUID()}` }, (tx) =>
@@ -49,26 +71,11 @@ export function createMarkdownArtifactStore(dataRoot: DataRoot, unitOfWork: Unit
       content: string;
       immutable: boolean;
     }) {
-      const existing = await readOptional(`${basePath(input.artifactId)}/artifact.json`);
-      if (existing !== undefined && (JSON.parse(existing) as { immutable?: boolean }).immutable) {
-        throw new ImmutableResourceError();
-      }
-      const contentSha256 = hash(input.content);
-      await unitOfWork.execute({ transactionId: `tx_artifact_${randomUUID()}` }, async (tx) => {
-        await tx.stageText(`${basePath(input.artifactId)}/content.md`, input.content);
-        await tx.stageJson(`${basePath(input.artifactId)}/artifact.json`, {
-          schemaVersion: 1,
-          artifactId: input.artifactId,
-          kind: input.kind,
-          contentFile: 'content.md',
-          contentSha256,
-          immutable: input.immutable,
-          completionStatus: 'complete',
-          createdAt: new Date().toISOString(),
-        });
-        await tx.deleteOnCommit(draftPath(input.artifactId));
-      });
+      await unitOfWork.execute({ transactionId: `tx_artifact_${randomUUID()}` }, (tx) =>
+        stageFinalize(tx, input),
+      );
     },
+    stageFinalize,
     async read(artifactId: string): Promise<ArtifactDocument | undefined> {
       const metadataText = await readOptional(`${basePath(artifactId)}/artifact.json`);
       if (metadataText === undefined) return undefined;

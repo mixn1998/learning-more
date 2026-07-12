@@ -3,14 +3,16 @@ import { randomUUID } from 'node:crypto';
 import type { CommandResult } from '@learning-more/contracts';
 
 import type { LearningSessionRepositories } from '../../../persistence/learning-session-repositories.js';
+import type { LearningSessionRecord } from '../../../persistence/learning-session-repositories.js';
 import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
-import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
+import type { TransactionContext, UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type {
   LearningSessionCommand,
   LearningSessionModule,
   LearningSessionResult,
 } from '../interface.js';
 import type { LearningSessionCommand as DomainCommand } from '../model/commands.js';
+import type { LearningSessionEvent } from '../model/events.js';
 import {
   createLessonLearning,
   decide,
@@ -74,6 +76,11 @@ export function createSessionModule(options: {
   readonly nextIntervalId: () => string;
   readonly nextLeaseToken: () => string;
   readonly now: () => Date;
+  readonly recordEvents?: (
+    tx: TransactionContext,
+    events: readonly LearningSessionEvent[],
+    record: LearningSessionRecord,
+  ) => Promise<void>;
 }): LearningSessionModule {
   class WriteLeaseLostError extends Error {
     readonly code = 'write_lease_lost';
@@ -241,6 +248,7 @@ export function createSessionModule(options: {
           }
           if (events.length > 0) {
             await options.repositories.save(tx, stored, base.resourceVersion);
+            await options.recordEvents?.(tx, events, stored);
           }
         },
       );

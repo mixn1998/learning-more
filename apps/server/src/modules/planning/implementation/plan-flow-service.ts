@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { CommandContext } from '@learning-more/contracts';
 
 import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
-import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
+import type { TransactionContext, UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { PlanFlow, PlanSuggestion } from '../model/plan-flow.js';
 import {
   overlaps,
@@ -57,6 +57,11 @@ export function createPlanFlowService(options: {
   nextScheduleItemId(): string;
   now(): Date;
   providerId?: string;
+  recordConfirmed?: (
+    items: readonly ScheduleItem[],
+    planFlowId: string,
+    tx: TransactionContext,
+  ) => Promise<void>;
 }) {
   async function save(flow: PlanFlow): Promise<PlanFlow> {
     await options.unitOfWork.execute({ transactionId: `tx_plan_flow_${randomUUID()}` }, (tx) =>
@@ -205,6 +210,7 @@ export function createPlanFlowService(options: {
           for (const item of scheduleItems) {
             await options.scheduleRepository.save(tx, item, 0);
           }
+          await options.recordConfirmed?.(scheduleItems, current.id, tx);
           await options.repository.save(tx, confirmed, current.resourceVersion);
         },
       );

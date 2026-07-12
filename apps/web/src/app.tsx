@@ -7,6 +7,8 @@ import { fetchRuntimeReadiness } from './client/runtime-client.js';
 import { CourseAuthoringRoute } from './routes/course-authoring-route.js';
 import { CourseRoute } from './routes/course-route.js';
 import { LessonRoute } from './routes/lesson-route.js';
+import { PlanningRoute } from './routes/planning-route.js';
+import { HistoryRoute } from './routes/history-route.js';
 
 type RuntimeViewState =
   | Readonly<{ kind: 'loading' }>
@@ -70,6 +72,8 @@ export function App() {
         <Route path="/courses/new" element={<CourseAuthoringRoute />} />
         <Route path="/courses/:courseId" element={<CourseRoute />} />
         <Route path="/lessons/:lessonId" element={<LessonRoute />} />
+        <Route path="/planning" element={<PlanningRoute />} />
+        <Route path="/history" element={<HistoryRoute />} />
         <Route path="*" element={<RuntimeHome />} />
       </Routes>
     </BrowserRouter>
