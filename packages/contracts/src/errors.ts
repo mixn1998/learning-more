@@ -28,6 +28,7 @@ export const ERROR_CODES = [
   'write_lease_lost',
   'final_review_immutable',
   'course_not_closable',
+  'abandoned_confirmation_required',
   'course_closed',
   'generation_in_progress',
   'generation_capacity_exceeded',

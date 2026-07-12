@@ -27,6 +27,7 @@ const CourseSchema = z.strictObject({
   lessonIds: z.array(z.string()),
   recommendedLessonId: z.string(),
   status: z.enum(['active', 'closed']),
+  closedAt: z.string().optional(),
   createdAt: z.string(),
   resourceVersion: z.number().int().nonnegative(),
 });

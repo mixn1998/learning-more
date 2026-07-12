@@ -8,6 +8,7 @@ export interface CourseAggregate {
   readonly lessonIds: readonly string[];
   readonly recommendedLessonId: string;
   readonly status: 'active' | 'closed';
+  readonly closedAt?: string;
   readonly createdAt: string;
   readonly resourceVersion: number;
 }

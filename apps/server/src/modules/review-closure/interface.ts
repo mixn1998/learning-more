@@ -37,3 +37,28 @@ export interface LessonClosureRepository {
     expectedVersion: number,
   ): Promise<void>;
 }
+
+export type CourseReviewInputManifest = Readonly<{
+  outlineVersionId: string;
+  completedFinalReviewRefs: readonly string[];
+  abandonedStageReviewRefs: readonly string[];
+  abandonedWithoutReviewLessonIds: readonly string[];
+}>;
+
+export interface CourseReviewRecord {
+  readonly courseId: string;
+  readonly state:
+    'closed' | 'generating-review' | 'review-ready' | 'review-failed' | 'review-finalized';
+  readonly inputManifest: CourseReviewInputManifest;
+  readonly generationTaskId?: string;
+  readonly artifactRef?: string;
+  readonly contentSha256?: string;
+  readonly errorCode?: string;
+  readonly draftArtifactRef?: string;
+  readonly resourceVersion: number;
+}
+
+export interface CourseReviewRepository {
+  get(courseId: string): Promise<CourseReviewRecord | undefined>;
+  save(tx: TransactionContext, record: CourseReviewRecord, expectedVersion: number): Promise<void>;
+}

@@ -9,4 +9,5 @@ export * from './learning-session.js';
 export * from './metadata.js';
 export * from './queries.js';
 export * from './result.js';
+export * from './review-closure.js';
 export * from './runtime.js';
