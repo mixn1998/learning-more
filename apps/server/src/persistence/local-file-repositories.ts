@@ -11,6 +11,9 @@ import { DataRoot } from './data-root.js';
 import { checksumJson, decodeAggregateDocument, StorageDocumentError } from './json-codec.js';
 import { createStorePaths, type StorePaths } from './paths.js';
 import type { TransactionContext } from './unit-of-work.js';
+import { ImmutableResourceError, RepositoryVersionConflictError } from './repository-errors.js';
+
+export { ImmutableResourceError, RepositoryVersionConflictError } from './repository-errors.js';
 
 const timestampSchema = z.string().min(1);
 const versionSchema = z.number().int().nonnegative();
@@ -63,24 +66,6 @@ const GenerationTaskSchema = z.strictObject({
   errorCode: z.string().optional(),
   leaseExpiresAt: z.string().optional(),
 });
-
-export class RepositoryVersionConflictError extends Error {
-  readonly code = 'version_conflict';
-
-  constructor(readonly currentVersion: number) {
-    super('version_conflict');
-    this.name = 'RepositoryVersionConflictError';
-  }
-}
-
-export class ImmutableResourceError extends Error {
-  readonly code = 'immutable_resource';
-
-  constructor() {
-    super('immutable_resource');
-    this.name = 'ImmutableResourceError';
-  }
-}
 
 export interface LocalFileRepositories {
   readonly courses: CourseRepository;

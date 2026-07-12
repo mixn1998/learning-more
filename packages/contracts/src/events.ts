@@ -4,6 +4,7 @@ export const EVENT_TYPES = [
   'OutlineSessionCreated',
   'CourseCreated',
   'OutlineVersionConfirmed',
+  'LessonsDefined',
   'LessonSessionStarted',
   'LessonSessionPaused',
   'LessonAbandoned',
