@@ -23,6 +23,7 @@ export const EVENT_TYPES = [
   'SchedulePlanned',
   'ScheduleChanged',
   'ScheduleCancelled',
+  'WeeklyReportFinalized',
   'PlanFlowCreated',
   'PlanFlowPaused',
   'PlanFlowResumed',
