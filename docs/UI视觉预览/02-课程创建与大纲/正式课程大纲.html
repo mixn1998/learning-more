@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Learning MORE · 正式课程大纲</title><link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../00-设计系统/assets/base.css">
+  <style>
+    .hero{padding:23px 25px;display:flex;justify-content:space-between;gap:20px}.hero h1{font-size:27px;margin:7px 0}.hero p{font-size:11px;color:var(--muted)}
+    .layout{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:14px;margin-top:14px;align-items:start}.outline{padding:18px}
+    .module{margin-top:15px}.module-head{display:flex;gap:10px;align-items:center;padding-bottom:9px;border-bottom:1px solid var(--line)}.module-head span{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--tint);color:var(--accent-dark);font-weight:900}
+    .lesson-list{display:grid;gap:8px;margin-top:9px}.lesson{width:100%;display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:center;padding:13px;border:1px solid var(--line);border-radius:11px;background:#fff;text-align:left;cursor:pointer}.lesson:hover{border-color:var(--accent)}.lesson-index{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--paper-2);font-weight:900}.lesson b{font-size:11px}.lesson p{margin:5px 0 0;font-size:9px;color:var(--muted)}.lesson-state{font-size:9px;padding:6px 9px;border-radius:999px;background:var(--paper-2)}.done .lesson-state{color:var(--success);background:var(--success-bg)}.active .lesson-state{color:var(--warning);background:var(--warning-bg)}.abandoned .lesson-state{color:var(--danger);background:var(--danger-bg)}.recommended{border-color:var(--accent);background:var(--tint)}
+    .side{position:sticky;top:82px;padding:0;overflow:hidden}.side-overview{padding:17px 18px 15px;border-bottom:1px solid var(--line)}.side-title-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.side-title-row h3{margin:0;font-size:14px}.side-title-row strong{font-size:12px;color:var(--accent-dark)}.side-overview p{margin:7px 0 0;font-size:9px;color:var(--muted)}
+    .track{height:6px;border-radius:999px;background:#eee5da;overflow:hidden;margin:12px 0 0}.track i{display:block;width:20%;height:100%;background:var(--accent)}
+    .recommend{margin:14px;padding:16px;border-radius:12px;background:var(--tint);border:1px solid color-mix(in srgb,var(--accent) 32%,var(--line))}.recommend-label{font-size:9px;letter-spacing:.06em;color:var(--accent-dark)}.recommend strong{display:block;margin:7px 0 6px;font-size:13px;line-height:1.35}.recommend p{margin:0 0 13px;font-size:10px;line-height:1.65;color:var(--muted)}.recommend .lm-btn{width:100%;min-height:38px;padding:8px 12px;font-size:10px}
+    .side-links{border-top:1px solid var(--line);padding:4px 14px}.side-links a,.side-links span{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 4px;text-decoration:none;color:inherit;font-size:10px}.side-links a+a,.side-links a+span{border-top:1px solid var(--line)}.side-links a::after{content:'›';font-size:16px;color:var(--muted)}.side-links .disabled{color:var(--muted)}.side-links .disabled::after{content:'课程关闭后可查看';font-size:8px;padding:4px 7px;border-radius:999px;background:var(--paper-2)}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.side{position:static}.lesson{grid-template-columns:34px 1fr}.lesson-state{grid-column:2}.side-overview{padding:13px 14px}.recommend{margin:10px;padding:13px}.side-links{padding:3px 12px}}
+    @media(max-width:620px){.hero{padding:20px;flex-direction:column}.hero h1{font-size:24px;line-height:1.35}.hero .lm-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.hero .lm-btn{width:100%;min-width:0}.outline{padding:15px}.lesson{grid-template-columns:30px minmax(0,1fr);padding:11px;gap:9px}.lesson-index{width:30px;height:30px}.lesson-state{justify-self:start;max-width:100%}}
+  </style>
+  <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+<script defer src="../00-设计系统/assets/sample-ui.js"></script></head>
+<body>
+  <header class="lm-topbar">
+    <div class="lm-brand"><strong>Learning MORE</strong><span>正式课程学习档案</span></div>
+    <div class="lm-runtime"><span class="lm-pill">● 接口 · Codex</span><span class="lm-pill success">● 课程进行中</span></div>
+  </header>
+  <main class="lm-page">
+    <section class="lm-card hero">
+      <div>
+        <div class="lm-kicker">STANDARD · 正式课程</div>
+        <h1>从反馈到核心循环：游戏设计能力进阶</h1>
+        <p>艺术与设计 · 游戏设计、核心循环 · 大纲 v1</p>
+        <div class="lm-chips"><span class="lm-mode-badge">● 标准模式</span><span class="lm-pill">5 个课节</span><span class="lm-pill">推荐但不锁课</span></div>
+      </div>
+      <div class="lm-actions"><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a><a class="lm-btn" href="修改大纲.html">修改大纲</a></div>
+    </section>
+    <div class="layout">
+      <section class="lm-card outline">
+        <div class="lm-section-title"><div><h2>课程单元</h2><p>所有确认版大纲中的课节均可自由进入。</p></div><span class="lm-pill">完成 1 · 学习中 1 · 放弃 1</span></div>
+        <div class="module">
+          <div class="module-head"><span>01</span><b>看见游戏为何失去吸引力</b></div>
+          <div class="lesson-list">
+            <a class="lesson done" href="../05-Review与学习档案/课节记录.html"><span class="lesson-index">1</span><div><b>玩家为什么会停下来</b><p>体验断点、行为证据、重复感来源。</p></div><span class="lesson-state">点击查看课节记录</span></a>
+            <a class="lesson recommended" href="../04-课节学习/未开始课节导航.html"><span class="lesson-index">2</span><div><b>反馈不是奖励动画</b><p>状态反馈、能力反馈、目标反馈。</p></div><span class="lesson-state">推荐下一课</span></a>
+          </div>
+        </div>
+        <div class="module">
+          <div class="module-head"><span>02</span><b>建立可持续的核心循环</b></div>
+          <div class="lesson-list">
+            <a class="lesson active" href="../04-课节学习/正式课程学习会话.html"><span class="lesson-index">3</span><div><b>行为如何形成循环</b><p>玩家行动、系统响应、下一步欲望。</p></div><span class="lesson-state">学习中 · 继续学习</span></a>
+            <a class="lesson abandoned" href="../04-课节学习/已放弃课节恢复导航.html"><span class="lesson-index">4</span><div><b>难度与掌握感如何推进</b><p>阶段 Review 已保存，可恢复原始会话。</p></div><span class="lesson-state">已放弃 · 恢复学习</span></a>
+          </div>
+        </div>
+        <div class="module">
+          <div class="module-head"><span>03</span><b>用原型验证设计判断</b></div>
+          <div class="lesson-list"><a class="lesson" href="../04-课节学习/未开始课节导航.html"><span class="lesson-index">5</span><div><b>为原型建立成功标准</b><p>行为信号、判断标准、证据边界。</p></div><span class="lesson-state">可开始</span></a></div>
+        </div>
+      </section>
+      <aside class="lm-card side">
+        <section class="side-overview">
+          <div class="side-title-row"><h3>课程进度</h3><strong>1 / 5</strong></div>
+          <div class="track" aria-label="课程进度 20%"><i></i></div>
+          <p>仅已完成课节计入进度</p>
+        </section>
+        <section class="recommend">
+          <span class="recommend-label">推荐下一课</span>
+          <strong>反馈不是奖励动画</strong>
+          <p>你已经能识别体验断点，下一步适合区分反馈层级。</p>
+          <a class="lm-btn primary" href="../04-课节学习/未开始课节导航.html">查看课节导航</a>
+        </section>
+        <nav class="side-links" aria-label="课程辅助入口">
+          <a href="#">大纲版本记录</a>
+          <span class="disabled">主题总结</span>
+        </nav>
+      </aside>
+    </div>
+  </main>
+  <script src="../00-设计系统/assets/mode-themes.js"></script>
+  <script>applyCourseModeTheme('standard')</script>
+</body>
+</html>

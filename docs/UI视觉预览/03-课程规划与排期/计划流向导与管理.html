@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Learning MORE · 计划流向导与管理</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="../00-设计系统/assets/base.css">
+<style>
+  .pf-stack{display:grid;gap:26px;margin-top:22px}.pf-frame{overflow:hidden;border:1px solid #e3d8c9;border-radius:18px;background:#f3efe9;color:#27313a;box-shadow:0 18px 48px rgba(69,51,33,.10)}.pf-top{height:58px;background:#fffdf9;border-bottom:1px solid #e8dfd3;display:flex;align-items:center;justify-content:space-between;padding:0 20px}.pf-brand strong{display:block;font-size:16px}.pf-brand span{font-size:9px;color:#8a8178}.pf-runtime{display:flex;gap:8px}.pf-runtime span{padding:7px 10px;border-radius:999px;border:1px solid #e3d6c4;background:#fffaf1;color:#7a5a33;font-size:9px}.pf-runtime span:last-child{background:#eef6f1;color:#376c56;border-color:#cee4d8}.pf-btn{padding:9px 13px;border-radius:8px;border:1px solid #d9cbb8;background:#fffdf9;color:#3d454b;font-weight:700;font-size:10px;cursor:pointer}.pf-btn.primary{background:#af6942;color:#fff;border-color:#af6942;box-shadow:0 8px 18px rgba(175,105,66,.18)}.pf-btn.soft{background:#f6eee4;color:#7e4b2f;border-color:#dfc4ae}.pf-btn.danger{color:#9b4c43;border-color:#e4c4bf;background:#fff8f6}.pf-btn:disabled{opacity:.45;cursor:not-allowed}.pf-actions{display:flex;gap:8px;align-items:center}
+  .pf-stage{position:relative;min-height:780px;padding:18px;background:#eee8e0}.pf-planner-bg{position:absolute;inset:18px;opacity:.32;filter:blur(.5px);display:grid;grid-template-columns:180px 1fr;gap:12px}.pf-ghost{border:1px solid #ddcfbd;border-radius:14px;background:#fffdf9;padding:13px}.pf-ghost-row{height:64px;margin-top:8px;border:1px solid #e5dace;border-radius:9px;background:#fff}.pf-backdrop{position:absolute;inset:0;background:rgba(47,40,34,.24)}.pf-dialog{position:relative;z-index:2;width:min(1120px,calc(100% - 30px));height:min(740px,calc(100vh - 120px));min-height:640px;margin:auto;background:#fffdf9;border:1px solid #dccab6;border-radius:18px;box-shadow:0 30px 80px rgba(57,42,29,.26);display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden}.pf-dialog-head{padding:18px 21px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid #e8ded1}.pf-kicker{font-size:8px;color:#a0643f;font-weight:800;text-transform:uppercase;letter-spacing:.1em}.pf-dialog-head h3{font-size:23px;margin:6px 0 4px;letter-spacing:-.025em}.pf-dialog-head p{font-size:9px;color:#83776b;margin:0;max-width:680px;line-height:1.6}.pf-close{width:34px;height:34px;border-radius:9px;border:1px solid #ded1c2;background:#fff;color:#776c61;font-size:16px;cursor:pointer}.pf-steps{display:grid;grid-template-columns:repeat(4,1fr);padding:12px 21px;background:#faf5ee;border-bottom:1px solid #e8ded1}.pf-step{position:relative;border:0;background:transparent;text-align:left;padding:0 10px 0 0;display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:center;color:#93877c;cursor:pointer}.pf-step:not(:last-child)::after{content:"";position:absolute;left:35px;right:10px;top:14px;height:1px;background:#dfd3c5}.pf-step-index{position:relative;z-index:1;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#eee7de;color:#8d8176;font-size:9px;font-weight:800}.pf-step strong{position:relative;z-index:1;width:max-content;padding-right:7px;background:#faf5ee;font-size:9px}.pf-step.active,.pf-step.done{color:#854b2c}.pf-step.active .pf-step-index{background:#af6942;color:#fff}.pf-step.done .pf-step-index{background:#e8d8c8;color:#7f4b2f}.pf-body{overflow-y:auto;scrollbar-gutter:stable;padding:18px 21px}.pf-panel{display:none}.pf-panel.active{display:block}.pf-section-title{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:12px}.pf-section-title h4{font-size:17px;margin:0 0 4px}.pf-section-title p{font-size:9px;color:#85796d;margin:0}.pf-mini-summary{font-size:8px;color:#8d5c3d;background:#f4e9dd;border-radius:999px;padding:6px 9px}.pf-basic-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pf-field{padding:13px;border:1px solid #e6dacb;border-radius:11px;background:#fff}.pf-field label{display:block;font-size:9px;font-weight:800;margin-bottom:7px}.pf-control{width:100%;height:38px;box-sizing:border-box;border:1px solid #d9cbb9;border-radius:8px;background:#fffdf9;padding:0 10px;color:#3d454b;font-size:10px}.pf-subsection{margin-top:13px;padding:14px;border:1px solid #e6dacb;border-radius:11px;background:#fff}.pf-subsection-head strong{display:block;font-size:10px}.pf-subsection-head span{display:block;margin-top:3px;font-size:8px;color:#867a6e}.pf-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}.pf-weekday{height:42px;border:1px solid #dfd3c4;border-radius:8px;background:#fffdf9;color:#756b62;font-size:9px;font-weight:700;cursor:pointer}.pf-weekday.selected{border-color:#b97851;background:#f7ebdf;color:#7c482c;box-shadow:inset 0 0 0 1px rgba(185,120,81,.18)}.pf-policy-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}.pf-policy{display:grid;grid-template-columns:32px 1fr;gap:10px;align-items:start;padding:13px;border:1px solid #e4d8ca;border-radius:10px;background:#fff;cursor:pointer}.pf-policy.on{border-color:#bd8765;background:#fff8f1}.pf-switch{width:32px;height:18px;border-radius:999px;background:#ddd3c8;position:relative;margin-top:2px}.pf-switch::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:2px;left:2px;box-shadow:0 1px 4px rgba(0,0,0,.16)}.pf-policy.on .pf-switch{background:#af6942}.pf-policy.on .pf-switch::after{left:16px}.pf-policy strong{display:block;font-size:9px}.pf-policy span{display:block;margin-top:4px;font-size:8px;color:#84786c;line-height:1.55}.pf-note{margin-top:12px;padding:10px 12px;border-radius:9px;background:#f5f0e9;color:#776b60;font-size:9px;line-height:1.55}
+  .pf-course-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pf-course{position:relative;padding:14px;border:1px solid #e4d8ca;border-radius:11px;background:#fff;cursor:pointer}.pf-course.selected{border-color:#b97851;background:#fff8f1;box-shadow:0 0 0 3px rgba(185,120,81,.07)}.pf-course.disabled{opacity:.5;cursor:not-allowed;background:#f6f2ec}.pf-check{position:absolute;right:12px;top:12px;width:20px;height:20px;border:1px solid #d7c9b8;border-radius:6px;background:#fff;display:grid;place-items:center;color:#fff;font-size:10px}.pf-course.selected .pf-check{background:#af6942;border-color:#af6942}.pf-course h5{font-size:12px;margin:0 32px 5px 0}.pf-course p{font-size:8px;color:#83776b;margin:0}.pf-tags{display:flex;gap:5px;flex-wrap:wrap;margin:10px 0}.pf-tag{padding:4px 7px;border-radius:999px;background:#f0e9df;color:#746154;font-size:7px}.pf-course-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding-top:10px;border-top:1px solid #eee4d8}.pf-course-stats span{font-size:7px;color:#8b7f74}.pf-course-stats b{display:block;margin-top:3px;font-size:10px;color:#3c444a}.pf-progress{height:5px;border-radius:999px;background:#eee5da;margin-top:10px;overflow:hidden}.pf-progress i{display:block;height:100%;background:#af6942;border-radius:inherit}
+  .pf-strategies{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.pf-strategy{min-height:170px;padding:16px;border:1px solid #e5d9cb;border-radius:12px;background:#fff;cursor:pointer;display:flex;flex-direction:column}.pf-strategy.selected{border-color:#b97851;background:#fff8f1;box-shadow:0 0 0 3px rgba(185,120,81,.07)}.pf-strategy-mark{width:32px;height:32px;border-radius:9px;background:#f0e7dc;color:#8b5131;display:grid;place-items:center;font-size:12px;font-weight:900}.pf-strategy h5{font-size:13px;margin:12px 0 5px}.pf-strategy p{font-size:9px;color:#81756a;line-height:1.6;margin:0}.pf-strategy small{display:block;margin-top:auto;padding-top:12px;font-size:8px;color:#9a6544}.pf-priority{margin-top:12px;padding:12px;border:1px dashed #dfcfbd;border-radius:10px;background:#faf6f0;font-size:9px;color:#75695e}
+  .pf-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.pf-summary{padding:12px;border:1px solid #e6dacb;border-radius:10px;background:#fff}.pf-summary span{font-size:8px;color:#877b70}.pf-summary b{display:block;font-size:15px;margin-top:4px}.pf-preview{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.pf-day{padding:12px;border:1px solid #e5dacb;border-radius:10px;background:#fff}.pf-day.over{border-color:#dfb48f;background:#fff7ee}.pf-day header{display:flex;justify-content:space-between;gap:8px;padding-bottom:8px;border-bottom:1px solid #eee3d7}.pf-day header strong{font-size:10px}.pf-day header span{font-size:8px;color:#877b70}.pf-day ul{list-style:none;margin:8px 0 0;padding:0}.pf-day li{padding:7px 0;border-bottom:1px solid #f0e7dd;font-size:8px;line-height:1.45}.pf-day li:last-child{border:0}.pf-day em{float:right;color:#8c5a3c;font-style:normal}.pf-risk{display:inline-block;margin-left:5px;padding:3px 6px;border-radius:999px;background:#f2d8bf;color:#8c4c26;font-size:7px}.pf-fixed{display:inline-block;margin-left:5px;padding:3px 6px;border-radius:999px;background:#ece8e2;color:#71675f;font-size:7px}.pf-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 21px;border-top:1px solid #e7ddd0;background:#fff9f2}.pf-footer-note{font-size:8px;color:#84786d}
+  .pf-canvas{padding:16px}.pf-page-head{display:flex;justify-content:space-between;align-items:center;padding:17px 19px;border:1px solid #e5dace;border-radius:13px;background:#fffdf9}.pf-page-head h3{font-size:20px;margin:0 0 4px}.pf-page-head p{font-size:9px;color:#83776b;margin:0}.pf-management{margin-top:12px;border:1px solid #dfcfbd;border-radius:13px;background:#fffdf9;overflow:hidden}.pf-management-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:15px 17px;border-bottom:1px solid #e8ddd0;background:#fff8f1}.pf-management-title{display:flex;gap:10px;align-items:flex-start}.pf-status{padding:5px 8px;border-radius:999px;background:#eaf3ed;color:#4f715f;font-size:8px;font-weight:800}.pf-management h4{font-size:14px;margin:0 0 4px}.pf-management p{font-size:8px;color:#83776b;margin:0}.pf-management-body{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#e8ddd0}.pf-metric{padding:14px;background:#fff}.pf-metric span{font-size:8px;color:#887c71}.pf-metric b{display:block;font-size:13px;margin-top:4px}.pf-management-foot{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:13px 17px}.pf-flow-note{font-size:8px;color:#81756a;line-height:1.55}.pf-lock{color:#8a583a;font-weight:700}
+  @media(max-width:850px){.pf-dialog{width:calc(100% - 16px)}.pf-course-grid,.pf-strategies{grid-template-columns:1fr 1fr}.pf-strategy:last-child{grid-column:1/-1}.pf-preview{grid-template-columns:1fr 1fr}.pf-management-body{grid-template-columns:repeat(3,1fr)}}@media(max-width:590px){.pf-top{height:auto;padding:12px}.pf-runtime{flex-direction:column}.pf-stage{padding:8px;min-height:720px}.pf-dialog{width:100%;height:calc(100vh - 30px);min-height:620px;border-radius:14px}.pf-dialog-head{padding:14px}.pf-steps{overflow-x:auto;padding:10px 14px;grid-template-columns:repeat(4,140px)}.pf-body{padding:14px}.pf-basic-grid,.pf-policy-grid,.pf-course-grid,.pf-strategies,.pf-summary-grid,.pf-preview{grid-template-columns:1fr}.pf-strategy:last-child{grid-column:auto}.pf-weekdays{grid-template-columns:repeat(4,1fr)}.pf-footer{align-items:stretch;flex-direction:column-reverse}.pf-footer .pf-actions{justify-content:flex-end}.pf-management-head,.pf-management-foot,.pf-page-head{align-items:flex-start;grid-template-columns:1fr;flex-direction:column}.pf-management-body{grid-template-columns:repeat(2,1fr)}}
+</style>
+<script defer src="../00-设计系统/assets/sample-ui.js"></script></head>
+<body>
+
+<div class="pf-stack">
+  <section id="pf-wizard-view" class="pf-frame pf-view" aria-label="计划流四步向导">
+    <div class="pf-top"><div class="pf-brand"><strong>Learning MORE</strong><span>学习即生活｜用 AI 重塑学习方式</span></div><div class="pf-runtime"><span>● 课程规划</span><span>● 排期服务准备就绪</span></div></div>
+    <div class="pf-stage"><div class="pf-planner-bg"><div class="pf-ghost"><div class="pf-ghost-row"></div><div class="pf-ghost-row"></div><div class="pf-ghost-row"></div><div class="pf-ghost-row"></div></div><div class="pf-ghost"><div class="pf-ghost-row"></div><div class="pf-ghost-row"></div><div class="pf-ghost-row"></div></div></div><div class="pf-backdrop"></div>
+      <section class="pf-dialog"><header class="pf-dialog-head"><div><div class="pf-kicker">课程规划 · 自动排期</div><h3>生成计划流</h3></div><button class="pf-close" id="pf-close" aria-label="关闭">×</button></header>
+        <nav class="pf-steps" aria-label="计划流步骤"><button class="pf-step active" data-step="0"><span class="pf-step-index">1</span><strong>学习节奏</strong></button><button class="pf-step" data-step="1"><span class="pf-step-index">2</span><strong>选择课程</strong></button><button class="pf-step" data-step="2"><span class="pf-step-index">3</span><strong>排期策略</strong></button><button class="pf-step" data-step="3"><span class="pf-step-index">4</span><strong>预览确认</strong></button></nav>
+        <main class="pf-body">
+          <section class="pf-panel active" data-panel="0"><div class="pf-section-title"><div><h4>设置学习节奏</h4></div><span class="pf-mini-summary">预计每周 225 分钟</span></div><div class="pf-basic-grid"><div class="pf-field"><label>开始日期</label><input class="pf-control" type="date" value="2026-07-13"></div><div class="pf-field"><label>每日目标时长</label><select class="pf-control"><option>15 分钟</option><option>30 分钟</option><option selected>45 分钟</option><option>60 分钟</option><option>90 分钟</option></select></div></div><div class="pf-subsection"><div class="pf-subsection-head"><strong>学习日</strong></div><div class="pf-weekdays"><button class="pf-weekday selected">周一</button><button class="pf-weekday selected">周二</button><button class="pf-weekday selected">周三</button><button class="pf-weekday selected">周四</button><button class="pf-weekday selected">周五</button><button class="pf-weekday">周六</button><button class="pf-weekday">周日</button></div></div><div class="pf-policy-grid"><div class="pf-policy on"><span class="pf-switch"></span><div><strong>保留已有日期</strong><span>未来已排课节和手动锁定课节保持原位。该规则默认开启。</span></div></div><div class="pf-policy"><span class="pf-switch"></span><div><strong>重新安排逾期课节</strong><span>开启后，逾期且未完成的课节会进入预览，并明确标记改期。</span></div></div></div><div class="pf-note">单节课超过 45 分钟时会独占一个学习日，并在预览中标记“超过目标”；系统不会为了凑时长拆课。</div></section>
+          <section class="pf-panel" data-panel="1"><div class="pf-section-title"><div><h4>选择加入计划流的课程</h4><p>只显示仍有未完成课节的正式课程。至少选择一门。</p></div><span class="pf-mini-summary">已选 2 门 · 8 节 · 214 分钟</span></div><div class="pf-course-grid"><article class="pf-course selected"><span class="pf-check">✓</span><h5>从反馈到核心循环：游戏设计能力进阶</h5><p>把原型问题转化为可验证的游戏设计判断。</p><div class="pf-tags"><span class="pf-tag">艺术与设计</span><span class="pf-tag">游戏反馈</span><span class="pf-tag">核心循环</span></div><div class="pf-course-stats"><span>剩余课节<b>4</b></span><span>预计时长<b>96 min</b></span><span>当前进度<b>20%</b></span></div><div class="pf-progress"><i style="width:20%"></i></div></article><article class="pf-course selected"><span class="pf-check">✓</span><h5>数据结构：从约束理解操作代价</h5><p>从结构必须维持的性质推导复杂度与使用场景。</p><div class="pf-tags"><span class="pf-tag">计算机科学</span><span class="pf-tag">数据结构</span></div><div class="pf-course-stats"><span>剩余课节<b>4</b></span><span>预计时长<b>118 min</b></span><span>当前进度<b>33%</b></span></div><div class="pf-progress"><i style="width:33%"></i></div></article><article class="pf-course"><span class="pf-check"></span><h5>用行为证据设计产品实验</h5><p>建立假设、指标和实验判断之间的对应关系。</p><div class="pf-tags"><span class="pf-tag">商业与管理</span><span class="pf-tag">实验设计</span></div><div class="pf-course-stats"><span>剩余课节<b>3</b></span><span>预计时长<b>72 min</b></span><span>当前进度<b>0%</b></span></div><div class="pf-progress"><i style="width:0%"></i></div></article><article class="pf-course disabled"><span class="pf-check">✓</span><h5>线性结构基础</h5><p>课程已全部完成，不再进入新的计划流。</p><div class="pf-tags"><span class="pf-tag">计算机科学</span><span class="pf-tag">已完成</span></div><div class="pf-course-stats"><span>剩余课节<b>0</b></span><span>预计时长<b>0 min</b></span><span>当前进度<b>100%</b></span></div><div class="pf-progress"><i style="width:100%"></i></div></article></div></section>
+          <section class="pf-panel" data-panel="2"><div class="pf-section-title"><div><h4>选择推进方式</h4><p>策略只影响课程之间如何交错，不改变每门课程内部的课节顺序。</p></div><span class="pf-mini-summary">当前：均衡推进</span></div><div class="pf-strategies"><article class="pf-strategy selected"><span class="pf-strategy-mark">↔</span><h5>均衡推进</h5><p>在所选课程之间轮换安排，让多个方向保持连续进展，并优先填充每日剩余容量。</p><small>适合：同时维持多个学习方向</small></article><article class="pf-strategy"><span class="pf-strategy-mark">→</span><h5>专注完成</h5><p>先按顺序完成一门课程，再进入下一门，减少上下文切换。</p><small>适合：希望尽快完成一个完整主题</small></article><article class="pf-strategy"><span class="pf-strategy-mark">↑</span><h5>按优先级</h5><p>优先安排排序靠前的课程；高优先级课程仍有课节时不会切换。</p><small>适合：存在明确截止日期或主次目标</small></article></div><div class="pf-priority">课程顺序：① 游戏设计能力进阶　② 数据结构。选择“按优先级”时，此顺序将作为优先级。</div></section>
+          <section class="pf-panel" data-panel="3"><div class="pf-section-title"><div><h4>确认排期预览</h4></div><span class="pf-mini-summary">均衡推进 · 工作日</span></div><div class="pf-summary-grid"><div class="pf-summary"><span>开始日期</span><b>07/13</b></div><div class="pf-summary"><span>预计完成</span><b>07/20</b></div><div class="pf-summary"><span>待排课节</span><b>8 节</b></div><div class="pf-summary"><span>预计总时长</span><b>214 min</b></div></div><div class="pf-preview"><article class="pf-day"><header><strong>周一 · 07/13</strong><span>45 分钟 · 2 节</span></header><ul><li>游戏设计 · 反馈不是奖励动画 <em>24min</em></li><li>数据结构 · 栈与队列的操作顺序 <em>21min</em></li></ul></article><article class="pf-day"><header><strong>周二 · 07/14</strong><span>42 分钟 · 2 节</span></header><ul><li>游戏设计 · 行为如何形成循环 <em>20min</em></li><li>数据结构 · 树的层级关系 <em>22min</em></li></ul></article><article class="pf-day over"><header><strong>周三 · 07/15</strong><span>51 分钟 · 1 节 <i class="pf-risk">超过目标</i></span></header><ul><li>数据结构 · 哈希表与冲突处理 <em>51min</em></li></ul></article><article class="pf-day"><header><strong>周四 · 07/16</strong><span>固定排期 <i class="pf-fixed">保留</i></span></header><ul><li>游戏设计 · 难度与掌握感如何推进 <em>30min</em></li></ul></article><article class="pf-day"><header><strong>周五 · 07/17</strong><span>46 分钟 · 2 节</span></header><ul><li>游戏设计 · 为原型建立成功标准 <em>18min</em></li><li>数据结构 · 图的连接关系 <em>28min</em></li></ul></article><article class="pf-day"><header><strong>周一 · 07/20</strong><span>28 分钟 · 1 节</span></header><ul><li>数据结构 · 用场景选择结构 <em>28min</em></li></ul></article></div><div class="pf-note">预览提示：07/15 的完整课节超过每日 45 分钟目标，因此独占当天；07/16 为已有未来排期，将保持原日期。</div></section>
+        </main>
+        <footer class="pf-footer"><button class="pf-btn" id="pf-back" disabled>上一步</button><span class="pf-footer-note" id="pf-footer-note">第 1 步，共 4 步</span><div class="pf-actions"><button class="pf-btn" id="pf-cancel">取消</button><button class="pf-btn primary" id="pf-next">下一步</button></div></footer>
+      </section>
+    </div>
+  </section>
+
+  <section id="pf-management-view" class="pf-frame pf-view" aria-label="已创建计划流管理卡" hidden>
+    <div class="pf-top"><div class="pf-brand"><strong>Learning MORE</strong><span>课程规划</span></div><div class="pf-runtime"><span>● 接口 · Codex</span><span>● 排期已同步</span></div></div>
+    <div class="pf-canvas"><header class="pf-page-head"><div><h3>课程规划</h3><p>管理未完成课节、日期安排和当前计划流。</p></div><div class="pf-actions"><button class="pf-btn primary" id="pf-new-flow">生成新计划流</button><a class="pf-btn" href="../01-主页与全局导航/主页.html">返回课程表</a></div></header><section class="pf-management"><div class="pf-management-head"><div class="pf-management-title"><span class="pf-status" id="pf-status">进行中</span><div><h4>工作日均衡学习计划</h4><p>创建于 2026/07/13 · 均衡推进 · 自动保留已有排期</p></div></div><div class="pf-actions"><button class="pf-btn soft" id="pf-pause">暂停计划流</button><button class="pf-btn" id="pf-replan">重新排剩余</button><button class="pf-btn danger" id="pf-delete">删除计划</button></div></div><div class="pf-management-body"><div class="pf-metric"><span>每日目标</span><b>45 分钟</b></div><div class="pf-metric"><span>学习日</span><b>周一至周五</b></div><div class="pf-metric"><span>包含课程</span><b>2 门</b></div><div class="pf-metric"><span>剩余课节</span><b>8 节</b></div><div class="pf-metric"><span>预计完成</span><b>07/28</b></div></div><div class="pf-management-foot"><div class="pf-flow-note">手动改期的课节会自动锁定；“重新排剩余”只移动未来、未完成且未锁定的课节。当前有 <span class="pf-lock">1 节已锁定</span>。</div><div class="pf-actions"><button class="pf-btn" id="pf-details">查看计划详情</button><a class="pf-btn primary" href="../01-主页与全局导航/主页.html">查看课程表</a></div></div></section></div>
+  </section>
+</div>
+
+<script>
+  let pfStep = 0;
+  const pfSteps = [...document.querySelectorAll('.pf-step')];
+  const pfPanels = [...document.querySelectorAll('.pf-panel')];
+  const pfBack = document.getElementById('pf-back');
+  const pfNext = document.getElementById('pf-next');
+  const pfFooterNote = document.getElementById('pf-footer-note');
+  function showPfStep(index){
+    pfStep = Math.max(0,Math.min(3,index));
+    pfSteps.forEach((step,i) => { step.classList.toggle('active',i===pfStep); step.classList.toggle('done',i<pfStep); });
+    pfPanels.forEach((panel,i) => panel.classList.toggle('active',i===pfStep));
+    pfBack.disabled = pfStep === 0;
+    pfNext.textContent = pfStep === 2 ? '生成预览' : pfStep === 3 ? '确认生成计划流' : '下一步';
+    pfFooterNote.textContent = `第 ${pfStep + 1} 步，共 4 步`;
+  }
+  pfSteps.forEach((step) => step.addEventListener('click',() => showPfStep(Number(step.dataset.step))));
+  pfBack.addEventListener('click',() => showPfStep(pfStep - 1));
+  pfNext.addEventListener('click',() => { if(pfStep < 3) showPfStep(pfStep + 1); });
+  document.querySelectorAll('.pf-weekday').forEach((day) => day.addEventListener('click',() => day.classList.toggle('selected')));
+  document.querySelectorAll('.pf-policy').forEach((item) => item.addEventListener('click',() => item.classList.toggle('on')));
+  document.querySelectorAll('.pf-course:not(.disabled)').forEach((item) => item.addEventListener('click',() => { item.classList.toggle('selected'); item.querySelector('.pf-check').textContent = item.classList.contains('selected') ? '✓' : ''; }));
+  document.querySelectorAll('.pf-strategy').forEach((item) => item.addEventListener('click',() => { document.querySelectorAll('.pf-strategy').forEach((card) => card.classList.remove('selected')); item.classList.add('selected'); }));
+</script>
+<script>
+  document.querySelectorAll('.pf-section-title').forEach((section)=>{
+    const title=section.querySelector('h4');
+    if(title?.textContent==='选择加入计划流的课程'){
+      section.querySelector('p').textContent='只显示仍有未完成且未放弃课节的正式课程；已放弃课节不计入剩余数量。至少选择一门。';
+    }
+  });
+</script>
+<style>
+  .pf-course-toolbar{position:sticky;top:-18px;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:10px;margin:-18px -21px 14px;padding:12px 21px;background:rgba(255,253,249,.97);border-bottom:1px solid #e7dccf;backdrop-filter:blur(10px)}.pf-course-tools{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.pf-course-search{width:220px;height:34px;border:1px solid #d9cbb9;border-radius:8px;background:#fff;padding:0 10px;font-size:9px;color:#3d454b}.pf-course-filter{height:34px;border:1px solid #d9cbb9;border-radius:8px;background:#fff;padding:0 9px;font-size:9px;color:#3d454b}.pf-selected-only{height:34px;display:flex;align-items:center;gap:6px;padding:0 9px;border:1px solid #d9cbb9;border-radius:8px;background:#fff;font-size:9px;color:#675e56;cursor:pointer}.pf-course-result{font-size:8px;color:#856046;background:#f4e9dd;border-radius:999px;padding:6px 9px;white-space:nowrap}.pf-course[hidden]{display:none}.pf-course-grid::after{content:"继续向下滚动查看更多课程";grid-column:1/-1;padding:10px;text-align:center;color:#95897e;font-size:8px;border-top:1px dashed #e1d5c7}@media(max-width:590px){.pf-course-toolbar{position:static;margin:-14px -14px 12px;padding:10px 14px;align-items:stretch;flex-direction:column}.pf-course-tools{display:grid;grid-template-columns:1fr}.pf-course-search{width:100%;box-sizing:border-box}.pf-course-result{align-self:flex-start}}
+</style>
+<script>
+  const selectionPanel = document.querySelector('[data-panel="1"]');
+  const courseGrid = selectionPanel.querySelector('.pf-course-grid');
+  selectionPanel.querySelector('.pf-course.disabled')?.remove();
+  courseGrid.insertAdjacentHTML('beforeend', `
+    <article class="pf-course" data-discipline="商业与管理" data-lessons="5" data-minutes="130"><span class="pf-check"></span><h5>商业洞察：识别价值与机会</h5><p>从行业变化、价值链与用户行为中形成可验证的商业判断。</p><div class="pf-tags"><span class="pf-tag">商业与管理</span><span class="pf-tag">商业洞察</span></div><div class="pf-course-stats"><span>剩余课节<b>5</b></span><span>预计时长<b>130 min</b></span><span>当前进度<b>10%</b></span></div><div class="pf-progress"><i style="width:10%"></i></div></article>
+    <article class="pf-course" data-discipline="人文与写作" data-lessons="4" data-minutes="100"><span class="pf-check"></span><h5>论证写作：从观点到证据链</h5><p>建立主张、证据、反驳与结论之间的严密连接。</p><div class="pf-tags"><span class="pf-tag">人文与写作</span><span class="pf-tag">论证结构</span></div><div class="pf-course-stats"><span>剩余课节<b>4</b></span><span>预计时长<b>100 min</b></span><span>当前进度<b>25%</b></span></div><div class="pf-progress"><i style="width:25%"></i></div></article>
+    <article class="pf-course" data-discipline="数学与统计" data-lessons="6" data-minutes="180"><span class="pf-check"></span><h5>统计推断：从样本判断总体</h5><p>理解不确定性、抽样误差与置信判断的关系。</p><div class="pf-tags"><span class="pf-tag">数学与统计</span><span class="pf-tag">统计推断</span></div><div class="pf-course-stats"><span>剩余课节<b>6</b></span><span>预计时长<b>180 min</b></span><span>当前进度<b>0%</b></span></div><div class="pf-progress"><i style="width:0%"></i></div></article>
+    <article class="pf-course" data-discipline="艺术与设计" data-lessons="3" data-minutes="75"><span class="pf-check"></span><h5>设计史中的形式与功能</h5><p>从典型设计运动理解形式选择背后的社会和技术条件。</p><div class="pf-tags"><span class="pf-tag">艺术与设计</span><span class="pf-tag">设计史</span></div><div class="pf-course-stats"><span>剩余课节<b>3</b></span><span>预计时长<b>75 min</b></span><span>当前进度<b>40%</b></span></div><div class="pf-progress"><i style="width:40%"></i></div></article>
+    <article class="pf-course" data-discipline="计算机科学" data-lessons="5" data-minutes="145"><span class="pf-check"></span><h5>AI 产品设计：从能力到工作流</h5><p>把模型能力转化为可控、可评估且可恢复的产品体验。</p><div class="pf-tags"><span class="pf-tag">计算机科学</span><span class="pf-tag">AI 产品</span></div><div class="pf-course-stats"><span>剩余课节<b>5</b></span><span>预计时长<b>145 min</b></span><span>当前进度<b>15%</b></span></div><div class="pf-progress"><i style="width:15%"></i></div></article>`);
+  const courseCards = [...selectionPanel.querySelectorAll('.pf-course')];
+  const baseDisciplines = ['艺术与设计','计算机科学','商业与管理'];
+  courseCards.slice(0,3).forEach((card,index) => {
+    card.dataset.discipline = baseDisciplines[index];
+    const values = [...card.querySelectorAll('.pf-course-stats b')];
+    card.dataset.lessons = parseInt(values[0].textContent,10) || 0;
+    card.dataset.minutes = parseInt(values[1].textContent,10) || 0;
+  });
+  const toolbar = document.createElement('div');
+  toolbar.className = 'pf-course-toolbar';
+  toolbar.innerHTML = `<div class="pf-course-tools"><input id="pf-course-search" class="pf-course-search" placeholder="搜索课程名称或主题"><select id="pf-discipline-filter" class="pf-course-filter"><option value="">全部学科 / 领域</option><option>艺术与设计</option><option>计算机科学</option><option>商业与管理</option><option>人文与写作</option><option>数学与统计</option></select><label class="pf-selected-only"><input id="pf-selected-only" type="checkbox">只看已选</label></div><span id="pf-course-result" class="pf-course-result"></span>`;
+  courseGrid.before(toolbar);
+  const searchInput = document.getElementById('pf-course-search');
+  const disciplineFilter = document.getElementById('pf-discipline-filter');
+  const selectedOnly = document.getElementById('pf-selected-only');
+  const resultLabel = document.getElementById('pf-course-result');
+  const selectedSummary = selectionPanel.querySelector('.pf-mini-summary');
+  function refreshCourseSelection(){
+    const query = searchInput.value.trim().toLowerCase();
+    let visible = 0;
+    courseCards.forEach((card) => {
+      const matchQuery = !query || card.textContent.toLowerCase().includes(query);
+      const matchDiscipline = !disciplineFilter.value || card.dataset.discipline === disciplineFilter.value;
+      const matchSelected = !selectedOnly.checked || card.classList.contains('selected');
+      card.hidden = !(matchQuery && matchDiscipline && matchSelected);
+      if(!card.hidden) visible += 1;
+    });
+    const selected = courseCards.filter((card) => card.classList.contains('selected'));
+    const lessons = selected.reduce((sum,card) => sum + Number(card.dataset.lessons || 0),0);
+    const minutes = selected.reduce((sum,card) => sum + Number(card.dataset.minutes || 0),0);
+    resultLabel.textContent = `显示 ${visible} / ${courseCards.length} 门`;
+    selectedSummary.textContent = `已选 ${selected.length} 门 · ${lessons} 节 · ${minutes} 分钟`;
+  }
+  courseCards.slice(3).forEach((item) => item.addEventListener('click',() => { item.classList.toggle('selected'); item.querySelector('.pf-check').textContent = item.classList.contains('selected') ? '✓' : ''; }));
+  courseCards.forEach((item) => item.addEventListener('click',refreshCourseSelection));
+  searchInput.addEventListener('input',refreshCourseSelection);
+  disciplineFilter.addEventListener('change',refreshCourseSelection);
+  selectedOnly.addEventListener('change',refreshCourseSelection);
+  refreshCourseSelection();
+  showPfStep(0);
+</script>
+<style>
+  .pf-course-toolbar{top:0;margin:0 0 14px;padding:10px 11px;border:1px solid #e7dccf;border-radius:10px;background:rgba(255,253,249,.98)}
+  .pf-preview-sticky{position:sticky;top:-18px;z-index:5;margin:-18px -21px 14px;padding:18px 21px 12px;background:rgba(255,253,249,.98);border-bottom:1px solid #e7dccf;backdrop-filter:blur(10px)}.pf-preview-sticky .pf-section-title{margin-bottom:10px}.pf-week-groups{display:grid;gap:16px}.pf-week-group{display:grid;gap:8px}.pf-week-head{display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-bottom:1px solid #e2d6c7}.pf-week-head strong{font-size:11px}.pf-week-head span{font-size:8px;color:#877b70}.pf-week-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.pf-week-grid .pf-day{min-height:122px}.pf-plan-end{padding:11px;text-align:center;border:1px dashed #dfd2c1;border-radius:10px;background:#faf6f0;color:#82766b;font-size:9px}
+  @media(max-width:850px){.pf-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:590px){.pf-course-toolbar{position:static;margin:0 0 12px}.pf-preview-sticky{position:static;margin:-14px -14px 12px;padding:14px}.pf-week-grid{grid-template-columns:1fr}}
+</style>
+<script>
+  const previewPanel = document.querySelector('[data-panel="3"]');
+  const oldPreviewGrid = previewPanel.querySelector('.pf-preview');
+  const previewTitle = previewPanel.querySelector('.pf-section-title');
+  const previewSummary = previewPanel.querySelector('.pf-summary-grid');
+  const previewNote = previewPanel.querySelector('.pf-note');
+  const summaryValues = previewSummary.querySelectorAll('.pf-summary b');
+  summaryValues[1].textContent = '07/28';
+  summaryValues[2].textContent = '15 节';
+  summaryValues[3].textContent = '392 min';
+  previewTitle.querySelector('.pf-mini-summary').textContent = '均衡推进 · 12 个学习日';
+  const stickyPreview = document.createElement('div');
+  stickyPreview.className = 'pf-preview-sticky';
+  stickyPreview.append(previewTitle,previewSummary);
+  previewPanel.prepend(stickyPreview);
+  oldPreviewGrid.remove();
+  function planDay(date,meta,items,kind=''){
+    const badge = kind === 'over' ? '<i class="pf-risk">超过目标</i>' : kind === 'fixed' ? '<i class="pf-fixed">保留</i>' : '';
+    return `<article class="pf-day${kind === 'over' ? ' over' : ''}"><header><strong>${date}</strong><span>${meta} ${badge}</span></header><ul>${items.map((item) => `<li>${item[0]} <em>${item[1]}</em></li>`).join('')}</ul></article>`;
+  }
+  const planWeeks = [
+    {title:'第 1 周',range:'07/13 — 07/17 · 5 个学习日',days:[
+      planDay('周一 · 07/13','45 分钟 · 2 节',[['游戏设计 · 反馈不是奖励动画','24min'],['数据结构 · 栈与队列的操作顺序','21min']]),
+      planDay('周二 · 07/14','42 分钟 · 2 节',[['游戏设计 · 行为如何形成循环','20min'],['数据结构 · 树的层级关系','22min']]),
+      planDay('周三 · 07/15','51 分钟 · 1 节',[['数据结构 · 哈希表与冲突处理','51min']],'over'),
+      planDay('周四 · 07/16','固定排期',[['游戏设计 · 难度与掌握感如何推进','30min']],'fixed'),
+      planDay('周五 · 07/17','46 分钟 · 2 节',[['游戏设计 · 为原型建立成功标准','18min'],['数据结构 · 图的连接关系','28min']])
+    ]},
+    {title:'第 2 周',range:'07/20 — 07/24 · 5 个学习日',days:[
+      planDay('周一 · 07/20','44 分钟 · 2 节',[['数据结构 · 用场景选择结构','28min'],['游戏设计 · 反馈强度与频率','16min']]),
+      planDay('周二 · 07/21','40 分钟 · 1 节',[['游戏设计 · 核心循环的节奏变化','40min']]),
+      planDay('周三 · 07/22','38 分钟 · 2 节',[['数据结构 · 图的遍历方式','22min'],['游戏设计 · 玩家目标的层级','16min']]),
+      planDay('周四 · 07/23','48 分钟 · 1 节',[['数据结构 · 最短路径的约束','48min']],'over'),
+      planDay('周五 · 07/24','32 分钟 · 1 节',[['游戏设计 · 原型测试的行为证据','32min']])
+    ]},
+    {title:'第 3 周',range:'07/27 — 07/28 · 2 个学习日',days:[
+      planDay('周一 · 07/27','30 分钟 · 1 节',[['数据结构 · 选择结构的综合判断','30min']]),
+      planDay('周二 · 07/28','26 分钟 · 1 节',[['游戏设计 · 形成完整设计判断','26min']])
+    ]}
+  ];
+  const weekGroups = document.createElement('div');
+  weekGroups.className = 'pf-week-groups';
+  weekGroups.innerHTML = planWeeks.map((week) => `<section class="pf-week-group"><header class="pf-week-head"><strong>${week.title}</strong><span>${week.range}</span></header><div class="pf-week-grid">${week.days.join('')}</div></section>`).join('') + '<div class="pf-plan-end">计划结束 · 预计 07/28 完成所选课程的本轮排期</div>';
+  previewPanel.insertBefore(weekGroups,previewNote);
+  previewNote.textContent = '预览会展示全部计划日期，不截断为前六天或前十四天。超目标、固定排期和逾期改期会在对应日期卡中持续标记。';
+</script>
+<style>
+  body{margin:0;background:#eee8e0;color:#27313a;font:14px/1.65 Inter,"PingFang SC","Microsoft YaHei",sans-serif}
+  [hidden]{display:none!important}.pf-stack{margin:0}.pf-frame{min-height:100vh;border:0;border-radius:0;box-shadow:none}.pf-stage{min-height:calc(100vh - 62px);display:grid;place-items:center}.pf-dialog{height:min(780px,calc(100vh - 92px));min-height:620px}
+  .pf-brand span,.pf-runtime span,.pf-dialog-head p,.pf-section-title p,.pf-subsection-head span,.pf-policy span,.pf-note,.pf-course p,.pf-strategy p,.pf-priority,.pf-preview li,.pf-footer-note,.pf-page-head p,.pf-management p,.pf-flow-note{font-size:12px;line-height:1.55}
+  .pf-kicker,.pf-mini-summary,.pf-tag,.pf-course-stats span,.pf-summary span,.pf-day header span,.pf-status,.pf-metric span{font-size:11px}
+  .pf-btn,.pf-control,.pf-course-search,.pf-course-filter,.pf-selected-only{min-height:42px;font-size:13px}.pf-close{width:42px;height:42px}.pf-step strong,.pf-step-index,.pf-field label,.pf-subsection-head strong,.pf-weekday,.pf-policy strong,.pf-course-stats b{font-size:12px}.pf-course h5{font-size:15px;line-height:1.4}.pf-section-title h4{font-size:20px}.pf-dialog-head h3{font-size:28px}.pf-toast{position:fixed;z-index:20;left:50%;bottom:24px;transform:translateX(-50%) translateY(12px);padding:11px 16px;border-radius:999px;background:#30302e;color:#fff;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:.2s}.pf-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:590px){.pf-dialog{height:calc(100vh - 16px)}.pf-course-search{width:100%}}
+</style>
+<div id="pf-toast" class="pf-toast" role="status" aria-live="polite"></div>
+<script>
+  const wizardView = document.getElementById('pf-wizard-view');
+  const managementView = document.getElementById('pf-management-view');
+  const toast = document.getElementById('pf-toast');
+  let toastTimer;
+  function notifyPf(message){
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'),1800);
+  }
+  function selectedCourseCount(){ return document.querySelectorAll('[data-panel="1"] .pf-course.selected:not(.disabled)').length; }
+  function validatePfStep(step){
+    if(step === 0){
+      const date = document.querySelector('[data-panel="0"] input[type="date"]');
+      if(!date.value){ notifyPf('请选择有效的开始日期'); return false; }
+      if(!document.querySelector('.pf-weekday.selected')){ notifyPf('请至少选择一个学习日'); return false; }
+    }
+    if(step === 1 && selectedCourseCount() < 1){ notifyPf('请至少选择一门课程'); return false; }
+    if(step === 2 && !document.querySelector('.pf-strategy.selected')){ notifyPf('请选择一种推进方式'); return false; }
+    return true;
+  }
+  pfSteps.forEach((step) => step.addEventListener('click',(event) => {
+    event.stopImmediatePropagation();
+    const target = Number(step.dataset.step);
+    if(target <= pfStep || (target === pfStep + 1 && validatePfStep(pfStep))) showPfStep(target);
+    else notifyPf('请先完成当前步骤');
+  },true));
+  pfNext.addEventListener('click',(event) => {
+    event.stopImmediatePropagation();
+    if(!validatePfStep(pfStep)) return;
+    if(pfStep < 3){ showPfStep(pfStep + 1); return; }
+    pfNext.disabled = true;
+    pfNext.textContent = '正在生成…';
+    notifyPf('正在模拟写入计划流');
+    setTimeout(() => {
+      wizardView.hidden = true;
+      managementView.hidden = false;
+      pfNext.disabled = false;
+      pfNext.textContent = '确认生成计划流';
+      notifyPf('计划流已生成并同步到课程表');
+      window.scrollTo({top:0,behavior:'smooth'});
+    },700);
+  },true);
+  function returnToPlanning(){ location.href='课程规划.html'; }
+  document.getElementById('pf-close').addEventListener('click',returnToPlanning);
+  document.getElementById('pf-cancel').addEventListener('click',returnToPlanning);
+  document.getElementById('pf-new-flow').addEventListener('click',() => {
+    managementView.hidden = true; wizardView.hidden = false; showPfStep(0); notifyPf('已打开新的计划流向导');
+  });
+  document.getElementById('pf-replan').addEventListener('click',() => {
+    managementView.hidden = true; wizardView.hidden = false; showPfStep(0); notifyPf('将基于剩余未完成课节重新排期');
+  });
+  document.getElementById('pf-details').addEventListener('click',() => {
+    managementView.hidden = true; wizardView.hidden = false; showPfStep(3); notifyPf('当前显示已生成计划的完整预览');
+  });
+  document.getElementById('pf-pause').addEventListener('click',(event) => {
+    const paused = event.currentTarget.textContent === '恢复计划流';
+    event.currentTarget.textContent = paused ? '暂停计划流' : '恢复计划流';
+    document.getElementById('pf-status').textContent = paused ? '进行中' : '已暂停';
+    document.getElementById('pf-status').style.background = paused ? '' : '#fff0dc';
+    document.getElementById('pf-status').style.color = paused ? '' : '#875a28';
+    notifyPf(paused ? '计划流已恢复' : '计划流已暂停；现有排期保持不变');
+  });
+  document.getElementById('pf-delete').addEventListener('click',() => {
+    if(!window.confirm('删除当前计划流？已生成的未来自动排期将同时取消。')) return;
+    notifyPf('计划流已删除，正在返回课程规划');
+    setTimeout(returnToPlanning,500);
+  });
+</script>
+</body>
+</html>
