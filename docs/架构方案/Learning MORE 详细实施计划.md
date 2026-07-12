@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** 从零构建 Learning MORE 的 Windows 本地优先 MVP，形成课程创建、渐进式学习、Review 闭环、规划历史、画像证据、运行自愈、备份发布和 73 条回归验收的完整纵向系统。
+**Goal:** 从零构建 Learning MORE 的 Windows 本地优先 MVP，形成课程创建、渐进式学习、Review 闭环、规划历史、画像证据、运行自愈、备份发布和 74 条回归验收的完整纵向系统。
 
 **Architecture:** 使用 React Web + Node.js 模块化单体。当前聚合由 Repository 管理，本地文件 Adapter 使用可恢复事务、幂等结果与 outbox；追加事件驱动读模型、候选证据和画像版本。AI 通过持久化 GenerationRuntime 和可切换 Provider Adapter 运行，领域 Module 是最终结果的唯一提交者。
 
@@ -26,7 +26,7 @@
 - 直接依赖使用精确版本；提交 pnpm-lock.yaml；安装使用 --frozen-lockfile。
 - 单元/集成测试使用 Vitest 4.1.9，不使用 Vitest 5 beta。
 - 测试不得读取真实用户数据；Mock Provider 是自动化测试默认 Provider。
-- 73 个唯一 EQ 编号必须全部映射到 domain、repository、backend、react、e2e_main、e2e_recovery 六类证据。
+- 74 个唯一 EQ 编号必须全部映射到 domain、repository、backend、react、e2e_main、e2e_recovery 六类证据。
 - 全仓 lines/statements ≥ 90%，branches ≥ 85%；关键不变量 mutation score ≥ 90%。
 - 强一致查询 p95 ≤ 200 ms；非 AI 写命令 p95 ≤ 350 ms；SSE 转发 p95 ≤ 100 ms。
 - outbox 发布 p95 ≤ 2 秒；空闲投影延迟 p95 ≤ 5 秒；正常冷启动 p95 ≤ 5 秒。
@@ -62,7 +62,7 @@
 | 05 | [规划、历史与学习事实](<./实施计划-05-规划历史与学习事实.md>) | 排期/计划流、历史、统计、日历和周报 |
 | 06 | [画像证据与画像生成](<./实施计划-06-画像证据与画像生成.md>) | 候选证据、全局档案、Evidence Packer 和版本化画像 |
 | 07 | [React 全域界面与运行自愈](<./实施计划-07-React界面与运行自愈.md>) | 完整页面、Launcher、运行中心、Provider 切换和版本同步 |
-| 08 | [备份、发布与全量验收](<./实施计划-08-备份发布与全量验收.md>) | migration、备份恢复、portable ZIP、73 条矩阵和发布门禁 |
+| 08 | [备份、发布与全量验收](<./实施计划-08-备份发布与全量验收.md>) | migration、备份恢复、portable ZIP、74 条矩阵和发布门禁 |
 
 ## 3. 跨阶段依赖
 
@@ -272,7 +272,7 @@ Windows PowerShell 是计划中的命令环境。测试代码不得使用固定 
 - Launcher、自愈、密钥、版本同步可用；
 - portable ZIP 可在干净 Windows 11 启动；
 - backup/restore/migration drill 通过；
-- 73 个 EQ 编号均有六类证据；
+- 74 个 EQ 编号均有六类证据；
 - 容量、性能、安全和发布检查全部通过。
 
 ## 9. 不进入本计划的范围
@@ -294,7 +294,7 @@ Windows PowerShell 是计划中的命令环境。测试代码不得使用固定 
 全部八份阶段计划完成且满足：
 
 - 五部分架构的每条显式要求有代码和测试证据；
-- 73 条 EQ 矩阵无缺项；
+- 74 条 EQ 矩阵无缺项；
 - 191 个 dataKey 注册表可验证且语义版本一致；
 - 所有构建、测试、恢复和发布命令在干净 Windows 11 环境成功；
 - 可从 portable ZIP 启动；

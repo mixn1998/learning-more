@@ -9,7 +9,8 @@
     "typecheck": "corepack pnpm --filter @learning-more/contracts build && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@learning-more/contracts": "workspace:*"
+    "@learning-more/contracts": "workspace:*",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

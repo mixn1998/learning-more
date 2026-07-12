@@ -1477,9 +1477,9 @@ Vitest + React Testing Library 覆盖路由、空/加载/失败/degraded/rebuild
 
 使用构建后的真实 web/server、临时数据根和 Mock Provider。覆盖课程创建→学习→Review→完成事实→历史/日历→课程关闭→画像的主路径，以及刷新、多窗口、Review 失败、服务退出、版本不一致、Provider 失败、投影重建、恢复放弃和端口占用。
 
-### 13.3 73 条回归矩阵
+### 13.3 74 条回归矩阵
 
-新增 tests/acceptance/equivalence-matrix.yaml。权威文档当前恰好有 73 个唯一 EQ 编号。
+新增 tests/acceptance/equivalence-matrix.yaml。权威文档当前恰好有 74 个唯一 EQ 编号。
 
 ~~~yaml
 id: EQ-LESSON-12
@@ -1501,7 +1501,7 @@ evidence:
 
 CI 要求：
 
-- 恰好覆盖 73 个权威 ID；
+- 恰好覆盖 74 个权威 ID；
 - 无未知、重复或缺失 ID；
 - 六类证据均非空；
 - 测试名携带 EQ 编号；
@@ -1574,7 +1574,7 @@ pnpm verify
 
 每次提交：frozen install、格式、lint、类型、架构、schema、unit、Repository、Module integration、build。
 
-主分支增加 HTTP/SSE、React、Playwright、73 条矩阵和 backup/restore smoke。
+主分支增加 HTTP/SSE、React、Playwright、74 条矩阵和 backup/restore smoke。
 
 夜间增加全量故障注入、崩溃点枚举、mutation、容量性能、长任务、投影重建和完整恢复演练。
 
@@ -1740,7 +1740,7 @@ Level 4 整库快照：聚合、历史事件或多对象引用损坏时使用，
 | 全局档案与候选证据 | 第 11 章 |
 | 启动、端口、身份、自愈、密钥 | 第 12 章 |
 | 性能与容量 | 12.13 |
-| 测试分层与 73 条断言 | 第 13 章 |
+| 测试分层与 74 条断言 | 第 13 章 |
 | 构建与发布 | 第 14 章 |
 | 备份与损坏恢复 | 第 15–16 章 |
 | 未决产品项隔离 | 第 17 章 |
@@ -1782,7 +1782,7 @@ Level 4 整库快照：聚合、历史事件或多对象引用损坏时使用，
 
 ### 19.5 测试和发布
 
-- 73 个 EQ 编号全部映射到六类测试证据；
+- 74 个 EQ 编号全部映射到六类测试证据；
 - build/release 可在干净 Windows 11 环境复现；
 - migration 前有已验证备份；
 - backup restore drill 通过；
@@ -1801,6 +1801,6 @@ Level 4 整库快照：聚合、历史事件或多对象引用损坏时使用，
 7. LearningFacts、历史和日历；
 8. ProfileEvidence 和 LearningPortrait；
 9. Launcher、自愈、备份和发布；
-10. 完整 73 条回归矩阵、容量和恢复验收。
+10. 完整 74 条回归矩阵、容量和恢复验收。
 
 每个阶段必须形成可运行、可测试的纵向切片，不能先搭建大量空 Interface 或只通过编译的壳。

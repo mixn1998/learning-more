@@ -11,11 +11,12 @@
     "architecture:check": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm --filter @learning-more/architecture build && node tools/architecture/dist/check-architecture.js",
     "build": "corepack pnpm -r --if-present build",
     "dev": "corepack pnpm --parallel --filter @learning-more/server --filter @learning-more/web run dev",
+    "equivalence:check": "corepack pnpm --filter @learning-more/architecture build && node tools/architecture/dist/check-equivalence.js",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm -r --if-present typecheck",
-    "verify": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm architecture:check && corepack pnpm test && corepack pnpm build"
+    "verify": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm architecture:check && corepack pnpm equivalence:check && corepack pnpm test && corepack pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
