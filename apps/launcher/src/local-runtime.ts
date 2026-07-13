@@ -32,6 +32,7 @@ export type LocalRuntimeOptions = Readonly<{
 export type LocalRuntimeAdapters = Readonly<{
   dependencies: LauncherDependencies;
   capability: Readonly<{ value: string; expiresAt: number }>;
+  refreshCapability(): Readonly<{ value: string; expiresAt: number }>;
   close(): Promise<void>;
 }>;
 
@@ -161,6 +162,10 @@ export async function createLocalRuntimeAdapters(
   let child: ManagedChildProcess | undefined;
   let manifest: RuntimeManifest | undefined;
   let expectedExit = false;
+  const capability = {
+    value: randomBytes(32).toString('base64url'),
+    expiresAt: Date.now() + 5 * 60_000,
+  };
 
   async function readManifest(): Promise<RuntimeManifest | undefined> {
     try {
@@ -310,9 +315,13 @@ export async function createLocalRuntimeAdapters(
 
   return {
     dependencies,
-    capability: {
-      value: randomBytes(32).toString('base64url'),
-      expiresAt: Date.now() + 5 * 60_000,
+    capability,
+    refreshCapability() {
+      if (Date.now() >= capability.expiresAt - 30_000) {
+        capability.value = randomBytes(32).toString('base64url');
+        capability.expiresAt = Date.now() + 5 * 60_000;
+      }
+      return capability;
     },
     async close() {
       if (child !== undefined) await dependencies.terminateVerifiedServer();

@@ -7,6 +7,7 @@ import {
   type AuthoringStreamEvent,
   type CourseAuthoringClient,
 } from '../../client/course-authoring-client.js';
+import { getPageInstanceId } from '../../state/page-instance.js';
 import { AssessmentPanel } from './assessment-panel.js';
 import { CandidatePanel } from './candidate-panel.js';
 import { ConfirmDialog } from './confirm-dialog.js';
@@ -154,15 +155,6 @@ export function authoringReducer(state: State, action: Action): State {
   }
 }
 
-function pageInstanceId(): string {
-  const key = 'learning-more.page-instance-id';
-  const existing = sessionStorage.getItem(key);
-  if (existing !== null) return existing;
-  const created = crypto.randomUUID();
-  sessionStorage.setItem(key, created);
-  return created;
-}
-
 export function AuthoringPage(props: {
   readonly client?: CourseAuthoringClient;
   readonly initialOutlineSessionId?: string;
@@ -170,7 +162,7 @@ export function AuthoringPage(props: {
   readonly onSessionChanged?: (outlineSessionId: string) => void;
 }) {
   const api = props.client ?? courseAuthoringClient;
-  const instanceId = useMemo(pageInstanceId, []);
+  const instanceId = useMemo(getPageInstanceId, []);
   const draftKey = `learning-more.authoring-draft.${instanceId}`;
   const savedDraft = useMemo(() => {
     try {

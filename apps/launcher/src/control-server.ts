@@ -21,6 +21,7 @@ export type InjectRequest = Readonly<{
 export type InjectResponse = Readonly<{
   statusCode: number;
   body: string;
+  headers: Readonly<Record<string, string>>;
   json(): unknown;
 }>;
 
@@ -39,9 +40,18 @@ function isLoopback(address: string): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-function response(statusCode: number, payload: unknown): InjectResponse {
-  const body = JSON.stringify(payload);
-  return { statusCode, body, json: () => JSON.parse(body) as unknown };
+function response(
+  statusCode: number,
+  payload: unknown,
+  headers: Readonly<Record<string, string>> = {},
+): InjectResponse {
+  const body = JSON.stringify(payload) ?? '';
+  return {
+    statusCode,
+    body,
+    headers,
+    json: () => (body === '' ? undefined : (JSON.parse(body) as unknown)),
+  };
 }
 
 function isEmptyBody(payload: unknown): boolean {
@@ -66,26 +76,36 @@ export async function buildControlServer(options: ControlServerOptions): Promise
     ) {
       return response(403, { code: 'control_forbidden' });
     }
+    const corsHeaders = {
+      'access-control-allow-origin': options.allowedOrigin,
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-headers': 'content-type, x-learning-more-capability',
+      vary: 'origin',
+    } as const;
+    if (method === 'OPTIONS') return response(204, undefined, corsHeaders);
     if (method !== 'GET') {
       if (
         Date.now() >= options.capability.expiresAt ||
         header(headers, 'x-learning-more-capability') !== options.capability.value
       ) {
-        return response(403, { code: 'control_capability_invalid' });
+        return response(403, { code: 'control_capability_invalid' }, corsHeaders);
       }
     }
 
     if (method === 'GET' && request.url === '/control/v1/status') {
-      return response(200, await options.getStatus());
+      return response(200, await options.getStatus(), corsHeaders);
     }
-    if (method !== 'POST') return response(404, { code: 'control_route_not_found' });
-    if (!isEmptyBody(request.payload)) return response(400, { code: 'control_body_invalid' });
-    if (request.url === '/control/v1/reconnect') return response(200, await options.reconnect());
+    if (method !== 'POST') return response(404, { code: 'control_route_not_found' }, corsHeaders);
+    if (!isEmptyBody(request.payload))
+      return response(400, { code: 'control_body_invalid' }, corsHeaders);
+    if (request.url === '/control/v1/reconnect')
+      return response(200, await options.reconnect(), corsHeaders);
     if (request.url === '/control/v1/sync-frontend') {
-      return response(200, await options.syncFrontend());
+      return response(200, await options.syncFrontend(), corsHeaders);
     }
-    if (request.url === '/control/v1/diagnose') return response(200, await options.diagnose());
-    return response(404, { code: 'control_route_not_found' });
+    if (request.url === '/control/v1/diagnose')
+      return response(200, await options.diagnose(), corsHeaders);
+    return response(404, { code: 'control_route_not_found' }, corsHeaders);
   }
 
   let server: Server | undefined;
@@ -120,7 +140,10 @@ export async function buildControlServer(options: ControlServerOptions): Promise
               ? {}
               : { remoteAddress: request.socket.remoteAddress }),
           }).then((result) => {
-            reply.writeHead(result.statusCode, { 'content-type': 'application/json' });
+            reply.writeHead(result.statusCode, {
+              ...(result.body === '' ? {} : { 'content-type': 'application/json' }),
+              ...result.headers,
+            });
             reply.end(result.body);
           });
         });

@@ -20,6 +20,16 @@ describe('Launcher control server', () => {
     expect(
       (await app.inject({ method: 'GET', url: '/control/v1/status', headers: common })).statusCode,
     ).toBe(200);
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/control/v1/reconnect',
+      headers: common,
+    });
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe(common.origin);
+    expect(preflight.headers['access-control-allow-headers']).toContain(
+      'x-learning-more-capability',
+    );
     expect(
       (
         await app.inject({

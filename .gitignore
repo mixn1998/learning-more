@@ -18,6 +18,8 @@ data-root/
 runtime/
 !apps/server/src/runtime/
 !apps/server/src/runtime/**
+!apps/web/src/features/runtime/
+!apps/web/src/features/runtime/**
 secrets/
 *.tsbuildinfo
 .DS_Store

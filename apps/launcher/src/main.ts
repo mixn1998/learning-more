@@ -138,7 +138,14 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
   const control = await buildControlServer({
     allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
     capability: adapters.capability,
-    getStatus: async () => activeRuntime.status(),
+    getStatus: async () => {
+      const capability = adapters.refreshCapability();
+      return {
+        ...activeRuntime.status(),
+        capability: capability.value,
+        capabilityExpiresAt: capability.expiresAt,
+      };
+    },
     reconnect: async () => {
       await activeRuntime.reconnect();
       return activeRuntime.status();

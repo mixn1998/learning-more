@@ -8,6 +8,7 @@ import {
   OutlineSessionViewResponseSchema,
   type CourseMode,
 } from '@learning-more/contracts';
+import { streamGenerationEvents } from './sse-client.js';
 
 export type AuthoringStreamEvent = Readonly<{
   type: string;
@@ -100,32 +101,6 @@ function responseVersion(response: Response, fallback?: number): number {
   throw new Error('Missing ETag');
 }
 
-async function* sseEvents(response: Response): AsyncGenerator<AuthoringStreamEvent> {
-  if (response.body === null) throw new Error('Missing SSE body');
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += value;
-    let boundary = buffer.indexOf('\n\n');
-    while (boundary >= 0) {
-      const frame = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      const lines = frame.split('\n');
-      const type = lines.find((line) => line.startsWith('event: '))?.slice(7);
-      const dataLine = lines.find((line) => line.startsWith('data: '))?.slice(6);
-      if (type !== undefined && dataLine !== undefined) {
-        const data: unknown = JSON.parse(dataLine);
-        if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
-          yield { type, data: data as Record<string, unknown> };
-        }
-      }
-      boundary = buffer.indexOf('\n\n');
-    }
-  }
-}
-
 export const courseAuthoringClient: CourseAuthoringClient = {
   async createOutlineSession(input) {
     const body = CreateOutlineSessionBodySchema.parse({
@@ -177,12 +152,11 @@ export const courseAuthoringClient: CourseAuthoringClient = {
     };
   },
   async streamGeneration(taskId, handlers, signal) {
-    const response = await fetch(`/api/v1/generation-tasks/${encodeURIComponent(taskId)}/events`, {
-      headers: { accept: 'text/event-stream' },
+    await streamGenerationEvents({
+      taskId,
+      onEvent: handlers.onEvent,
       ...(signal === undefined ? {} : { signal }),
     });
-    if (!response.ok) return problemOr(response);
-    for await (const event of sseEvents(response)) handlers.onEvent(event);
   },
   async confirmCandidate(input) {
     const response = await fetch(

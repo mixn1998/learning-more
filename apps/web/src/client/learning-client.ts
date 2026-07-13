@@ -1,4 +1,6 @@
 import type { AuthoringStreamEvent } from './course-authoring-client.js';
+import { getPageInstanceId } from '../state/page-instance.js';
+import { streamGenerationEvents } from './sse-client.js';
 
 export interface LearningClient {
   start(lessonId: string): Promise<{
@@ -60,20 +62,11 @@ export interface LearningClient {
   ): Promise<{ state: string; artifactRef?: string; resourceVersion: number } | undefined>;
 }
 
-function pageInstanceId(): string {
-  const key = 'learning-more.page-instance-id';
-  const existing = sessionStorage.getItem(key);
-  if (existing !== null) return existing;
-  const id = crypto.randomUUID();
-  sessionStorage.setItem(key, id);
-  return id;
-}
-
 function headers(resourceVersion?: number): HeadersInit {
   return {
     'content-type': 'application/json',
     'idempotency-key': crypto.randomUUID(),
-    'x-page-instance-id': pageInstanceId(),
+    'x-page-instance-id': getPageInstanceId(),
     'x-csrf-token': 'development-csrf',
     ...(resourceVersion === undefined ? {} : { 'if-match': `"${resourceVersion}"` }),
   };
@@ -87,66 +80,7 @@ async function request(url: string, init?: RequestInit) {
 }
 
 async function stream(taskId: string, onEvent: (event: AuthoringStreamEvent) => void) {
-  let lastEventId: string | undefined;
-  let terminal = false;
-  let consecutiveFailures = 0;
-  while (!terminal) {
-    let response: Response;
-    try {
-      response = await fetch(`/api/v1/generation-tasks/${encodeURIComponent(taskId)}/events`, {
-        headers: lastEventId === undefined ? {} : { 'last-event-id': lastEventId },
-      });
-    } catch {
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= 20) throw new Error('generation_stream_unavailable');
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      continue;
-    }
-    if (!response.ok || response.body === null) {
-      if (response.status >= 500 && consecutiveFailures < 19) {
-        consecutiveFailures += 1;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        continue;
-      }
-      throw new Error('generation_stream_unavailable');
-    }
-    consecutiveFailures = 0;
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    const deliver = (frame: string) => {
-      const lines = frame.split('\n');
-      const id = lines.find((line) => line.startsWith('id: '))?.slice(4);
-      const type = lines.find((line) => line.startsWith('event: '))?.slice(7);
-      const data = lines.find((line) => line.startsWith('data: '))?.slice(6);
-      if (id !== undefined) lastEventId = id;
-      if (type !== undefined && data !== undefined) {
-        const parsed: unknown = JSON.parse(data);
-        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-          onEvent({ type, data: parsed as Record<string, unknown> });
-          terminal =
-            type === 'task.completed' ||
-            type === 'task.failed' ||
-            type === 'task.cancelled' ||
-            (type === 'task.snapshot' &&
-              'state' in parsed &&
-              typeof parsed.state === 'string' &&
-              parsed.state !== 'running');
-        }
-      }
-    };
-    while (true) {
-      const { done, value } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done });
-      let boundary = buffer.indexOf('\n\n');
-      while (boundary >= 0) {
-        deliver(buffer.slice(0, boundary));
-        buffer = buffer.slice(boundary + 2);
-        boundary = buffer.indexOf('\n\n');
-      }
-      if (done) break;
-    }
-  }
+  await streamGenerationEvents({ taskId, onEvent });
 }
 
 export const learningClient: LearningClient = {

@@ -1,3 +1,5 @@
+import { getPageInstanceId } from '../state/page-instance.js';
+
 export type ScheduleItemView = Readonly<{
   id: string;
   courseId: string;
@@ -38,21 +40,12 @@ export interface PlanningClient {
   confirmPlanFlow(planFlowId: string, resourceVersion: number): Promise<PlanFlowPreviewView>;
 }
 
-function pageInstanceId(): string {
-  const key = 'learning-more.page-instance-id';
-  const existing = sessionStorage.getItem(key);
-  if (existing !== null) return existing;
-  const id = crypto.randomUUID();
-  sessionStorage.setItem(key, id);
-  return id;
-}
-
 function headers(version?: number): HeadersInit {
   return {
     'content-type': 'application/json',
     'idempotency-key': crypto.randomUUID(),
     'x-csrf-token': 'development-csrf',
-    'x-page-instance-id': pageInstanceId(),
+    'x-page-instance-id': getPageInstanceId(),
     ...(version === undefined ? {} : { 'if-match': `"${version}"` }),
   };
 }
