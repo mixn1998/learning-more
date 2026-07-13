@@ -60,14 +60,13 @@ export async function startServer(
     ).serverDependencies;
     await manifestRepository.write(manifest);
   }
-  const app = await buildApp(resolvedDependencies);
-  if (manifestRepository !== undefined && manifestOwner !== undefined) {
-    const repository = manifestRepository;
-    const owner = manifestOwner;
-    app.addHook('onClose', async () => {
-      await repository.remove(owner);
-    });
-  }
+  const repository = manifestRepository;
+  const owner = manifestOwner;
+  const app = await buildApp(resolvedDependencies, {
+    ...(repository === undefined || owner === undefined
+      ? {}
+      : { onClose: async () => void (await repository.remove(owner)) }),
+  });
   try {
     await app.listen({ host: '127.0.0.1', port: resolvedPort });
   } catch (error) {

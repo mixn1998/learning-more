@@ -38,7 +38,10 @@ export interface ServerDependencies {
   readonly portraits?: PortraitRouteOptions;
 }
 
-export async function buildApp(dependencies: ServerDependencies): Promise<FastifyInstance> {
+export async function buildApp(
+  dependencies: ServerDependencies,
+  lifecycle: Readonly<{ onClose?(): Promise<void> }> = {},
+): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
 
   app.setErrorHandler((error, _request, reply) => {
@@ -80,6 +83,9 @@ export async function buildApp(dependencies: ServerDependencies): Promise<Fastif
   }
   if (dependencies.portraits !== undefined) {
     await registerPortraitRoutes(app, dependencies.portraits);
+  }
+  if (lifecycle.onClose !== undefined) {
+    app.addHook('onClose', lifecycle.onClose);
   }
   await app.ready();
   return app;
