@@ -1,4 +1,5 @@
 import { spawn, type SpawnOptions } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 
 export type ServerProcessRequest = Readonly<{
   executable: string;
@@ -39,6 +40,34 @@ export function startServerProcess(
   });
   if (child.pid === undefined) throw new Error('server_process_start_failed');
   return child as ManagedChildProcess;
+}
+
+export function adoptVerifiedServerProcess(pid: number): ManagedChildProcess {
+  if (!Number.isInteger(pid) || pid < 1) throw new Error('server_process_pid_invalid');
+  const events = new EventEmitter();
+  const timer = setInterval(() => {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      clearInterval(timer);
+      events.emit('exit', null, null);
+    }
+  }, 100);
+  timer.unref();
+  return {
+    pid,
+    kill(signal) {
+      try {
+        process.kill(pid, signal);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    once(event, listener) {
+      return events.once(event, listener);
+    },
+  };
 }
 
 export async function terminateVerifiedChild<

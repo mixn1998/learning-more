@@ -7,6 +7,7 @@ process.env.PLAYWRIGHT_BROWSERS_PATH ??= path.join(root, '.playwright-browsers')
 
 export default defineConfig({
   testDir: './tests/e2e',
+  testIgnore: 'runtime-*.spec.ts',
   globalSetup: './tests/e2e/global-setup.ts',
   globalTeardown: './tests/e2e/global-teardown.ts',
   timeout: 60_000,

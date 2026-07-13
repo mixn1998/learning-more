@@ -16,6 +16,7 @@ const clientIdentity = {
 
 function bannerStatus(state: RuntimeUiState): StatusBannerStatus {
   if (state.kind !== 'loaded') return state.kind === 'loading' ? 'rebuilding' : 'degraded';
+  if (state.version.kind !== 'compatible') return 'degraded';
   if (
     state.readiness.status === 'degraded' ||
     state.readiness.storeStatus === 'degraded' ||

@@ -42,6 +42,7 @@ export const appRouteDefinitions: RouteObject[] = [
         path: 'courses/:courseId/lessons/:lessonId',
         element: <LessonRoute />,
       },
+      { id: 'lesson-legacy', path: 'lessons/:lessonId', element: <LessonRoute /> },
       { id: 'planning', path: 'planning', element: <PlanningRoute /> },
       { id: 'history', path: 'history', element: <HistoryRoute /> },
       { id: 'profile', path: 'profile', element: <ProfileRoute /> },

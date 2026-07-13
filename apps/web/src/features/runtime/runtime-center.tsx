@@ -4,9 +4,13 @@ import { runtimeCenterClient, type RuntimeCenterClient } from '../../client/runt
 import { useCommandAttempts } from '../../state/use-command-attempt.js';
 import { useRuntimeState } from '../../state/version-guard.js';
 
-type Stage = 'idle' | 'verifying' | 'reconnecting' | 'waiting' | 'refreshing' | 'completed' | 'failed';
+type Stage =
+  'idle' | 'verifying' | 'reconnecting' | 'waiting' | 'refreshing' | 'completed' | 'failed';
 
-function stageLabel(current: Stage, stage: Exclude<Stage, 'idle' | 'completed' | 'failed'>): string {
+function stageLabel(
+  current: Stage,
+  stage: Exclude<Stage, 'idle' | 'completed' | 'failed'>,
+): string {
   const order = ['verifying', 'reconnecting', 'waiting', 'refreshing'] as const;
   if (current === 'completed') return '完成';
   if (current === 'failed') return '需处理';
@@ -116,7 +120,9 @@ export function RuntimeCenter({ api = runtimeCenterClient }: { api?: RuntimeCent
           验证并切换
         </button>
         {providerSwitchState === 'saved' ? <p role="status">Provider 已切换</p> : null}
-        {providerSwitchState === 'failed' ? <p role="alert">Provider 切换失败，原配置未改变</p> : null}
+        {providerSwitchState === 'failed' ? (
+          <p role="alert">Provider 切换失败，原配置未改变</p>
+        ) : null}
       </section>
     </main>
   );

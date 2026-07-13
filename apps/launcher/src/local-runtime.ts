@@ -12,6 +12,7 @@ import {
   type RuntimeManifest,
 } from './runtime-observer.js';
 import {
+  adoptVerifiedServerProcess,
   startServerProcess,
   terminateVerifiedChild,
   type ManagedChildProcess,
@@ -182,12 +183,24 @@ export async function createLocalRuntimeAdapters(
     const processExecutable =
       portOwnerPid === undefined ? undefined : await observeExecutable(portOwnerPid);
     const readiness = manifest === undefined ? undefined : await fetchReadiness(manifest.healthUrl);
-    return observeExistingRuntime({
+    const observation = observeExistingRuntime({
       ...(manifest === undefined ? {} : { manifest }),
       ...(portOwnerPid === undefined ? {} : { portOwnerPid }),
       ...(processExecutable === undefined ? {} : { processExecutable }),
       ...(readiness === undefined ? {} : { readiness }),
     });
+    if (
+      observation.healthState === 'identity_verified' &&
+      child === undefined &&
+      manifest !== undefined
+    ) {
+      child = adoptVerifiedServerProcess(manifest.pid);
+      child.once('exit', () => {
+        child = undefined;
+        if (!expectedExit) options.onUnexpectedExit?.();
+      });
+    }
+    return observation;
   }
 
   const dependencies: LauncherDependencies = {

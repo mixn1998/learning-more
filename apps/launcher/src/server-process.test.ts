@@ -3,7 +3,11 @@ import process from 'node:process';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { startServerProcess, terminateVerifiedChild } from './server-process.js';
+import {
+  adoptVerifiedServerProcess,
+  startServerProcess,
+  terminateVerifiedChild,
+} from './server-process.js';
 
 class FakeChild extends EventEmitter {
   readonly pid = 41_320;
@@ -87,6 +91,29 @@ describe('Launcher server process', () => {
       ).resolves.toEqual({ terminated: true });
     } finally {
       managed.kill();
+    }
+  });
+
+  it('can adopt and safely stop a previously verified server process', async () => {
+    const spawned = startServerProcess({
+      executable: process.execPath,
+      arguments: ['-e', 'setInterval(() => {}, 1000)'],
+      cwd: process.cwd(),
+      environment: process.env,
+    });
+    const adopted = adoptVerifiedServerProcess(spawned.pid);
+    try {
+      await expect(
+        terminateVerifiedChild({
+          child: adopted,
+          manifest: { pid: adopted.pid },
+          observeIdentity: async () => ({ pid: adopted.pid }),
+          verifyIdentity: () => ({ healthy: true, mismatches: [] }),
+          timeoutMs: 2_000,
+        }),
+      ).resolves.toEqual({ terminated: true });
+    } finally {
+      spawned.kill();
     }
   });
 });

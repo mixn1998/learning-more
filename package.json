@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "playwright:test": "playwright test",
+    "playwright:runtime": "corepack pnpm --filter @learning-more/server build && playwright test --config playwright.runtime.config.ts",
     "schema:check": "corepack pnpm --filter @learning-more/contracts schema:check",
     "schema:generate": "corepack pnpm --filter @learning-more/contracts schema:generate",
     "test": "vitest run --passWithNoTests",
