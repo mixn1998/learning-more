@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 describe('PlanFlow confirmation recovery', () => {
-  it('recovers a crash after one aggregate apply to one flow and all schedule items', async () => {
+  it('[EQ-PF-02] recovers a crash after one aggregate apply to one flow and all schedule items', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-plan-recovery-'));
     roots.push(directory);
     const dataRoot = DataRoot.create(directory);

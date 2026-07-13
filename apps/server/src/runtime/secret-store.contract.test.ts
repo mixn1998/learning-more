@@ -55,7 +55,7 @@ if (process.platform === 'win32') {
     return createWindowsDpapiSecretStore(root);
   });
 
-  it('never writes DPAPI-protected plaintext to disk', async () => {
+  it('[EQ-AI-03] never writes DPAPI-protected plaintext to disk', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'learning-more-secrets-disk-'));
     roots.push(root);
     const store = createWindowsDpapiSecretStore(root);

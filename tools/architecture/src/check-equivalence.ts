@@ -4,6 +4,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { parse } from 'yaml';
 
+import {
+  checkReleaseEvidence,
+  readExecutedTestReports,
+  writeEquivalenceReport,
+} from './report-equivalence.js';
+
 export const EQUIVALENCE_OWNER_MODULES = [
   'CourseAuthoring',
   'LearningSession',
@@ -192,17 +198,26 @@ export function checkEquivalenceSource(
   return issues;
 }
 
-export function runEquivalenceCheck(repositoryRoot: string): number {
+export function runEquivalenceCheck(
+  repositoryRoot: string,
+  options: Readonly<{ release?: boolean }> = {},
+): number {
   const matrixPath = path.join(repositoryRoot, 'docs/架构方案/equivalence-matrix.yaml');
   const sourcePath = path.join(repositoryRoot, 'docs/基础模块功能等价清单与回归基线.md');
   const entries = readEquivalenceMatrix(matrixPath);
   const sourceEntries = extractEquivalenceSource(readFileSync(sourcePath, 'utf8'));
-  const issues = [
+  const issues: unknown[] = [
     ...checkEquivalence(entries, 74, (testPath) =>
       existsSync(path.resolve(repositoryRoot, testPath)),
     ),
     ...checkEquivalenceSource(entries, sourceEntries),
   ];
+  const validEntries = entries.filter(isRecord) as unknown as EquivalenceEntry[];
+  const executedTests = options.release ? readExecutedTestReports(repositoryRoot) : [];
+  if (options.release) {
+    issues.push(...checkReleaseEvidence(validEntries, executedTests));
+    writeEquivalenceReport(repositoryRoot, validEntries, executedTests);
+  }
   if (issues.length > 0) {
     process.stderr.write(`${JSON.stringify({ issues }, null, 2)}\n`);
     return 1;
@@ -219,5 +234,7 @@ const entryPoint = process.argv[1];
 if (entryPoint !== undefined && import.meta.url === pathToFileURL(entryPoint).href) {
   const currentFile = fileURLToPath(import.meta.url);
   const repositoryRoot = path.resolve(path.dirname(currentFile), '../../..');
-  process.exitCode = runEquivalenceCheck(repositoryRoot);
+  process.exitCode = runEquivalenceCheck(repositoryRoot, {
+    release: process.argv.includes('--release'),
+  });
 }

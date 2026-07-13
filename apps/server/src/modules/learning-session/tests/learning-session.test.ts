@@ -18,7 +18,7 @@ function apply(
   return evolveAll(learning, decide(learning, command, commandId));
 }
 
-describe('lesson and original session lifecycle', () => {
+describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
   it('starts, pauses, and resumes the same original session', () => {
     let learning = createLessonLearning('lesson_01');
     learning = apply(learning, { type: 'start', sessionId: 'session_01' }, 'c1');

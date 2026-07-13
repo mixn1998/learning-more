@@ -63,7 +63,7 @@ test('heals a crashed server and adopts a verified server after Launcher restart
     .toBe(true);
 });
 
-test('blocks a foreign 43120 owner and never terminates it', async () => {
+test('[EQ-SELF-03] blocks a foreign 43120 owner and never terminates it', async () => {
   const root = path.join(temporary, 'runtime-foreign-owner');
   await removeRuntimeRoot(root);
   await mkdir(root, { recursive: true });
@@ -98,7 +98,7 @@ test('blocks a foreign 43120 owner and never terminates it', async () => {
   }
 });
 
-test('blocks tampered identity fields without killing the still-running server', async () => {
+test('[EQ-SELF-01] blocks tampered identity fields without killing the still-running server', async () => {
   const mutations = [
     ['instanceId', 'instance_tampered'],
     ['projectRoot', 'D:\\tampered-project-root'],

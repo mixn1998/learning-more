@@ -80,7 +80,7 @@ const suggestions = [
 ];
 
 describe('PlanFlowService', () => {
-  it('previews without changing schedule and retains constraints plus draft on AI failure', async () => {
+  it('[EQ-PF-01] previews without changing schedule and retains constraints plus draft on AI failure', async () => {
     const { service, schedules, submit, flows } = fixture();
     const requested = await service.requestPreview(previewInput, 'preview_01');
     expect(requested).toMatchObject({

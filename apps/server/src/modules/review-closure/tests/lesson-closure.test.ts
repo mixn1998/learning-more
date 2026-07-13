@@ -114,7 +114,7 @@ describe('lesson closure workflow', () => {
     });
   });
 
-  it('rejects tampered source checksums and makes a completed final Review immutable', async () => {
+  it('[EQ-LESSON-04] rejects tampered source checksums and makes a completed final Review immutable', async () => {
     const { workflow, sessionModule } = await fixture();
     const started = await workflow.begin(snapshot);
     await workflow.markReviewReady(started.transactionId, review);

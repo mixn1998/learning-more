@@ -79,7 +79,7 @@ function client(): HistoryClient {
 }
 
 describe('HistoryPage', () => {
-  it('shows stale/asOf context and switches dates without retaining old results', async () => {
+  it('[EQ-HIS-05] shows stale/asOf context and switches dates without retaining old results', async () => {
     render(<HistoryPage client={client()} />);
     expect(screen.getByText('正在加载历史')).toBeInTheDocument();
     expect(await screen.findByRole('status')).toHaveTextContent('stale');

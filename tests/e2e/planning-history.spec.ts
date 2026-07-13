@@ -87,7 +87,7 @@ async function restartServer(now?: string) {
   await waitFor('http://127.0.0.1:43120/api/v1/runtime/ready', true);
 }
 
-test('creates manual and plan-flow schedules, then rebuilds identical history views', async ({
+test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identical history views', async ({
   page,
 }) => {
   const course = await createCourse(page);

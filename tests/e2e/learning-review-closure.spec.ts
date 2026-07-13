@@ -180,7 +180,7 @@ async function leaveLessonReadyToCommitAfterRestart(page: Page, lessonId: string
   return { artifactRef, markdown };
 }
 
-test('completes learning lifecycle, immutable lesson Reviews, and course closure', async ({
+test('[EQ-LESSON-03] completes learning lifecycle, immutable lesson Reviews, and course closure', async ({
   page,
 }) => {
   const { courseId, lessonIds } = await createCourse(page);

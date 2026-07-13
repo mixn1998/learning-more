@@ -57,7 +57,7 @@ describe('ProviderConfigService', () => {
     });
   });
 
-  it('does not change active config when validation, secret, health, or switching fails', async () => {
+  it('[EQ-AI-02] does not change active config when validation, secret, health, or switching fails', async () => {
     const secrets = createMemorySecretStore();
     const repository = createMemoryProviderConfigRepository();
     const runtime = {

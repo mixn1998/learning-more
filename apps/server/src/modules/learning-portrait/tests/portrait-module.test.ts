@@ -93,7 +93,7 @@ function validOutput(evidenceIds = ['e1', 'e2']) {
 }
 
 describe('PortraitModule', () => {
-  it('commits a zero-claim result instead of inventing a template personality when evidence is insufficient', async () => {
+  it('[EQ-POR-01] commits a zero-claim result instead of inventing a template personality when evidence is insufficient', async () => {
     const { module, packedEvidence } = await fixture([]);
     const generating = await module.requestRefresh({ ...request, packedEvidence });
     const completed = await module.finalize(generating.versionId, 'task_portrait_01', {
@@ -148,7 +148,7 @@ describe('PortraitModule', () => {
     ).rejects.toMatchObject({ code: 'portrait_claim_not_composite' });
   });
 
-  it('keeps failed drafts and the previous successful version current', async () => {
+  it('[EQ-POR-03] keeps failed drafts and the previous successful version current', async () => {
     const { module, portraits, packedEvidence } = await fixture();
     const first = await module.requestRefresh({ ...request, packedEvidence });
     const completed = await module.finalize(first.versionId, 'task_portrait_01', validOutput());

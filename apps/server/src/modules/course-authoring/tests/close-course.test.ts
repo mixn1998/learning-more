@@ -152,7 +152,7 @@ describe('course closure', () => {
     ).resolves.toMatchObject({ repeated: true });
   });
 
-  it('keeps the course closed when course Review fails and freezes the retry input', async () => {
+  it('[EQ-COURSE-04] [EQ-COURSE-05] keeps the course closed when course Review fails and freezes the retry input', async () => {
     const closed = await fixture({ lesson_01: 'completed', lesson_02: 'completed' });
     const closure = await closeCourse(
       {

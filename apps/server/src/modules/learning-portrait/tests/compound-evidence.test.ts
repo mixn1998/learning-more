@@ -26,7 +26,7 @@ function evidence(id: string, group: string, polarity: CandidateEvidence['polari
 }
 
 describe('compound portrait evidence policy', () => {
-  it('blocks a single source and requires an explicit counter-evidence check for independent sources', () => {
+  it('[EQ-POR-06] blocks a single source and requires an explicit counter-evidence check for independent sources', () => {
     const first = evidence('e1', 'lesson:01', 'supporting');
     expect(
       packPortraitEvidence({ evidence: [first], tokenBudget: 1_000, dimensionPriority: [] })

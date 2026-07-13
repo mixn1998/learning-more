@@ -6,7 +6,9 @@ import { expect, test } from '@playwright/test';
 
 import { removeRuntimeRoot, startLauncher, stopLauncher, waitFor } from './runtime-harness.js';
 
-test('blocks stale Web writes and rejects an invalid Launcher capability', async ({ page }) => {
+test('[EQ-SELF-02] blocks stale Web writes and rejects an invalid Launcher capability', async ({
+  page,
+}) => {
   const root = path.join(process.cwd(), 'tests', '.tmp', 'runtime-version-sync');
   await removeRuntimeRoot(root);
   const launcher = await startLauncher(root);
