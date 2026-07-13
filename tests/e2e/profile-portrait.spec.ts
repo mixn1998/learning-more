@@ -50,9 +50,10 @@ async function createCourse(page: Page) {
 
 async function completeLesson(page: Page, lessonId: string) {
   await page.goto(`/lessons/${lessonId}`);
+  await page.getByRole('button', { name: '开始学习' }).click();
   await page.getByLabel('学习输入').fill(`Complete independent lesson ${lessonId}`);
   await page.getByRole('button', { name: '发送' }).click();
-  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Candidate outline/ })).toBeVisible();
   await expect(page.getByRole('button', { name: '停止生成' })).toBeHidden();
   await page.getByRole('button', { name: '结束本课' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();

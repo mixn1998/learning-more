@@ -111,6 +111,7 @@ test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identica
   await expect(page.getByRole('cell', { name: plannedLessonId! })).toBeVisible();
 
   await page.goto(`/lessons/${manualLessonId}`);
+  await page.getByRole('button', { name: '开始学习' }).click();
   await page.getByLabel('学习输入').fill('Complete this planned lesson');
   await page.getByRole('button', { name: '发送' }).click();
   await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
@@ -121,10 +122,7 @@ test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identica
   await page.goto('/history');
   await expect(page.getByRole('heading', { name: '学习历史' })).toBeVisible();
   await expect(
-    page
-      .getByRole('listitem')
-      .filter({ hasText: 'LessonCompletedFact' })
-      .filter({ hasText: manualLessonId! }),
+    page.getByRole('listitem').filter({ hasText: '完成课节' }).filter({ hasText: manualLessonId! }),
   ).toBeVisible();
   const before = await page.evaluate(async () =>
     (await fetch('/api/v1/history?pageSize=100')).json(),

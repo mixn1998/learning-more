@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "policy:check": "node dist/check-supply-chain.js",
     "portable": "node dist/build-portable.js",
+    "drill": "node dist/release-drill.js",
     "smoke": "node dist/portable-smoke.js",
     "test": "vitest run --root ../.. tools/release",
     "typecheck": "tsc -p tsconfig.json --noEmit"

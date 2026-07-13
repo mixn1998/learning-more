@@ -94,6 +94,7 @@ async function createCourse(page: Page): Promise<{ courseId: string; lessonIds: 
 
 async function completeLesson(page: Page, lessonId: string, exerciseLifecycle: boolean) {
   await page.goto(`/lessons/${lessonId}`);
+  await page.getByRole('button', { name: '开始学习' }).click();
   const input = page.getByLabel('学习输入');
   await expect(input).toBeEnabled();
   await input.fill(`Explain ${lessonId}`);
@@ -115,12 +116,14 @@ async function completeLesson(page: Page, lessonId: string, exerciseLifecycle: b
   await page.getByRole('button', { name: '结束本课' }).click();
   await expect(page.getByRole('dialog')).toContainText('Learning completed.');
   await page.reload();
+  await page.getByRole('button', { name: '开始学习' }).click();
   await expect(page.getByRole('dialog')).toContainText('Learning completed.');
   await expect(input).toBeDisabled();
 }
 
 async function leaveLessonReadyToCommitAfterRestart(page: Page, lessonId: string) {
   await page.goto(`/lessons/${lessonId}`);
+  await page.getByRole('button', { name: '开始学习' }).click();
   const input = page.getByLabel('学习输入');
   await expect(input).toBeEnabled();
   await input.fill(`Explain ${lessonId}`);
@@ -194,12 +197,16 @@ test('[EQ-LESSON-03] completes learning lifecycle, immutable lesson Reviews, and
   const pending = await leaveLessonReadyToCommitAfterRestart(page, lessonIds[1]!);
   await restartServer();
   await page.reload();
+  await page.getByRole('button', { name: '开始学习' }).click();
   await expect(page.getByRole('dialog')).toContainText('Recovered exactly once.');
 
   await page.goto(`/courses/${courseId}`);
   await page.getByRole('button', { name: '确认关闭课程' }).click();
-  await expect(page.getByRole('heading', { name: '主题总结已生成' })).toBeVisible();
-  await expect(page.getByText('review-finalized')).toBeVisible();
+  await page.getByRole('button', { name: '查看主题总结' }).click();
+  await expect(page.getByRole('heading', { name: '主题总结' })).toBeVisible();
+  await expect(page.getByText(/核心知识线索/)).toBeVisible();
+  await expect(page.getByText(/总体学习表现/)).toBeVisible();
+  await expect(page.getByText(/推荐扩展课程/)).toBeVisible();
 
   const lessonProgress = await aggregateDocuments('lesson-progress');
   const completed = lessonProgress.filter((document) =>
