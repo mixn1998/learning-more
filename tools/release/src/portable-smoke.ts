@@ -110,5 +110,6 @@ const entryPoint = process.argv[1];
 if (entryPoint !== undefined && import.meta.url === pathToFileURL(entryPoint).href) {
   const portableRoot = process.argv[2];
   if (portableRoot === undefined) throw new Error('portable_root_required');
-  process.stdout.write(`${JSON.stringify(await smokePortableRelease(portableRoot))}\n`);
+  const smokeRoot = process.argv[3];
+  process.stdout.write(`${JSON.stringify(await smokePortableRelease(portableRoot, smokeRoot))}\n`);
 }

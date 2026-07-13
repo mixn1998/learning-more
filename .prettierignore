@@ -5,6 +5,7 @@
 .playwright-browsers/
 .superpowers/
 coverage/
+artifacts/
 dist/
 docs/
 node_modules/

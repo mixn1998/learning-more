@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "policy:check": "node dist/check-supply-chain.js",
     "portable": "node dist/build-portable.js",
     "smoke": "node dist/portable-smoke.js",
     "test": "vitest run --root ../.. tools/release",

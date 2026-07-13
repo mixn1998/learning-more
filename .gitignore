@@ -8,6 +8,7 @@ node_modules/
 .release-cache/
 dist/
 coverage/
+artifacts/
 playwright-report/
 test-results/
 tests/.tmp/
