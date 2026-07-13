@@ -24,6 +24,7 @@ import {
 } from '../http/routes/learning-facts.js';
 import { registerProfileRoutes, type ProfileRouteOptions } from '../http/routes/profile.js';
 import { registerPortraitRoutes, type PortraitRouteOptions } from '../http/routes/portraits.js';
+import { registerRuntimeRoutes, type RuntimeRouteOptions } from '../http/routes/runtime.js';
 
 export interface ServerDependencies {
   getRuntimeReadiness(): Promise<RuntimeReady | unknown>;
@@ -36,6 +37,7 @@ export interface ServerDependencies {
   readonly learningFacts?: LearningFactsRouteOptions;
   readonly profile?: ProfileRouteOptions;
   readonly portraits?: PortraitRouteOptions;
+  readonly runtimeControl?: RuntimeRouteOptions;
 }
 
 export async function buildApp(
@@ -83,6 +85,9 @@ export async function buildApp(
   }
   if (dependencies.portraits !== undefined) {
     await registerPortraitRoutes(app, dependencies.portraits);
+  }
+  if (dependencies.runtimeControl !== undefined) {
+    await registerRuntimeRoutes(app, dependencies.runtimeControl);
   }
   if (lifecycle.onClose !== undefined) {
     app.addHook('onClose', lifecycle.onClose);

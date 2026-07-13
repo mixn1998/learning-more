@@ -172,6 +172,64 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     });
   });
 
+  it('snapshots current provider at submission so a runtime switch only affects new tasks', async () => {
+    const repositories = createInMemoryRepositories();
+    let releaseOld: (() => void) | undefined;
+    const oldProvider = createMockProvider({
+      id: 'old',
+      script: [
+        { type: 'wait', wait: () => new Promise<void>((resolve) => (releaseOld = resolve)) },
+        { type: 'text', text: 'old-output' },
+      ],
+    });
+    const newProvider = createMockProvider({
+      id: 'new',
+      script: [{ type: 'text', text: 'new-output' }],
+    });
+    let sequence = 0;
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [oldProvider, newProvider],
+      nextId: () => `task_switch_${++sequence}`,
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    const first = await runtime.submit({
+      taskKey: 'switch:old',
+      inputSnapshotHash: 'hash-old',
+      taskKind: 'learning-chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner-old',
+      providerId: 'current',
+      priority: 100,
+      prompt: 'old',
+    });
+    const runningOld = runtime.runNext();
+    await vi.waitFor(() => expect(releaseOld).toBeTypeOf('function'));
+    await runtime.switchProvider('new');
+    const second = await runtime.submit({
+      taskKey: 'switch:new',
+      inputSnapshotHash: 'hash-new',
+      taskKind: 'learning-chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner-new',
+      providerId: 'current',
+      priority: 100,
+      prompt: 'new',
+    });
+    releaseOld?.();
+    await runningOld;
+    await runtime.runNext();
+    await expect(runtime.get(first.taskId)).resolves.toMatchObject({
+      providerId: 'old',
+      draftMarkdown: 'old-output',
+    });
+    await expect(runtime.get(second.taskId)).resolves.toMatchObject({
+      providerId: 'new',
+      draftMarkdown: 'new-output',
+    });
+  });
+
   it('requeues expired no-output leases and makes partial interactive output recoverable', async () => {
     const repositories = createInMemoryRepositories();
     const runtime = createGenerationRuntime({

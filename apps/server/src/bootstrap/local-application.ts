@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { EVENT_TYPES, type LearningEventEnvelope } from '@learning-more/contracts';
 
 import { createMockProvider, type MockProviderStep } from '../ai-providers/mock-provider.js';
+import type { AiProvider } from '../ai-providers/provider.js';
 import { createCandidateGenerationCoordinator } from '../modules/course-authoring/implementation/candidate-generation-coordinator.js';
 import { createCourseAuthoringFacade } from '../modules/course-authoring/implementation/course-authoring-facade.js';
 import { createCourseAuthoringModule } from '../modules/course-authoring/implementation/course-authoring-module.js';
@@ -60,6 +61,13 @@ import { createLocalFileWeeklyReportRepository } from '../persistence/weekly-rep
 import { createLocalFileEvidenceRepositories } from '../persistence/profile-evidence-repositories.js';
 import { createLocalFilePortraitRepository } from '../persistence/portrait-repositories.js';
 import type { ServerDependencies } from './app.js';
+import { createMemorySecretStore } from '../runtime/memory-secret-store.js';
+import {
+  createMemoryProviderConfigRepository,
+  createProviderConfigService,
+  type ProviderConfigRepository,
+} from '../runtime/provider-config-service.js';
+import type { SecretStore } from '../runtime/secret-store.js';
 
 function candidateMarkdown(version: number): string {
   return `\`\`\`learning-more-outline
@@ -95,6 +103,9 @@ export async function createLocalApplication(options: {
     buildId: string;
     protocolVersion: string;
   }>;
+  readonly providers?: readonly AiProvider[];
+  readonly secretStore?: SecretStore;
+  readonly providerConfigRepository?: ProviderConfigRepository;
 }) {
   const dataRoot = DataRoot.create(options.dataRoot);
   await initializeStoreLayout(createStorePaths(dataRoot));
@@ -110,19 +121,39 @@ export async function createLocalApplication(options: {
     id: 'mock',
     scriptFactory: (attempt) => mockScript(attempt, options.mockFailOnce ?? false),
   });
+  const providers = options.providers ?? [provider];
   const generationRuntime = createGenerationRuntime({
     repository: localRepositories.generationTasks,
     unitOfWork,
-    providers: [provider],
+    providers,
     nextId: () => `task_${randomUUID()}`,
     now: runtimeNow,
   });
+  const providerConfigService = createProviderConfigService({
+    runtime: generationRuntime,
+    secrets: options.secretStore ?? createMemorySecretStore(runtimeNow),
+    repository: options.providerConfigRepository ?? createMemoryProviderConfigRepository(),
+    now: runtimeNow,
+  });
+  let runtimeProviderStatus: 'ready' | 'degraded' = 'ready';
+  const savedProviderConfiguration = await providerConfigService.getConfiguration();
+  if (savedProviderConfiguration !== undefined) {
+    try {
+      await providerConfigService.switchProvider({
+        providerId: savedProviderConfiguration.providerId,
+        publicConfig: savedProviderConfiguration.publicConfig,
+        secretHandles: savedProviderConfiguration.secretHandles,
+      });
+    } catch {
+      runtimeProviderStatus = 'degraded';
+    }
+  }
   const artifactStore = createMarkdownArtifactStore(dataRoot, unitOfWork);
   const authoringModule = createCourseAuthoringModule({
     repositories: authoringRepositories,
     unitOfWork,
     generationRuntime,
-    providerId: 'mock',
+    providerId: 'current',
     draftStore: artifactStore,
   });
   const candidateGeneration = createCandidateGenerationCoordinator({
@@ -250,7 +281,7 @@ export async function createLocalApplication(options: {
         return id;
       },
     },
-    providerId: 'mock',
+    providerId: 'current',
     nextMessageId: () => `message_${randomUUID()}`,
   });
   const supplementarySessions = createSupplementarySessionModule({
@@ -272,7 +303,7 @@ export async function createLocalApplication(options: {
     repository: reviewClosureRepositories.stageReviews,
     unitOfWork,
     generationRuntime,
-    providerId: 'mock',
+    providerId: 'current',
     now: () => new Date(),
     async commitToLearningSession(lessonId, reviewId) {
       const view = await sessionModule.query(
@@ -385,7 +416,7 @@ export async function createLocalApplication(options: {
     nextPlanFlowId: () => `plan_flow_${randomUUID()}`,
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
-    providerId: 'mock',
+    providerId: 'current',
     async recordConfirmed(items, planFlowId, tx) {
       const timestamp = new Date().toISOString();
       await outbox.enqueue(
@@ -440,7 +471,7 @@ export async function createLocalApplication(options: {
         },
       ]);
     },
-    providerId: 'mock',
+    providerId: 'current',
     timeZone: 'Asia/Shanghai',
     now: runtimeNow,
   });
@@ -546,7 +577,7 @@ export async function createLocalApplication(options: {
     evidenceRepository: evidenceRepositories.evidence,
     unitOfWork,
     generationRuntime,
-    providerId: 'mock',
+    providerId: 'current',
     nextVersionId: () => `portrait_${randomUUID()}`,
     nextTransactionId: () => `tx_portrait_${randomUUID()}`,
     now: runtimeNow,
@@ -657,7 +688,7 @@ export async function createLocalApplication(options: {
       protocolVersion: options.runtimeIdentity?.protocolVersion ?? '1',
       storeStatus: 'ready',
       projectionStatus: 'ready',
-      providerStatus: 'ready',
+      providerStatus: runtimeProviderStatus,
       ...(options.runtimeIdentity === undefined
         ? {}
         : {
@@ -910,10 +941,21 @@ export async function createLocalApplication(options: {
       nextCorrelationId: () => `correlation_${randomUUID()}`,
     },
     generationFrameLog: frameLog,
+    runtimeControl: {
+      switchProvider: providerConfigService.switchProvider,
+      nextCorrelationId: () => `correlation_${randomUUID()}`,
+    },
     localSecurity: {
       allowedOrigin: options.allowedOrigin ?? 'http://127.0.0.1:5173',
       csrfToken: options.csrfToken,
     },
   };
-  return { serverDependencies, courseRepositories, frameLog, dataRoot };
+  return {
+    serverDependencies,
+    courseRepositories,
+    frameLog,
+    dataRoot,
+    generationRuntime,
+    providerConfigService,
+  };
 }

@@ -8,6 +8,10 @@ import { createLocalApplication } from './local-application.js';
 import { loadRuntimeConfig, runtimeConfigFingerprint } from '../runtime/runtime-config.js';
 import { createRuntimeManifest, runtimeIdentityFingerprint } from '../runtime/runtime-manifest.js';
 import { createRuntimeManifestRepository } from '../runtime/runtime-manifest-repository.js';
+import { createEnvironmentSecretStore } from '../runtime/environment-secret-store.js';
+import { createLocalFileProviderConfigRepository } from '../runtime/provider-config-service.js';
+import type { SecretStore } from '../runtime/secret-store.js';
+import { createWindowsDpapiSecretStore } from '../runtime/windows-dpapi-secret-store.js';
 
 export async function startServer(
   dependencies?: ServerDependencies,
@@ -20,11 +24,10 @@ export async function startServer(
   if (resolvedDependencies === undefined) {
     const config = await loadRuntimeConfig();
     resolvedPort = port ?? config.serverPort;
+    const runtimeDirectory =
+      process.env.LEARNING_MORE_RUNTIME_DIR ?? path.resolve('.learning-more-runtime');
     manifestRepository = createRuntimeManifestRepository(
-      path.join(
-        process.env.LEARNING_MORE_RUNTIME_DIR ?? path.resolve('.learning-more-runtime'),
-        'runtime-manifest.json',
-      ),
+      path.join(runtimeDirectory, 'runtime-manifest.json'),
     );
     const previous = await manifestRepository.read();
     const startedAt = new Date().toISOString();
@@ -42,12 +45,25 @@ export async function startServer(
       healthUrl: `http://127.0.0.1:${resolvedPort}/api/v1/runtime/ready`,
     });
     manifestOwner = { instanceId: manifest.instanceId, generation: manifest.generation };
+    const secretStore: SecretStore =
+      process.platform === 'win32'
+        ? createWindowsDpapiSecretStore(
+            process.env.LEARNING_MORE_SECRET_DIR ??
+              path.join(process.env.LOCALAPPDATA ?? runtimeDirectory, 'Learning MORE', 'secrets'),
+          )
+        : createEnvironmentSecretStore(process.env, {
+            'provider/api-key': 'LEARNING_MORE_PROVIDER_API_KEY',
+          });
     resolvedDependencies = (
       await createLocalApplication({
         dataRoot: config.dataRoot,
         csrfToken: process.env.LEARNING_MORE_CSRF_TOKEN ?? 'development-csrf',
         allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
         mockFailOnce: process.env.LEARNING_MORE_MOCK_FAIL_ONCE === '1',
+        secretStore,
+        providerConfigRepository: createLocalFileProviderConfigRepository(
+          path.join(runtimeDirectory, 'provider-config.json'),
+        ),
         runtimeIdentity: {
           instanceId: manifest.instanceId,
           generation: manifest.generation,

@@ -28,6 +28,8 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     secrets: SecretResolver,
   ): ReturnType<AiProvider['validateConfig']>;
   switchProvider(providerId: string): Promise<void>;
+  describeProvider(providerId: string): ReturnType<AiProvider['describe']>;
+  checkProviderHealth(providerId: string): ReturnType<AiProvider['healthCheck']>;
   getProviderStatus(): Promise<{ currentProviderId: string; providers: readonly string[] }>;
 } {
   const providers = new Map(
@@ -73,6 +75,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     }
     const timestamp = now().toISOString();
     const id = nextId();
+    const providerId = request.providerId === 'current' ? currentProviderId : request.providerId;
     await options.unitOfWork.execute({ transactionId: `tx_generation_${randomUUID()}` }, (tx) =>
       options.repository.save(
         tx,
@@ -88,7 +91,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           ownerRef: request.ownerRef,
           inputSnapshotHash: request.inputSnapshotHash,
           priority: request.priority,
-          providerId: request.providerId,
+          providerId,
           prompt: request.prompt,
           draftMarkdown: '',
         },
@@ -210,6 +213,16 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     async switchProvider(providerId) {
       if (!providers.has(providerId)) throw new Error('PROVIDER_NOT_FOUND');
       currentProviderId = providerId;
+    },
+    describeProvider(providerId) {
+      const provider = providers.get(providerId);
+      if (provider === undefined) throw new Error('PROVIDER_NOT_FOUND');
+      return provider.describe();
+    },
+    checkProviderHealth(providerId) {
+      const provider = providers.get(providerId);
+      if (provider === undefined) return Promise.resolve({ status: 'unhealthy' as const });
+      return provider.healthCheck();
     },
     async getProviderStatus() {
       return { currentProviderId, providers: [...providers.keys()] };

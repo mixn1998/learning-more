@@ -1,4 +1,5 @@
 export * from './commands.js';
+export * from './ai-runtime.js';
 export * from './course-authoring.js';
 export * from './data-keys.js';
 export * from './errors.js';

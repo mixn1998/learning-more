@@ -4,9 +4,11 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { createMockProvider } from '../ai-providers/mock-provider.js';
 import { DataRoot } from '../persistence/data-root.js';
 import { createLocalFileReviewClosureRepositories } from '../persistence/review-closure-repositories.js';
 import { createUnitOfWork } from '../persistence/unit-of-work.js';
+import { createMemoryProviderConfigRepository } from '../runtime/provider-config-service.js';
 import { buildApp } from './app.js';
 import { createLocalApplication } from './local-application.js';
 
@@ -219,5 +221,62 @@ describe('local CourseAuthoring application', () => {
         receivedAt: '2026-07-13T00:02:00.000Z',
       }),
     ).resolves.toMatchObject({ state: 'completed', finalReviewId: 'review_final_recovery' });
+  });
+
+  it('switches the active provider through HTTP and snapshots it on new generation tasks', async () => {
+    const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-provider-switch-'));
+    roots.push(dataRoot);
+    const providerConfigRepository = createMemoryProviderConfigRepository();
+    const providers = [
+      createMockProvider({ id: 'old', script: [] }),
+      createMockProvider({ id: 'new', script: [] }),
+    ];
+    const local = await createLocalApplication({
+      dataRoot,
+      csrfToken: 'test-csrf',
+      providers,
+      providerConfigRepository,
+    });
+    const app = await buildApp(local.serverDependencies);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/ai-runtime/provider-switches',
+      headers: baseHeaders,
+      payload: { providerId: 'new', publicConfig: {}, secretHandles: {} },
+    });
+    expect(response.statusCode).toBe(200);
+    const task = await local.generationRuntime.submit({
+      taskKey: 'provider-switch-integration',
+      inputSnapshotHash: 'snapshot-new',
+      taskKind: 'learning-chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner-new',
+      providerId: 'current',
+      priority: 100,
+      prompt: 'hello',
+    });
+    await expect(local.generationRuntime.get(task.taskId)).resolves.toMatchObject({
+      providerId: 'new',
+    });
+    await app.close();
+    const restarted = await createLocalApplication({
+      dataRoot,
+      csrfToken: 'test-csrf',
+      providers,
+      providerConfigRepository,
+    });
+    const afterRestart = await restarted.generationRuntime.submit({
+      taskKey: 'provider-switch-after-restart',
+      inputSnapshotHash: 'snapshot-restarted',
+      taskKind: 'learning-chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner-restarted',
+      providerId: 'current',
+      priority: 100,
+      prompt: 'hello again',
+    });
+    await expect(restarted.generationRuntime.get(afterRestart.taskId)).resolves.toMatchObject({
+      providerId: 'new',
+    });
   });
 });
