@@ -9,6 +9,8 @@ import { loadRuntimeConfig, runtimeConfigFingerprint } from '../runtime/runtime-
 import { createRuntimeManifest, runtimeIdentityFingerprint } from '../runtime/runtime-manifest.js';
 import { createRuntimeManifestRepository } from '../runtime/runtime-manifest-repository.js';
 import { createEnvironmentSecretStore } from '../runtime/environment-secret-store.js';
+import { createDiagnosticsArtifact } from '../runtime/diagnostics.js';
+import { createStructuredLogger, type StructuredLogger } from '../runtime/logger.js';
 import { createLocalFileProviderConfigRepository } from '../runtime/provider-config-service.js';
 import type { SecretStore } from '../runtime/secret-store.js';
 import { createWindowsDpapiSecretStore } from '../runtime/windows-dpapi-secret-store.js';
@@ -20,6 +22,7 @@ export async function startServer(
   let resolvedDependencies = dependencies;
   let manifestOwner: { instanceId: string; generation: number } | undefined;
   let manifestRepository: ReturnType<typeof createRuntimeManifestRepository> | undefined;
+  let logger: StructuredLogger | undefined;
   let resolvedPort = port ?? 43_120;
   if (resolvedDependencies === undefined) {
     const config = await loadRuntimeConfig();
@@ -44,6 +47,23 @@ export async function startServer(
       startedAt,
       healthUrl: `http://127.0.0.1:${resolvedPort}/api/v1/runtime/ready`,
     });
+    const localApplicationDirectory = path.join(
+      process.env.LOCALAPPDATA ?? runtimeDirectory,
+      'Learning MORE',
+    );
+    const logDirectory =
+      process.env.LEARNING_MORE_LOG_DIR ?? path.join(localApplicationDirectory, 'logs');
+    logger = createStructuredLogger({
+      directory: logDirectory,
+      instanceId: manifest.instanceId,
+    });
+    await logger.log('runtime', {
+      level: 'info',
+      component: 'ServerBootstrap',
+      correlationId: manifest.instanceId,
+      eventCode: 'server_starting',
+      fields: { generation: manifest.generation, buildId: manifest.buildId },
+    });
     manifestOwner = { instanceId: manifest.instanceId, generation: manifest.generation };
     const secretStore: SecretStore =
       process.platform === 'win32'
@@ -64,6 +84,19 @@ export async function startServer(
         providerConfigRepository: createLocalFileProviderConfigRepository(
           path.join(runtimeDirectory, 'provider-config.json'),
         ),
+        createDiagnostics: async () =>
+          createDiagnosticsArtifact({
+            outputDirectory:
+              process.env.LEARNING_MORE_DIAGNOSTICS_DIR ??
+              path.join(localApplicationDirectory, 'diagnostics'),
+            logDirectory,
+            publicConfig: config,
+            manifest: {
+              ...manifest,
+              identityFingerprint: runtimeIdentityFingerprint(manifest),
+            },
+            checksumReport: { status: 'available', checkedFiles: 0 },
+          }),
         runtimeIdentity: {
           instanceId: manifest.instanceId,
           generation: manifest.generation,
@@ -78,14 +111,51 @@ export async function startServer(
   }
   const repository = manifestRepository;
   const owner = manifestOwner;
+  const activeLogger = logger;
   const app = await buildApp(resolvedDependencies, {
-    ...(repository === undefined || owner === undefined
+    ...(repository === undefined && activeLogger === undefined
       ? {}
-      : { onClose: async () => void (await repository.remove(owner)) }),
+      : {
+          onClose: async () => {
+            if (activeLogger !== undefined) {
+              await activeLogger
+                .log('runtime', {
+                  level: 'info',
+                  component: 'ServerBootstrap',
+                  correlationId: owner?.instanceId ?? 'standalone',
+                  eventCode: 'server_stopped',
+                })
+                .catch(() => undefined);
+              await activeLogger.close().catch(() => undefined);
+            }
+            if (repository !== undefined && owner !== undefined) await repository.remove(owner);
+          },
+        }),
   });
   try {
     await app.listen({ host: '127.0.0.1', port: resolvedPort });
+    if (activeLogger !== undefined) {
+      await activeLogger
+        .log('runtime', {
+          level: 'info',
+          component: 'ServerBootstrap',
+          correlationId: owner?.instanceId ?? 'standalone',
+          eventCode: 'server_ready',
+          fields: { port: resolvedPort },
+        })
+        .catch(() => undefined);
+    }
   } catch (error) {
+    await activeLogger
+      ?.log('runtime', {
+        level: 'error',
+        component: 'ServerBootstrap',
+        correlationId: owner?.instanceId ?? 'standalone',
+        eventCode: 'server_start_failed',
+        fields: { error },
+      })
+      .catch(() => undefined);
+    await activeLogger?.close();
     if (manifestRepository !== undefined && manifestOwner !== undefined) {
       await manifestRepository.remove(manifestOwner);
     }

@@ -25,11 +25,12 @@ describe('AI runtime routes', () => {
       },
       health: { status: 'healthy' },
     });
+    const createDiagnostics = vi.fn().mockResolvedValue({ artifactRef: 'diagnostics_01' });
     await registerLocalSecurity(app, {
       allowedOrigin: 'http://127.0.0.1:5173',
       csrfToken: 'csrf',
     });
-    await registerRuntimeRoutes(app, { switchProvider });
+    await registerRuntimeRoutes(app, { switchProvider, createDiagnostics });
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/ai-runtime/provider-switches',
@@ -53,6 +54,18 @@ describe('AI runtime routes', () => {
       publicConfig: { model: 'model-01' },
       secretHandles: { apiKey: 'provider/api-key' },
     });
+    const diagnostics = await app.inject({
+      method: 'POST',
+      url: '/api/v1/runtime/diagnostics',
+      headers: {
+        host: '127.0.0.1:43120',
+        origin: 'http://127.0.0.1:5173',
+        'x-csrf-token': 'csrf',
+      },
+      payload: {},
+    });
+    expect(diagnostics.statusCode).toBe(201);
+    expect(diagnostics.json()).toEqual({ artifactRef: 'diagnostics_01' });
   });
 
   it('rejects undeclared secret input and missing CSRF', async () => {

@@ -106,6 +106,7 @@ export async function createLocalApplication(options: {
   readonly providers?: readonly AiProvider[];
   readonly secretStore?: SecretStore;
   readonly providerConfigRepository?: ProviderConfigRepository;
+  readonly createDiagnostics?: () => Promise<Readonly<{ artifactRef: string }>>;
 }) {
   const dataRoot = DataRoot.create(options.dataRoot);
   await initializeStoreLayout(createStorePaths(dataRoot));
@@ -943,6 +944,9 @@ export async function createLocalApplication(options: {
     generationFrameLog: frameLog,
     runtimeControl: {
       switchProvider: providerConfigService.switchProvider,
+      ...(options.createDiagnostics === undefined
+        ? {}
+        : { createDiagnostics: options.createDiagnostics }),
       nextCorrelationId: () => `correlation_${randomUUID()}`,
     },
     localSecurity: {

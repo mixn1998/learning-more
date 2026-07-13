@@ -305,7 +305,24 @@ export async function createLocalRuntimeAdapters(
       }
     },
     async createDiagnostics() {
-      return { artifactRef: `diagnostics_${Date.now()}` };
+      const response = await fetch(
+        `http://127.0.0.1:${options.serverPort}/api/v1/runtime/diagnostics`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': process.env.LEARNING_MORE_CSRF_TOKEN ?? 'development-csrf',
+          },
+          body: '{}',
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!response.ok) throw new Error('diagnostics_unavailable');
+      const result = (await response.json()) as { artifactRef?: unknown };
+      if (typeof result.artifactRef !== 'string' || result.artifactRef === '') {
+        throw new Error('diagnostics_invalid');
+      }
+      return { artifactRef: result.artifactRef };
     },
     async wait(delayMs) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
