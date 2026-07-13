@@ -17,6 +17,7 @@ import {
 import path from 'node:path';
 
 import { parseBackupManifest, type BackupManifest, type BackupObject } from './backup-manifest.js';
+import { acquireStoreMaintenanceLease } from './store-maintenance-lease.js';
 import { verifyStore } from './verify-store.js';
 
 export type BackupFaultPoint = 'manifest_partial' | 'object_copied' | 'before_complete';
@@ -91,43 +92,6 @@ async function copyPrefix(source: string, target: string, size: number): Promise
   }
 }
 
-async function acquireBackupLease(storePath: string, timeoutMs = 10_000) {
-  const lockPath = path.join(storePath, 'locks', 'store-write.lock');
-  await mkdir(path.dirname(lockPath), { recursive: true });
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const handle = await open(lockPath, 'wx');
-      const token = randomUUID();
-      await handle.writeFile(
-        `${JSON.stringify({
-          schemaVersion: 1,
-          token,
-          instanceId: 'maintenance-backup',
-          processId: process.pid,
-          acquiredAt: new Date().toISOString(),
-        })}\n`,
-      );
-      await handle.sync();
-      await handle.close();
-      let released = false;
-      return {
-        async release() {
-          if (released) return;
-          const current = JSON.parse(await readFile(lockPath, 'utf8')) as { token?: unknown };
-          if (current.token !== token) throw new Error('backup_lease_lost');
-          await rm(lockPath, { force: true });
-          released = true;
-        },
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
-  throw new Error('backup_lease_timeout');
-}
-
 function objectPath(backupRoot: string, checksum: string): string {
   return path.join(backupRoot, 'objects', 'sha256', checksum.slice(0, 2), checksum);
 }
@@ -186,7 +150,7 @@ export async function createBackup(input: {
   let storeManifest: Record<string, unknown> = {};
   const files: Array<{ relativePath: string; size: number }> = [];
   let snapshotReady = false;
-  const lease = await acquireBackupLease(input.storePath);
+  const lease = await acquireStoreMaintenanceLease(input.storePath, 'maintenance-backup');
   try {
     const verification = await verifyStore(input.storePath);
     if (verification.status !== 'verified' && input.trigger !== 'diagnostic')

@@ -46,7 +46,9 @@ export function parseBackupManifest(value: unknown): BackupManifest {
   ) {
     throw new Error('backup_manifest_invalid');
   }
+  const relativePaths = new Set<string>();
   for (const item of record.objects) {
+    const relativePath = String((item as Record<string, unknown>).relativePath);
     if (
       item === null ||
       typeof item !== 'object' ||
@@ -57,6 +59,19 @@ export function parseBackupManifest(value: unknown): BackupManifest {
     ) {
       throw new Error('backup_manifest_invalid');
     }
+    const normalized = relativePath.replaceAll('\\', '/');
+    if (
+      relativePath !== normalized ||
+      normalized === '' ||
+      normalized.startsWith('/') ||
+      normalized
+        .split('/')
+        .some((segment) => segment === '' || segment === '.' || segment === '..') ||
+      relativePaths.has(normalized)
+    ) {
+      throw new Error('backup_manifest_invalid');
+    }
+    relativePaths.add(normalized);
   }
   return record as BackupManifest;
 }
