@@ -3,7 +3,11 @@ import type { LearningFact } from '../interface.js';
 
 export interface FactRepository {
   get(factId: string): Promise<LearningFact | undefined>;
-  append(tx: TransactionContext, fact: LearningFact): Promise<'appended' | 'duplicate'>;
+  append(
+    tx: TransactionContext,
+    fact: LearningFact,
+  ): Promise<'appended' | 'duplicate' | 'ignored_deleted_course'>;
+  retractCourse(tx: TransactionContext, courseId: string): Promise<number>;
   list(): AsyncIterable<LearningFact>;
 }
 
@@ -25,6 +29,15 @@ export function createInMemoryFactRepository(): FactRepository {
       }
       facts.set(fact.factId, structuredClone(fact));
       return 'appended';
+    },
+    async retractCourse(_tx, courseId) {
+      let retracted = 0;
+      for (const [factId, fact] of facts) {
+        if (fact.subjectRefs.courseId !== courseId) continue;
+        facts.delete(factId);
+        retracted += 1;
+      }
+      return retracted;
     },
     async *list() {
       for (const fact of [...facts.values()].sort((left, right) =>

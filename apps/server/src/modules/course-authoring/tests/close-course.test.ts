@@ -51,7 +51,7 @@ async function fixture(
 }
 
 describe('course closure', () => {
-  it('returns concrete not_started and in_progress blockers', async () => {
+  it('[EQ-COURSE-02] returns concrete blockers and permanently locks a closed course', async () => {
     const { repositories, inputManifest, getState } = await fixture({
       lesson_01: 'not_started',
       lesson_02: 'in_progress',
@@ -82,7 +82,7 @@ describe('course closure', () => {
     });
   });
 
-  it('requires explicit abandoned confirmation but auto-closes an all-completed course', async () => {
+  it('[EQ-COURSE-03] requires explicit abandoned confirmation but auto-closes an all-completed course', async () => {
     const abandoned = await fixture({ lesson_01: 'completed', lesson_02: 'abandoned' });
     await expect(
       closeCourse(

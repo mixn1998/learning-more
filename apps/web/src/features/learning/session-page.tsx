@@ -4,6 +4,7 @@ import { learningClient, type LearningClient } from '../../client/learning-clien
 import { ReviewDialog } from '../review/review-dialog.js';
 import { MessageStream } from './message-stream.js';
 import { SessionControls } from './session-controls.js';
+import { useSessionWindowLifecycle } from './session-window-lifecycle.js';
 
 type State = Readonly<{
   sessionId?: string;
@@ -152,6 +153,29 @@ export function SessionPage(props: {
           ? {}
           : { reviewMarkdown: snapshot.finalReview.markdown }),
       });
+      const activeTaskId = snapshot.learning.session?.activeGenerationTaskId;
+      if (activeTaskId !== undefined) {
+        dispatch({
+          type: 'generating',
+          taskId: activeTaskId,
+          resourceVersion: snapshot.resourceVersion,
+        });
+        await api.stream(activeTaskId, (event) => {
+          if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+            dispatch({ type: 'delta', markdown: event.data.markdown });
+          }
+        });
+        const refreshed = await api.getSession(started.sessionId);
+        dispatch({
+          type: 'progress',
+          progress:
+            refreshed.learning.progress === 'not_started'
+              ? 'in_progress'
+              : refreshed.learning.progress,
+          resourceVersion: refreshed.resourceVersion,
+        });
+        dispatch({ type: 'completed' });
+      }
     });
   }, [api, props.lessonId]);
 
@@ -171,7 +195,6 @@ export function SessionPage(props: {
       const task = await api.sendMessage({
         sessionId: state.sessionId,
         markdown: state.input,
-        establishesEvidence: true,
         resourceVersion: state.resourceVersion,
       });
       dispatch({ type: 'generating', taskId: task.taskId, resourceVersion: task.resourceVersion });
@@ -228,6 +251,24 @@ export function SessionPage(props: {
       };
       dispatch({ type: 'activity', activity: 'active', resourceVersion: result.resourceVersion });
     });
+
+  useSessionWindowLifecycle({
+    enabled: state.writable && state.sessionId !== undefined && state.progress === 'in_progress',
+    pause: async () => {
+      if (state.sessionId === undefined || state.activity !== 'active') return;
+      const result = (await api.pause(state.sessionId, state.resourceVersion)) as {
+        resourceVersion: number;
+      };
+      dispatch({ type: 'activity', activity: 'paused', resourceVersion: result.resourceVersion });
+    },
+    resume: async () => {
+      if (state.sessionId === undefined || state.activity !== 'paused') return;
+      const result = (await api.resume(state.sessionId, state.resourceVersion)) as {
+        resourceVersion: number;
+      };
+      dispatch({ type: 'activity', activity: 'active', resourceVersion: result.resourceVersion });
+    },
+  });
 
   const abandon = () =>
     once('abandon', async () => {
@@ -325,7 +366,9 @@ export function SessionPage(props: {
         >
           发送
         </button>
-        {state.draftArtifactRef === undefined ? null : <code>{state.draftArtifactRef}</code>}
+        {state.draftArtifactRef === undefined ? null : (
+          <p role="status">生成已停止，未完成内容已安全保留。</p>
+        )}
         <SessionControls
           generating={state.phase === 'generating'}
           writable={state.writable}

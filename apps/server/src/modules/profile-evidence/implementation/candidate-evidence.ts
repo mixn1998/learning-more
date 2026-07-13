@@ -72,6 +72,9 @@ export function parseCandidateEvidence(input: unknown, now: Date): CandidateEvid
   if (new Set(parsed.sourceRefs).size !== parsed.sourceRefs.length) {
     throw new Error('evidence_source_ref_duplicate');
   }
+  if (parsed.dataKeys.some((dataKey) => dataKey.startsWith('telemetry.'))) {
+    throw new Error('evidence_telemetry_forbidden');
+  }
   if (new Set(parsed.dependentSourceGroupIds).size !== parsed.dependentSourceGroupIds.length) {
     throw new Error('evidence_source_group_dependency_duplicate');
   }

@@ -23,14 +23,22 @@ const baseContext = {
   receivedAt: '2026-07-13T00:00:00.000Z',
 };
 
-function fixture(completedLessonIds: readonly string[] = []) {
+function fixture(
+  completedLessonIds: readonly string[] = [],
+  abandonedLessonIds: readonly string[] = [],
+) {
   const repository = createInMemoryScheduleRepository();
   let id = 0;
   const events: string[] = [];
   const module = createPlanningModule({
     repository,
     unitOfWork,
-    isLessonCompleted: async (lessonId) => completedLessonIds.includes(lessonId),
+    getLessonProgress: async (lessonId) =>
+      completedLessonIds.includes(lessonId)
+        ? 'completed'
+        : abandonedLessonIds.includes(lessonId)
+          ? 'abandoned'
+          : 'not_started',
     nextScheduleItemId: () => `schedule_${++id}`,
     now: () => new Date('2026-07-13T00:00:00.000Z'),
     recordEvent: async (event) => {
@@ -41,8 +49,37 @@ function fixture(completedLessonIds: readonly string[] = []) {
 }
 
 describe('PlanningModule', () => {
-  it('validates intervals and refuses to schedule a completed lesson', async () => {
-    const { module } = fixture(['lesson_done']);
+  it('rejects a stale planning write when the course archive disappeared before commit', async () => {
+    const repository = createInMemoryScheduleRepository();
+    let deleted = false;
+    const module = createPlanningModule({
+      repository,
+      unitOfWork,
+      getLessonProgress: async () => (deleted ? undefined : 'not_started'),
+      nextScheduleItemId: () => 'schedule_late',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    deleted = true;
+
+    await expect(
+      module.execute(
+        {
+          type: 'CreateScheduleItem',
+          courseId: 'course_deleted',
+          lessonId: 'lesson_deleted',
+          startAt: '2026-07-13T01:00:00.000Z',
+          endAt: '2026-07-13T02:00:00.000Z',
+          timezoneAtCreation: 'Asia/Shanghai',
+          source: 'manual',
+        },
+        { ...baseContext, commandId: 'late_plan' },
+      ),
+    ).rejects.toMatchObject({ code: 'lesson_not_plannable' });
+    await expect(repository.get('schedule_late')).resolves.toBeUndefined();
+  });
+
+  it('validates intervals and refuses to schedule a completed or abandoned lesson', async () => {
+    const { module } = fixture(['lesson_done'], ['lesson_abandoned']);
     await expect(
       module.execute(
         {
@@ -70,7 +107,21 @@ describe('PlanningModule', () => {
         },
         { ...baseContext, commandId: 'completed' },
       ),
-    ).rejects.toMatchObject({ code: 'lesson_completed' });
+    ).rejects.toMatchObject({ code: 'lesson_not_plannable' });
+    await expect(
+      module.execute(
+        {
+          type: 'CreateScheduleItem',
+          courseId: 'course_01',
+          lessonId: 'lesson_abandoned',
+          startAt: '2026-07-13T01:00:00.000Z',
+          endAt: '2026-07-13T02:00:00.000Z',
+          timezoneAtCreation: 'Asia/Shanghai',
+          source: 'manual',
+        },
+        { ...baseContext, commandId: 'abandoned' },
+      ),
+    ).rejects.toMatchObject({ code: 'lesson_not_plannable' });
   });
 
   it('deduplicates a create command and reports concrete same-lesson overlaps', async () => {

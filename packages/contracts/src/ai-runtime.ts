@@ -20,5 +20,13 @@ export const ProviderSwitchResponseSchema = z.strictObject({
   health: z.strictObject({ status: z.literal('healthy') }),
 });
 
+export const ProviderRuntimeStatusSchema = z.strictObject({
+  providerId: ProviderIdSchema,
+  model: z.string().trim().min(1).max(500).optional(),
+  capabilities: ProviderSwitchResponseSchema.shape.capabilities,
+  health: z.strictObject({ status: z.enum(['healthy', 'unhealthy']) }),
+});
+
 export type ProviderSwitchRequest = Readonly<z.infer<typeof ProviderSwitchRequestSchema>>;
 export type ProviderSwitchResponse = Readonly<z.infer<typeof ProviderSwitchResponseSchema>>;
+export type ProviderRuntimeStatus = Readonly<z.infer<typeof ProviderRuntimeStatusSchema>>;

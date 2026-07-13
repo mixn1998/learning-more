@@ -279,4 +279,69 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
       draftMarkdown: 'partial',
     });
   });
+
+  it('[EQ-GEN-02] persists cancel and timeout terminal codes and exposes complete task metrics', async () => {
+    const repositories = createInMemoryRepositories();
+    let releaseTimeout: (() => void) | undefined;
+    let sequence = 0;
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [
+        createMockProvider({
+          id: 'mock',
+          script: [
+            {
+              type: 'wait',
+              wait: () => new Promise<void>((resolve) => (releaseTimeout = resolve)),
+            },
+          ],
+        }),
+      ],
+      nextId: () => `task_terminal_${++sequence}`,
+      now: () => new Date(),
+      taskTimeoutMs: 5,
+    });
+    const cancelled = await runtime.submit({
+      taskKey: 'cancelled',
+      inputSnapshotHash: 'cancelled-hash',
+      taskKind: 'learning-chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner-cancelled',
+      providerId: 'mock',
+      priority: 100,
+      prompt: 'cancel',
+    });
+    await runtime.cancel(cancelled.taskId);
+
+    const timedOut = await runtime.submit({
+      taskKey: 'timeout',
+      inputSnapshotHash: 'timeout-hash',
+      taskKind: 'learning-chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner-timeout',
+      providerId: 'mock',
+      priority: 100,
+      prompt: 'timeout',
+    });
+    const running = runtime.runNext();
+    await vi.waitFor(() => expect(releaseTimeout).toBeTypeOf('function'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    releaseTimeout?.();
+    await running;
+
+    await expect(runtime.get(cancelled.taskId)).resolves.toMatchObject({
+      status: 'cancelled',
+      errorCode: 'generation_cancelled',
+    });
+    await expect(runtime.get(timedOut.taskId)).resolves.toMatchObject({
+      status: 'timeout',
+      errorCode: 'generation_timeout',
+    });
+    await expect(runtime.getMetrics()).resolves.toEqual({
+      total: 2,
+      byStatus: { cancelled: 1, timeout: 1 },
+      byErrorCode: { generation_cancelled: 1, generation_timeout: 1 },
+    });
+  });
 });

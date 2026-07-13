@@ -67,6 +67,15 @@ export function createGlobalLearningProfileProjection(options: {
           fact.factType === 'ReviewFinalizedFact' || fact.factType === 'CourseReviewFinalizedFact',
       );
       const schedules = windowFacts.filter((fact) => fact.factType === 'ScheduleConfirmedFact');
+      const interactionPrompts = windowFacts.filter(
+        (fact) => fact.factType === 'InteractionPromptedFact',
+      );
+      const interactionResponses = windowFacts.filter(
+        (fact) => fact.factType === 'InteractionRespondedFact',
+      );
+      const interactionSkips = windowFacts.filter(
+        (fact) => fact.factType === 'InteractionSkippedFact',
+      );
       const actualSeconds = completed.reduce(
         (total, fact) =>
           total + (typeof fact.payload.actualSeconds === 'number' ? fact.payload.actualSeconds : 0),
@@ -154,6 +163,30 @@ export function createGlobalLearningProfileProjection(options: {
           },
           asOfFactId,
         ),
+        interaction: withFactCursor(
+          {
+            promptCount: interactionPrompts.length,
+            responseCount: interactionResponses.length,
+            skipCount: interactionSkips.length,
+            interactionLessonCount: new Set(
+              interactionPrompts
+                .map((fact) => fact.subjectRefs.lessonId)
+                .filter((value): value is string => value !== undefined),
+            ).size,
+            responseRate: {
+              numerator: interactionResponses.length,
+              denominator: interactionPrompts.length,
+            },
+            dataKeys: dataKeys([
+              ...interactionPrompts,
+              ...interactionResponses,
+              ...interactionSkips,
+            ]),
+            sourceCount:
+              interactionPrompts.length + interactionResponses.length + interactionSkips.length,
+          },
+          asOfFactId,
+        ),
         topicCoverage: withFactCursor(
           {
             topics: [...topics.entries()]
@@ -167,6 +200,22 @@ export function createGlobalLearningProfileProjection(options: {
         dailySeries: [...daily.entries()]
           .sort(([left], [right]) => left.localeCompare(right))
           .map(([day, value]) => ({ localDate: day, ...value })),
+        exclusions: {
+          outsideWindowFactCount: [...facts.values()].filter(
+            (fact) => !inWindow(fact.occurredAt, options.window),
+          ).length,
+          retractedEvidenceCount: windowEvidence.filter(
+            (candidate) => candidate.status === 'retracted',
+          ).length,
+          supersededEvidenceCount: windowEvidence.filter(
+            (candidate) => candidate.status === 'superseded',
+          ).length,
+          telemetryDataKeyCount: windowFacts.reduce(
+            (count, fact) =>
+              count + fact.dataKeys.filter((dataKey) => dataKey.startsWith('telemetry.')).length,
+            0,
+          ),
+        },
         sufficiency: {
           status: sufficiencyStatus,
           activeEvidenceCount: activeEvidence.length,

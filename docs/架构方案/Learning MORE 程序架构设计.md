@@ -76,17 +76,17 @@ HTTP 路由不得直接操作 Repository。课程状态机、幂等、Review 不
 
 ### 3.4 一致性分层
 
-| 数据 | 一致性 |
-| --- | --- |
-| 当前 Course、Lesson、Session、Review、Schedule | 强一致 |
-| 命令幂等结果和 outbox | 与领域写入同事务 |
-| CourseSummary 等操作型投影 | 随主事务同步更新 |
-| 历史、统计、日历、全局学习档案 | 按事件游标最终一致 |
-| 画像候选证据和画像版本 | 按稳定检查点与冻结输入异步生成 |
+| 数据                                           | 一致性                         |
+| ---------------------------------------------- | ------------------------------ |
+| 当前 Course、Lesson、Session、Review、Schedule | 强一致                         |
+| 命令幂等结果和 outbox                          | 与领域写入同事务               |
+| CourseSummary 等操作型投影                     | 随主事务同步更新               |
+| 历史、统计、日历、全局学习档案                 | 按事件游标最终一致             |
+| 画像候选证据和画像版本                         | 按稳定检查点与冻结输入异步生成 |
 
 ## 4. 系统架构
 
-~~~mermaid
+```mermaid
 flowchart TD
     UI["React Web"] --> CT["共享传输合同"]
     CT --> HTTP["HTTP / SSE Adapter"]
@@ -111,11 +111,11 @@ flowchart TD
     AP --> CLI["Codex CLI"]
 
     LAUNCH["Launcher / Watcher"] --> NODE
-~~~
+```
 
 ### 4.1 Monorepo
 
-~~~text
+```text
 Learning MORE/
 ├─ apps/
 │  ├─ web/
@@ -144,20 +144,20 @@ Learning MORE/
 ├─ package.json
 ├─ pnpm-workspace.yaml
 └─ tsconfig.base.json
-~~~
+```
 
 不创建通用 shared、helpers 或前后端共用 domain 杂物包。前端共享的是网络传输合同，不是后端聚合实现。
 
 ### 4.2 后端 Module 目录
 
-~~~text
+```text
 modules/learning-session/
 ├─ interface.ts
 ├─ model/
 ├─ implementation/
 ├─ ports/
 └─ tests/
-~~~
+```
 
 调用者只能导入 interface.ts 和公开 DTO。Module 内部聚合、Repository port、Prompt 和文件布局均不可跨 Module 导入。
 
@@ -176,7 +176,7 @@ modules/learning-session/
 
 ### 4.4 写命令路径
 
-~~~text
+```text
 HTTP Adapter
   → runtime schema 校验
   → 构造 CommandContext
@@ -187,7 +187,7 @@ HTTP Adapter
   → 返回 CommandResult
   → Outbox Pump 追加事件
   → 投影器与后台任务按游标消费
-~~~
+```
 
 AI 任务只返回持久化任务句柄。Provider 结束不等于领域提交成功；所属 Module 必须重新校验并提交结果。
 
@@ -195,12 +195,12 @@ AI 任务只返回持久化任务句柄。Provider 结束不等于领域提交�
 
 ### 5.1 统一 Interface 形态
 
-~~~ts
+```ts
 interface ModuleInterface<Command, Query, Result, View> {
   execute(command: Command, context: CommandContext): Promise<Result>;
   query(query: Query, context: QueryContext): Promise<View>;
 }
-~~~
+```
 
 这只是统一调用约定，不是通用 CRUD 基类。每个 Module 拥有自己的命令联合、查询联合、结果、不变量、错误和性能承诺。
 
@@ -408,7 +408,7 @@ ReviewClosure 是持久化工作流 Module，不是第二个 Lesson 或 Course �
 
 ### 5.9 GenerationRuntime
 
-~~~ts
+```ts
 interface GenerationRuntime {
   submit(request: GenerationRequest): Promise<GenerationTaskHandle>;
   cancel(command: CancelGenerationTask): Promise<GenerationTaskState>;
@@ -418,7 +418,7 @@ interface GenerationRuntime {
   switchProvider(command: SwitchProvider): Promise<ProviderStatus>;
   getProviderStatus(): Promise<AiRuntimeStatusReadModel>;
 }
-~~~
+```
 
 GenerationRuntime 只生成规范化输出，不提交课程、课节、Review、证据或画像。
 
@@ -426,14 +426,14 @@ GenerationRuntime 只生成规范化输出，不提交课程、课节、Review�
 
 RuntimeControl 是平台 Module，拥有运行配置解析、进程身份、健康、自愈状态和安全诊断，不拥有学习领域数据。
 
-~~~ts
+```ts
 interface RuntimeControl {
   getStatus(): Promise<RuntimeStatus>;
   reconnect(command: ReconnectRuntime): Promise<RecoveryRun>;
   syncFrontend(command: SyncFrontendVersion): Promise<VersionSyncResult>;
   diagnose(command: DiagnoseRuntime): Promise<SanitizedDiagnostic>;
 }
-~~~
+```
 
 它只能启动、停止或诊断经过完整身份验证的 Learning MORE 进程，不能提供任意命令执行或文件浏览。
 
@@ -470,7 +470,7 @@ CourseAuthoring 内部使用 MaterialParser port 分流 PDF、TXT 和 Markdown �
 
 ### 5.12 Module 依赖
 
-~~~mermaid
+```mermaid
 flowchart LR
     RC["ReviewClosure"] --> LS["LearningSession"]
     RC --> CA["CourseAuthoring"]
@@ -484,7 +484,7 @@ flowchart LR
     LP["LearningPortrait"] --> LF
     LP --> PE
     LP --> GR
-~~~
+```
 
 LearningSession 不调用 ReviewClosure。放弃和结束事实通过事务/outbox 驱动关闭工作流，从而避免循环依赖。
 
@@ -492,7 +492,7 @@ LearningSession 不调用 ReviewClosure。放弃和结束事实通过事务/outb
 
 ### 6.1 命令
 
-~~~ts
+```ts
 type CommandMetadata = {
   idempotencyKey: string;
   expectedVersion?: number;
@@ -503,39 +503,39 @@ type CommandMetadata = {
 type CommandContext = CommandMetadata & {
   commandId: string;
   correlationId: string;
-  actor: "local-user";
+  actor: 'local-user';
   receivedAt: string;
 };
 
 type CommandResult<T> = {
   commandId: string;
-  outcome: "completed" | "accepted";
+  outcome: 'completed' | 'accepted';
   value: T;
   resourceVersion?: number;
   task?: GenerationTaskHandle;
   projectionCursor?: string;
 };
-~~~
+```
 
 同一幂等键和相同输入返回原结果；相同幂等键配不同输入返回 idempotency_conflict。accepted 只表示任务已持久化。
 
 ### 6.2 查询
 
-~~~ts
+```ts
 type ReadModelMetadata = {
   schemaVersion: number;
   resourceVersion?: number;
   projectedThrough?: string;
-  completeness: "complete" | "degraded" | "rebuilding";
+  completeness: 'complete' | 'degraded' | 'rebuilding';
   generatedAt: string;
 };
-~~~
+```
 
 degraded 必须携带缺失范围，重建期间可以返回上一完整快照，但不得伪装为当前完整数据。
 
 ### 6.3 事件
 
-~~~ts
+```ts
 type LearningEventEnvelope<T> = {
   id: string;
   schema_version: number;
@@ -548,7 +548,7 @@ type LearningEventEnvelope<T> = {
   idempotency_key: string;
   correlation_id: string;
 };
-~~~
+```
 
 事件名称使用过去式；长 Markdown 只写 Artifact 引用和哈希；历史事件不原地改义。
 
@@ -585,7 +585,7 @@ PortraitEvidenceExtracted 和 PortraitVersionCommitted 属于数据管线事件�
 
 ### 6.4 错误
 
-~~~ts
+```ts
 type ApplicationProblem = {
   type: string;
   status: number;
@@ -597,29 +597,24 @@ type ApplicationProblem = {
   currentVersion?: number;
   recovery?: {
     action:
-      | "retry"
-      | "refresh"
-      | "reconnect_ai"
-      | "take_over_lease"
-      | "resume_learning"
-      | "return_home";
+      'retry' | 'refresh' | 'reconnect_ai' | 'take_over_lease' | 'resume_learning' | 'return_home';
     resourceRef?: string;
   };
 };
-~~~
+```
 
 HTTP 映射：
 
-| HTTP | 语义 |
-| --- | --- |
-| 400 | schema 或字段错误 |
-| 404 | 资源不存在 |
-| 409 | 状态机、幂等或任务键冲突 |
-| 412 | expectedVersion 不匹配 |
-| 423 | 会话写入权不在当前窗口 |
-| 429 | 生成容量达到上限 |
-| 503 | AI Provider 或本地依赖不可用 |
-| 500 | 无法安全恢复的存储或内部错误 |
+| HTTP | 语义                         |
+| ---- | ---------------------------- |
+| 400  | schema 或字段错误            |
+| 404  | 资源不存在                   |
+| 409  | 状态机、幂等或任务键冲突     |
+| 412  | expectedVersion 不匹配       |
+| 423  | 会话写入权不在当前窗口       |
+| 429  | 生成容量达到上限             |
+| 503  | AI Provider 或本地依赖不可用 |
+| 500  | 无法安全恢复的存储或内部错误 |
 
 必须稳定的错误码包括：
 
@@ -657,7 +652,7 @@ HTTP 映射：
 
 基础路径为 /api/v1，发布版前后端同源。不提供通用 command 或 query 端点。
 
-~~~text
+```text
 POST /api/v1/outline-sessions
 GET  /api/v1/outline-sessions/{sessionId}
 POST /api/v1/outline-sessions/{sessionId}/messages
@@ -684,7 +679,7 @@ GET  /api/v1/schedule
 GET  /api/v1/history/stats
 GET  /api/v1/history/calendar
 GET  /api/v1/portrait
-~~~
+```
 
 写命令要求：
 
@@ -697,10 +692,10 @@ GET  /api/v1/portrait
 
 采用 POST 命令 + SSE 下行流，不使用 WebSocket。
 
-~~~text
+```text
 GET /api/v1/generation-tasks/{taskId}/events
 Last-Event-ID: {taskId}:{sequence}
-~~~
+```
 
 事件：
 
@@ -715,7 +710,7 @@ Last-Event-ID: {taskId}:{sequence}
 - task.cancelled
 - heartbeat
 
-~~~ts
+```ts
 type GenerationStreamEvent = {
   taskId: string;
   sequence: number;
@@ -723,7 +718,7 @@ type GenerationStreamEvent = {
   type: string;
   data: unknown;
 };
-~~~
+```
 
 保证：
 
@@ -744,7 +739,7 @@ type GenerationStreamEvent = {
 
 ### 8.1 权威数据层次
 
-~~~text
+```text
 领域聚合状态
   ↓ 原子事务 + outbox
 追加学习事件
@@ -754,7 +749,7 @@ type GenerationStreamEvent = {
 画像候选证据
   ↓ 冻结输入清单
 不可变画像版本
-~~~
+```
 
 聚合是当前业务状态；事件是历史事实；读模型可重建；候选证据是局部观察；画像版本是冻结输入的不可变分析结果。
 
@@ -762,7 +757,7 @@ type GenerationStreamEvent = {
 
 正式数据不放在源码仓库中。
 
-~~~text
+```text
 data-root/
 ├─ store.json
 ├─ locks/
@@ -803,13 +798,13 @@ data-root/
 ├─ portraits/
 ├─ work/
 └─ quarantine/
-~~~
+```
 
 ID 使用类型前缀 UUIDv7。实体目录从第一版按 SHA-256(id) 前两位分片。文件名不得包含课程名、标签或用户文本。
 
 ### 8.3 StoreManifest
 
-~~~ts
+```ts
 type StoreManifest = {
   storeId: string;
   formatVersion: number;
@@ -818,13 +813,13 @@ type StoreManifest = {
   lastCommittedTransactionId: string;
   lastCommittedSequence: number;
   timezone: string;
-  checksumAlgorithm: "sha256";
+  checksumAlgorithm: 'sha256';
 };
-~~~
+```
 
 ### 8.4 聚合文档
 
-~~~ts
+```ts
 type AggregateDocument<T> = {
   schema: string;
   schemaVersion: number;
@@ -836,7 +831,7 @@ type AggregateDocument<T> = {
   contentSha256: string;
   data: T;
 };
-~~~
+```
 
 读取依次验证 JSON、runtime schema、路径与 ID、checksum、resourceVersion 和引用合法性。
 
@@ -844,38 +839,35 @@ type AggregateDocument<T> = {
 
 对话消息、候选大纲、确认版大纲、Review、课程总 Review、周报和画像正文使用元数据 JSON + Markdown。
 
-~~~ts
+```ts
 type MarkdownArtifact = {
   schemaVersion: number;
   artifactId: string;
   kind:
-    | "outline-candidate"
-    | "outline-version"
-    | "conversation-message"
-    | "lesson-review"
-    | "course-review"
-    | "weekly-report"
-    | "portrait-summary"
-    | "portrait-insight";
+    | 'outline-candidate'
+    | 'outline-version'
+    | 'conversation-message'
+    | 'lesson-review'
+    | 'course-review'
+    | 'weekly-report'
+    | 'portrait-summary'
+    | 'portrait-insight';
   ownerRefs: Record<string, string>;
-  contentFile: "content.md";
+  contentFile: 'content.md';
   contentSha256: string;
   sourceSnapshotHash?: string;
-  completionStatus:
-    | "complete"
-    | "interrupted"
-    | "failed_recoverable";
+  completionStatus: 'complete' | 'interrupted' | 'failed_recoverable';
   immutable: boolean;
   createdAt: string;
   finalizedAt?: string;
 };
-~~~
+```
 
 正文先写 staging，checksum 验证后替换。阶段 Review 可原子替换同一 reviewId；最终 Review 和课程总 Review 一旦 immutable=true，Repository 永久拒绝覆盖。
 
 ### 8.6 会话消息
 
-~~~text
+```text
 lesson-sessions/{sessionId}/
 ├─ session.json
 ├─ messages/
@@ -883,7 +875,7 @@ lesson-sessions/{sessionId}/
 │  ├─ 000001_{messageId}/content.md
 │  └─ 000002_{messageId}/...
 └─ stream-state.json
-~~~
+```
 
 流式回复每累计 4 KiB 或 250 ms 原子刷新工作副本。会话顺序由持久化 sequence 决定。完成消息不可修改；技术续接只能更新同一 failed_recoverable 消息。
 
@@ -906,7 +898,7 @@ lesson-sessions/{sessionId}/
 
 权威辅助索引包括幂等键、当前任务键和唯一会话引用，随主事务提交。课程课节关系、排期日期、活跃大纲会话、Artifact 来源和读模型索引均可重建。
 
-~~~ts
+```ts
 type IndexManifest = {
   indexName: string;
   schemaVersion: number;
@@ -915,7 +907,7 @@ type IndexManifest = {
   contentSha256: string;
   rebuiltAt: string;
 };
-~~~
+```
 
 损坏的可重建索引直接隔离并重建，不能用索引覆盖聚合。
 
@@ -935,9 +927,13 @@ type IndexManifest = {
 
 ## 9. 事件、投影与一致性恢复
 
+### 9.0 课程永久删除事务
+
+`DeleteCourse` 是独立于 `CloseCourse` 的幂等领域命令。它在事务开始时撤销该课程全部会话写入租约并关闭计时区间，随后在同一可恢复事务中删除课程聚合、会话、Review、排期、计划流、材料引用和课程索引；同时使关联学习事实、画像候选证据与来源组失效。事务提交后，统计/日历投影从剩余事实重建，并提交学习画像重算任务。画像任务失败不回滚已删除课程，但旧画像版本必须标记失效，读模型不得继续输出包含被删课程来源的洞察。文件 adapter 通过删除清单、临时目录和原子 rename 实现；数据库 adapter 以同一合同保证无稳定的部分删除状态。
+
 ### 9.1 Outbox
 
-~~~text
+```text
 领域事务
   ├─ 聚合状态
   ├─ 幂等结果
@@ -950,23 +946,23 @@ Outbox Pump
 receipt
         ↓
 投影器消费
-~~~
+```
 
 事件日志采用带全局 offset 和 record checksum 的分段 JSONL。单段最大 32 MiB；完成段永久只读；当前段只有一个写入者。活动段尾部损坏时截断至最后有效记录，并从 outbox 重放。
 
 ### 9.2 ProjectionCheckpoint
 
-~~~ts
+```ts
 type ProjectionCheckpoint = {
   projectionName: string;
   projectionVersion: number;
-  status: "ready" | "catching_up" | "rebuilding" | "degraded";
+  status: 'ready' | 'catching_up' | 'rebuilding' | 'degraded';
   lastEventOffset: number;
   lastEventId?: string;
   outputSha256: string;
   updatedAt: string;
 };
-~~~
+```
 
 投影器必须是确定性的：旧读模型 + 已排序事件批次 → 新读模型 + 新游标。
 
@@ -985,16 +981,16 @@ type ProjectionCheckpoint = {
 
 ### 9.4 损坏分级
 
-| 损坏对象 | 恢复 |
-| --- | --- |
-| 索引 | 从聚合重建 |
-| 读模型 | 从事件日志重放 |
-| outbox receipt | 对照事件 ID 重建 |
-| 活动事件段尾部 | 截断并重放 outbox |
-| 任务 journal | 从任务和领域快照恢复 |
-| 聚合 JSON | 从已验证备份恢复 |
+| 损坏对象        | 恢复                   |
+| --------------- | ---------------------- |
+| 索引            | 从聚合重建             |
+| 读模型          | 从事件日志重放         |
+| outbox receipt  | 对照事件 ID 重建       |
+| 活动事件段尾部  | 截断并重放 outbox      |
+| 任务 journal    | 从任务和领域快照恢复   |
+| 聚合 JSON       | 从已验证备份恢复       |
 | 不可变 Markdown | 按 checksum 从备份恢复 |
-| 历史事件段 | 必须从备份恢复 |
+| 历史事件段      | 必须从备份恢复         |
 
 历史事件无法恢复时，当前聚合仍可只读，但受影响统计和全局档案标记 degraded，禁止生成声称完整的画像，也不得根据当前状态伪造历史。
 
@@ -1002,17 +998,17 @@ type ProjectionCheckpoint = {
 
 ### 10.1 GenerationTask
 
-~~~ts
+```ts
 type GenerationTaskKind =
-  | "outline_reply"
-  | "outline_candidate"
-  | "lesson_reply"
-  | "stage_review"
-  | "final_review"
-  | "course_review"
-  | "evidence_extract"
-  | "portrait"
-  | "weekly_report";
+  | 'outline_reply'
+  | 'outline_candidate'
+  | 'lesson_reply'
+  | 'stage_review'
+  | 'final_review'
+  | 'course_review'
+  | 'evidence_extract'
+  | 'portrait'
+  | 'weekly_report';
 
 type GenerationAttempt = {
   attemptNumber: number;
@@ -1020,7 +1016,7 @@ type GenerationAttempt = {
   model: string;
   promptId: string;
   promptVersion: string;
-  state: "running" | "completed" | "failed" | "cancelled" | "timeout";
+  state: 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
   startedAt: string;
   firstDeltaAt?: string;
   endedAt?: string;
@@ -1036,13 +1032,7 @@ type GenerationTask = {
   ownerRef: string;
   inputSnapshotRef: string;
   inputSnapshotHash: string;
-  state:
-    | "queued"
-    | "running"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "timeout";
+  state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
   priority: number;
   attempts: GenerationAttempt[];
   providerPolicyRef: string;
@@ -1051,11 +1041,11 @@ type GenerationTask = {
   createdAt: string;
   updatedAt: string;
 };
-~~~
+```
 
 稳定任务键：
 
-~~~text
+```text
 outline-reply:{sessionId}:{messageHeadId}
 outline-candidate:{sessionId}:{snapshotHash}
 lesson-reply:{sessionId}:{messageHeadId}
@@ -1065,7 +1055,7 @@ course-review:{courseReviewId}:{closingSnapshotHash}
 evidence-extract:{sourceGroupId}:{snapshotHash}:{extractorVersion}
 portrait:{profileId}:{inputManifestHash}
 weekly-report:{localWeekKey}:{factSnapshotHash}
-~~~
+```
 
 相同任务键和输入 join；已成功返回原结果；显式重试在同一逻辑任务追加 attempt。相同幂等键配不同快照返回冲突。
 
@@ -1081,13 +1071,13 @@ weekly-report:{localWeekKey}:{factSnapshotHash}
 
 优先级：
 
-| 等级 | 任务 |
-| --- | --- |
-| 100 | 学习和建档对话 |
-| 80 | 阶段/最终/课程总 Review |
-| 60 | 用户手动画像、周报重试 |
-| 40 | 候选证据、计划任务 |
-| 20 | 自动画像、维护 |
+| 等级 | 任务                    |
+| ---- | ----------------------- |
+| 100  | 学习和建档对话          |
+| 80   | 阶段/最终/课程总 Review |
+| 60   | 用户手动画像、周报重试  |
+| 40   | 候选证据、计划任务      |
+| 20   | 自动画像、维护          |
 
 每排队一分钟增加一个 aging point，最高 95。
 
@@ -1104,20 +1094,17 @@ Worker 租约为 30 秒，每 10 秒续约。无输出任务在租约过期后�
 
 ### 10.4 Provider seam
 
-~~~ts
+```ts
 interface AiProvider {
   describe(): ProviderCapabilities;
   validateConfig(
     config: ProviderPublicConfig,
-    secrets: SecretResolver
+    secrets: SecretResolver,
   ): Promise<ProviderValidation>;
   healthCheck(): Promise<ProviderHealth>;
-  generate(
-    request: NormalizedGenerationRequest,
-    signal: AbortSignal
-  ): AsyncIterable<ProviderDelta>;
+  generate(request: NormalizedGenerationRequest, signal: AbortSignal): AsyncIterable<ProviderDelta>;
 }
-~~~
+```
 
 正式 Adapter：
 
@@ -1133,7 +1120,7 @@ Prompt Registry 使用 promptId + promptVersion + safetyRuleVersion。具体 Pro
 
 ## 11. 全局学习档案与画像证据
 
-~~~mermaid
+```mermaid
 flowchart TD
     E["已提交学习事件"] --> F["LearningFacts"]
     F --> M["统计快照与时间序列"]
@@ -1148,7 +1135,7 @@ flowchart TD
     PACK --> AI["画像生成"]
     AI --> CHECK["复合证据链校验"]
     CHECK --> PV["不可变 PortraitVersion"]
-~~~
+```
 
 ### 11.1 候选证据检查点
 
@@ -1203,31 +1190,31 @@ flowchart TD
 
 一键重连要求应用后端失效时仍有控制进程，因此包含 Launcher 和 Server 两个本地进程。
 
-~~~mermaid
+```mermaid
 flowchart LR
     B["浏览器"] --> APP["应用后端 127.0.0.1:43120"]
     B --> CTRL["Launcher 控制面 127.0.0.1:43119"]
     CTRL --> APP
     APP --> DATA["本地数据"]
     APP --> AI["AI Provider"]
-~~~
+```
 
 Launcher 失效时，浏览器不能凭空创建本机进程，必须提示重新运行启动入口。
 
 ### 12.2 端口
 
-| 用途 | 默认地址 |
-| --- | --- |
+| 用途            | 默认地址        |
+| --------------- | --------------- |
 | Launcher 控制面 | 127.0.0.1:43119 |
-| 应用后端 | 127.0.0.1:43120 |
-| Vite 开发 | 127.0.0.1:5173 |
-| 自动化测试 | OS 临时端口 |
+| 应用后端        | 127.0.0.1:43120 |
+| Vite 开发       | 127.0.0.1:5173  |
+| 自动化测试      | OS 临时端口     |
 
 只监听 127.0.0.1；不扫描、不静默漂移、不强杀外部端口所有者。file:// 页面只显示启动说明。
 
 ### 12.3 应用目录
 
-~~~text
+```text
 %LOCALAPPDATA%\Learning MORE\
 ├─ config/runtime.json
 ├─ runtime/
@@ -1235,7 +1222,7 @@ Launcher 失效时，浏览器不能凭空创建本机进程，必须提示重�
 ├─ secrets/
 ├─ logs/
 └─ backups/
-~~~
+```
 
 源码/安装目录、数据目录和运行目录分离。
 
@@ -1243,30 +1230,30 @@ Launcher 失效时，浏览器不能凭空创建本机进程，必须提示重�
 
 配置优先级为命令行 > 环境变量 > runtime.json > 构建默认。唯一 RuntimeConfigResolver 解析配置；未知字段或非法值报错；fingerprint 不含密钥；无效新配置不得替换旧健康实例。
 
-~~~ts
+```ts
 type RuntimeConfig = {
-  host: "127.0.0.1";
+  host: '127.0.0.1';
   controlPort: number;
   serverPort: number;
   dataRoot: string;
   backupRoot: string;
-  logLevel: "error" | "warn" | "info" | "debug";
+  logLevel: 'error' | 'warn' | 'info' | 'debug';
   projectionConcurrency: number;
   providerConfigRefs: string[];
   activeProviderId: string;
 };
-~~~
+```
 
 ### 12.5 进程身份
 
-~~~ts
+```ts
 type RuntimeManifest = {
   schemaVersion: number;
   manifestGeneration: number;
   instanceId: string;
   pid: number;
   parentPid: number;
-  host: "127.0.0.1";
+  host: '127.0.0.1';
   port: number;
   controlPort: number;
   projectRoot: string;
@@ -1276,11 +1263,11 @@ type RuntimeManifest = {
   configFingerprint: string;
   buildId: string;
   protocolVersion: number;
-  phase: "listening" | "recovering" | "ready" | "draining";
+  phase: 'listening' | 'recovering' | 'ready' | 'draining';
   startedAt: string;
   updatedAt: string;
 };
-~~~
+```
 
 健康检查必须同时匹配 instanceId、PID/端口所有者、executable、projectRoot、dataRootHash、configFingerprint、buildId 和 protocolVersion。旧实例只能删除与自身 instanceId + generation 匹配的 manifest。
 
@@ -1302,19 +1289,19 @@ ready 前只响应健康和诊断，业务请求返回 runtime_not_ready。
 
 ### 12.7 健康与自愈
 
-~~~text
+```text
 GET /api/v1/runtime/live
 GET /api/v1/runtime/ready
 GET /api/v1/runtime/identity
 GET /api/v1/runtime/data-health
 GET /api/v1/ai-runtime/status
-~~~
+```
 
 本地服务健康与 AI 健康分开。
 
 Launcher 状态：
 
-~~~text
+```text
 stopped → starting → healthy → degraded → restarting → backoff → healthy
 
 异常：
@@ -1322,7 +1309,7 @@ blocked_external_port
 blocked_invalid_config
 blocked_restart_storm
 blocked_data_recovery
-~~~
+```
 
 意外退出退避为 0.5、1、2、4、8 秒；十分钟最多自动重启五次。配置变化 750 ms debounce，同批只重启一次。
 
@@ -1330,12 +1317,12 @@ blocked_data_recovery
 
 ### 12.8 一键重连控制面
 
-~~~text
+```text
 GET  /control/v1/status
 POST /control/v1/reconnect
 POST /control/v1/sync-frontend
 POST /control/v1/diagnose
-~~~
+```
 
 控制面不提供任意命令、文件浏览、密钥读取、领域数据或自定义启动参数。
 
@@ -1347,7 +1334,7 @@ POST /control/v1/diagnose
 
 ### 12.10 密钥
 
-~~~ts
+```ts
 interface SecretStore {
   put(handle: string, secret: Uint8Array): Promise<void>;
   get(handle: string): Promise<Uint8Array>;
@@ -1358,7 +1345,7 @@ interface SecretStore {
     fingerprint?: string;
   }>;
 }
-~~~
+```
 
 Windows 正式 Adapter 使用 DPAPI CurrentUser。开发/CI 提供只读 EnvironmentSecretStoreAdapter。DPAPI 的 CurrentUser 范围和完整性保护依据 [Microsoft CryptProtectData 文档](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata)。
 
@@ -1390,18 +1377,18 @@ runtime、application、generation、projection 和 security 分流为 JSONL；�
 - 2,000,000 条事件；
 - 20 GiB 数据。
 
-| 项目 | 目标 |
-| --- | --- |
-| 强一致查询 p95 | ≤ 200 ms |
-| 非 AI 写命令 p95 | ≤ 350 ms |
-| Provider delta 到 SSE p95 | ≤ 100 ms |
-| outbox 发布 p95 | ≤ 2 秒 |
-| 空闲分析投影延迟 p95 | ≤ 5 秒 |
-| 正常冷启动 ready p95 | ≤ 5 秒 |
-| 单事务崩溃恢复 ready p95 | ≤ 15 秒 |
-| 简单 Server 崩溃自动恢复 | ≤ 15 秒 |
-| Server 空闲 RSS | ≤ 300 MiB |
-| Launcher 空闲 RSS | ≤ 80 MiB |
+| 项目                      | 目标      |
+| ------------------------- | --------- |
+| 强一致查询 p95            | ≤ 200 ms  |
+| 非 AI 写命令 p95          | ≤ 350 ms  |
+| Provider delta 到 SSE p95 | ≤ 100 ms  |
+| outbox 发布 p95           | ≤ 2 秒    |
+| 空闲分析投影延迟 p95      | ≤ 5 秒    |
+| 正常冷启动 ready p95      | ≤ 5 秒    |
+| 单事务崩溃恢复 ready p95  | ≤ 15 秒   |
+| 简单 Server 崩溃自动恢复  | ≤ 15 秒   |
+| Server 空闲 RSS           | ≤ 300 MiB |
+| Launcher 空闲 RSS         | ≤ 80 MiB  |
 
 启动不得扫描全部正文。已向客户端确认成功的命令必须在崩溃后恢复。
 
@@ -1409,15 +1396,15 @@ runtime、application、generation、projection 和 security 分流为 JSONL；�
 
 ### 13.1 工具链
 
-| 能力 | 基线 |
-| --- | --- |
-| 运行时 | Node.js 24 LTS |
-| 语言 | TypeScript 5.9.3，严格 ESM |
-| 前端 | React 19.2 |
-| 构建 | Vite 8.1 |
-| 单元/集成 | Vitest 4.1.9 |
-| E2E | Playwright |
-| 包管理 | pnpm 10 workspace |
+| 能力      | 基线                       |
+| --------- | -------------------------- |
+| 运行时    | Node.js 24 LTS             |
+| 语言      | TypeScript 5.9.3，严格 ESM |
+| 前端      | React 19.2                 |
+| 构建      | Vite 8.1                   |
+| 单元/集成 | Vitest 4.1.9               |
+| E2E       | Playwright                 |
+| 包管理    | pnpm 10 workspace          |
 
 package.json 固定直接依赖的精确版本，提交 pnpm-lock.yaml，安装使用 frozen-lockfile。不引入 Turborepo/Nx。
 
@@ -1432,7 +1419,7 @@ package.json 固定直接依赖的精确版本，提交 pnpm-lock.yaml，安装�
 
 ### 13.2 分层
 
-~~~mermaid
+```mermaid
 flowchart TD
     S["静态与架构检查"]
     D["纯领域与属性测试"]
@@ -1443,7 +1430,7 @@ flowchart TD
     E["Playwright E2E"]
     C["崩溃、恢复、容量"]
     S --> D --> R --> M --> H --> U --> E --> C
-~~~
+```
 
 #### 静态与架构
 
@@ -1477,11 +1464,11 @@ Vitest + React Testing Library 覆盖路由、空/加载/失败/degraded/rebuild
 
 使用构建后的真实 web/server、临时数据根和 Mock Provider。覆盖课程创建→学习→Review→完成事实→历史/日历→课程关闭→画像的主路径，以及刷新、多窗口、Review 失败、服务退出、版本不一致、Provider 失败、投影重建、恢复放弃和端口占用。
 
-### 13.3 74 条回归矩阵
+### 13.3 75 条回归矩阵
 
 新增 tests/acceptance/equivalence-matrix.yaml。权威文档当前恰好有 74 个唯一 EQ 编号。
 
-~~~yaml
+```yaml
 id: EQ-LESSON-12
 requirement: 关闭事务恢复
 evidence:
@@ -1497,7 +1484,7 @@ evidence:
     - tests/e2e/lesson-final-review.spec.ts
   e2e_recovery:
     - tests/e2e/lesson-final-review-restart.spec.ts
-~~~
+```
 
 CI 要求：
 
@@ -1531,15 +1518,15 @@ CI 要求：
 
 ### 14.1 构建
 
-~~~text
+```text
 contracts
   → test-kit
   → server / launcher
   → web
   → release staging
-~~~
+```
 
-~~~text
+```text
 dist/
 ├─ web/
 ├─ server/
@@ -1548,13 +1535,13 @@ dist/
 ├─ prompts/
 ├─ migrations/
 └─ build-manifest.json
-~~~
+```
 
 build-manifest 包含产品版本、buildId、Git commit、构建时间、Node/pnpm/TypeScript、protocolVersion、可读 store format 范围以及所有关键 hash。
 
 核心脚本：
 
-~~~text
+```text
 pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -1568,13 +1555,13 @@ pnpm test:recovery
 pnpm test:performance
 pnpm build
 pnpm verify
-~~~
+```
 
 ### 14.2 CI
 
 每次提交：frozen install、格式、lint、类型、架构、schema、unit、Repository、Module integration、build。
 
-主分支增加 HTTP/SSE、React、Playwright、74 条矩阵和 backup/restore smoke。
+主分支增加 HTTP/SSE、React、Playwright、75 条矩阵和 backup/restore smoke。
 
 夜间增加全量故障注入、崩溃点枚举、mutation、容量性能、长任务、投影重建和完整恢复演练。
 
@@ -1584,7 +1571,7 @@ pnpm verify
 
 MVP 为 Windows x64 portable ZIP：
 
-~~~text
+```text
 Learning MORE/
 ├─ runtime/node.exe
 ├─ app/server/
@@ -1595,7 +1582,7 @@ Learning MORE/
 ├─ START.cmd
 ├─ release-manifest.json
 └─ THIRD-PARTY-NOTICES.txt
-~~~
+```
 
 内置官方 Node 24 LTS，不依赖全局 Node；不包含数据、密钥或个人配置；安装目录可只读；release manifest 为每个文件提供 SHA-256，并生成 SBOM。
 
@@ -1643,11 +1630,11 @@ Learning MORE/
 
 不可变内容按 SHA-256 写入内容寻址对象库：
 
-~~~text
+```text
 backups/
 ├─ objects/{sha256}
 └─ snapshots/{snapshotId}/manifest.json
-~~~
+```
 
 ### 15.3 触发与保留
 
@@ -1715,35 +1702,35 @@ Level 4 整库快照：聚合、历史事件或多对象引用损坏时使用，
 
 ## 17. 未决产品项的隔离
 
-| 未决项 | MVP 隔离方式 |
-| --- | --- |
+| 未决项                   | MVP 隔离方式                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------- |
 | 通用附件、网页、外部资料 | 仅实现阅读材料专用 MaterialRepository；第二种实际来源出现后再抽象通用 Artifact seam |
-| 推荐扩展课程完整交互 | 只保存 sourceCourseId；创建交互不进入当前课程关闭事务 |
-| 生产 Prompt、具体模型 | Prompt Registry 和 Provider Adapter 隔离；领域合同不含正文或厂商字段 |
-| 云同步、多用户、登录 | MVP 不实现；未来替换身份解析和 Repository 分区 |
-| 跨机器备份 | 不属于自动备份承诺；未来单独设计可移植加密导出 |
+| 推荐扩展课程完整交互     | 只保存 sourceCourseId；创建交互不进入当前课程关闭事务                               |
+| 生产 Prompt、具体模型    | Prompt Registry 和 Provider Adapter 隔离；领域合同不含正文或厂商字段                |
+| 云同步、多用户、登录     | MVP 不实现；未来替换身份解析和 Repository 分区                                      |
+| 跨机器备份               | 不属于自动备份承诺；未来单独设计可移植加密导出                                      |
 
 未决项不得反向改变四状态课节生命周期、Review 不可变、课程关闭和证据独立性规则。
 
 ## 18. 需求覆盖
 
-| 明确要求 | 本文位置 |
-| --- | --- |
-| Monorepo、前后端和共享包 | 4.1–4.3 |
-| Module 划分与 Interface | 第 5 章 |
-| 命令、查询、事件、错误 | 第 6 章 |
-| HTTP 与流式 Markdown | 第 7 章 |
-| 文件目录、JSON/Markdown schema | 第 8 章 |
-| 索引和迁移 | 8.8–8.9 |
-| 事件投影、重建、一致性恢复 | 第 9 章 |
-| AI 调度、并发、Provider | 第 10 章 |
-| 全局档案与候选证据 | 第 11 章 |
-| 启动、端口、身份、自愈、密钥 | 第 12 章 |
-| 性能与容量 | 12.13 |
-| 测试分层与 74 条断言 | 第 13 章 |
-| 构建与发布 | 第 14 章 |
-| 备份与损坏恢复 | 第 15–16 章 |
-| 未决产品项隔离 | 第 17 章 |
+| 明确要求                       | 本文位置    |
+| ------------------------------ | ----------- |
+| Monorepo、前后端和共享包       | 4.1–4.3     |
+| Module 划分与 Interface        | 第 5 章     |
+| 命令、查询、事件、错误         | 第 6 章     |
+| HTTP 与流式 Markdown           | 第 7 章     |
+| 文件目录、JSON/Markdown schema | 第 8 章     |
+| 索引和迁移                     | 8.8–8.9     |
+| 事件投影、重建、一致性恢复     | 第 9 章     |
+| AI 调度、并发、Provider        | 第 10 章    |
+| 全局档案与候选证据             | 第 11 章    |
+| 启动、端口、身份、自愈、密钥   | 第 12 章    |
+| 性能与容量                     | 12.13       |
+| 测试分层与 75 条断言           | 第 13 章    |
+| 构建与发布                     | 第 14 章    |
+| 备份与损坏恢复                 | 第 15–16 章 |
+| 未决产品项隔离                 | 第 17 章    |
 
 ## 19. 架构验收条件
 
@@ -1801,6 +1788,6 @@ Level 4 整库快照：聚合、历史事件或多对象引用损坏时使用，
 7. LearningFacts、历史和日历；
 8. ProfileEvidence 和 LearningPortrait；
 9. Launcher、自愈、备份和发布；
-10. 完整 74 条回归矩阵、容量和恢复验收。
+10. 完整 75 条回归矩阵、容量和恢复验收。
 
 每个阶段必须形成可运行、可测试的纵向切片，不能先搭建大量空 Interface 或只通过编译的壳。

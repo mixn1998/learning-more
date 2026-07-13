@@ -8,6 +8,7 @@ import { DataKeySchema } from '@learning-more/contracts';
 
 import type { LearningFact } from '../modules/learning-facts/interface.js';
 import type { FactRepository } from '../modules/learning-facts/ports/fact-repository.js';
+import { courseDeletionBarrierExists } from './course-archive-store.js';
 import { DataRoot } from './data-root.js';
 import { checksumJson, decodeAggregateDocument } from './json-codec.js';
 
@@ -24,6 +25,9 @@ const FactSchema = z.strictObject({
     'ReviewFinalizedFact',
     'CourseReviewFinalizedFact',
     'ScheduleConfirmedFact',
+    'InteractionPromptedFact',
+    'InteractionRespondedFact',
+    'InteractionSkippedFact',
   ]),
   subjectRefs: z.record(z.string(), z.string()),
   occurredAt: z.iso.datetime({ offset: true }),
@@ -53,6 +57,10 @@ export function createLocalFileFactRepository(dataRoot: DataRoot): FactRepositor
       }
     },
     async append(tx, fact) {
+      const courseId = fact.subjectRefs.courseId;
+      if (courseId !== undefined && (await courseDeletionBarrierExists(dataRoot, courseId))) {
+        return 'ignored_deleted_course';
+      }
       const existing = await repository.get(fact.factId);
       if (existing !== undefined) {
         if (
@@ -76,6 +84,15 @@ export function createLocalFileFactRepository(dataRoot: DataRoot): FactRepositor
         data: fact,
       });
       return 'appended';
+    },
+    async retractCourse(tx, courseId) {
+      let retracted = 0;
+      for await (const fact of repository.list()) {
+        if (fact.subjectRefs.courseId !== courseId) continue;
+        await tx.deleteOnCommit(relativeFactPath(fact.factId));
+        retracted += 1;
+      }
+      return retracted;
     },
     async *list() {
       const root = path.join(dataRoot.absolutePath, 'read-models', 'learning-facts');

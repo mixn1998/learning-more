@@ -23,7 +23,14 @@ export interface GenerationRuntime {
   cancel(taskId: string): Promise<GenerationTask>;
   get(taskId: string): Promise<GenerationTask>;
   recoverExpiredLeases(): Promise<number>;
+  getMetrics(): Promise<GenerationRuntimeMetrics>;
 }
+
+export type GenerationRuntimeMetrics = Readonly<{
+  total: number;
+  byStatus: Readonly<Record<string, number>>;
+  byErrorCode: Readonly<Record<string, number>>;
+}>;
 
 export interface GenerationFrameMeta {
   readonly taskId: string;

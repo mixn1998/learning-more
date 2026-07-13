@@ -7,6 +7,7 @@ import {
 } from '../../client/history-client.js';
 import { CalendarView } from './calendar-view.js';
 import { HistoryTimeline } from './history-timeline.js';
+import { HistorySectionTabs, type HistorySection } from './history-section-tabs.js';
 import { StatisticsPanel } from './statistics-panel.js';
 import { WeeklyReportView } from './weekly-report-view.js';
 
@@ -46,6 +47,7 @@ export function HistoryPage(props: { readonly client?: HistoryClient }) {
   const [selectedDate, setSelectedDate] = useState<string>();
   const [weekly, setWeekly] = useState<Record<string, unknown>>();
   const [weeklyReport, setWeeklyReport] = useState<Record<string, unknown>>();
+  const [section, setSection] = useState<HistorySection>('statistics');
   useEffect(() => {
     const currentWeek = isoWeek(localDate(new Date().toISOString()));
     void Promise.all([
@@ -90,29 +92,45 @@ export function HistoryPage(props: { readonly client?: HistoryClient }) {
   return (
     <main className="authoring-workspace">
       <h1>学习历史</h1>
+      <HistorySectionTabs active={section} onChange={setSection} />
       {freshness === 'current' ? null : <p role="status">读模型状态：{freshness}</p>}
       <p>数据截至：{asOf ?? '空快照'}</p>
-      <StatisticsPanel statistics={statistics} />
-      <CalendarView
-        days={days}
-        {...(selectedDate === undefined ? {} : { selectedDate })}
-        onSelect={setSelectedDate}
-      />
-      <HistoryTimeline
-        entries={visible}
-        {...(selectedDate === undefined && nextCursor !== undefined ? { nextCursor } : {})}
-        onLoadMore={() => {
-          if (nextCursor === undefined) return;
-          void api.getHistory(nextCursor).then((page) => {
-            setEntries((current) => [...current, ...page.entries]);
-            setNextCursor(page.nextCursor);
-          });
-        }}
-      />
-      <WeeklyReportView
-        {...(weekly === undefined ? {} : { week: weekly })}
-        {...(weeklyReport === undefined ? {} : { report: weeklyReport })}
-      />
+      {section === 'statistics' ? (
+        <>
+          <StatisticsPanel statistics={statistics} />
+          <HistoryTimeline
+            entries={entries}
+            {...(nextCursor === undefined ? {} : { nextCursor })}
+            onLoadMore={() => {
+              if (nextCursor === undefined) return;
+              void api.getHistory(nextCursor).then((page) => {
+                setEntries((current) => [...current, ...page.entries]);
+                setNextCursor(page.nextCursor);
+              });
+            }}
+          />
+          <WeeklyReportView
+            {...(weekly === undefined ? {} : { week: weekly })}
+            {...(weeklyReport === undefined ? {} : { report: weeklyReport })}
+          />
+        </>
+      ) : null}
+      {section === 'calendar' ? (
+        <>
+          <CalendarView
+            days={days}
+            {...(selectedDate === undefined ? {} : { selectedDate })}
+            onSelect={setSelectedDate}
+          />
+          <HistoryTimeline entries={visible} onLoadMore={() => undefined} />
+        </>
+      ) : null}
+      {section === 'portrait' ? (
+        <section className="authoring-panel">
+          <h2>学习画像</h2>
+          <a href="/profile">打开当前画像与证据链</a>
+        </section>
+      ) : null}
     </main>
   );
 }

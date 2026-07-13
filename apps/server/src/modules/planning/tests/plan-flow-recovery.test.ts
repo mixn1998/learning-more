@@ -35,7 +35,7 @@ describe('PlanFlow confirmation recovery', () => {
       scheduleRepository: schedules,
       generationRuntime: { submit: async () => ({ taskId: 'task_plan_01' }) },
       getScheduleVersion: async () => 0,
-      lessonExists: async () => true,
+      lessonIsPlannable: async () => true,
       nextPlanFlowId: () => 'plan_flow_recovery',
       nextScheduleItemId: () => `schedule_recovery_${++scheduleId}`,
       now: () => new Date('2026-07-13T00:00:00.000Z'),

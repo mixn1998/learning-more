@@ -39,6 +39,25 @@ function client(overrides: Partial<CourseAuthoringClient> = {}): CourseAuthoring
 afterEach(cleanup);
 
 describe('CourseAuthoring page', () => {
+  it('[EQ-PLAY-08] loads every mode into one full-width workbench without a second selector or topic input', async () => {
+    const api = client({
+      getOutlineSession: vi.fn().mockResolvedValue({
+        outlineSessionId: 'session_reading',
+        resourceVersion: 2,
+        state: 'assessing',
+        topic: '可追溯阅读',
+        courseMode: 'reading_seminar',
+        candidateVersionIds: [],
+      }),
+    });
+    render(<AuthoringPage client={api} initialOutlineSessionId="session_reading" />);
+
+    expect(await screen.findByText('正在评估课程需求')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '课程模式' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('学习主题')).not.toBeInTheDocument();
+    expect(api.createOutlineSession).not.toHaveBeenCalled();
+  });
+
   it('starts empty and prevents duplicate create commands independently of button state', async () => {
     let resolveCreate!: (value: {
       outlineSessionId: string;
@@ -130,7 +149,8 @@ describe('CourseAuthoring page', () => {
     fireEvent.click(await screen.findByRole('button', { name: '生成候选大纲' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('生成中断，草稿已保留');
-    expect(screen.getByText('draft_01')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('未完成内容会在重试时继续使用');
+    expect(document.body).not.toHaveTextContent('draft_01');
     expect(screen.getByRole('button', { name: '重试生成' })).toBeEnabled();
   });
 

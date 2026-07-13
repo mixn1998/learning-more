@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import type { ProviderRuntimeStatus } from '@learning-more/contracts';
 
 import { runtimeCenterClient, type RuntimeCenterClient } from '../../client/runtime-client.js';
 import { useCommandAttempts } from '../../state/use-command-attempt.js';
@@ -29,7 +31,12 @@ export function RuntimeCenter({ api = runtimeCenterClient }: { api?: RuntimeCent
   const [providerSwitchState, setProviderSwitchState] = useState<'idle' | 'saved' | 'failed'>(
     'idle',
   );
+  const [providerStatus, setProviderStatus] = useState<ProviderRuntimeStatus>();
   const commands = useCommandAttempts();
+
+  useEffect(() => {
+    void api.getProviderStatus().then(setProviderStatus, () => setProviderStatus(undefined));
+  }, [api]);
 
   const reconnect = async () => {
     try {
@@ -61,6 +68,7 @@ export function RuntimeCenter({ api = runtimeCenterClient }: { api?: RuntimeCent
       );
       commands.complete(commandKey);
       setProviderSwitchState('saved');
+      setProviderStatus(await api.getProviderStatus());
       refresh();
     } catch {
       setProviderSwitchState('failed');
@@ -100,6 +108,16 @@ export function RuntimeCenter({ api = runtimeCenterClient }: { api?: RuntimeCent
       </button>
       <section className="provider-switch-panel">
         <h2>切换 AI Provider</h2>
+        {providerStatus === undefined ? null : (
+          <dl aria-label="当前 AI 运行状态">
+            <dt>当前 Provider</dt>
+            <dd>{providerStatus.providerId}</dd>
+            <dt>当前模型</dt>
+            <dd>{providerStatus.model ?? '由 Provider 默认选择'}</dd>
+            <dt>健康状态</dt>
+            <dd>{providerStatus.health.status === 'healthy' ? '健康' : '不可用'}</dd>
+          </dl>
+        )}
         <label>
           Provider ID
           <input value={providerId} onChange={(event) => setProviderId(event.target.value)} />

@@ -47,7 +47,13 @@ export type ReviewClosureRouteOptions = Readonly<{
       courseId: string,
       context: ReturnType<typeof buildQueryContext>,
     ): Promise<
-      Readonly<{ state: string; artifactRef?: string; resourceVersion: number }> | undefined
+      | Readonly<{
+          state: string;
+          artifactRef?: string;
+          markdown?: string;
+          resourceVersion: number;
+        }>
+      | undefined
     >;
   };
   nextCommandId(): string;

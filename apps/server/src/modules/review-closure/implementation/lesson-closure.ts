@@ -57,11 +57,16 @@ export function createLessonClosureWorkflow(options: {
   readonly nextTransactionId: () => string;
   readonly nextReviewId: (lessonId: string) => string;
   readonly now: () => Date;
+  readonly assertLessonWritable?: (lessonId: string) => Promise<void>;
   readonly afterLearningCommit?: () => void | Promise<void>;
 }) {
   async function save(record: LessonClosureRecord): Promise<LessonClosureRecord> {
-    await options.unitOfWork.execute({ transactionId: `tx_lesson_closure_${randomUUID()}` }, (tx) =>
-      options.repository.save(tx, record, record.resourceVersion),
+    await options.unitOfWork.execute(
+      { transactionId: `tx_lesson_closure_${randomUUID()}` },
+      async (tx) => {
+        await options.assertLessonWritable?.(record.lessonId);
+        await options.repository.save(tx, record, record.resourceVersion);
+      },
     );
     const stored = await options.repository.get(record.transactionId);
     if (stored === undefined) throw new Error('LESSON_CLOSURE_NOT_PERSISTED');
@@ -171,8 +176,9 @@ export function createLessonClosureWorkflow(options: {
         updatedAt: options.now().toISOString(),
         resourceVersion: 0,
       };
-      const taskId = await submit(draft, 'initial');
-      return save({ ...draft, state: 'generating', generationTaskId: taskId });
+      const opened = await save(draft);
+      const taskId = await submit(opened, 'initial');
+      return save({ ...opened, state: 'generating', generationTaskId: taskId });
     },
     async fail(transactionId: string, errorCode: string, draftArtifactRef: string) {
       const current = await options.repository.get(transactionId);
@@ -189,6 +195,7 @@ export function createLessonClosureWorkflow(options: {
       const current = await options.repository.get(transactionId);
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
       if (current.state === 'completed') throw new LessonClosureError('final_review_immutable');
+      if (current.state === 'cancelled') throw new LessonClosureError('lesson_not_completable');
       const taskId = await submit(current, commandId);
       const { errorCode: _error, draftArtifactRef: _draft, ...rest } = current;
       void _error;
@@ -206,6 +213,7 @@ export function createLessonClosureWorkflow(options: {
     ) {
       const current = await options.repository.get(transactionId);
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
+      if (current.state === 'cancelled') throw new LessonClosureError('lesson_not_completable');
       validateFinalReview(review, current);
       return save({
         ...current,
@@ -228,6 +236,19 @@ export function createLessonClosureWorkflow(options: {
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
       if (current.state !== 'committing') return current;
       return finishCommit(current, currentChecksum, context);
+    },
+    async cancel(transactionId: string) {
+      const current = await options.repository.get(transactionId);
+      if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
+      if (current.state === 'completed' || current.state === 'committing') {
+        throw new LessonClosureError('final_review_immutable');
+      }
+      if (current.state === 'cancelled') return current;
+      return save({
+        ...current,
+        state: 'cancelled',
+        updatedAt: options.now().toISOString(),
+      });
     },
   };
 }

@@ -52,7 +52,7 @@ export function createPlanFlowService(options: {
     }): Promise<{ taskId: string }>;
   };
   getScheduleVersion(): Promise<number>;
-  lessonExists(lessonId: string): Promise<boolean>;
+  lessonIsPlannable(lessonId: string): Promise<boolean>;
   nextPlanFlowId(): string;
   nextScheduleItemId(): string;
   now(): Date;
@@ -63,9 +63,21 @@ export function createPlanFlowService(options: {
     tx: TransactionContext,
   ) => Promise<void>;
 }) {
+  async function assertLessonRefsPlannable(lessonIds: readonly string[]): Promise<void> {
+    for (const lessonId of lessonIds) {
+      if (!(await options.lessonIsPlannable(lessonId))) {
+        throw new PlanFlowError('plan_preview_invalid');
+      }
+    }
+  }
+
   async function save(flow: PlanFlow): Promise<PlanFlow> {
-    await options.unitOfWork.execute({ transactionId: `tx_plan_flow_${randomUUID()}` }, (tx) =>
-      options.repository.save(tx, flow, flow.resourceVersion),
+    await options.unitOfWork.execute(
+      { transactionId: `tx_plan_flow_${randomUUID()}` },
+      async (tx) => {
+        await assertLessonRefsPlannable(flow.lessonRefs);
+        await options.repository.save(tx, flow, flow.resourceVersion);
+      },
     );
     return (await options.repository.get(flow.id))!;
   }
@@ -80,7 +92,7 @@ export function createPlanFlowService(options: {
         throw new PlanFlowError('plan_preview_invalid');
       }
       if (
-        !(await options.lessonExists(suggestion.lessonId)) ||
+        !(await options.lessonIsPlannable(suggestion.lessonId)) ||
         lessonIds.has(suggestion.lessonId)
       ) {
         throw new PlanFlowError('plan_preview_invalid');
@@ -188,6 +200,7 @@ export function createPlanFlowService(options: {
         timezoneAtCreation: suggestion.timezoneAtCreation,
         source: 'plan-flow',
         status: 'scheduled',
+        locked: false,
         createdAt: timestamp,
         updatedAt: timestamp,
         processedCommandIds: [context.commandId],
@@ -207,6 +220,8 @@ export function createPlanFlowService(options: {
       await options.unitOfWork.execute(
         { transactionId: `tx_confirm_plan_flow_${current.id}` },
         async (tx) => {
+          await assertLessonRefsPlannable(current.lessonRefs);
+          await validateSuggestions(current.suggestions);
           for (const item of scheduleItems) {
             await options.scheduleRepository.save(tx, item, 0);
           }

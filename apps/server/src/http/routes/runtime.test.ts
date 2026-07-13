@@ -30,7 +30,32 @@ describe('AI runtime routes', () => {
       allowedOrigin: 'http://127.0.0.1:5173',
       csrfToken: 'csrf',
     });
-    await registerRuntimeRoutes(app, { switchProvider, createDiagnostics });
+    await registerRuntimeRoutes(app, {
+      switchProvider,
+      createDiagnostics,
+      getProviderStatus: vi.fn().mockResolvedValue({
+        providerId: 'api',
+        model: 'model-01',
+        capabilities: {
+          id: 'api',
+          kind: 'api',
+          maxConcurrency: 2,
+          supportsStreaming: true,
+        },
+        health: { status: 'healthy' },
+      }),
+    });
+    const status = await app.inject({
+      method: 'GET',
+      url: '/api/v1/ai-runtime/status',
+      headers: { host: '127.0.0.1:43120', origin: 'http://127.0.0.1:5173' },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      providerId: 'api',
+      model: 'model-01',
+      health: { status: 'healthy' },
+    });
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/ai-runtime/provider-switches',

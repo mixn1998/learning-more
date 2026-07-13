@@ -69,11 +69,13 @@ export function decide(
   }
 
   if (command.type === 'restore') {
-    if (
-      learning.progress !== 'abandoned' ||
-      learning.session === undefined ||
-      learning.session.state !== 'frozen'
-    ) {
+    if (learning.progress !== 'abandoned') {
+      throw new LearningSessionError('lesson_not_restorable');
+    }
+    if (learning.session === undefined) {
+      return [event(commandId, { type: 'EvidenceFreeLessonRestored' })];
+    }
+    if (learning.session.state !== 'frozen') {
       throw new LearningSessionError('lesson_not_restorable');
     }
     return [event(commandId, { type: 'AbandonedLessonRestored' })];
@@ -167,7 +169,10 @@ export function evolve(learning: LessonLearning, event: LearningSessionEvent): L
   if (event.type === 'EvidenceFreeLessonAbandoned') {
     const { session: _deleted, ...withoutSession } = learning;
     void _deleted;
-    return { ...withoutSession, progress: 'not_started', processedCommandIds };
+    return { ...withoutSession, progress: 'abandoned', processedCommandIds };
+  }
+  if (event.type === 'EvidenceFreeLessonRestored') {
+    return { ...learning, progress: 'not_started', processedCommandIds };
   }
   const session = learning.session;
   if (session === undefined) throw new LearningSessionError('session_not_writable');

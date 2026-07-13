@@ -68,6 +68,18 @@ const mappings: Partial<Record<EventType, Mapping>> = {
       'schedule.status',
     ],
   },
+  InteractionPrompted: {
+    factType: 'InteractionPromptedFact',
+    dataKeys: ['interaction.id', 'interaction.prompted_at', 'conversation.interaction_id'],
+  },
+  InteractionResponded: {
+    factType: 'InteractionRespondedFact',
+    dataKeys: ['interaction.id', 'interaction.responded_at', 'conversation.interaction_id'],
+  },
+  InteractionSkipped: {
+    factType: 'InteractionSkippedFact',
+    dataKeys: ['interaction.id', 'interaction.skipped_at', 'conversation.interaction_id'],
+  },
 };
 
 export function eventToFacts(event: LearningEventEnvelope): readonly LearningFact[] {

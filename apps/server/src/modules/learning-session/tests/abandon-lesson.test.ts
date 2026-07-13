@@ -50,7 +50,7 @@ function fixture() {
   };
 }
 
-describe('abandonLesson', () => {
+describe('[EQ-LESSON-02] abandonLesson', () => {
   it('removes an evidence-free session and its short time without requesting Review', async () => {
     const { module, stageReviews, advance } = fixture();
     await module.execute(
@@ -63,7 +63,7 @@ describe('abandonLesson', () => {
       { ...baseContext, commandId: 'abandon', expectedVersion: 1 },
       { sessionModule: module, stageReviews },
     );
-    expect(result).toMatchObject({ progress: 'not_started', stageReview: undefined });
+    expect(result).toMatchObject({ progress: 'abandoned', stageReview: undefined });
     expect(stageReviews.request).not.toHaveBeenCalled();
     const view = await module.query(
       { type: 'GetLessonLearning', lessonId: 'lesson_01' },
@@ -71,6 +71,12 @@ describe('abandonLesson', () => {
     );
     expect(view.actualSeconds).toBe(0);
     expect(view.learning.session).toBeUndefined();
+    const restored = await module.execute(
+      { type: 'RestoreLesson', lessonId: 'lesson_01' },
+      { ...baseContext, commandId: 'restore', expectedVersion: 2 },
+    );
+    expect(restored.value.progress).toBe('not_started');
+    expect(restored.value.sessionId).toBeUndefined();
   });
 
   it('freezes and restores the same evidenced source session while Review failure stays isolated', async () => {

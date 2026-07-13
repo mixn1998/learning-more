@@ -29,6 +29,7 @@ function fixture() {
   const schedules = createInMemoryScheduleRepository();
   let scheduleVersion = 0;
   let scheduleId = 0;
+  let lessonsAvailable = true;
   const submit = vi.fn().mockResolvedValue({ taskId: 'task_plan_01' });
   const service = createPlanFlowService({
     repository: flows,
@@ -36,7 +37,8 @@ function fixture() {
     unitOfWork,
     generationRuntime: { submit },
     getScheduleVersion: async () => scheduleVersion,
-    lessonExists: async (lessonId) => ['lesson_01', 'lesson_02'].includes(lessonId),
+    lessonIsPlannable: async (lessonId) =>
+      lessonsAvailable && ['lesson_01', 'lesson_02'].includes(lessonId),
     nextPlanFlowId: () => 'plan_flow_01',
     nextScheduleItemId: () => `schedule_${++scheduleId}`,
     now: () => new Date('2026-07-13T00:00:00.000Z'),
@@ -48,6 +50,9 @@ function fixture() {
     submit,
     setScheduleVersion(value: number) {
       scheduleVersion = value;
+    },
+    deleteCourseArchive() {
+      lessonsAvailable = false;
     },
   };
 }
@@ -80,6 +85,20 @@ const suggestions = [
 ];
 
 describe('PlanFlowService', () => {
+  it('rejects late confirmation after a referenced course archive is permanently deleted', async () => {
+    const { service, schedules, deleteCourseArchive } = fixture();
+    const requested = await service.requestPreview(previewInput, 'preview_delete_race');
+    const ready = await service.markPreviewReady(requested.id, suggestions);
+    deleteCourseArchive();
+
+    await expect(
+      service.confirm(ready.id, { ...context, expectedVersion: ready.resourceVersion }),
+    ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
+    const remaining = [];
+    for await (const item of schedules.list()) remaining.push(item);
+    expect(remaining).toEqual([]);
+  });
+
   it('[EQ-PF-01] previews without changing schedule and retains constraints plus draft on AI failure', async () => {
     const { service, schedules, submit, flows } = fixture();
     const requested = await service.requestPreview(previewInput, 'preview_01');

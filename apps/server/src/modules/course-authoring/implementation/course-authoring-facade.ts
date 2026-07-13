@@ -50,6 +50,12 @@ export function createCourseAuthoringFacade(options: {
   readonly hasLearningEvidence?: (lessonId: string) => Promise<boolean>;
   readonly nextId: (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment') => string;
   readonly now: () => Date;
+  readonly courseArchiveDeletion?: Readonly<{
+    execute(
+      command: Readonly<{ courseId: string }>,
+      context: CommandContext,
+    ): Promise<CommandResult<Extract<CourseAuthoringResult, { kind: 'course-archive-deleted' }>>>;
+  }>;
 }): CourseAuthoring {
   async function sessionRecord(outlineSessionId: string) {
     const record = await options.authoring.outlineSessions.get(outlineSessionId);
@@ -214,6 +220,12 @@ export function createCourseAuthoringFacade(options: {
           course.resourceVersion + 1,
         );
       }
+      if (command.type === 'DeleteCourseArchive') {
+        if (options.courseArchiveDeletion === undefined) {
+          throw new Error('course_archive_deletion_not_configured');
+        }
+        return options.courseArchiveDeletion.execute({ courseId: command.courseId }, context);
+      }
       throw new Error('unsupported_course_authoring_command');
     },
     async query(query) {
@@ -239,6 +251,35 @@ export function createCourseAuthoringFacade(options: {
           ? {}
           : { confirmedCourseId: record.session.confirmedCourseId }),
       } satisfies CourseAuthoringView;
+    },
+    async getCourse(courseId) {
+      const course = await options.courses.courses.get(courseId);
+      if (course === undefined) throw new ResourceNotFoundError();
+      return {
+        courseId: course.id,
+        title: course.title,
+        status: course.status,
+        courseMode: course.courseMode,
+        outlineVersionId: course.outlineVersionId,
+        lessonIds: course.lessonIds,
+        resourceVersion: course.resourceVersion,
+      };
+    },
+    async getLesson(lessonId) {
+      const lesson = await options.courses.lessons.get(lessonId);
+      if (lesson === undefined) throw new ResourceNotFoundError();
+      if ((await options.courses.courses.get(lesson.courseId)) === undefined) {
+        throw new ResourceNotFoundError();
+      }
+      return {
+        lessonId: lesson.id,
+        courseId: lesson.courseId,
+        outlineVersionId: lesson.outlineVersionId,
+        title: lesson.title,
+        objective: lesson.objective,
+        coreKnowledgePoints: lesson.coreKnowledgePoints,
+        estimatedMinutes: lesson.estimatedMinutes,
+      };
     },
   };
 }

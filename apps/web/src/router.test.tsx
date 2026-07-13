@@ -12,6 +12,7 @@ const paths = [
   '/courses/new',
   '/courses/course_01',
   '/courses/course_01/lessons/lesson_01',
+  '/courses/course_01/lessons/lesson_01/record?tab=review',
   '/planning',
   '/history',
   '/profile',

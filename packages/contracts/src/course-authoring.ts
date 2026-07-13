@@ -53,6 +53,10 @@ export const CourseParamsSchema = z.strictObject({
   courseId: identifierSchema,
 });
 
+export const LessonParamsSchema = z.strictObject({
+  lessonId: identifierSchema,
+});
+
 export const OutlineSessionResponseSchema = z.strictObject({
   outlineSessionId: identifierSchema,
   resourceVersion: resourceVersionSchema,
@@ -94,6 +98,32 @@ export const OutlineRevisionResponseSchema = z.strictObject({
   courseId: identifierSchema,
   outlineVersionId: identifierSchema,
   resourceVersion: resourceVersionSchema,
+});
+
+export const DeleteCourseArchiveResponseSchema = z.strictObject({
+  courseId: identifierSchema,
+  deletedAt: z.iso.datetime({ offset: true }),
+  portraitRefresh: z.literal('updating'),
+});
+
+export const CourseArchiveResponseSchema = z.strictObject({
+  courseId: identifierSchema,
+  title: z.string(),
+  status: z.enum(['active', 'closed']),
+  courseMode: CourseModeSchema,
+  outlineVersionId: identifierSchema,
+  lessonIds: z.array(identifierSchema),
+  resourceVersion: resourceVersionSchema,
+});
+
+export const LessonPreviewResponseSchema = z.strictObject({
+  lessonId: identifierSchema,
+  courseId: identifierSchema,
+  outlineVersionId: identifierSchema,
+  title: z.string(),
+  objective: z.string(),
+  coreKnowledgePoints: z.array(z.string().min(1)),
+  estimatedMinutes: z.number().int().positive(),
 });
 
 export type CourseMode = (typeof COURSE_MODES)[number];

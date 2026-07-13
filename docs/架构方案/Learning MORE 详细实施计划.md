@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** 从零构建 Learning MORE 的 Windows 本地优先 MVP，形成课程创建、渐进式学习、Review 闭环、规划历史、画像证据、运行自愈、备份发布和 74 条回归验收的完整纵向系统。
+**Goal:** 从零构建 Learning MORE 的 Windows 本地优先 MVP，形成课程创建、渐进式学习、Review 闭环、规划历史、画像证据、运行自愈、备份发布和 75 条回归验收的完整纵向系统。
 
 **Architecture:** 使用 React Web + Node.js 模块化单体。当前聚合由 Repository 管理，本地文件 Adapter 使用可恢复事务、幂等结果与 outbox；追加事件驱动读模型、候选证据和画像版本。AI 通过持久化 GenerationRuntime 和可切换 Provider Adapter 运行，领域 Module 是最终结果的唯一提交者。
 
@@ -53,20 +53,20 @@
 
 架构包含多个可独立验收的子系统。详细步骤拆成八份阶段计划；本文件锁定顺序、公共约束、交付门禁和跨阶段接口。
 
-| 阶段 | 详细计划 | 可独立验收的结果 |
-| --- | --- | --- |
-| 01 | [工程基座与共享合同](<./实施计划-01-工程基座与共享合同.md>) | 可构建 Monorepo、健康页、合同/架构检查和 73-ID 审计骨架 |
-| 02 | [文件持久化与生成运行时](<./实施计划-02-文件持久化与生成运行时.md>) | 可崩溃恢复的 LocalFile、outbox/event/projection、任务与 Mock Provider/SSE |
-| 03 | [课程创建纵向切片](<./实施计划-03-课程创建纵向切片.md>) | 主题→评估→候选→确认→正式课程的完整 Web/API/文件路径 |
-| 04 | [课节学习、Review 与课程关闭](<./实施计划-04-课节学习Review与课程关闭.md>) | 学习会话→放弃恢复→最终 Review→完成事实→课程关闭 |
-| 05 | [规划、历史与学习事实](<./实施计划-05-规划历史与学习事实.md>) | 排期/计划流、历史、统计、日历和周报 |
-| 06 | [画像证据与画像生成](<./实施计划-06-画像证据与画像生成.md>) | 候选证据、全局档案、Evidence Packer 和版本化画像 |
-| 07 | [React 全域界面与运行自愈](<./实施计划-07-React界面与运行自愈.md>) | 完整页面、Launcher、运行中心、Provider 切换和版本同步 |
-| 08 | [备份、发布与全量验收](<./实施计划-08-备份发布与全量验收.md>) | migration、备份恢复、portable ZIP、74 条矩阵和发布门禁 |
+| 阶段 | 详细计划                                                                 | 可独立验收的结果                                                          |
+| ---- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| 01   | [工程基座与共享合同](./实施计划-01-工程基座与共享合同.md)                | 可构建 Monorepo、健康页、合同/架构检查和 73-ID 审计骨架                   |
+| 02   | [文件持久化与生成运行时](./实施计划-02-文件持久化与生成运行时.md)        | 可崩溃恢复的 LocalFile、outbox/event/projection、任务与 Mock Provider/SSE |
+| 03   | [课程创建纵向切片](./实施计划-03-课程创建纵向切片.md)                    | 主题→评估→候选→确认→正式课程的完整 Web/API/文件路径                       |
+| 04   | [课节学习、Review 与课程关闭](./实施计划-04-课节学习Review与课程关闭.md) | 学习会话→放弃恢复→最终 Review→完成事实→课程关闭→课程永久删除与画像重算    |
+| 05   | [规划、历史与学习事实](./实施计划-05-规划历史与学习事实.md)              | 排期/计划流、历史、统计、日历和周报                                       |
+| 06   | [画像证据与画像生成](./实施计划-06-画像证据与画像生成.md)                | 候选证据、全局档案、Evidence Packer 和版本化画像                          |
+| 07   | [React 全域界面与运行自愈](./实施计划-07-React界面与运行自愈.md)         | 完整页面、Launcher、运行中心、Provider 切换和版本同步                     |
+| 08   | [备份、发布与全量验收](./实施计划-08-备份发布与全量验收.md)              | migration、备份恢复、portable ZIP、75 条矩阵和发布门禁                    |
 
 ## 3. 跨阶段依赖
 
-~~~mermaid
+```mermaid
 flowchart LR
     P1["01 基座/合同"] --> P2["02 持久化/任务"]
     P2 --> P3["03 课程创建"]
@@ -78,13 +78,13 @@ flowchart LR
     P5 --> P7
     P6 --> P7
     P7 --> P8["08 备份/发布/验收"]
-~~~
+```
 
 阶段不得跳过。后续计划可以消费前序 Interface，但不得导入前序 Module 的 implementation/model/ports。
 
 ## 4. 顶层文件地图
 
-~~~text
+```text
 Learning MORE/
 ├─ package.json
 ├─ pnpm-workspace.yaml
@@ -116,7 +116,7 @@ Learning MORE/
 │  └─ fixtures/
 └─ docs/
    └─ 架构方案/
-~~~
+```
 
 每个阶段计划列出更细文件职责。没有对应失败测试的生产文件不得先创建。
 
@@ -124,21 +124,21 @@ Learning MORE/
 
 阶段 01 必须输出并在后续保持名称一致：
 
-~~~ts
+```ts
 export type CommandContext = {
   commandId: string;
   correlationId: string;
   idempotencyKey: string;
   expectedVersion?: number;
   pageInstanceId?: string;
-  actor: "local-user";
+  actor: 'local-user';
   requestedAt: string;
   receivedAt: string;
 };
 
 export type CommandResult<T> = {
   commandId: string;
-  outcome: "completed" | "accepted";
+  outcome: 'completed' | 'accepted';
   value: T;
   resourceVersion?: number;
   task?: GenerationTaskHandle;
@@ -156,16 +156,13 @@ export type ApplicationProblem = {
   currentVersion?: number;
   recovery?: RecoveryInstruction;
 };
-~~~
+```
 
 阶段 02 必须输出并在后续保持名称一致：
 
-~~~ts
+```ts
 export interface UnitOfWork {
-  execute<T>(
-    request: TransactionRequest,
-    work: (tx: TransactionContext) => Promise<T>
-  ): Promise<T>;
+  execute<T>(request: TransactionRequest, work: (tx: TransactionContext) => Promise<T>): Promise<T>;
 }
 
 export interface GenerationRuntime {
@@ -179,15 +176,12 @@ export interface AiProvider {
   describe(): ProviderCapabilities;
   validateConfig(
     config: ProviderPublicConfig,
-    secrets: SecretResolver
+    secrets: SecretResolver,
   ): Promise<ProviderValidation>;
   healthCheck(): Promise<ProviderHealth>;
-  generate(
-    request: NormalizedGenerationRequest,
-    signal: AbortSignal
-  ): AsyncIterable<ProviderDelta>;
+  generate(request: NormalizedGenerationRequest, signal: AbortSignal): AsyncIterable<ProviderDelta>;
 }
-~~~
+```
 
 阶段 03–06 的 Module 必须使用 execute(command, context) 和 query(query, context)，不能给 HTTP 层暴露聚合或 Repository。
 
@@ -206,7 +200,7 @@ export interface AiProvider {
 
 ## 7. 统一测试命令
 
-~~~powershell
+```powershell
 pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -220,7 +214,7 @@ pnpm test:recovery
 pnpm test:performance
 pnpm build
 pnpm verify
-~~~
+```
 
 Windows PowerShell 是计划中的命令环境。测试代码不得使用固定 D:\workspace 路径，应从临时目录和 process.cwd() 解析。
 
@@ -294,7 +288,7 @@ Windows PowerShell 是计划中的命令环境。测试代码不得使用固定 
 全部八份阶段计划完成且满足：
 
 - 五部分架构的每条显式要求有代码和测试证据；
-- 74 条 EQ 矩阵无缺项；
+- 75 条 EQ 矩阵无缺项；
 - 191 个 dataKey 注册表可验证且语义版本一致；
 - 所有构建、测试、恢复和发布命令在干净 Windows 11 环境成功；
 - 可从 portable ZIP 启动；

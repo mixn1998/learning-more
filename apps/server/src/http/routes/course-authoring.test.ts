@@ -11,11 +11,13 @@ function appWith(
   query: CourseAuthoring['query'] = async () => {
     throw new Error('unexpected_query');
   },
+  getCourse?: NonNullable<CourseAuthoring['getCourse']>,
 ) {
   const app = Fastify();
   const module: CourseAuthoring = {
     execute: async (command, context) => execute(command, context),
     query,
+    ...(getCourse === undefined ? {} : { getCourse }),
   };
   void registerCourseAuthoringRoutes(app, {
     module,
@@ -183,5 +185,54 @@ describe('CourseAuthoring HTTP contract', () => {
       outlineVersionId: 'outline_01',
       resourceVersion: 3,
     });
+  });
+
+  it('permanently deletes a course archive through an idempotent conditional command', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      commandId: 'command_01',
+      outcome: 'completed',
+      value: {
+        kind: 'course-archive-deleted',
+        courseId: 'course_01',
+        deletedAt: '2026-07-13T08:01:00.000Z',
+        portraitRefresh: 'updating',
+      },
+    });
+    const response = await appWith(execute).inject({
+      method: 'DELETE',
+      url: '/api/v1/courses/course_01',
+      headers: { ...headers, 'if-match': '"4"' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      courseId: 'course_01',
+      deletedAt: '2026-07-13T08:01:00.000Z',
+      portraitRefresh: 'updating',
+    });
+    expect(execute).toHaveBeenCalledWith(
+      { type: 'DeleteCourseArchive', courseId: 'course_01' },
+      expect.objectContaining({ idempotencyKey: 'idem_01', expectedVersion: 4 }),
+    );
+  });
+
+  it('queries the formal course archive version before destructive commands', async () => {
+    const getCourse = vi.fn().mockResolvedValue({
+      courseId: 'course_01',
+      title: 'Probability',
+      status: 'active',
+      courseMode: 'standard',
+      outlineVersionId: 'outline_01',
+      lessonIds: ['lesson_01'],
+      resourceVersion: 4,
+    });
+    const response = await appWith(vi.fn(), undefined, getCourse).inject({
+      method: 'GET',
+      url: '/api/v1/courses/course_01',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.etag).toBe('"4"');
+    expect(response.json()).toMatchObject({ courseId: 'course_01', resourceVersion: 4 });
   });
 });

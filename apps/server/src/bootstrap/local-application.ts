@@ -6,6 +6,7 @@ import { createMockProvider, type MockProviderStep } from '../ai-providers/mock-
 import type { AiProvider } from '../ai-providers/provider.js';
 import { createCandidateGenerationCoordinator } from '../modules/course-authoring/implementation/candidate-generation-coordinator.js';
 import { createCourseAuthoringFacade } from '../modules/course-authoring/implementation/course-authoring-facade.js';
+import { createCourseArchiveDeletion } from '../modules/course-authoring/implementation/course-archive-deletion.js';
 import { createCourseAuthoringModule } from '../modules/course-authoring/implementation/course-authoring-module.js';
 import { closeCourse as closeCourseAggregate } from '../modules/course-authoring/implementation/close-course.js';
 import { createGenerationFrameLog } from '../modules/generation-runtime/implementation/frame-log.js';
@@ -40,6 +41,11 @@ import {
 } from '../modules/review-closure/implementation/stage-review.js';
 import { createLocalFileCourseAuthoringRepositories } from '../persistence/course-authoring-repositories.js';
 import { createLocalFileCourseCreationRepositories } from '../persistence/course-creation-repositories.js';
+import {
+  createLocalFileCourseArchiveStore,
+  readPortraitRefreshState,
+  stagePortraitRefreshState,
+} from '../persistence/course-archive-store.js';
 import { DataRoot } from '../persistence/data-root.js';
 import { createEventDispatcher } from '../persistence/event-dispatcher.js';
 import { createEventLog } from '../persistence/event-log.js';
@@ -116,6 +122,18 @@ export async function createLocalApplication(options: {
   const runtimeInstanceId = options.runtimeIdentity?.instanceId ?? `instance_${randomUUID()}`;
   const authoringRepositories = createLocalFileCourseAuthoringRepositories(dataRoot);
   const courseRepositories = createLocalFileCourseCreationRepositories(dataRoot);
+  async function assertCourseWritable(courseId: string): Promise<void> {
+    if ((await courseRepositories.courses.get(courseId)) === undefined) {
+      throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+    }
+  }
+  async function assertLessonWritable(lessonId: string): Promise<void> {
+    const lesson = await courseRepositories.lessons.get(lessonId);
+    if (lesson === undefined) {
+      throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+    }
+    await assertCourseWritable(lesson.courseId);
+  }
   const localRepositories = createLocalFileRepositories(dataRoot);
   const frameLog = createGenerationFrameLog(dataRoot);
   const provider = createMockProvider({
@@ -193,6 +211,36 @@ export async function createLocalApplication(options: {
   await dispatchOutbox();
   const nextId = (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment') =>
     `${kind}_${randomUUID()}`;
+  const courseArchiveDeletion = createCourseArchiveDeletion({
+    store: createLocalFileCourseArchiveStore(dataRoot),
+    unitOfWork,
+    outbox,
+    async requestPortraitRefresh({ courseId, idempotencyKey }) {
+      try {
+        await requestPortraitRefresh({ idempotencyKey, tokenBudget: 8_000 });
+        await unitOfWork.execute(
+          { transactionId: `tx_portrait_refresh_state_${randomUUID()}` },
+          (tx) => stagePortraitRefreshState(tx, undefined),
+        );
+      } catch (error) {
+        await unitOfWork.execute(
+          { transactionId: `tx_portrait_refresh_state_${randomUUID()}` },
+          (tx) =>
+            stagePortraitRefreshState(tx, {
+              schemaVersion: 1,
+              state: 'failed',
+              reason: 'course_deleted',
+              courseId,
+              updatedAt: runtimeNow().toISOString(),
+              errorCode: 'portrait_refresh_failed',
+            }),
+        );
+        throw error;
+      }
+    },
+    nextEventId: () => `event_${randomUUID()}`,
+    now: runtimeNow,
+  });
   const courseAuthoring = createCourseAuthoringFacade({
     authoring: authoringRepositories,
     courses: courseRepositories,
@@ -202,6 +250,7 @@ export async function createLocalApplication(options: {
     assessmentStore: artifactStore,
     nextId,
     now: () => new Date(),
+    courseArchiveDeletion,
   });
   const learningRepositories = createLocalFileLearningSessionRepositories(dataRoot);
   const reviewClosureRepositories = createLocalFileReviewClosureRepositories(dataRoot);
@@ -216,6 +265,7 @@ export async function createLocalApplication(options: {
     nextIntervalId: () => `interval_${randomUUID()}`,
     nextLeaseToken: () => `lease_${randomUUID()}`,
     now: () => new Date(),
+    assertLessonWritable,
     async recordEvents(tx, events, record) {
       const lesson = await courseRepositories.lessons.get(record.lessonId);
       const sessionId = record.learning.session?.id;
@@ -306,6 +356,7 @@ export async function createLocalApplication(options: {
     generationRuntime,
     providerId: 'current',
     now: () => new Date(),
+    assertLessonWritable,
     async commitToLearningSession(lessonId, reviewId) {
       const view = await sessionModule.query(
         { type: 'GetLessonLearning', lessonId },
@@ -343,6 +394,7 @@ export async function createLocalApplication(options: {
     nextTransactionId: () => `closure_${randomUUID()}`,
     nextReviewId: reviewIdForLesson,
     now: () => new Date(),
+    assertLessonWritable,
   });
   const courseReviews = createCourseReviewWorkflow({
     repository: reviewClosureRepositories.courseReviews,
@@ -351,6 +403,7 @@ export async function createLocalApplication(options: {
     outbox,
     nextEventId: () => `event_${randomUUID()}`,
     now: () => new Date(),
+    assertCourseWritable,
   });
   for await (const closure of lessonClosureRepository.list()) {
     if (closure.state !== 'committing') continue;
@@ -382,8 +435,16 @@ export async function createLocalApplication(options: {
   const planning = createPlanningModule({
     repository: scheduleRepository,
     unitOfWork,
-    isLessonCompleted: async (lessonId) =>
-      (await learningRepositories.get(lessonId))?.learning.progress === 'completed',
+    async getLessonProgress(lessonId) {
+      const lesson = await courseRepositories.lessons.get(lessonId);
+      if (
+        lesson === undefined ||
+        (await courseRepositories.courses.get(lesson.courseId)) === undefined
+      ) {
+        return undefined;
+      }
+      return (await learningRepositories.get(lessonId))?.learning.progress ?? 'not_started';
+    },
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
     async recordEvent(event, tx) {
@@ -412,8 +473,11 @@ export async function createLocalApplication(options: {
     unitOfWork,
     generationRuntime,
     getScheduleVersion: scheduleVersion,
-    lessonExists: async (lessonId) =>
-      (await courseRepositories.lessons.get(lessonId)) !== undefined,
+    lessonIsPlannable: async (lessonId) => {
+      if ((await courseRepositories.lessons.get(lessonId)) === undefined) return false;
+      const progress = (await learningRepositories.get(lessonId))?.learning.progress;
+      return progress !== 'completed' && progress !== 'abandoned';
+    },
     nextPlanFlowId: () => `plan_flow_${randomUUID()}`,
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
@@ -718,6 +782,30 @@ export async function createLocalApplication(options: {
           (await artifactStore.readDraft(artifactRef))
         );
       },
+      async getLessonRecord(lessonId) {
+        const record = await learningRepositories.get(lessonId);
+        const sessionId = record?.learning.session?.id;
+        if (record === undefined || sessionId === undefined || record.finalReview === undefined) {
+          throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
+        }
+        const messages = await messageLog.list(sessionId);
+        const messageMarkdown = await Promise.all(
+          messages.map(async (message) => {
+            const markdown =
+              (await artifactStore.read(message.contentArtifactRef))?.content ??
+              (await artifactStore.readDraft(message.contentArtifactRef));
+            return `${message.role === 'user' ? '你' : '导师'}：${markdown ?? ''}`;
+          }),
+        );
+        const finalReviewMarkdown =
+          (await artifactStore.read(record.finalReview.artifactRef))?.content ?? '';
+        return {
+          lessonId,
+          original: { sessionId, label: '原始学习', messages: messageMarkdown },
+          supplementary: [],
+          finalReviewMarkdown,
+        };
+      },
       nextCommandId: () => `command_${randomUUID()}`,
       nextCorrelationId: () => `correlation_${randomUUID()}`,
       nextMessageId: () => `message_${randomUUID()}`,
@@ -833,8 +921,13 @@ export async function createLocalApplication(options: {
           );
           const existingReview = await reviewClosureRepositories.courseReviews.get(courseId);
           if (existingReview?.state === 'review-finalized') {
+            const markdown =
+              existingReview.artifactRef === undefined
+                ? undefined
+                : (await artifactStore.read(existingReview.artifactRef))?.content;
             return {
               ...existingReview,
+              ...(markdown === undefined ? {} : { markdown }),
               transactionId: courseId,
               resourceVersion: closed.resourceVersion,
             };
@@ -848,7 +941,8 @@ export async function createLocalApplication(options: {
             await generationRuntime.cancel(pendingReview.generationTaskId);
           }
           const courseReviewArtifactRef = `course_review_${courseId}`;
-          const courseReviewMarkdown = '# Course Review\nCourse learning summary completed.';
+          const courseReviewMarkdown =
+            '# 主题总结\n\n## 核心知识线索\n\n课程核心知识已经按最终大纲与课时 Review 汇总。\n\n## 总体学习表现\n\n学习表现仅依据课程内可追溯的真实互动与 Review。\n\n## 推荐扩展课程\n\n建议基于当前主题创建一门独立的扩展课程继续深化。';
           await artifactStore.finalize({
             artifactId: courseReviewArtifactRef,
             kind: 'course-review',
@@ -861,7 +955,12 @@ export async function createLocalApplication(options: {
             createHash('sha256').update(courseReviewMarkdown).digest('hex'),
           );
           const review = await courseReviews.finalize(courseId, context.idempotencyKey);
-          return { ...review, transactionId: courseId, resourceVersion: closed.resourceVersion };
+          return {
+            ...review,
+            markdown: courseReviewMarkdown,
+            transactionId: courseId,
+            resourceVersion: closed.resourceVersion,
+          };
         },
         async getClosure(transactionId) {
           const closure = await lessonClosureRepository.get(transactionId);
@@ -871,7 +970,15 @@ export async function createLocalApplication(options: {
         },
         retryClosure: (transactionId, context) =>
           lessonClosures.retry(transactionId, context.commandId),
-        getCourseReview: (courseId) => reviewClosureRepositories.courseReviews.get(courseId),
+        async getCourseReview(courseId) {
+          const review = await reviewClosureRepositories.courseReviews.get(courseId);
+          if (review === undefined) return undefined;
+          const markdown =
+            review.artifactRef === undefined
+              ? undefined
+              : (await artifactStore.read(review.artifactRef))?.content;
+          return { ...review, ...(markdown === undefined ? {} : { markdown }) };
+        },
       },
       nextCommandId: () => `command_${randomUUID()}`,
       nextCorrelationId: () => `correlation_${randomUUID()}`,
@@ -934,9 +1041,16 @@ export async function createLocalApplication(options: {
       requestRefresh: requestPortraitRefresh,
       async getCurrent() {
         const cursor = await portraitRepository.getCurrent();
-        return cursor === undefined
+        if (cursor !== undefined) return portraitRepository.getVersion(cursor.currentVersionId);
+        const refresh = await readPortraitRefreshState(dataRoot);
+        return refresh === undefined
           ? undefined
-          : portraitRepository.getVersion(cursor.currentVersionId);
+          : {
+              state: refresh.state,
+              errorCode: refresh.errorCode,
+              retryable: refresh.state === 'failed',
+              updatedAt: refresh.updatedAt,
+            };
       },
       getVersion: (versionId) => portraitRepository.getVersion(versionId),
       nextCorrelationId: () => `correlation_${randomUUID()}`,
@@ -944,6 +1058,7 @@ export async function createLocalApplication(options: {
     generationFrameLog: frameLog,
     runtimeControl: {
       switchProvider: providerConfigService.switchProvider,
+      getProviderStatus: providerConfigService.getStatus,
       ...(options.createDiagnostics === undefined
         ? {}
         : { createDiagnostics: options.createDiagnostics }),

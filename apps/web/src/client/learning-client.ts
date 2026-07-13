@@ -3,6 +3,32 @@ import { getPageInstanceId } from '../state/page-instance.js';
 import { streamGenerationEvents } from './sse-client.js';
 
 export interface LearningClient {
+  getLessonPreview(lessonId: string): Promise<{
+    lessonId: string;
+    courseId: string;
+    outlineVersionId: string;
+    title: string;
+    objective: string;
+    coreKnowledgePoints: readonly string[];
+    estimatedMinutes: number;
+  }>;
+  getCourse(courseId: string): Promise<{
+    courseId: string;
+    title: string;
+    status: 'active' | 'closed';
+    courseMode: string;
+    outlineVersionId: string;
+    lessonIds: readonly string[];
+    resourceVersion: number;
+  }>;
+  deleteCourse(
+    courseId: string,
+    resourceVersion: number,
+  ): Promise<{
+    courseId: string;
+    deletedAt: string;
+    portraitRefresh: 'updating';
+  }>;
   start(lessonId: string): Promise<{
     lessonId: string;
     sessionId: string;
@@ -14,14 +40,16 @@ export interface LearningClient {
     resourceVersion: number;
     learning: {
       progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
-      session?: { state: 'active' | 'paused' | 'frozen' | 'closed' };
+      session?: {
+        state: 'active' | 'paused' | 'frozen' | 'closed';
+        activeGenerationTaskId?: string;
+      };
     };
     finalReview?: { id: string; markdown?: string };
   }>;
   sendMessage(input: {
     sessionId: string;
     markdown: string;
-    establishesEvidence: boolean;
     resourceVersion: number;
   }): Promise<{ taskId: string; resourceVersion: number }>;
   stream(taskId: string, onEvent: (event: AuthoringStreamEvent) => void): Promise<void>;
@@ -56,10 +84,12 @@ export interface LearningClient {
     courseId: string,
     resourceVersion: number,
     confirmAbandoned: boolean,
-  ): Promise<{ state: string; artifactRef?: string; resourceVersion: number }>;
+  ): Promise<{ state: string; artifactRef?: string; markdown?: string; resourceVersion: number }>;
   getCourseReview(
     courseId: string,
-  ): Promise<{ state: string; artifactRef?: string; resourceVersion: number } | undefined>;
+  ): Promise<
+    { state: string; artifactRef?: string; markdown?: string; resourceVersion: number } | undefined
+  >;
 }
 
 function headers(resourceVersion?: number): HeadersInit {
@@ -84,6 +114,19 @@ async function stream(taskId: string, onEvent: (event: AuthoringStreamEvent) => 
 }
 
 export const learningClient: LearningClient = {
+  getLessonPreview: (lessonId) =>
+    request(`/api/v1/lessons/${encodeURIComponent(lessonId)}`) as ReturnType<
+      LearningClient['getLessonPreview']
+    >,
+  getCourse: (courseId) =>
+    request(`/api/v1/courses/${encodeURIComponent(courseId)}`) as ReturnType<
+      LearningClient['getCourse']
+    >,
+  deleteCourse: (courseId, version) =>
+    request(`/api/v1/courses/${encodeURIComponent(courseId)}`, {
+      method: 'DELETE',
+      headers: headers(version),
+    }) as ReturnType<LearningClient['deleteCourse']>,
   start: (lessonId) =>
     request(`/api/v1/lessons/${encodeURIComponent(lessonId)}/sessions`, {
       method: 'POST',
@@ -100,7 +143,6 @@ export const learningClient: LearningClient = {
       headers: headers(input.resourceVersion),
       body: JSON.stringify({
         markdown: input.markdown,
-        establishesEvidence: input.establishesEvidence,
       }),
     }) as ReturnType<LearningClient['sendMessage']>,
   stream,

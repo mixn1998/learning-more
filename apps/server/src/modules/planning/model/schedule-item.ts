@@ -9,6 +9,8 @@ export type ScheduleItem = Readonly<{
   timezoneAtCreation: string;
   source: ScheduleSource;
   status: 'scheduled' | 'removed';
+  locked?: boolean;
+  cancelReason?: 'lesson_abandoned' | 'user_removed';
   createdAt: string;
   updatedAt: string;
   processedCommandIds: readonly string[];

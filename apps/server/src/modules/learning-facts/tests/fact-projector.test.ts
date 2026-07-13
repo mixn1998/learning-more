@@ -52,4 +52,34 @@ describe('FactProjector', () => {
     });
     expect(projector.ignoredCount()).toBe(1);
   });
+
+  it('retracts every fact contributed by a permanently deleted course during replay', async () => {
+    const repository = createInMemoryFactRepository();
+    const projector = createFactProjector({ repository, unitOfWork });
+    const deletedCourseFact = {
+      ...event('LessonSessionCompleted'),
+      id: 'event_deleted_course',
+      target_refs: { courseId: 'course_delete', lessonId: 'lesson_delete' },
+    };
+    const retainedCourseFact = {
+      ...event('LessonSessionCompleted'),
+      id: 'event_retained_course',
+      target_refs: { courseId: 'course_keep', lessonId: 'lesson_keep' },
+    };
+    await projector.project(deletedCourseFact);
+    await projector.project(retainedCourseFact);
+
+    await expect(
+      projector.project({
+        ...event('CourseArchiveDeleted'),
+        id: 'event_course_archive_deleted',
+        target_refs: { courseId: 'course_delete' },
+        payload: {},
+      }),
+    ).resolves.toEqual({ appended: 0, duplicates: 0, ignored: 0, retracted: 1 });
+
+    const remaining = [];
+    for await (const fact of repository.list()) remaining.push(fact.subjectRefs.courseId);
+    expect(remaining).toEqual(['course_keep']);
+  });
 });

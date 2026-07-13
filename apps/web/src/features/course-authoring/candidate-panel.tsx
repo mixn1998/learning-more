@@ -4,7 +4,6 @@ import rehypeSanitize from 'rehype-sanitize';
 export function CandidatePanel(props: {
   readonly markdown: string;
   readonly state: 'generating' | 'ready' | 'failed' | 'confirmed';
-  readonly draftArtifactRef?: string;
   readonly onGenerate: () => void;
   readonly onConfirm: () => void;
 }) {
@@ -12,7 +11,7 @@ export function CandidatePanel(props: {
     return (
       <section className="authoring-panel">
         <p role="alert">生成中断，草稿已保留。</p>
-        {props.draftArtifactRef === undefined ? null : <code>{props.draftArtifactRef}</code>}
+        <p role="status">未完成内容会在重试时继续使用。</p>
         <button type="button" onClick={props.onGenerate}>
           重试生成
         </button>

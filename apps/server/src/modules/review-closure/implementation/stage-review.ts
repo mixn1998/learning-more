@@ -46,6 +46,7 @@ export function createStageReviewWorkflow(options: {
   readonly now: () => Date;
   readonly providerId?: string;
   readonly commitToLearningSession?: (lessonId: string, reviewId: string) => Promise<void>;
+  readonly assertLessonWritable?: (lessonId: string) => Promise<void>;
 }): StageReviewWorkflow {
   return {
     async request(input) {
@@ -68,26 +69,30 @@ export function createStageReviewWorkflow(options: {
         }),
       });
       const resourceVersion = current?.resourceVersion ?? 0;
-      await options.unitOfWork.execute({ transactionId: `tx_stage_review_${randomUUID()}` }, (tx) =>
-        options.repository.save(
-          tx,
-          {
-            reviewId,
-            lessonId: input.lessonId,
-            sourceSessionId: input.sourceSessionId,
-            sourceSnapshotHash: input.sourceSnapshotHash,
-            status: 'generating',
-            taskId: task.taskId,
-            requestReceipts: {
-              ...(current?.requestReceipts ?? {}),
-              [input.commandId]: task.taskId,
+      await options.unitOfWork.execute(
+        { transactionId: `tx_stage_review_${randomUUID()}` },
+        async (tx) => {
+          await options.assertLessonWritable?.(input.lessonId);
+          await options.repository.save(
+            tx,
+            {
+              reviewId,
+              lessonId: input.lessonId,
+              sourceSessionId: input.sourceSessionId,
+              sourceSnapshotHash: input.sourceSnapshotHash,
+              status: 'generating',
+              taskId: task.taskId,
+              requestReceipts: {
+                ...(current?.requestReceipts ?? {}),
+                [input.commandId]: task.taskId,
+              },
+              replacementCount: current?.replacementCount ?? 0,
+              updatedAt: options.now().toISOString(),
+              resourceVersion,
             },
-            replacementCount: current?.replacementCount ?? 0,
-            updatedAt: options.now().toISOString(),
             resourceVersion,
-          },
-          resourceVersion,
-        ),
+          );
+        },
       );
       return { reviewId, taskId: task.taskId };
     },
@@ -96,18 +101,22 @@ export function createStageReviewWorkflow(options: {
       if (current === undefined || current.taskId !== input.taskId) {
         throw new Error('STAGE_REVIEW_TASK_STALE');
       }
-      await options.unitOfWork.execute({ transactionId: `tx_stage_review_${randomUUID()}` }, (tx) =>
-        options.repository.save(
-          tx,
-          {
-            ...current,
-            status: 'failed',
-            errorCode: input.errorCode,
-            draftArtifactRef: input.draftArtifactRef,
-            updatedAt: options.now().toISOString(),
-          },
-          current.resourceVersion,
-        ),
+      await options.unitOfWork.execute(
+        { transactionId: `tx_stage_review_${randomUUID()}` },
+        async (tx) => {
+          await options.assertLessonWritable?.(current.lessonId);
+          await options.repository.save(
+            tx,
+            {
+              ...current,
+              status: 'failed',
+              errorCode: input.errorCode,
+              draftArtifactRef: input.draftArtifactRef,
+              updatedAt: options.now().toISOString(),
+            },
+            current.resourceVersion,
+          );
+        },
       );
     },
     async commit(input) {
@@ -122,19 +131,23 @@ export function createStageReviewWorkflow(options: {
       } = current;
       void _errorCode;
       void _draftArtifactRef;
-      await options.unitOfWork.execute({ transactionId: `tx_stage_review_${randomUUID()}` }, (tx) =>
-        options.repository.save(
-          tx,
-          {
-            ...withoutFailure,
-            status: 'committed',
-            artifactRef: input.artifactRef,
-            contentSha256: input.contentSha256,
-            replacementCount: current.replacementCount + 1,
-            updatedAt: options.now().toISOString(),
-          },
-          current.resourceVersion,
-        ),
+      await options.unitOfWork.execute(
+        { transactionId: `tx_stage_review_${randomUUID()}` },
+        async (tx) => {
+          await options.assertLessonWritable?.(current.lessonId);
+          await options.repository.save(
+            tx,
+            {
+              ...withoutFailure,
+              status: 'committed',
+              artifactRef: input.artifactRef,
+              contentSha256: input.contentSha256,
+              replacementCount: current.replacementCount + 1,
+              updatedAt: options.now().toISOString(),
+            },
+            current.resourceVersion,
+          );
+        },
       );
       await options.commitToLearningSession?.(current.lessonId, current.reviewId);
     },

@@ -10,7 +10,10 @@ export type LearningFactType =
   | 'CourseClosedFact'
   | 'ReviewFinalizedFact'
   | 'CourseReviewFinalizedFact'
-  | 'ScheduleConfirmedFact';
+  | 'ScheduleConfirmedFact'
+  | 'InteractionPromptedFact'
+  | 'InteractionRespondedFact'
+  | 'InteractionSkippedFact';
 
 export interface LearningFact<TPayload = Readonly<Record<string, unknown>>> {
   readonly factId: string;

@@ -60,6 +60,7 @@ const LessonClosureSchema = z.strictObject({
     'review-ready',
     'committing',
     'completed',
+    'cancelled',
   ]),
   sourceSessionIds: z.array(identifier).min(1),
   sourceMessageIds: z.array(identifier).min(1),

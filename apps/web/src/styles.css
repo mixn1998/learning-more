@@ -175,6 +175,42 @@ button {
   width: auto;
 }
 
+.course-danger-zone {
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px solid color-mix(in srgb, #c9362b 45%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, #c9362b 6%, transparent);
+}
+
+.danger-button {
+  border-color: #c9362b;
+  background: #c9362b;
+  color: #fff;
+}
+
+.danger-dialog {
+  position: fixed;
+  z-index: 100;
+  inset: 50% auto auto 50%;
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  transform: translate(-50%, -50%);
+  padding: 1.5rem;
+  border: 1px solid color-mix(in srgb, #c9362b 55%, transparent);
+  border-radius: 0.875rem;
+  background: var(--surface, #fff);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 24%);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
 .candidate-markdown {
   line-height: 1.65;
 }

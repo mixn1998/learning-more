@@ -1,6 +1,7 @@
 import {
   ProviderSwitchRequestSchema,
   ProviderSwitchResponseSchema,
+  ProviderRuntimeStatusSchema,
   type ProviderSwitchRequest,
 } from '@learning-more/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -10,6 +11,7 @@ import { mapApplicationError } from '../error-mapper.js';
 
 export type RuntimeRouteOptions = Readonly<{
   switchProvider(input: ProviderSwitchRequest): Promise<unknown>;
+  getProviderStatus?(): Promise<unknown>;
   createDiagnostics?(): Promise<Readonly<{ artifactRef: string }>>;
   nextCorrelationId?: () => string;
 }>;
@@ -24,6 +26,19 @@ export async function registerRuntimeRoutes(
   app: FastifyInstance,
   options: RuntimeRouteOptions,
 ): Promise<void> {
+  if (options.getProviderStatus !== undefined) {
+    app.get('/api/v1/ai-runtime/status', async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        return reply
+          .code(200)
+          .send(ProviderRuntimeStatusSchema.parse(await options.getProviderStatus!()));
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    });
+  }
   app.post('/api/v1/ai-runtime/provider-switches', async (request, reply) => {
     const correlation = correlationId(request, options);
     try {

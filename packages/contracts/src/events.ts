@@ -19,6 +19,7 @@ export const EVENT_TYPES = [
   'RecommendedLessonChanged',
   'SupplementarySessionArchived',
   'CourseClosed',
+  'CourseArchiveDeleted',
   'CourseReviewFinalized',
   'SchedulePlanned',
   'ScheduleChanged',

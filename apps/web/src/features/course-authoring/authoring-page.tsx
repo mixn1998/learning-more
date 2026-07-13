@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef } from 'react';
 
-import { COURSE_MODES, type CourseMode } from '@learning-more/contracts';
+import type { CourseMode } from '@learning-more/contracts';
 
 import {
   courseAuthoringClient,
@@ -11,6 +11,7 @@ import { getPageInstanceId } from '../../state/page-instance.js';
 import { AssessmentPanel } from './assessment-panel.js';
 import { CandidatePanel } from './candidate-panel.js';
 import { ConfirmDialog } from './confirm-dialog.js';
+import { CourseModeSelector } from './course-mode-selector.js';
 
 type Phase =
   | 'empty'
@@ -333,21 +334,10 @@ export function AuthoringPage(props: {
               onChange={(event) => dispatch({ type: 'edit-topic', value: event.target.value })}
             />
           </label>
-          <fieldset>
-            <legend>课程模式</legend>
-            {COURSE_MODES.map((mode) => (
-              <label key={mode}>
-                <input
-                  type="radio"
-                  name="course-mode"
-                  value={mode}
-                  checked={state.courseMode === mode}
-                  onChange={() => dispatch({ type: 'select-mode', value: mode })}
-                />
-                {mode}
-              </label>
-            ))}
-          </fieldset>
+          <CourseModeSelector
+            value={state.courseMode}
+            onChange={(value) => dispatch({ type: 'select-mode', value })}
+          />
           <button
             type="button"
             disabled={state.phase === 'creating' || state.topic.trim() === ''}
@@ -404,9 +394,6 @@ export function AuthoringPage(props: {
                   ? 'confirmed'
                   : 'failed'
           }
-          {...(state.draftArtifactRef === undefined
-            ? {}
-            : { draftArtifactRef: state.draftArtifactRef })}
           onGenerate={() => void generate()}
           onConfirm={() => dispatch({ type: 'open-confirm', open: true })}
         />

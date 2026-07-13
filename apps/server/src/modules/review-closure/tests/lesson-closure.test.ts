@@ -28,7 +28,10 @@ const baseContext = {
   pageInstanceId: 'page_01',
 };
 
-async function fixture(crashAfterLearningCommit = false) {
+async function fixture(
+  crashAfterLearningCommit = false,
+  assertLessonWritable?: (lessonId: string) => Promise<void>,
+) {
   const repositories = createInMemoryLearningSessionRepositories();
   const sessionModule = createSessionModule({
     repositories,
@@ -64,6 +67,7 @@ async function fixture(crashAfterLearningCommit = false) {
     nextTransactionId: () => 'closure_01',
     nextReviewId: () => 'review_final_01',
     now: () => new Date('2026-07-13T00:01:00.000Z'),
+    ...(assertLessonWritable === undefined ? {} : { assertLessonWritable }),
     ...(crashAfterLearningCommit
       ? {
           afterLearningCommit: () => {
@@ -96,6 +100,24 @@ const review = {
 };
 
 describe('lesson closure workflow', () => {
+  it('rejects a late Review write after permanent course deletion starts', async () => {
+    let deleted = false;
+    const { workflow, closureRepository } = await fixture(false, async () => {
+      if (deleted) {
+        throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+      }
+    });
+    await workflow.begin(snapshot);
+    deleted = true;
+
+    await expect(workflow.markReviewReady('closure_01', review)).rejects.toMatchObject({
+      code: 'resource_not_found',
+    });
+    await expect(closureRepository.get('closure_01')).resolves.toMatchObject({
+      state: 'generating',
+    });
+  });
+
   it('rejects an empty source session and retains a retryable generation failure', async () => {
     const { workflow, closureRepository } = await fixture();
     await expect(workflow.begin({ ...snapshot, sourceMessageIds: [] })).rejects.toMatchObject({
@@ -150,7 +172,7 @@ describe('lesson closure workflow', () => {
     });
   });
 
-  it('recovers a crash after the LearningSession commit without duplicating the final artifact', async () => {
+  it('[EQ-LESSON-12] recovers a crash after the LearningSession commit without duplicating the final artifact', async () => {
     const { workflow, closureRepository, sessionModule } = await fixture(true);
     const started = await workflow.begin(snapshot);
     await workflow.markReviewReady(started.transactionId, review);
@@ -180,6 +202,34 @@ describe('lesson closure workflow', () => {
     );
     expect(view.learning.session?.finalReviewId).toBe('review_final_01');
     expect(view.resourceVersion).toBe(3);
+  });
+
+  it('[EQ-LESSON-12] persists the close snapshot before generation and allows cancellation before commit', async () => {
+    const { workflow, closureRepository, sessionModule } = await fixture();
+    const started = await workflow.begin(snapshot);
+    await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
+      state: 'generating',
+      sourceMessageIds: ['message_01'],
+      messageRangeChecksum: snapshot.messageRangeChecksum,
+      endIntent: snapshot.endIntent,
+    });
+    await expect(workflow.cancel(started.transactionId)).resolves.toMatchObject({
+      state: 'cancelled',
+    });
+    await expect(
+      workflow.recover(started.transactionId, snapshot.messageRangeChecksum, {
+        ...baseContext,
+        commandId: 'recover_cancelled',
+      }),
+    ).resolves.toMatchObject({
+      state: 'cancelled',
+    });
+    await expect(
+      sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+        { ...baseContext, correlationId: 'query_cancelled' },
+      ),
+    ).resolves.toMatchObject({ learning: { progress: 'in_progress' } });
   });
 
   it('keeps supplementary learning separate from the original final Review', () => {

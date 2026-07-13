@@ -35,6 +35,9 @@ describe('ProviderConfigService', () => {
         };
       },
       switchProvider,
+      async getProviderStatus() {
+        return { currentProviderId: 'api', providers: ['api'] };
+      },
     };
     const service = createProviderConfigService({ runtime, secrets, repository });
     const result = await service.switchProvider({
@@ -55,6 +58,55 @@ describe('ProviderConfigService', () => {
       secretHandles: { apiKey: 'provider/api-key' },
       configFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+    await expect(service.getStatus()).resolves.toEqual({
+      providerId: 'api',
+      model: 'model-01',
+      health: { status: 'healthy' },
+      capabilities: runtime.describeProvider(),
+    });
+  });
+
+  it('[EQ-AI-01] reports Provider, model, health, and capabilities from the active runtime', async () => {
+    const secrets = createMemorySecretStore();
+    await secrets.put('provider/api-key', new TextEncoder().encode('private-key'));
+    const repository = createMemoryProviderConfigRepository();
+    let currentProviderId = 'mock';
+    const runtime = {
+      validateProvider: vi.fn().mockResolvedValue({ valid: true }),
+      checkProviderHealth: vi.fn(async () => ({ status: 'healthy' as const })),
+      describeProvider: vi.fn((providerId: string) => ({
+        id: providerId,
+        kind: providerId === 'mock' ? ('mock' as const) : ('api' as const),
+        maxConcurrency: 2,
+        supportsStreaming: true as const,
+      })),
+      async switchProvider(providerId: string) {
+        currentProviderId = providerId;
+      },
+      async getProviderStatus() {
+        return { currentProviderId, providers: ['mock', 'api'] };
+      },
+    };
+    const service = createProviderConfigService({ runtime, secrets, repository });
+
+    await service.switchProvider({
+      providerId: 'api',
+      publicConfig: { model: 'model-01', baseUrl: 'https://provider.invalid' },
+      secretHandles: { apiKey: 'provider/api-key' },
+    });
+
+    await expect(service.getStatus()).resolves.toEqual({
+      providerId: 'api',
+      model: 'model-01',
+      health: { status: 'healthy' },
+      capabilities: {
+        id: 'api',
+        kind: 'api',
+        maxConcurrency: 2,
+        supportsStreaming: true,
+      },
+    });
+    expect(runtime.checkProviderHealth).toHaveBeenLastCalledWith('api');
   });
 
   it('[EQ-AI-02] does not change active config when validation, secret, health, or switching fails', async () => {
@@ -70,6 +122,9 @@ describe('ProviderConfigService', () => {
         supportsStreaming: true as const,
       })),
       switchProvider: vi.fn().mockResolvedValue(undefined),
+      getProviderStatus: vi
+        .fn()
+        .mockResolvedValue({ currentProviderId: 'api', providers: ['api'] }),
     };
     const service = createProviderConfigService({ runtime, secrets, repository });
     await expect(

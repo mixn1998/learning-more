@@ -52,13 +52,15 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
     });
   });
 
-  it('deletes an evidence-free session and creates a new one only on the next start', () => {
+  it('marks evidence-free abandonment, deletes its session, and requires restore before a new start', () => {
     let learning = createLessonLearning('lesson_01');
     learning = apply(learning, { type: 'start', sessionId: 'empty_session' }, 'c1');
     learning = apply(learning, { type: 'abandon' }, 'c2');
-    expect(learning).toMatchObject({ progress: 'not_started' });
+    expect(learning).toMatchObject({ progress: 'abandoned' });
     expect(learning.session).toBeUndefined();
-    learning = apply(learning, { type: 'start', sessionId: 'new_session' }, 'c3');
+    learning = apply(learning, { type: 'restore' }, 'c3');
+    expect(learning).toMatchObject({ progress: 'not_started' });
+    learning = apply(learning, { type: 'start', sessionId: 'new_session' }, 'c4');
     expect(learning.session?.id).toBe('new_session');
   });
 

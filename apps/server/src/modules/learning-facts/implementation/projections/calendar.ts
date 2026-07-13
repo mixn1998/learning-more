@@ -9,6 +9,11 @@ type CalendarDay = Readonly<{
 
 export type CalendarView = ReadModelStatus & Readonly<{ days: readonly CalendarDay[] }>;
 
+export function selectCalendarMonth(view: CalendarView, yearMonth: string): CalendarView {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(yearMonth)) throw new Error('calendar_month_invalid');
+  return { ...view, days: view.days.filter((day) => day.localDate.startsWith(`${yearMonth}-`)) };
+}
+
 export function createCalendarProjection(timeZone: string) {
   const accumulator = createFactAccumulator();
   return {

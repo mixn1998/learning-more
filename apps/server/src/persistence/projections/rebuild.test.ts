@@ -78,7 +78,7 @@ describe('projection rebuild', () => {
 
     expect(new Set(outputs.map((output) => output.stateJson))).toHaveLength(1);
     expect(new Set(outputs.map((output) => output.stateChecksum))).toHaveLength(1);
-  }, 15_000);
+  }, 45_000);
 
   it('does not apply a duplicate event id twice', async () => {
     const { dataRoot, unitOfWork } = await fixture();

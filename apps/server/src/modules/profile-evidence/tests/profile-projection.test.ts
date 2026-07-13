@@ -92,7 +92,7 @@ describe('GlobalLearningProfile projection', () => {
     });
   });
 
-  it('produces the same checksum incrementally and from zero with explicit windows and denominators', () => {
+  it('[EQ-HIS-08] produces the same complete global profile incrementally with series, samples, exclusions, and source cursors', () => {
     const facts = [
       fact('01', 'LessonCompletedFact', '2026-07-01T16:30:00.000Z', {
         actualSeconds: 600,
@@ -103,6 +103,8 @@ describe('GlobalLearningProfile projection', () => {
         actualSeconds: 900,
       }),
       fact('03', 'ReviewFinalizedFact', '2026-07-15T00:00:00.000Z'),
+      fact('04', 'InteractionPromptedFact', '2026-07-16T00:00:00.000Z'),
+      fact('05', 'InteractionRespondedFact', '2026-07-16T00:01:00.000Z'),
     ];
     const allEvidence = [
       evidence('evidence_01', 'behavior', 'lesson:01'),
@@ -127,6 +129,18 @@ describe('GlobalLearningProfile projection', () => {
         completionFraction: { numerator: 1, denominator: 2 },
       },
       reviewReflection: { finalizedReviewCount: 1 },
+      interaction: {
+        promptCount: 1,
+        responseCount: 1,
+        responseRate: { numerator: 1, denominator: 1 },
+        sourceCount: 2,
+      },
+      exclusions: {
+        outsideWindowFactCount: 1,
+        retractedEvidenceCount: 0,
+        supersededEvidenceCount: 0,
+        telemetryDataKeyCount: 0,
+      },
       topicCoverage: { topics: [{ topic: 'probability', completedLessonCount: 1 }] },
     });
     expect(rebuilt.view().dailySeries).toEqual([
@@ -136,5 +150,21 @@ describe('GlobalLearningProfile projection', () => {
         completedLessonCount: 1,
       },
     ]);
+    for (const section of [
+      rebuilt.view().learningVolume,
+      rebuilt.view().lifecycle,
+      rebuilt.view().reviewReflection,
+      rebuilt.view().planning,
+      rebuilt.view().interaction,
+      rebuilt.view().topicCoverage,
+    ]) {
+      expect(section).toEqual(
+        expect.objectContaining({
+          sourceCount: expect.any(Number),
+          dataKeys: expect.any(Array),
+          asOfFactId: '02',
+        }),
+      );
+    }
   });
 });

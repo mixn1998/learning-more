@@ -76,6 +76,7 @@ export function createSessionModule(options: {
   readonly nextIntervalId: () => string;
   readonly nextLeaseToken: () => string;
   readonly now: () => Date;
+  readonly assertLessonWritable?: (lessonId: string) => Promise<void>;
   readonly recordEvents?: (
     tx: TransactionContext,
     events: readonly LearningSessionEvent[],
@@ -93,6 +94,14 @@ export function createSessionModule(options: {
       if (pageInstanceId === undefined) throw new LearningSessionError('session_not_writable');
       if (
         command.type !== 'StartLesson' &&
+        command.type !== 'TransferSessionLease' &&
+        current !== undefined &&
+        !ownsWriteLease(current.writeLease, pageInstanceId)
+      ) {
+        throw new WriteLeaseLostError();
+      }
+      if (
+        command.type !== 'StartLesson' &&
         current !== undefined &&
         context.expectedVersion !== undefined &&
         context.expectedVersion !== current.resourceVersion
@@ -101,6 +110,10 @@ export function createSessionModule(options: {
       }
 
       if (command.type === 'StartLesson' && current !== undefined) {
+        await options.unitOfWork.execute(
+          { transactionId: `tx_learning_guard_${randomUUID()}` },
+          async () => options.assertLessonWritable?.(command.lessonId),
+        );
         const acquired = acquireSessionWriteLease(current.writeLease, {
           pageInstanceId,
           instanceId: options.instanceId,
@@ -138,12 +151,16 @@ export function createSessionModule(options: {
             now,
           });
         }
-        await options.unitOfWork.execute({ transactionId: `tx_learning_${randomUUID()}` }, (tx) =>
-          options.repositories.save(
-            tx,
-            { ...current, writeLease: lease, intervals },
-            current.resourceVersion,
-          ),
+        await options.unitOfWork.execute(
+          { transactionId: `tx_learning_${randomUUID()}` },
+          async (tx) => {
+            await options.assertLessonWritable?.(command.lessonId);
+            await options.repositories.save(
+              tx,
+              { ...current, writeLease: lease, intervals },
+              current.resourceVersion,
+            );
+          },
         );
         const resourceVersion = current.resourceVersion + 1;
         return {
@@ -161,9 +178,6 @@ export function createSessionModule(options: {
         };
       }
 
-      if (current !== undefined && !ownsWriteLease(current.writeLease, pageInstanceId)) {
-        throw new WriteLeaseLostError();
-      }
       const sessionId = command.type === 'StartLesson' ? options.nextSessionId() : undefined;
       const base =
         current ??
@@ -231,6 +245,7 @@ export function createSessionModule(options: {
       await options.unitOfWork.execute(
         { transactionId: `tx_learning_${randomUUID()}` },
         async (tx) => {
+          await options.assertLessonWritable?.(command.lessonId);
           if (
             events.length > 0 &&
             learning.session !== undefined &&

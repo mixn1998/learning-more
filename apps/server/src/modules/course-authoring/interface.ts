@@ -18,7 +18,8 @@ export type CourseAuthoringCommand =
       type: 'ReviseCourseOutline';
       courseId: string;
       sourceCandidateVersionId: string;
-    }>;
+    }>
+  | Readonly<{ type: 'DeleteCourseArchive'; courseId: string }>;
 
 export type CourseAuthoringQuery = Readonly<{
   type: 'GetOutlineSession';
@@ -39,7 +40,15 @@ export type CourseAuthoringResult =
       courseId: string;
       outlineVersionId?: string;
     }>
-  | Readonly<{ kind: 'revision'; courseId: string; outlineVersionId: string }>;
+  | Readonly<{ kind: 'revision'; courseId: string; outlineVersionId: string }>
+  | CourseArchiveDeletedResult;
+
+export type CourseArchiveDeletedResult = Readonly<{
+  kind: 'course-archive-deleted';
+  courseId: string;
+  deletedAt: string;
+  portraitRefresh: 'updating';
+}>;
 
 export type CourseAuthoringView = Readonly<{
   outlineSessionId: string;
@@ -53,10 +62,32 @@ export type CourseAuthoringView = Readonly<{
   confirmedCourseId?: string;
 }>;
 
+export type CourseArchiveView = Readonly<{
+  courseId: string;
+  title: string;
+  status: 'active' | 'closed';
+  courseMode: CourseMode;
+  outlineVersionId: string;
+  lessonIds: readonly string[];
+  resourceVersion: number;
+}>;
+
+export type LessonPreviewView = Readonly<{
+  lessonId: string;
+  courseId: string;
+  outlineVersionId: string;
+  title: string;
+  objective: string;
+  coreKnowledgePoints: readonly string[];
+  estimatedMinutes: number;
+}>;
+
 export interface CourseAuthoring {
   execute(
     command: CourseAuthoringCommand,
     context: CommandContext,
   ): Promise<CommandResult<CourseAuthoringResult>>;
   query(query: CourseAuthoringQuery, context: QueryContext): Promise<CourseAuthoringView>;
+  getCourse?(courseId: string, context: QueryContext): Promise<CourseArchiveView>;
+  getLesson?(lessonId: string, context: QueryContext): Promise<LessonPreviewView>;
 }

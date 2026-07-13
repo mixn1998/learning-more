@@ -87,7 +87,7 @@ function nonEmptyString(value: unknown): value is string {
 
 export function checkEquivalence(
   entries: readonly unknown[],
-  expectedCount = 74,
+  expectedCount = 75,
   fileExists: (filePath: string) => boolean = existsSync,
 ): EquivalenceIssue[] {
   const issues: EquivalenceIssue[] = [];
@@ -207,7 +207,7 @@ export function runEquivalenceCheck(
   const entries = readEquivalenceMatrix(matrixPath);
   const sourceEntries = extractEquivalenceSource(readFileSync(sourcePath, 'utf8'));
   const issues: unknown[] = [
-    ...checkEquivalence(entries, 74, (testPath) =>
+    ...checkEquivalence(entries, 75, (testPath) =>
       existsSync(path.resolve(repositoryRoot, testPath)),
     ),
     ...checkEquivalenceSource(entries, sourceEntries),

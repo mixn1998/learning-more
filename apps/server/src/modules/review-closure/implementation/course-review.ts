@@ -52,10 +52,15 @@ export function createCourseReviewWorkflow(options: {
   now: () => Date;
   outbox?: Outbox;
   nextEventId?: () => string;
+  assertCourseWritable?: (courseId: string) => Promise<void>;
 }) {
   const save = async (record: CourseReviewRecord) => {
-    await options.unitOfWork.execute({ transactionId: `tx_course_review_${randomUUID()}` }, (tx) =>
-      options.repository.save(tx, record, record.resourceVersion),
+    await options.unitOfWork.execute(
+      { transactionId: `tx_course_review_${randomUUID()}` },
+      async (tx) => {
+        await options.assertCourseWritable?.(record.courseId);
+        await options.repository.save(tx, record, record.resourceVersion);
+      },
     );
     return (await options.repository.get(record.courseId))!;
   };
@@ -137,6 +142,7 @@ export function createCourseReviewWorkflow(options: {
       await options.unitOfWork.execute(
         { transactionId: `tx_course_review_${randomUUID()}` },
         async (tx) => {
+          await options.assertCourseWritable?.(courseId);
           await options.repository.save(tx, finalized, current.resourceVersion);
           await options.outbox?.enqueue(tx, [event]);
         },

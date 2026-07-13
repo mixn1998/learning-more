@@ -54,6 +54,25 @@ describe('CandidateEvidence', () => {
     });
   });
 
+  it('[EQ-POR-04] stores only a neutral summary, precise refs, source group, time, and context without portrait categories or source prose', () => {
+    const parsed = parseCandidateEvidence(candidate(), now);
+    expect(parsed).toMatchObject({
+      summary: 'This lesson was explicitly restored after an abandon event.',
+      sourceRefs: ['fact:fact_01'],
+      sourceGroup: 'behavior',
+      sourceGroupId: 'lesson:lesson_01',
+      observedAt: '2026-07-12T23:00:00.000Z',
+    });
+    expect(parsed).not.toHaveProperty('portraitCategory');
+    expect(parsed).not.toHaveProperty('rawText');
+  });
+
+  it('[EQ-HIS-09] rejects even registered runtime telemetry from profile evidence', () => {
+    expect(() =>
+      parseCandidateEvidence(candidate({ dataKeys: ['telemetry.ai_provider'] }), now),
+    ).toThrow('evidence_telemetry_forbidden');
+  });
+
   it('supersedes instead of overwriting when the extractor version changes', () => {
     const current = parseCandidateEvidence(candidate(), now);
     const replacement = parseCandidateEvidence(

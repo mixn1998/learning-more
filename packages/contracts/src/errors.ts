@@ -36,6 +36,7 @@ export const ERROR_CODES = [
   'schedule_timezone_invalid',
   'schedule_item_removed',
   'lesson_completed',
+  'lesson_not_plannable',
   'schedule_not_found',
   'schedule_conflict',
   'plan_flow_not_found',

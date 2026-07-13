@@ -15,7 +15,7 @@ const unitOfWork = {
 };
 
 describe('SupplementarySession module', () => {
-  it('starts only from an immutable completed Review and never mutates that Review', async () => {
+  it('[EQ-HIS-02] starts a separate session only from an immutable completed Review and never mutates the original or Review', async () => {
     const finalReview = {
       id: 'review_final_01',
       artifactRef: 'artifact_final_01',

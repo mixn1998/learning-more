@@ -9,6 +9,9 @@ import { SessionPage } from './session-page.js';
 
 function client(overrides: Partial<LearningClient> = {}): LearningClient {
   return {
+    getLessonPreview: vi.fn(),
+    getCourse: vi.fn(),
+    deleteCourse: vi.fn(),
     start: vi.fn().mockResolvedValue({
       lessonId: 'lesson_01',
       sessionId: 'session_01',
@@ -77,7 +80,8 @@ describe('learning SessionPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '停止生成' }));
     release();
 
-    expect(await screen.findByText('draft_task_01')).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent('未完成内容已安全保留');
+    expect(document.body).not.toHaveTextContent('draft_task_01');
     expect(input).toHaveValue('my unfinished question');
   });
 
@@ -146,5 +150,29 @@ describe('learning SessionPage', () => {
       expect(sendSupplementary).toHaveBeenCalledWith('supplementary_01', 'A follow-up question', 1),
     );
     expect(screen.getByRole('dialog')).toHaveTextContent('Preserved final Review');
+  });
+
+  it('[EQ-GEN-03] restores a running generation task from the server after page refresh', async () => {
+    const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
+      onEvent({ type: 'message.delta', data: { markdown: '恢复后的流式内容' } });
+      onEvent({ type: 'task.completed', data: { resultRef: 'draft_recovered' } });
+    });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 4,
+        learning: {
+          progress: 'in_progress',
+          session: { state: 'active', activeGenerationTaskId: 'task_running_01' },
+        },
+      })
+      .mockResolvedValue({
+        resourceVersion: 5,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+      });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />);
+
+    expect(await screen.findByText('恢复后的流式内容')).toBeInTheDocument();
+    expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
   });
 });

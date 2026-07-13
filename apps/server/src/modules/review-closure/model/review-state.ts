@@ -18,7 +18,13 @@ export type StageReviewState = Readonly<{
 }>;
 
 export type LessonClosureState =
-  'open' | 'generating' | 'generating-failed' | 'review-ready' | 'committing' | 'completed';
+  | 'open'
+  | 'generating'
+  | 'generating-failed'
+  | 'review-ready'
+  | 'committing'
+  | 'completed'
+  | 'cancelled';
 
 export type LessonClosureRecord = Readonly<{
   transactionId: string;

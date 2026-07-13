@@ -86,7 +86,7 @@ describe('LearningSession HTTP contract', () => {
       method: 'POST',
       url: '/api/v1/lesson-sessions/session_01/messages',
       headers: { ...headers, 'if-match': '"1"' },
-      payload: { markdown: 'What is probability?', establishesEvidence: true },
+      payload: { markdown: 'What is probability?' },
     });
     expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual({ taskId: 'task_01', resourceVersion: 2 });

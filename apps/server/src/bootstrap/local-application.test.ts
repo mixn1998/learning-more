@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 describe('local CourseAuthoring application', () => {
-  it('runs HTTP → Module → LocalFile → Mock Provider through course confirmation', async () => {
+  it('[EQ-COURSE-06] runs course confirmation and permanent archive deletion through HTTP → Module → LocalFile', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-'));
     roots.push(dataRoot);
     const local = await createLocalApplication({ dataRoot, csrfToken: 'test-csrf' });
@@ -136,13 +136,76 @@ describe('local CourseAuthoring application', () => {
       claims: [],
     });
     expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/courses/${confirmation.courseId}`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'delete_course_01',
+        'if-match': `"${course!.resourceVersion}"`,
+      },
+    });
+    const replayedDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/courses/${confirmation.courseId}`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'delete_course_01',
+        'if-match': `"${course!.resourceVersion}"`,
+      },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(replayedDelete.json()).toEqual(deleted.json());
+    await expect(
+      local.courseRepositories.courses.get(confirmation.courseId),
+    ).resolves.toBeUndefined();
+    const afterDeleteHistory = await app.inject({ method: 'GET', url: '/api/v1/history' });
+    expect(afterDeleteHistory.json<{ entries: unknown[] }>().entries).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
     await app.close();
-  }, 15_000);
+  }, 30_000);
 
   it('recovers a persisted committing lesson closure when the local service restarts', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-recovery-'));
     roots.push(directory);
     const first = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
+    const dataRoot = DataRoot.create(directory);
+    const unitOfWork = createUnitOfWork({ dataRoot });
+    await unitOfWork.execute({ transactionId: 'tx_seed_recovery_course' }, async (tx) => {
+      await first.courseRepositories.courses.save(
+        tx,
+        {
+          id: 'course_recovery',
+          title: 'Recovery course',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_recovery',
+          lessonIds: ['lesson_recovery'],
+          recommendedLessonId: 'lesson_recovery',
+          status: 'active',
+          createdAt: '2026-07-13T00:00:00.000Z',
+          resourceVersion: 0,
+        },
+        0,
+      );
+      await first.courseRepositories.lessons.save(
+        tx,
+        {
+          id: 'lesson_recovery',
+          courseId: 'course_recovery',
+          outlineVersionId: 'outline_recovery',
+          semanticKey: 'recovery',
+          title: 'Recovery lesson',
+          objective: 'Recover a committing closure',
+          coreKnowledgePoints: [],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: [],
+          resourceVersion: 0,
+        },
+        0,
+      );
+    });
     const module = first.serverDependencies.learningSession!.module;
     const context = {
       correlationId: 'correlation_01',
@@ -167,18 +230,28 @@ describe('local CourseAuthoring application', () => {
       { ...context, commandId: 'message', expectedVersion: 1 },
     );
 
-    const dataRoot = DataRoot.create(directory);
+    const learning = await module.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_recovery' },
+      {
+        correlationId: 'query_before_recovery',
+        actor: 'local-user',
+        requestedAt: '2026-07-13T00:00:00.000Z',
+        receivedAt: '2026-07-13T00:00:00.000Z',
+      },
+    );
+    const sessionId = learning.learning.session?.id;
+    if (sessionId === undefined) throw new Error('RECOVERY_SESSION_REQUIRED');
+
     const repositories = createLocalFileReviewClosureRepositories(dataRoot);
-    const unitOfWork = createUnitOfWork({ dataRoot });
     await unitOfWork.execute({ transactionId: 'tx_pending_closure' }, (tx) =>
       repositories.lessonClosures.save(
         tx,
         {
           transactionId: 'closure_recovery',
           lessonId: 'lesson_recovery',
-          sessionId: 'lesson_session_recovery',
+          sessionId,
           state: 'committing',
-          sourceSessionIds: ['lesson_session_recovery'],
+          sourceSessionIds: [sessionId],
           sourceMessageIds: ['message_01'],
           messageRangeChecksum: 'a'.repeat(64),
           endIntent: 'finish lesson',
@@ -187,7 +260,7 @@ describe('local CourseAuthoring application', () => {
           review: {
             artifactRef: 'final_review_artifact_01',
             markdown: '# Final Review',
-            sourceSessionIds: ['lesson_session_recovery'],
+            sourceSessionIds: [sessionId],
             messageRangeChecksum: 'a'.repeat(64),
             contentSha256: 'b'.repeat(64),
           },

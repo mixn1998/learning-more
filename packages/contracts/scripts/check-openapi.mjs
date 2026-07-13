@@ -9,8 +9,11 @@ import {
   ApplicationProblemSchema,
   ConfirmationResponseSchema,
   ConfirmOutlineCandidateBodySchema,
+  CourseArchiveResponseSchema,
   CreateOutlineSessionBodySchema,
+  DeleteCourseArchiveResponseSchema,
   GenerationAcceptedResponseSchema,
+  LessonPreviewResponseSchema,
   OutlineMessageResponseSchema,
   OutlineRevisionResponseSchema,
   OutlineSessionResponseSchema,
@@ -63,6 +66,12 @@ function document() {
   };
   const courseParameter = {
     name: 'courseId',
+    in: 'path',
+    required: true,
+    schema: { type: 'string', minLength: 1 },
+  };
+  const lessonParameter = {
+    name: 'lessonId',
     in: 'path',
     required: true,
     schema: { type: 'string', minLength: 1 },
@@ -135,6 +144,34 @@ function document() {
           },
         },
       },
+      '/api/v1/courses/{courseId}': {
+        get: {
+          operationId: 'getCourseArchive',
+          parameters: [courseParameter],
+          responses: {
+            200: response('Formal course archive', 'CourseArchiveResponse'),
+            ...errorResponses(),
+          },
+        },
+        delete: {
+          operationId: 'deleteCourseArchive',
+          parameters: [courseParameter],
+          responses: {
+            200: response('Course archive permanently deleted', 'DeleteCourseArchiveResponse'),
+            ...errorResponses(),
+          },
+        },
+      },
+      '/api/v1/lessons/{lessonId}': {
+        get: {
+          operationId: 'getLessonPreview',
+          parameters: [lessonParameter],
+          responses: {
+            200: response('Confirmed lesson definition preview', 'LessonPreviewResponse'),
+            ...errorResponses(),
+          },
+        },
+      },
     },
     components: {
       schemas: {
@@ -149,6 +186,9 @@ function document() {
         GenerationAcceptedResponse: embeddedSchema(GenerationAcceptedResponseSchema),
         ConfirmationResponse: embeddedSchema(ConfirmationResponseSchema),
         OutlineRevisionResponse: embeddedSchema(OutlineRevisionResponseSchema),
+        CourseArchiveResponse: embeddedSchema(CourseArchiveResponseSchema),
+        DeleteCourseArchiveResponse: embeddedSchema(DeleteCourseArchiveResponseSchema),
+        LessonPreviewResponse: embeddedSchema(LessonPreviewResponseSchema),
         ApplicationProblem: embeddedSchema(ApplicationProblemSchema),
       },
     },

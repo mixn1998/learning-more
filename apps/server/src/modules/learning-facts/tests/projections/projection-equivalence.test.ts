@@ -59,7 +59,7 @@ function projections() {
 }
 
 describe('LearningFacts projection equivalence', () => {
-  it('produces byte-identical views for incremental, random batch, and full rebuild', () => {
+  it('[EQ-HIS-03] produces byte-identical views for incremental, random batch, and full rebuild', () => {
     const outputs = [1, 3, 100].map((batchSize) => {
       const instances = projections();
       for (let offset = 0; offset < goldenFacts.length; offset += batchSize) {

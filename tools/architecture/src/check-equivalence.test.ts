@@ -39,10 +39,10 @@ describe('equivalence matrix checks', () => {
   });
 
   it('rejects a matrix whose assertion count is not the expected count', () => {
-    expect(checkEquivalence([entry()], 74, () => true)).toContainEqual({
+    expect(checkEquivalence([entry()], 75, () => true)).toContainEqual({
       actual: 1,
       code: 'COUNT_MISMATCH',
-      expected: 74,
+      expected: 75,
     });
   });
 

@@ -1,9 +1,11 @@
 import {
   ProviderSwitchRequestSchema,
   ProviderSwitchResponseSchema,
+  ProviderRuntimeStatusSchema,
   RuntimeReadySchema,
   type ProviderSwitchRequest,
   type ProviderSwitchResponse,
+  type ProviderRuntimeStatus,
   type RuntimeReady,
 } from '@learning-more/contracts';
 
@@ -24,6 +26,7 @@ export interface RuntimeCenterClient {
   reconnect(): Promise<unknown>;
   waitUntilReady(): Promise<RuntimeReady>;
   refreshAi(): Promise<void>;
+  getProviderStatus(): Promise<ProviderRuntimeStatus>;
   switchProvider(
     input: ProviderSwitchRequest,
     command: CommandAttempt,
@@ -86,6 +89,13 @@ async function controlWrite(path: 'reconnect' | 'sync-frontend'): Promise<unknow
 }
 
 export const runtimeCenterClient: RuntimeCenterClient = {
+  async getProviderStatus() {
+    const response = await fetch('/api/v1/ai-runtime/status', {
+      headers: { accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error('provider_status_unavailable');
+    return ProviderRuntimeStatusSchema.parse(await response.json());
+  },
   reconnect: () => controlWrite('reconnect'),
   async waitUntilReady() {
     const deadline = Date.now() + 10_000;

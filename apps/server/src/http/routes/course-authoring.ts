@@ -5,8 +5,12 @@ import {
   ConfirmationResponseSchema,
   ConfirmOutlineCandidateBodySchema,
   CourseParamsSchema,
+  CourseArchiveResponseSchema,
   CreateOutlineSessionBodySchema,
+  DeleteCourseArchiveResponseSchema,
   GenerationAcceptedResponseSchema,
+  LessonParamsSchema,
+  LessonPreviewResponseSchema,
   OutlineMessageResponseSchema,
   OutlineRevisionResponseSchema,
   OutlineSessionParamsSchema,
@@ -227,4 +231,71 @@ export async function registerCourseAuthoringRoutes(
       }
     },
   );
+
+  app.delete<{ Params: { courseId: string } }>(
+    '/api/v1/courses/:courseId',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { courseId } = CourseParamsSchema.parse(request.params);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+        });
+        const result = await options.module.execute(
+          { type: 'DeleteCourseArchive', courseId },
+          context,
+        );
+        if (result.value.kind !== 'course-archive-deleted') {
+          throw new Error('unexpected_module_result');
+        }
+        return reply.code(200).send(
+          DeleteCourseArchiveResponseSchema.parse({
+            courseId: result.value.courseId,
+            deletedAt: result.value.deletedAt,
+            portraitRefresh: result.value.portraitRefresh,
+          }),
+        );
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.get<{ Params: { courseId: string } }>('/api/v1/courses/:courseId', async (request, reply) => {
+    const correlation = correlationId(request, options);
+    try {
+      const { courseId } = CourseParamsSchema.parse(request.params);
+      if (options.module.getCourse === undefined) throw new Error('course_query_not_configured');
+      const view = await options.module.getCourse(
+        courseId,
+        buildQueryContext(correlation, options.now()),
+      );
+      return etag(reply, view.resourceVersion)
+        .code(200)
+        .send(CourseArchiveResponseSchema.parse(view));
+    } catch (error) {
+      const problem = mapApplicationError(error, correlation);
+      return reply.code(problem.status).send(problem);
+    }
+  });
+
+  app.get<{ Params: { lessonId: string } }>('/api/v1/lessons/:lessonId', async (request, reply) => {
+    const correlation = correlationId(request, options);
+    try {
+      const { lessonId } = LessonParamsSchema.parse(request.params);
+      if (options.module.getLesson === undefined) throw new Error('lesson_query_not_configured');
+      const view = await options.module.getLesson(
+        lessonId,
+        buildQueryContext(correlation, options.now()),
+      );
+      return reply.code(200).send(LessonPreviewResponseSchema.parse(view));
+    } catch (error) {
+      const problem = mapApplicationError(error, correlation);
+      return reply.code(problem.status).send(problem);
+    }
+  });
 }

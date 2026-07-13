@@ -16,7 +16,7 @@ import type { ScheduleRepository } from '../ports/schedule-repository.js';
 
 class PlanningError extends Error {
   constructor(
-    readonly code: 'lesson_completed' | 'schedule_not_found' | 'schedule_conflict',
+    readonly code: 'lesson_not_plannable' | 'schedule_not_found' | 'schedule_conflict',
     readonly conflictingItemIds?: readonly string[],
   ) {
     super(code);
@@ -35,7 +35,9 @@ type ScheduleEvent = Readonly<{
 export function createPlanningModule(options: {
   repository: ScheduleRepository;
   unitOfWork: UnitOfWork;
-  isLessonCompleted(lessonId: string): Promise<boolean>;
+  getLessonProgress(
+    lessonId: string,
+  ): Promise<'not_started' | 'in_progress' | 'abandoned' | 'completed' | undefined>;
   nextScheduleItemId(): string;
   now(): Date;
   recordEvent?(event: ScheduleEvent, tx: TransactionContext): Promise<void>;
@@ -71,6 +73,10 @@ export function createPlanningModule(options: {
     await options.unitOfWork.execute(
       { transactionId: `tx_schedule_${randomUUID()}` },
       async (tx) => {
+        const progress = await options.getLessonProgress(item.lessonId);
+        if (progress === undefined || progress === 'completed' || progress === 'abandoned') {
+          throw new PlanningError('lesson_not_plannable');
+        }
         await options.repository.save(tx, item, item.resourceVersion);
         await options.recordEvent?.(
           {
@@ -97,8 +103,9 @@ export function createPlanningModule(options: {
       if (command.type === 'CreateScheduleItem') {
         validateScheduleInterval(command.startAt, command.endAt);
         validateTimeZone(command.timezoneAtCreation);
-        if (await options.isLessonCompleted(command.lessonId)) {
-          throw new PlanningError('lesson_completed');
+        const progress = await options.getLessonProgress(command.lessonId);
+        if (progress === undefined || progress === 'completed' || progress === 'abandoned') {
+          throw new PlanningError('lesson_not_plannable');
         }
         const timestamp = options.now().toISOString();
         const item: ScheduleItem = {
@@ -110,6 +117,7 @@ export function createPlanningModule(options: {
           timezoneAtCreation: command.timezoneAtCreation,
           source: command.source,
           status: 'scheduled',
+          locked: false,
           createdAt: timestamp,
           updatedAt: timestamp,
           processedCommandIds: [context.commandId],
@@ -124,8 +132,9 @@ export function createPlanningModule(options: {
         throw new RepositoryVersionConflictError(current.resourceVersion);
       }
       if (current.status === 'removed') throw new ScheduleRuleError('schedule_item_removed');
-      if (await options.isLessonCompleted(current.lessonId)) {
-        throw new PlanningError('lesson_completed');
+      const progress = await options.getLessonProgress(current.lessonId);
+      if (progress === undefined || progress === 'completed' || progress === 'abandoned') {
+        throw new PlanningError('lesson_not_plannable');
       }
 
       const next: ScheduleItem = {
@@ -134,7 +143,11 @@ export function createPlanningModule(options: {
           ? { startAt: command.startAt, endAt: command.endAt }
           : command.type === 'ResizeScheduleItem'
             ? { endAt: command.endAt }
-            : { status: 'removed' as const }),
+            : { status: 'removed' as const, cancelReason: 'user_removed' as const }),
+        ...((command.type === 'MoveScheduleItem' || command.type === 'ResizeScheduleItem') &&
+        current.source === 'plan-flow'
+          ? { locked: true }
+          : {}),
         updatedAt: options.now().toISOString(),
         processedCommandIds: [...current.processedCommandIds, context.commandId],
       };

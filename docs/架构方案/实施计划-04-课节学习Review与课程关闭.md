@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan.
 
-**Goal:** 交付四种课节生命周期、可恢复学习会话、放弃证据、不可变最终 Review、补充学习和可恢复课程关闭事务。
+**Goal:** 交付四种课节生命周期、可恢复学习会话、放弃证据、不可变最终 Review、补充学习、可恢复课程关闭事务和不可逆课程永久删除。
 
 **Architecture:** `LearningSession` 独占交互会话、消息、时间区间和写租约；`ReviewClosure` 独占 stage/final Review 与关闭事务。原始会话永不被 Review 或补充学习改写；事实仅在最终提交事件后产生。
 
@@ -14,7 +14,7 @@
 - 用户可见课节生命周期固定为 `not_started|in_progress|abandoned|completed`；会话可 `active|paused|frozen|closed`。
 - 原始消息 append-only；停止生成保留已到达 Markdown。
 - stage Review 可重试和替换；final Review 提交后不可改写。
-- 完成、放弃、恢复和关闭必须有幂等与崩溃恢复测试。
+- 完成、放弃、恢复、关闭和课程永久删除必须有幂等与崩溃恢复测试。
 
 ---
 
@@ -31,14 +31,17 @@
 
 **Interface:** `LearningSession.execute(command, context)` 支持 start、pause、resume、appendUserMessage、startGeneration、stopGeneration；任何时刻每个 lesson 最多一个可写 session。
 
-~~~ts
+```ts
 export type LessonProgressState = 'not_started' | 'in_progress' | 'abandoned' | 'completed';
 
 export interface LearningSessionModule {
-  execute(command: LearningSessionCommand, context: CommandContext): Promise<CommandResult<LearningSessionResult>>;
+  execute(
+    command: LearningSessionCommand,
+    context: CommandContext,
+  ): Promise<CommandResult<LearningSessionResult>>;
   query(query: LearningSessionQuery, context: QueryContext): Promise<LearningSessionView>;
 }
-~~~
+```
 
 - [ ] 写状态表测试，覆盖首次 start、pause/resume、有证据 abandoned 恢复并解冻同一原始 session、无证据 abandoned 删除空 session 后回到 `not_started`、completed 禁止恢复、双写 session 冲突和重复命令。
 - [ ] 运行 domain 测试，预期失败。
@@ -117,15 +120,10 @@ export interface LearningSessionModule {
 
 **Interfaces:** 关闭状态 `open -> generating -> review-ready -> committing -> completed`；final Review 必须引用 source session IDs、message range checksum、用户发出的结束意图和生成任务。用户只确认“结束本课”，不需要再审核或确认 AI 生成的 Review 正文；补充学习是新 `SupplementarySession`，不能附加到原始会话。
 
-~~~ts
+```ts
 export type LessonClosureState =
-  | 'open'
-  | 'generating'
-  | 'generating-failed'
-  | 'review-ready'
-  | 'committing'
-  | 'completed';
-~~~
+  'open' | 'generating' | 'generating-failed' | 'review-ready' | 'committing' | 'completed';
+```
 
 - [ ] 写失败测试：空会话不可完成；Review 生成失败保持 `generating-failed` 可重试；篡改 source checksum 拒绝提交；commit 崩溃可恢复；completed 后 retry/overwrite 均失败；补充学习不改变原 Review。
 - [ ] 运行测试，预期失败。
@@ -173,6 +171,20 @@ export type LessonClosureState =
 - [ ] Playwright 完整覆盖 start→messages→pause→resume→abandon→restore→final Review→complete→supplementary→close course；在 Review commit 中杀进程并重启，预期自动恢复为一个 final artifact。
 - [ ] 运行 RTL、E2E 和 `pnpm verify`；更新对应 equivalence matrix 为 passing 并验证。
 - [ ] 提交：`git add apps/web tests/e2e docs/架构方案/equivalence-matrix.yaml && git commit -m "feat(web): complete learning and review closure"`。
+
+## Task 8：实现课程永久删除与统计/画像撤销
+
+**Files:**
+
+- Create: `apps/server/src/modules/course-authoring/implementation/delete-course.ts`
+- Create: `apps/server/src/modules/course-authoring/implementation/course-deletion-reconciliation.ts`
+- Create: `apps/web/src/features/course/DeleteCourseDialog.tsx`
+- Test: `apps/server/src/modules/course-authoring/tests/delete-course.test.ts`
+- Test: `apps/web/src/features/course/DeleteCourseDialog.test.tsx`
+
+**Interfaces:** `DeleteCourse(courseId, idempotencyKey)` 是独立于关闭课程的风险命令；确认弹窗只要求点击“永久删除”，不接受软删除或恢复。命令先撤销会话写入权与计时，再以可恢复事务级联删除课程聚合、会话、Review、排期、计划流和材料引用；随后撤销该课程贡献的历史事实、日历条目、画像候选证据和来源组，重建统计投影并触发学习画像重算。
+
+- [ ] 写测试：取消确认不产生写入；重复删除幂等；任何关联资源删除失败时不暴露稳定的部分删除状态；删除后课程、会话、Review、排期、计划流和历史列表均不可查询；统计与日历不再计入该课程；画像不再引用该课程来源；画像重算失败不回滚删除且页面正确显示更新失败。
 
 ## Phase Gate
 

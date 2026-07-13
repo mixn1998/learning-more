@@ -31,6 +31,29 @@ function evidence(
 }
 
 describe('EvidencePacker', () => {
+  it('[EQ-POR-07] collapses conversation/Review and other derived evidence onto the same underlying source group', () => {
+    const packed = packPortraitEvidence({
+      evidence: [
+        evidence('conversation', 'learning.depth', 'lesson:01'),
+        evidence('review', 'learning.depth', 'review:lesson:01', {
+          sourceGroup: 'review',
+          dependentSourceGroupIds: ['lesson:01'],
+        }),
+        evidence('weekly', 'learning.depth', 'weekly:2026-W28', {
+          sourceGroup: 'reflection',
+          dependentSourceGroupIds: ['lesson:01'],
+        }),
+      ],
+      tokenBudget: 1_000,
+      dimensionPriority: [],
+    });
+
+    expect(packed.includedEvidenceIds).toEqual([]);
+    expect(packed.dimensionCoverage).toEqual([
+      expect.objectContaining({ independentSourceGroupCount: 1, compositeEligible: false }),
+    ]);
+  });
+
   it('does not let one strong source masquerade as composite evidence', () => {
     const packed = packPortraitEvidence({
       evidence: [

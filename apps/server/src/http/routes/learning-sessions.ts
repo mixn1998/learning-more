@@ -20,6 +20,7 @@ import type {
 } from '../../modules/learning-session/interface.js';
 import { buildCommandContext, buildQueryContext } from '../command-context.js';
 import { mapApplicationError } from '../error-mapper.js';
+import { classifyUserLearningMessage } from '../../modules/learning-session/implementation/evidence-checkpoint.js';
 
 type SessionReference = Omit<SessionGenerationInputManifest, 'userMessageId'>;
 
@@ -29,6 +30,16 @@ export type LearningSessionRouteOptions = Readonly<{
   resolveSession(sessionId: string): Promise<SessionReference>;
   saveUserMessage(messageId: string, markdown: string): Promise<string>;
   loadArtifactMarkdown?(artifactRef: string): Promise<string | undefined>;
+  getLessonRecord?(lessonId: string): Promise<{
+    lessonId: string;
+    original: { sessionId: string; label: string; messages: readonly string[] };
+    supplementary: readonly {
+      sessionId: string;
+      label: string;
+      messages: readonly string[];
+    }[];
+    finalReviewMarkdown: string;
+  }>;
   nextCommandId(): string;
   nextCorrelationId(): string;
   nextMessageId(): string;
@@ -64,6 +75,20 @@ export async function registerLearningSessionRoutes(
   app: FastifyInstance,
   options: LearningSessionRouteOptions,
 ): Promise<void> {
+  if (options.getLessonRecord !== undefined) {
+    app.get<{ Params: { lessonId: string } }>(
+      '/api/v1/lessons/:lessonId/record',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          return reply.code(200).send(await options.getLessonRecord!(request.params.lessonId));
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+  }
   if (options.supplementary !== undefined) {
     app.post<{ Params: { lessonId: string } }>(
       '/api/v1/lessons/:lessonId/supplementary-sessions',
@@ -184,7 +209,7 @@ export async function registerLearningSessionRoutes(
             lessonId: reference.lessonId,
             messageId,
             contentArtifactRef,
-            establishesEvidence: body.establishesEvidence,
+            establishesEvidence: classifyUserLearningMessage(body.markdown),
           },
           context,
         );

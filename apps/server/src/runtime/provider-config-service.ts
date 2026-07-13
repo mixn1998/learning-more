@@ -37,6 +37,10 @@ export interface ProviderRuntimeControl {
   checkProviderHealth(providerId: string): Promise<ProviderHealth>;
   describeProvider(providerId: string): ProviderCapabilities;
   switchProvider(providerId: string): Promise<void>;
+  getProviderStatus(): Promise<{
+    currentProviderId: string;
+    providers: readonly string[];
+  }>;
 }
 
 export type ProviderSwitchInput = Readonly<{
@@ -47,6 +51,13 @@ export type ProviderSwitchInput = Readonly<{
 
 export type ProviderSwitchResult = Readonly<{
   providerId: string;
+  capabilities: ProviderCapabilities;
+  health: ProviderHealth;
+}>;
+
+export type ProviderRuntimeStatus = Readonly<{
+  providerId: string;
+  model?: string;
   capabilities: ProviderCapabilities;
   health: ProviderHealth;
 }>;
@@ -160,6 +171,7 @@ export function createProviderConfigService(options: {
 }): Readonly<{
   switchProvider(input: ProviderSwitchInput): Promise<ProviderSwitchResult>;
   getConfiguration(): Promise<ProviderConfiguration | undefined>;
+  getStatus(): Promise<ProviderRuntimeStatus>;
 }> {
   const now = options.now ?? (() => new Date());
   let barrier: Promise<void> = Promise.resolve();
@@ -233,5 +245,25 @@ export function createProviderConfigService(options: {
       return operation;
     },
     getConfiguration: () => options.repository.get(),
+    async getStatus() {
+      const runtimeStatus = await options.runtime.getProviderStatus();
+      const providerId = runtimeStatus.currentProviderId;
+      if (providerId === '' || !runtimeStatus.providers.includes(providerId)) {
+        throw providerError('provider_runtime_inconsistent', 'ai_unavailable');
+      }
+      const configuration = await options.repository.get();
+      const configuredModel =
+        configuration?.providerId === providerId &&
+        typeof configuration.publicConfig.model === 'string' &&
+        configuration.publicConfig.model.trim() !== ''
+          ? configuration.publicConfig.model
+          : undefined;
+      return {
+        providerId,
+        ...(configuredModel === undefined ? {} : { model: configuredModel }),
+        capabilities: options.runtime.describeProvider(providerId),
+        health: await options.runtime.checkProviderHealth(providerId),
+      };
+    },
   };
 }

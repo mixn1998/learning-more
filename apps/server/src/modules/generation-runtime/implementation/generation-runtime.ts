@@ -19,6 +19,7 @@ export interface GenerationRuntimeOptions {
   readonly providers: readonly AiProvider[];
   readonly nextId?: () => string;
   readonly now?: () => Date;
+  readonly taskTimeoutMs?: number;
 }
 
 export function createGenerationRuntime(options: GenerationRuntimeOptions): GenerationRuntime & {
@@ -38,6 +39,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   const controllers = new Map<string, AbortController>();
   const nextId = options.nextId ?? (() => `task_${randomUUID()}`);
   const now = options.now ?? (() => new Date());
+  const taskTimeoutMs = options.taskTimeoutMs ?? 20 * 60 * 1_000;
   let currentProviderId = options.providers[0]?.describe().id ?? '';
 
   async function allTasks(): Promise<GenerationTask[]> {
@@ -128,6 +130,11 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     });
     const controller = new AbortController();
     controllers.set(current.id, controller);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, taskTimeoutMs);
     try {
       for await (const delta of provider.generate(
         { taskId: current.id, prompt: current.prompt ?? '' },
@@ -143,25 +150,39 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       }
       current = await get(current.id);
       if (current.status === 'running') {
-        await persist({
-          ...current,
-          status: 'completed',
-          resultRef: `generation-task:${current.id}:draft`,
-          updatedAt: now().toISOString(),
-        });
+        await persist(
+          timedOut
+            ? {
+                ...current,
+                status: 'timeout',
+                errorCode: 'generation_timeout',
+                updatedAt: now().toISOString(),
+              }
+            : {
+                ...current,
+                status: 'completed',
+                resultRef: `generation-task:${current.id}:draft`,
+                updatedAt: now().toISOString(),
+              },
+        );
       }
     } catch (error) {
       current = await get(current.id);
       if (current.status === 'running') {
         await persist({
           ...current,
-          status: controller.signal.aborted ? 'cancelled' : 'failed',
-          errorCode: controller.signal.aborted ? 'generation_cancelled' : 'provider_failed',
+          status: timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'failed',
+          errorCode: timedOut
+            ? 'generation_timeout'
+            : controller.signal.aborted
+              ? 'generation_cancelled'
+              : 'provider_failed',
           updatedAt: now().toISOString(),
         });
       }
       if (!controller.signal.aborted) void error;
     } finally {
+      clearTimeout(timeout);
       controllers.delete(current.id);
     }
     return current.id;
@@ -204,6 +225,18 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
         recovered += 1;
       }
       return recovered;
+    },
+    async getMetrics() {
+      const byStatus: Record<string, number> = {};
+      const byErrorCode: Record<string, number> = {};
+      const tasks = await allTasks();
+      for (const task of tasks) {
+        byStatus[task.status] = (byStatus[task.status] ?? 0) + 1;
+        if (task.errorCode !== undefined) {
+          byErrorCode[task.errorCode] = (byErrorCode[task.errorCode] ?? 0) + 1;
+        }
+      }
+      return { total: tasks.length, byStatus, byErrorCode };
     },
     validateProvider(providerId, config, secrets) {
       const provider = providers.get(providerId);

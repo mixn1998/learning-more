@@ -571,6 +571,268 @@
           }
         }
       }
+    },
+    "/api/v1/courses/{courseId}": {
+      "get": {
+        "operationId": "getCourseArchive",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formal course archive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseArchiveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCourseArchive",
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Course archive permanently deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteCourseArchiveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lessons/{lessonId}": {
+      "get": {
+        "operationId": "getLessonPreview",
+        "parameters": [
+          {
+            "name": "lessonId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed lesson definition preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -875,6 +1137,141 @@
         ],
         "additionalProperties": false
       },
+      "CourseArchiveResponse": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "closed"
+            ]
+          },
+          "courseMode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "brainstorm",
+              "argument_clash",
+              "case_study",
+              "business_insight",
+              "process_decomposition",
+              "decision_analysis",
+              "cross_explore",
+              "reading_seminar"
+            ]
+          },
+          "outlineVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "lessonIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "courseId",
+          "title",
+          "status",
+          "courseMode",
+          "outlineVersionId",
+          "lessonIds",
+          "resourceVersion"
+        ],
+        "additionalProperties": false
+      },
+      "DeleteCourseArchiveResponse": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "deletedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "portraitRefresh": {
+            "type": "string",
+            "const": "updating"
+          }
+        },
+        "required": [
+          "courseId",
+          "deletedAt",
+          "portraitRefresh"
+        ],
+        "additionalProperties": false
+      },
+      "LessonPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "lessonId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "courseId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "outlineVersionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "title": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "coreKnowledgePoints": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "estimatedMinutes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "lessonId",
+          "courseId",
+          "outlineVersionId",
+          "title",
+          "objective",
+          "coreKnowledgePoints",
+          "estimatedMinutes"
+        ],
+        "additionalProperties": false
+      },
       "ApplicationProblem": {
         "type": "object",
         "properties": {
@@ -925,6 +1322,7 @@
               "schedule_timezone_invalid",
               "schedule_item_removed",
               "lesson_completed",
+              "lesson_not_plannable",
               "schedule_not_found",
               "schedule_conflict",
               "plan_flow_not_found",

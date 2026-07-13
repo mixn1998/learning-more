@@ -106,6 +106,44 @@ describe('compileCandidate', () => {
 });
 
 describe('ingestSelectedMaterial', () => {
+  it('[EQ-PLAY-06] ingests PDF, TXT, and Markdown with source traceability and never invents parsed ranges', async () => {
+    const markdown = await ingestSelectedMaterial({
+      fileName: 'guide.md',
+      mediaType: 'text/markdown',
+      bytes: new TextEncoder().encode('# Chapter A\nDetails'),
+    });
+    const text = await ingestSelectedMaterial({
+      fileName: 'notes.txt',
+      mediaType: 'text/plain',
+      bytes: new TextEncoder().encode('Plain notes'),
+    });
+    const pdf = await ingestSelectedMaterial(
+      {
+        fileName: 'book.pdf',
+        mediaType: 'application/pdf',
+        bytes: new Uint8Array([1, 2, 3]),
+      },
+      { pdfExtractor: async () => ({ pages: [{ page: 7, text: 'Verified page text' }] }) },
+    );
+
+    expect(markdown).toMatchObject({
+      valid: true,
+      snapshot: { format: 'markdown', sections: [{ title: 'Chapter A' }] },
+    });
+    expect(text).toMatchObject({
+      valid: true,
+      snapshot: { format: 'text', sections: [{ title: 'notes' }] },
+    });
+    expect(pdf).toMatchObject({
+      valid: true,
+      snapshot: {
+        format: 'pdf',
+        extractedText: 'Verified page text',
+        sections: [{ title: '第 7 页', startPage: 7, endPage: 7 }],
+      },
+    });
+  });
+
   it('ingests explicitly selected UTF-8 Markdown with immutable provenance', async () => {
     const bytes = new TextEncoder().encode('# 第一章\n内容\n## 1.1 小节\n更多内容');
 
