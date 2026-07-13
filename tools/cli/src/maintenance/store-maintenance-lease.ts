@@ -40,7 +40,8 @@ export async function acquireStoreMaintenanceLease(
         },
       };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'EEXIST' && code !== 'EACCES' && code !== 'EPERM') throw error;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
