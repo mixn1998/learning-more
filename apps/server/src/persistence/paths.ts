@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 import { assertSafePathSegment, DataRoot } from './data-root.js';
 
@@ -86,4 +86,22 @@ export async function initializeStoreLayout(paths: StorePaths): Promise<void> {
   await Promise.all(
     paths.requiredDirectories().map((directory) => mkdir(directory, { recursive: true })),
   );
+  try {
+    await writeFile(
+      paths.storeManifest,
+      `${JSON.stringify({
+        storeId: `store_${randomUUID()}`,
+        formatVersion: 1,
+        minimumReaderVersion: 1,
+        createdAt: new Date().toISOString(),
+        lastCommittedTransactionId: '',
+        lastCommittedSequence: 0,
+        timezone: 'Asia/Shanghai',
+        checksumAlgorithm: 'sha256',
+      })}\n`,
+      { encoding: 'utf8', flag: 'wx' },
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
 }

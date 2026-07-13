@@ -158,6 +158,8 @@ importers:
 
   tools/benchmarks: {}
 
+  tools/cli: {}
+
 packages:
 
   '@adobe/css-tools@4.5.0':
