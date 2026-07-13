@@ -104,6 +104,7 @@ async function observeExecutable(pid: number): Promise<string | undefined> {
     'powershell.exe',
   );
   const script =
+    '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); ' +
     `$observed = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; ` +
     'if ($null -ne $observed) { [Console]::Out.Write($observed.Path) }';
   let output: string;

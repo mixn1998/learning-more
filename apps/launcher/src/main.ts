@@ -155,6 +155,10 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
       return activeRuntime.status();
     },
     diagnose: () => activeRuntime.diagnose(),
+    ...(process.env.LEARNING_MORE_WEB_ROOT === undefined
+      ? {}
+      : { webRoot: path.resolve(process.env.LEARNING_MORE_WEB_ROOT) }),
+    apiTarget: `http://127.0.0.1:43120`,
   });
   await control.listen();
   try {

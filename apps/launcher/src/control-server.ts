@@ -1,5 +1,14 @@
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
+import { readFile, realpath, stat } from 'node:fs/promises';
+import {
+  createServer,
+  request as createRequest,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
+import path from 'node:path';
 
 export type ControlServerOptions = Readonly<{
   allowedOrigin: string;
@@ -8,6 +17,8 @@ export type ControlServerOptions = Readonly<{
   reconnect(): Promise<unknown>;
   syncFrontend(): Promise<unknown>;
   diagnose(): Promise<unknown>;
+  webRoot?: string;
+  apiTarget?: string;
 }>;
 
 export type InjectRequest = Readonly<{
@@ -60,6 +71,102 @@ function isEmptyBody(payload: unknown): boolean {
     payload === null ||
     (typeof payload === 'object' && !Array.isArray(payload) && Object.keys(payload).length === 0)
   );
+}
+
+const contentTypes: Readonly<Record<string, string>> = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+};
+
+async function serveStatic(
+  webRoot: string,
+  request: IncomingMessage,
+  reply: ServerResponse,
+): Promise<void> {
+  const rawPath = (request.url ?? '/').split('?', 1)[0] ?? '/';
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch {
+    reply.writeHead(400);
+    reply.end();
+    return;
+  }
+  const normalized = decoded.replaceAll('\\', '/');
+  if (normalized.includes('\0') || normalized.split('/').some((segment) => segment === '..')) {
+    reply.writeHead(403);
+    reply.end();
+    return;
+  }
+  const root = await realpath(webRoot);
+  const requested = normalized === '/' ? '/index.html' : normalized;
+  const initial = path.resolve(root, `.${requested}`);
+  let candidate = initial;
+  try {
+    const metadata = await stat(candidate);
+    if (!metadata.isFile()) throw new Error('static_not_file');
+  } catch {
+    if (path.extname(requested) !== '') {
+      reply.writeHead(404);
+      reply.end();
+      return;
+    }
+    candidate = path.join(root, 'index.html');
+  }
+  const resolved = await realpath(candidate).catch(() => undefined);
+  if (resolved === undefined || !resolved.startsWith(`${root}${path.sep}`)) {
+    reply.writeHead(404);
+    reply.end();
+    return;
+  }
+  const content = await readFile(resolved);
+  reply.writeHead(200, {
+    'content-type':
+      contentTypes[path.extname(resolved).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': content.byteLength,
+    'x-content-type-options': 'nosniff',
+  });
+  reply.end(request.method === 'HEAD' ? undefined : content);
+}
+
+function proxyApi(
+  apiTarget: string,
+  allowedOrigin: string,
+  incoming: IncomingMessage,
+  outgoing: ServerResponse,
+): void {
+  const target = new URL(incoming.url ?? '/api', apiTarget);
+  if (target.hostname !== '127.0.0.1' || target.protocol !== 'http:') {
+    outgoing.writeHead(502);
+    outgoing.end();
+    return;
+  }
+  const forwarded = createRequest(
+    target,
+    {
+      method: incoming.method,
+      headers: {
+        ...incoming.headers,
+        host: target.host,
+        origin: allowedOrigin,
+      },
+    },
+    (response) => {
+      outgoing.writeHead(response.statusCode ?? 502, response.headers);
+      response.pipe(outgoing);
+    },
+  );
+  forwarded.on('error', () => {
+    if (!outgoing.headersSent) outgoing.writeHead(502);
+    outgoing.end();
+  });
+  incoming.pipe(forwarded);
 }
 
 export async function buildControlServer(options: ControlServerOptions): Promise<ControlServer> {
@@ -115,6 +222,22 @@ export async function buildControlServer(options: ControlServerOptions): Promise
       if (host !== '127.0.0.1') throw new Error('control_server_loopback_only');
       if (server) throw new Error('control_server_already_listening');
       server = createServer((request, reply) => {
+        const requestPath = (request.url ?? '/').split('?', 1)[0] ?? '/';
+        if (requestPath.startsWith('/api/') && options.apiTarget !== undefined) {
+          proxyApi(options.apiTarget, options.allowedOrigin, request, reply);
+          return;
+        }
+        if (
+          !requestPath.startsWith('/control/') &&
+          options.webRoot !== undefined &&
+          (request.method === 'GET' || request.method === 'HEAD')
+        ) {
+          void serveStatic(options.webRoot, request, reply).catch(() => {
+            if (!reply.headersSent) reply.writeHead(500);
+            reply.end();
+          });
+          return;
+        }
         const chunks: Buffer[] = [];
         request.on('data', (chunk: Buffer) => chunks.push(chunk));
         request.on('end', () => {

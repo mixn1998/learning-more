@@ -5,6 +5,7 @@ node_modules/
 .pnpm-home/
 .npm-cache/
 .playwright-browsers/
+.release-cache/
 dist/
 coverage/
 playwright-report/
