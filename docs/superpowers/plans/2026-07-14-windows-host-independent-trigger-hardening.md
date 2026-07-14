@@ -39,7 +39,7 @@
 - Consumes: `TaskSchedulerPort.read(name)`, `replace(definition)`, and `start(name)` from `apps/host/src/task-scheduler.ts`.
 - Produces: unchanged `HostManager.install(): Promise<HostInstallationStatus>` and `HostManager.repair(): Promise<HostInstallationStatus>` behavior with a stronger postcondition: every successful reconciliation has invoked `start('Learning MORE')` exactly once.
 
-- [ ] **Step 1: Add failing start-count assertions**
+- [x] **Step 1: Add failing start-count assertions**
 
 Extend the first test in `apps/host/src/host-manager.test.ts` so it proves all three paths start the task:
 
@@ -59,17 +59,17 @@ expect(scheduler.replacements).toBe(2);
 expect(scheduler.starts).toBe(3);
 ```
 
-- [ ] **Step 2: Run the focused test and confirm the regression is red**
+- [x] **Step 2: Run the focused test and confirm the regression is red**
 
 Run from the repository root:
 
 ```powershell
-corepack pnpm exec vitest run --root . apps/host/src/host-manager.test.ts
+& '.\node_modules\.bin\vitest.cmd' run --root . apps/host/src/host-manager.test.ts
 ```
 
 Expected: the second start-count assertion fails because the current implementation skips `start` when the task definition already matches.
 
-- [ ] **Step 3: Move task start outside the replacement branch**
+- [x] **Step 3: Move task start outside the replacement branch**
 
 Replace the `reconcile` implementation in `apps/host/src/host-manager.ts` with:
 
@@ -86,17 +86,17 @@ const reconcile = async (): Promise<HostInstallationStatus> => {
 
 This preserves error ordering: a failed replacement prevents start, while a failed start rejects `install/repair` instead of reporting a false recovery.
 
-- [ ] **Step 4: Run the focused test and confirm it is green**
+- [x] **Step 4: Run the focused test and confirm it is green**
 
 Run:
 
 ```powershell
-corepack pnpm exec vitest run --root . apps/host/src/host-manager.test.ts
+& '.\node_modules\.bin\vitest.cmd' run --root . apps/host/src/host-manager.test.ts
 ```
 
 Expected: 2 tests pass; replacement counts remain `1` after the second install and `2` after drift repair, while start counts are `1`, `2`, and `3`.
 
-- [ ] **Step 5: Commit only the Host manager regression**
+- [x] **Step 5: Commit only the Host manager regression**
 
 ```powershell
 git add -- apps/host/src/host-manager.test.ts apps/host/src/host-manager.ts
@@ -115,7 +115,7 @@ Expected: the commit contains only the two Host manager files.
 - Consumes: encoded registration script emitted by `createWindowsTaskScheduler`.
 - Produces: an executable contract that allows failure restart settings but rejects time-based trigger syntax.
 
-- [ ] **Step 1: Add explicit negative trigger assertions**
+- [x] **Step 1: Add explicit negative trigger assertions**
 
 Immediately after the existing `New-ScheduledTaskTrigger -AtLogOn` assertion, add:
 
@@ -126,17 +126,17 @@ expect(registration).not.toContain('RepetitionInterval');
 
 Keep the existing positive assertion for `RestartInterval (New-TimeSpan -Minutes 1)` because it is failure retry configuration, not a periodic trigger.
 
-- [ ] **Step 2: Run the Windows adapter test**
+- [x] **Step 2: Run the Windows adapter test**
 
 Run:
 
 ```powershell
-corepack pnpm exec vitest run --root . apps/host/src/windows-task-scheduler.test.ts
+& '.\node_modules\.bin\vitest.cmd' run --root . apps/host/src/windows-task-scheduler.test.ts
 ```
 
 Expected: 1 test passes, proving the generated registration script contains only the logon trigger and no repetition syntax.
 
-- [ ] **Step 3: Commit only the trigger contract test**
+- [x] **Step 3: Commit only the trigger contract test**
 
 ```powershell
 git add -- apps/host/src/windows-task-scheduler.test.ts
@@ -156,7 +156,7 @@ Expected: the commit contains only `apps/host/src/windows-task-scheduler.test.ts
 - Consumes: `node apps/host/dist/main.js repair --project-root .` and the registered `Learning MORE` task.
 - Produces: a running Host-owned Launcher/Server chain with no periodic trigger.
 
-- [ ] **Step 1: Run the Host test suite and typecheck**
+- [x] **Step 1: Run the Host test suite and typecheck**
 
 Run:
 
@@ -167,7 +167,7 @@ corepack pnpm --filter @learning-more/host typecheck
 
 Expected: all Host tests pass and TypeScript reports no errors.
 
-- [ ] **Step 2: Build the Host package**
+- [x] **Step 2: Build the Host package**
 
 Run:
 
@@ -177,7 +177,7 @@ corepack pnpm --filter @learning-more/host build
 
 Expected: exit code `0` and an updated `apps/host/dist/host-manager.js` containing an unconditional scheduler start after the conditional replacement.
 
-- [ ] **Step 3: Apply repair through the built Host CLI**
+- [x] **Step 3: Apply repair through the built Host CLI**
 
 Run from the repository root:
 
@@ -187,7 +187,7 @@ node .\apps\host\dist\main.js repair --project-root .
 
 Expected: the command exits successfully, preserves the matching task definition, and invokes `Start-ScheduledTask` even when the definition did not drift.
 
-- [ ] **Step 4: Verify the real task has one non-periodic logon trigger**
+- [x] **Step 4: Verify the real task has one non-periodic logon trigger**
 
 Run:
 
@@ -207,7 +207,7 @@ $trigger = @($task.Triggers)
 
 Expected: `State = Running`, `TriggerCount = 1`, `TriggerClass = MSFT_TaskLogonTrigger`, empty `RepetitionInterval`, `MultipleInstances = IgnoreNew`, `RestartCount = 999`, and `RestartInterval = PT1M`.
 
-- [ ] **Step 5: Verify both ports and runtime identity**
+- [x] **Step 5: Verify both ports and runtime identity**
 
 Run:
 
@@ -228,7 +228,7 @@ if ($proxy.instanceId -ne $direct.instanceId -or $proxy.buildId -ne $direct.buil
 
 Expected: `Status = ready`, the identity comparison does not throw, and listening ports are `43119,43120`.
 
-- [ ] **Step 6: Record repository and task state without stopping the service**
+- [x] **Step 6: Record repository and task state without stopping the service**
 
 Run:
 
@@ -245,3 +245,13 @@ Expected: the service remains running; `NextRunTime` is empty because there is n
 - Placeholder scan: every code change and verification command is concrete; no deferred implementation markers remain.
 - Type consistency: all method names match the existing `HostManager`, `TaskSchedulerPort`, `HostTaskDefinition`, and runtime readiness contracts.
 - Operational limitation: an explicit `Stop-ScheduledTask` cannot recover unattended without a periodic trigger or Windows Service; recovery remains re-login or an explicit `install/repair` call, as required by the approved design.
+
+## Execution Record
+
+- Red: the matching-definition path failed with `expected 1 to be 2` for `scheduler.starts`.
+- Green: all 9 Host test files and 20 Host tests passed; Host typecheck and build passed.
+- Repair: the built CLI returned `state = installed` and `matches = true`.
+- Scheduler: `State = Running`, one `MSFT_TaskLogonTrigger`, empty repetition interval, empty `NextRunTime`, `IgnoreNew`, `RestartCount = 999`, and failure retry `RestartInterval = PT1M`.
+- Ownership: the Host Node process is parented by the auto-started Windows `Schedule` service, not by a Codex or terminal process.
+- Runtime: both `43119` and `43120` are listening and report `ready` with the same `instanceId`, `buildId`, and `protocolVersion`.
+- Redundant start evidence: `Get-ScheduledTaskInfo` reported `0x800710E0` after repair invoked start against the already-running `IgnoreNew` task; the existing task instance remained `Running`, healthy, and unique.
