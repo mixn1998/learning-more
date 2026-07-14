@@ -39,6 +39,8 @@ describe('Windows Task Scheduler adapter', () => {
     );
     const registration = scripts.find((script) => script.includes('Register-ScheduledTask'))!;
     expect(registration).toContain('New-ScheduledTaskTrigger -AtLogOn');
+    expect(registration).not.toContain('New-ScheduledTaskTrigger -Once');
+    expect(registration).not.toContain('RepetitionInterval');
     expect(registration).toContain('MultipleInstances IgnoreNew');
     expect(registration).toContain('RestartInterval (New-TimeSpan -Minutes 1)');
     expect(registration).toContain('ExecutionTimeLimit ([TimeSpan]::Zero)');
