@@ -20,6 +20,7 @@ function client(overrides: Partial<LearningClient> = {}): LearningClient {
       writable: true,
       leaseToken: 'lease_01',
     }),
+    openLesson: vi.fn().mockResolvedValue({ taskId: 'task_opening_01', resourceVersion: 2 }),
     getSession: vi.fn().mockResolvedValue({
       resourceVersion: 1,
       learning: { progress: 'in_progress', session: { state: 'active' } },
@@ -53,6 +54,47 @@ function client(overrides: Partial<LearningClient> = {}): LearningClient {
 afterEach(cleanup);
 
 describe('learning SessionPage', () => {
+  it('automatically starts an AI-led opening without a user message', async () => {
+    const openLesson = vi.fn().mockResolvedValue({ taskId: 'task_opening_01', resourceVersion: 2 });
+    const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
+      onEvent({ type: 'message.delta', data: { markdown: '先从一个关键问题开始。' } });
+    });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 1,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        resourceVersion: 3,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [{ id: 'assistant_01', role: 'assistant', markdown: '先从一个关键问题开始。' }],
+      });
+    const api = client({ openLesson, stream, getSession });
+
+    render(<SessionPage autoOpen lessonId="lesson_01" client={api} />);
+
+    expect(await screen.findByText('先从一个关键问题开始。')).toBeInTheDocument();
+    expect(openLesson).toHaveBeenCalledWith('session_01', 1);
+    expect(screen.queryByText('开始提问后，AI 导师的回答会显示在这里。')).not.toBeInTheDocument();
+    expect(screen.queryByText('先从一个关键问题开始。')).toBeInTheDocument();
+  });
+
+  it('offers an explicit opening retry or direct conversation fallback', async () => {
+    const openLesson = vi.fn().mockRejectedValue(new Error('opening unavailable'));
+    const api = client({ openLesson });
+
+    render(<SessionPage autoOpen lessonId="lesson_01" client={api} />);
+
+    expect(
+      await screen.findByText('AI 开场没有完成，你可以重试，或直接开始对话。'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重试开场' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '直接开始对话' }));
+    expect(screen.getByLabelText('学习输入')).toBeEnabled();
+  });
+
   it('shows the sent message and thinking state before the request is accepted', async () => {
     const sendMessage = vi.fn(() => new Promise<never>(() => undefined));
     render(<SessionPage lessonId="lesson_01" client={client({ sendMessage })} />);
@@ -153,17 +195,30 @@ describe('learning SessionPage', () => {
     expect(screen.getByLabelText('学习输入')).toBeEnabled();
   });
 
-  it('pauses and resumes the same writable session explicitly', async () => {
+  it('pauses before returning to the course outline', async () => {
     const pause = vi.fn().mockResolvedValue({ resourceVersion: 2 });
-    const resume = vi.fn().mockResolvedValue({ resourceVersion: 3 });
-    const api = client({ pause, resume });
-    render(<SessionPage lessonId="lesson_01" client={api} />);
+    const onNavigate = vi.fn();
+    const api = client({ pause });
+    render(<SessionPage lessonId="lesson_01" client={api} onNavigate={onNavigate} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '暂停学习' }));
+    expect(screen.queryByRole('button', { name: '暂停学习' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '返回课程大纲' }));
+
+    expect(pause).toHaveBeenCalledWith('session_01', 1);
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('/'));
+  });
+
+  it('keeps resume available for a paused session', async () => {
+    const resume = vi.fn().mockResolvedValue({ resourceVersion: 2 });
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 1,
+      learning: { progress: 'in_progress', session: { state: 'paused' } },
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, resume })} />);
+
     fireEvent.click(await screen.findByRole('button', { name: '继续学习' }));
 
-    await waitFor(() => expect(resume).toHaveBeenCalledWith('session_01', 2));
-    expect(pause).toHaveBeenCalledWith('session_01', 1);
+    await waitFor(() => expect(resume).toHaveBeenCalledWith('session_01', 1));
   });
 
   it('reconciles a background version advance before retrying a session command', async () => {
@@ -181,11 +236,18 @@ describe('learning SessionPage', () => {
       .fn()
       .mockRejectedValueOnce({ code: 'version_conflict', currentVersion: 5 })
       .mockResolvedValueOnce({ resourceVersion: 6 });
-    render(<SessionPage lessonId="lesson_01" client={client({ getSession, pause })} />);
+    const onNavigate = vi.fn();
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({ getSession, pause })}
+        onNavigate={onNavigate}
+      />,
+    );
 
-    fireEvent.click(await screen.findByRole('button', { name: '暂停学习' }));
+    fireEvent.click(await screen.findByRole('button', { name: '返回课程大纲' }));
 
-    await waitFor(() => expect(screen.getByLabelText('学习输入')).toBeDisabled());
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('/'));
     expect(pause.mock.calls).toEqual([
       ['session_01', 1],
       ['session_01', 5],

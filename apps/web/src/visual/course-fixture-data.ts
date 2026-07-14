@@ -1,14 +1,12 @@
 import type { CourseArchiveView, CourseOutlineVersionView } from '@learning-more/contracts';
 
 import type { CourseDirectoryItem } from '../features/course/formal-course-view.js';
+import { diffOutlineMarkdown } from '../features/course/outline-markdown-diff.js';
 import type {
   CourseRevisionCandidate,
   CourseRevisionMessage,
 } from '../features/course/outline-revision-workspace.js';
-import type {
-  CourseLessonRuntimeState,
-  CourseOutlineModule,
-} from '../features/course/outline-view.js';
+import type { CourseLessonRuntimeState } from '../features/course/outline-view.js';
 import type { CourseReviewDocument } from '../features/review/course-review-view.js';
 
 const lessons: NonNullable<CourseArchiveView['lessons']> = [
@@ -67,7 +65,18 @@ export const COURSE_FIXTURE_ACTIVE = {
   outlineVersionId: 'outline_v1',
   lessonIds: lessons.map((lesson) => lesson.lessonId),
   recommendedLessonId: 'lesson_02',
-  outlineMarkdown: '# 从反馈到核心循环：游戏设计能力进阶',
+  outlineMarkdown: `# 从反馈到核心循环：游戏设计能力进阶
+
+## 看见游戏为何失去吸引力
+### 玩家为什么会停下来
+### 反馈不是奖励动画
+
+## 建立可持续的核心循环
+### 行为如何形成循环
+### 难度与掌握感如何推进
+
+## 用原型验证设计判断
+### 为原型建立成功标准`,
   lessons,
   outlineVersions: [
     {
@@ -90,19 +99,13 @@ export const COURSE_FIXTURE_OUTLINE = {
   courseId: COURSE_FIXTURE_ACTIVE.courseId,
   outlineVersionId: 'outline_v1',
   sourceCandidateVersionId: 'candidate_01',
-  outlineMarkdown: '# 从反馈到核心循环：游戏设计能力进阶',
+  outlineMarkdown: COURSE_FIXTURE_ACTIVE.outlineMarkdown,
   disciplineTag: '艺术与设计',
   topicTags: ['游戏设计', '核心循环'],
   createdAt: '2026-07-06T08:00:00+08:00',
   resourceVersion: 1,
   current: true,
 } satisfies CourseOutlineVersionView;
-
-export const COURSE_FIXTURE_MODULES: readonly CourseOutlineModule[] = [
-  { title: '看见游戏为何失去吸引力', lessonIds: ['lesson_01', 'lesson_02'] },
-  { title: '建立可持续的核心循环', lessonIds: ['lesson_03', 'lesson_04'] },
-  { title: '用原型验证设计判断', lessonIds: ['lesson_05'] },
-];
 
 export const COURSE_FIXTURE_ACTIVE_STATES: Readonly<Record<string, CourseLessonRuntimeState>> = {
   lesson_01: { progress: 'completed' },
@@ -161,36 +164,30 @@ export const COURSE_FIXTURE_REVISION_MESSAGES: readonly CourseRevisionMessage[] 
   },
 ];
 
+const revisionCandidateMarkdown = `# 从反馈到核心循环：游戏设计能力进阶
+
+## 看见体验断点与反馈作用
+### 玩家为什么会停下来
+### 反馈如何改变下一步行动
+
+## 建立可持续的核心循环
+### 行为如何形成循环
+### 难度与掌握感如何推进
+
+## 用行为证据验证反馈
+### 把设计判断变成可观察指标
+### 用原型测试反馈是否有效`;
+
 export const COURSE_FIXTURE_REVISION_CANDIDATE: CourseRevisionCandidate = {
   candidateVersionId: 'candidate_03',
   title: COURSE_FIXTURE_ACTIVE.title,
-  summary: '保留课程主线，强化反馈如何改变行动以及如何用行为证据验证设计判断。',
-  discipline: '艺术与设计',
-  tags: ['游戏反馈'],
+  markdown: revisionCandidateMarkdown,
   versionLabel: '基于 v1 · 候选 03',
-  modules: [
-    {
-      title: '模块一 · 看见体验断点与反馈作用',
-      change: '调整',
-      lessons: [
-        { title: '玩家为什么会停下来', detail: '已完成 · 保留原定义、对话和最终 Review。' },
-        { title: '反馈如何改变下一步行动', detail: '状态反馈、能力反馈、目标反馈与行动选择。' },
-      ],
-    },
-    {
-      title: '模块二 · 建立可持续的核心循环',
-      change: '保留',
-      lessons: [{ title: '行为如何形成循环', detail: '玩家行动、系统响应和下一步欲望。' }],
-    },
-    {
-      title: '模块三 · 用行为证据验证反馈',
-      change: '新增',
-      lessons: [
-        { title: '把设计判断变成可观察指标', detail: '行为信号、判断标准与证据边界。' },
-        { title: '用原型测试反馈是否有效', detail: '测试任务、行为变化与迭代决策。' },
-      ],
-    },
-  ],
+  diff: diffOutlineMarkdown(
+    COURSE_FIXTURE_OUTLINE.outlineMarkdown,
+    revisionCandidateMarkdown,
+    lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+  ),
   impact: '保留 3 节，调整 1 节，拆分原验证课；已完成课节及其归档不变。',
 };
 

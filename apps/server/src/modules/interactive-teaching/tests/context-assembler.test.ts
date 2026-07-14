@@ -139,6 +139,22 @@ describe('TeachingContextAssembler', () => {
     expect(JSON.stringify(context)).not.toContain('modeWeight');
   });
 
+  it('assembles an opening turn without inventing a current learner message', async () => {
+    const assembler = createTeachingContextAssembler({ sources: sources('standard') });
+    const context = await assembler.assemble({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      turnKind: 'opening',
+      teachingState: state(),
+      unobservedMessageIds: [],
+    });
+
+    expect(context.turnKind).toBe('opening');
+    expect(context.unobservedMessages).toEqual([]);
+    expect(context.recentMessages).toHaveLength(2);
+  });
+
   it('carries one advisory play intent without turning it into steps or quotas', async () => {
     const assembler = createTeachingContextAssembler({ sources: sources('case_study') });
     const context = await assembler.assemble({

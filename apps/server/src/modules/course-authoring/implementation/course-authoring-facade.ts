@@ -14,7 +14,12 @@ import type {
   CourseAuthoringResult,
   CourseAuthoringView,
 } from '../interface.js';
-import { createOutlineSession, decide, evolveAll } from '../model/outline-session.js';
+import {
+  createOutlineAdjustmentSession,
+  createOutlineSession,
+  decide,
+  evolveAll,
+} from '../model/outline-session.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
 import type { AuthoringAgent } from '../ports/authoring-agent.js';
 import type {
@@ -35,6 +40,13 @@ export interface CandidateGenerationCoordinator {
     readonly failureCode?: CandidateGenerationFailureCode;
     readonly resourceVersion: number;
     readonly draftArtifactRef?: string;
+  }>;
+  recover(input: { readonly outlineSessionId: string; readonly taskId: string }): Promise<void>;
+  cancel?(input: { readonly commandId: string; readonly outlineSessionId: string }): Promise<{
+    readonly taskId: string;
+    readonly state: 'failed_recoverable';
+    readonly failureCode: 'generation_interrupted';
+    readonly resourceVersion: number;
   }>;
 }
 
@@ -286,6 +298,45 @@ export function createCourseAuthoringFacade(options: {
 
   return {
     async execute(command, context) {
+      if (command.type === 'CreateOutlineAdjustmentSession') {
+        const course = await options.courses.courses.get(command.courseId);
+        if (course === undefined) throw new ResourceNotFoundError();
+        assertVersion(course.resourceVersion, context);
+        const outline = await options.courses.outlineVersions.get(course.outlineVersionId);
+        if (outline === undefined) throw new ResourceNotFoundError();
+        const baselineCandidate = await options.authoring.candidateVersions.get(
+          outline.sourceCandidateVersionId,
+        );
+        if (baselineCandidate === undefined) throw new ResourceNotFoundError();
+        const outlineSessionId = options.nextId('session');
+        const started: OutlineSessionRecord = {
+          session: createOutlineAdjustmentSession({
+            outlineSessionId,
+            topic: course.title,
+            courseMode: course.courseMode,
+            baselineCandidateVersionId: baselineCandidate.id,
+          }),
+          resourceVersion: 0,
+          candidateCommandReceipts: {},
+          messages: [],
+        };
+        await options.unitOfWork.execute(
+          { transactionId: `tx_create_outline_adjustment_${context.commandId}` },
+          (tx) => options.authoring.outlineSessions.save(tx, started, 0),
+        );
+        return result(
+          context,
+          {
+            kind: 'outline-session',
+            outlineSessionId,
+            state: started.session.state,
+            completedAssessmentRounds: started.session.completedAssessmentRounds,
+            canGenerateCandidate: canGenerateCandidate(started),
+          },
+          1,
+        );
+      }
+
       if (command.type === 'CreateOutlineSession') {
         const outlineSessionId = options.nextId('session');
         const userMessageId = options.nextId('message');
@@ -434,6 +485,27 @@ export function createCourseAuthoringFacade(options: {
           },
           generated.resourceVersion,
           'accepted',
+        );
+      }
+
+      if (command.type === 'CancelCandidateGeneration') {
+        const record = await sessionRecord(command.outlineSessionId);
+        assertVersion(record.resourceVersion, context);
+        if (options.candidateGeneration.cancel === undefined)
+          throw new Error('generation_cancellation_not_configured');
+        const cancelled = await options.candidateGeneration.cancel({
+          commandId: context.commandId,
+          outlineSessionId: command.outlineSessionId,
+        });
+        return result(
+          context,
+          {
+            kind: 'generation',
+            taskId: cancelled.taskId,
+            state: cancelled.state,
+            failureCode: cancelled.failureCode,
+          },
+          cancelled.resourceVersion,
         );
       }
 
@@ -613,6 +685,9 @@ export function createCourseAuthoringFacade(options: {
         canGenerateCandidate: canGenerateCandidate(record),
         ...(record.session.savedAsDraft === true ? { savedAsDraft: true } : {}),
         messages: record.messages,
+        ...(record.session.activeCandidateTaskId === undefined
+          ? {}
+          : { generationTaskId: record.session.activeCandidateTaskId }),
         ...(record.session.latestCandidateVersionId === undefined
           ? {}
           : { candidateVersionId: record.session.latestCandidateVersionId }),

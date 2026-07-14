@@ -8,8 +8,10 @@ import type {
 
 export type CourseAuthoringCommand =
   | Readonly<{ type: 'CreateOutlineSession'; topic: string; courseMode: CourseMode }>
+  | Readonly<{ type: 'CreateOutlineAdjustmentSession'; courseId: string }>
   | Readonly<{ type: 'AppendOutlineSessionMessage'; outlineSessionId: string; content: string }>
   | Readonly<{ type: 'RequestCandidateGeneration'; outlineSessionId: string }>
+  | Readonly<{ type: 'CancelCandidateGeneration'; outlineSessionId: string }>
   | Readonly<{
       type: 'ConfirmOutlineCandidate';
       outlineSessionId: string;
@@ -108,6 +110,7 @@ export type CourseAuthoringView = Readonly<{
     alignmentAction?: 'clarify' | 'regenerate' | 'patch';
     targetModuleIds?: readonly string[];
   }>[];
+  generationTaskId?: string;
   candidateVersionId?: string;
   candidateMarkdown?: string;
   confirmedCourseId?: string;

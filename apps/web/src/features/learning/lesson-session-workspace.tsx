@@ -39,6 +39,8 @@ export function LessonSessionWorkspace(props: {
   readonly input: string;
   readonly writable: boolean;
   readonly generating: boolean;
+  readonly opening: boolean;
+  readonly openingError: boolean;
   readonly assistantPending: boolean;
   readonly paused: boolean;
   readonly abandoned: boolean;
@@ -54,6 +56,8 @@ export function LessonSessionWorkspace(props: {
   readonly onResume: () => void;
   readonly onAbandon: () => void;
   readonly onRestore: () => void;
+  readonly onRetryOpening: () => void;
+  readonly onSkipOpening: () => void;
   readonly onComplete: () => void;
   readonly onBackToOutline: () => void;
 }) {
@@ -118,15 +122,11 @@ export function LessonSessionWorkspace(props: {
               <button className="lm-btn" type="button" onClick={props.onTransfer}>
                 接管写入权
               </button>
-            ) : (
-              <button
-                className="lm-btn"
-                type="button"
-                onClick={props.paused ? props.onResume : props.onPause}
-              >
-                {props.paused ? '继续学习' : '暂停学习'}
+            ) : props.paused ? (
+              <button className="lm-btn" type="button" onClick={props.onResume}>
+                继续学习
               </button>
-            )}
+            ) : null}
             <button
               className="lm-btn danger"
               disabled={!props.writable || props.abandoned}
@@ -149,10 +149,16 @@ export function LessonSessionWorkspace(props: {
                   className={`lm-pill ${props.generating ? 'warning' : props.stopped ? 'readonly' : 'success'}`}
                 >
                   {props.generating
-                    ? '正在生成 Markdown'
-                    : props.stopped
-                      ? '已停止生成'
-                      : '等待你的回应'}
+                    ? props.opening
+                      ? 'AI 正在导入本课'
+                      : '正在生成 Markdown'
+                    : props.openingError
+                      ? '开场未完成'
+                      : props.stopped
+                        ? '已停止生成'
+                        : props.messages.length === 0
+                          ? '准备开始'
+                          : '等待你的回应'}
                 </span>
                 {props.generating && props.canStop ? (
                   <button className="lm-btn" type="button" onClick={props.onStop}>
@@ -164,7 +170,25 @@ export function LessonSessionWorkspace(props: {
             <div aria-label="学习对话" aria-live="polite" className="lesson-session-stream">
               {props.messages.length === 0 && !props.assistantPending ? (
                 <div className="learn-ai">
-                  <p>开始提问后，AI 导师的回答会显示在这里。</p>
+                  {props.openingError ? (
+                    <>
+                      <p>AI 开场没有完成，你可以重试，或直接开始对话。</p>
+                      <div className="lm-actions">
+                        <button
+                          className="lm-btn primary"
+                          type="button"
+                          onClick={props.onRetryOpening}
+                        >
+                          重试开场
+                        </button>
+                        <button className="lm-btn" type="button" onClick={props.onSkipOpening}>
+                          直接开始对话
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p>AI 导师正在准备本课的第一步。</p>
+                  )}
                 </div>
               ) : (
                 props.messages.map((message) =>

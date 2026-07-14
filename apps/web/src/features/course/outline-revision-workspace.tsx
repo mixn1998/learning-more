@@ -4,6 +4,7 @@ import type { CourseArchiveView, CourseOutlineVersionView } from '@learning-more
 import { AiContent, AiSurface, Button, Card, Dialog } from '@learning-more/ui';
 
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
+import type { OutlineMarkdownDiff, OutlineChangeStatus } from './outline-markdown-diff.js';
 import '../course-authoring/outline-workspace-view.css';
 import './outline-revision-workspace.css';
 
@@ -15,17 +16,18 @@ export type CourseRevisionMessage = Readonly<{
 export type CourseRevisionCandidate = Readonly<{
   candidateVersionId: string;
   title: string;
-  summary: string;
-  discipline: string;
-  tags: readonly string[];
+  markdown: string;
   versionLabel: string;
-  modules: readonly Readonly<{
-    title: string;
-    change: string;
-    lessons: readonly Readonly<{ title: string; detail: string }>[];
-  }>[];
+  diff: OutlineMarkdownDiff;
   impact: string;
 }>;
+
+const changeLabels: Readonly<Record<OutlineChangeStatus, string>> = {
+  unchanged: '保持不变',
+  modified: '内容调整',
+  added: '新增',
+  removed: '删除',
+};
 
 export function OutlineRevisionWorkspace(props: {
   readonly course: CourseArchiveView;
@@ -42,6 +44,13 @@ export function OutlineRevisionWorkspace(props: {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   useCourseModeTheme(props.course.courseMode);
+  const currentVersionNumber = Math.max(
+    1,
+    (props.course.outlineVersions ?? []).findIndex(
+      (version) => version.outlineVersionId === props.course.outlineVersionId,
+    ) + 1,
+  );
+  const nextVersionNumber = currentVersionNumber + 1;
 
   const send = () => {
     const message = composer.trim();
@@ -70,7 +79,7 @@ export function OutlineRevisionWorkspace(props: {
           <h1>修改课程大纲</h1>
           <p>
             《{props.course.title}》· 当前{' '}
-            {props.currentOutline?.current === false ? '历史版' : 'v1'}
+            {props.currentOutline?.current === false ? '历史版' : `v${currentVersionNumber}`}
           </p>
         </div>
         <div className="lm-actions">
@@ -142,58 +151,81 @@ export function OutlineRevisionWorkspace(props: {
 
         <Card className="ow-panel">
           <header className="ow-panel-head">
-            <strong>调整候选大纲</strong>
-            <span>{props.candidate?.versionLabel ?? '等待生成候选版本'}</span>
+            <strong>当前大纲与调整候选</strong>
+            <span>{props.candidate?.versionLabel ?? '当前正式版本保持不变'}</span>
           </header>
-          {props.candidate === undefined ? (
-            <AiSurface className="ow-outline">
-              <div className="course-revision-empty">
-                <div className="lm-kicker">CURRENT OUTLINE</div>
-                <h2>{props.course.title}</h2>
+          <AiSurface className="ow-outline course-revision-outlines">
+            <section className="course-revision-version course-revision-version--current">
+              <div className="course-revision-version__head">
+                <div>
+                  <div className="lm-kicker">CURRENT FORMAL OUTLINE</div>
+                  <h2>当前正式大纲</h2>
+                </div>
+                <span className="lm-pill">发布前保持不变</span>
+              </div>
+              <AiContent
+                className="course-revision-markdown"
+                markdown={
+                  props.currentOutline?.outlineMarkdown ??
+                  props.course.outlineMarkdown ??
+                  `# ${props.course.title}`
+                }
+              />
+            </section>
+
+            {props.candidate === undefined ? (
+              <div className="course-revision-guidance">
                 <p>
-                  在左侧说明调整目标，AI 会生成完整候选版本；当前确认版保持不变，直到你明确发布。
+                  在左侧说明希望保留、删除、重排或强化的内容，候选版本会在这里与当前版并列显示。
                 </p>
               </div>
-            </AiSurface>
-          ) : (
-            <AiSurface className="ow-outline">
-              <div className="ow-outline-title">
-                <div>
-                  <div className="lm-kicker">CANDIDATE V2</div>
-                  <h2>{props.candidate.title}</h2>
-                  <p>{props.candidate.summary}</p>
-                </div>
-                <div className="lm-chips">
-                  <span className="lm-pill">{props.candidate.discipline}</span>
-                  {props.candidate.tags.map((tag) => (
-                    <span key={tag} className="lm-pill">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              {props.candidate.modules.map((module) => (
-                <section key={module.title} className="ow-module">
-                  <div className="ow-module-head">
-                    <strong>{module.title}</strong>
-                    <span>{module.change}</span>
-                  </div>
-                  {module.lessons.map((lesson, index) => (
-                    <div key={lesson.title} className="ow-lesson">
-                      <b>
-                        {index + 1}. {lesson.title}
-                      </b>
-                      <p>{lesson.detail}</p>
+            ) : (
+              <>
+                <section className="course-revision-version course-revision-version--candidate">
+                  <div className="course-revision-version__head">
+                    <div>
+                      <div className="lm-kicker">CANDIDATE V{nextVersionNumber}</div>
+                      <h2>{props.candidate.title}</h2>
                     </div>
+                    <span className="lm-pill">尚未发布</span>
+                  </div>
+                  <AiContent
+                    className="course-revision-markdown"
+                    markdown={props.candidate.markdown}
+                  />
+                </section>
+
+                <section aria-label="大纲版本差异" className="course-revision-diff">
+                  <div className="course-revision-diff__head">
+                    <h3>版本变化</h3>
+                    <p>{props.candidate.impact}</p>
+                  </div>
+                  {props.candidate.diff.modules.map((module) => (
+                    <section key={module.key} className="course-revision-diff__module">
+                      <div className="course-revision-diff__row">
+                        <strong>{module.title}</strong>
+                        <span
+                          className={`course-revision-change course-revision-change--${module.status}`}
+                        >
+                          {changeLabels[module.status]}
+                        </span>
+                      </div>
+                      {module.lessons.map((lesson) => (
+                        <div key={lesson.key} className="course-revision-diff__lesson">
+                          <span>{lesson.title}</span>
+                          <span
+                            className={`course-revision-change course-revision-change--${lesson.status}`}
+                          >
+                            {changeLabels[lesson.status]}
+                          </span>
+                        </div>
+                      ))}
+                    </section>
                   ))}
                 </section>
-              ))}
-              <div className="ow-note course-revision-impact">
-                <b>版本影响：</b>
-                {props.candidate.impact}
-              </div>
-            </AiSurface>
-          )}
+              </>
+            )}
+          </AiSurface>
           <footer className="ow-footer">
             <span />
             <Button
@@ -202,7 +234,7 @@ export function OutlineRevisionWorkspace(props: {
               variant="primary"
               onClick={() => setConfirmOpen(true)}
             >
-              确认并发布 v2
+              确认并发布 v{nextVersionNumber}
             </Button>
           </footer>
         </Card>
@@ -223,9 +255,12 @@ export function OutlineRevisionWorkspace(props: {
           if (!publishing) setConfirmOpen(false);
         }}
         open={confirmOpen}
-        title="发布大纲 v2？"
+        title={`发布大纲 v${nextVersionNumber}？`}
       >
-        <p>发布后 v2 成为当前确认版；v1 与既有课节归档继续保留。</p>
+        <p>
+          发布后 v{nextVersionNumber} 成为当前确认版；v{currentVersionNumber}
+          与既有课节归档继续保留。
+        </p>
       </Dialog>
     </main>
   );

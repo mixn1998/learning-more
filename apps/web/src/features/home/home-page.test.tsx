@@ -13,12 +13,14 @@ function client(
 ): CourseAuthoringClient {
   return {
     createOutlineSession: create,
+    createOutlineAdjustmentSession: vi.fn(),
     deleteOutlineSession: vi.fn(),
     saveOutlineSessionDraft: vi.fn(),
     getOutlineSession: vi.fn(),
     appendMessage: vi.fn(),
     requestCandidateGeneration: vi.fn(),
     streamGeneration: vi.fn(),
+    cancelCandidateGeneration: vi.fn(),
     confirmCandidate: vi.fn(),
     getCourse: vi.fn(),
     reviseOutline: vi.fn(),

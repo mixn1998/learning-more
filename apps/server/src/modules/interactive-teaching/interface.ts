@@ -13,6 +13,12 @@ export type AdvanceTeachingTurn = Readonly<{
   userContentArtifactRef: string;
 }>;
 
+export type OpenTeachingLesson = Readonly<{
+  courseId: string;
+  lessonId: string;
+  sessionId: string;
+}>;
+
 export type TeachingTurnAccepted = Readonly<{
   taskId: string;
   resourceVersion: number;
@@ -41,6 +47,7 @@ export type MaterializedTeachingMessage = Readonly<{
 
 export interface InteractiveTeaching {
   advanceTurn(input: AdvanceTeachingTurn, context: CommandContext): Promise<TeachingTurnAccepted>;
+  openLesson(input: OpenTeachingLesson, context: CommandContext): Promise<TeachingTurnAccepted>;
   stopTurn(input: StopTeachingTurn, context: CommandContext): Promise<TeachingTurnStopped>;
   getTeachingState(sessionId: string): Promise<TeachingStateSnapshot>;
   freezeCheckpoint(input: {

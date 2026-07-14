@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
+import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 import type { CourseAuthoringRepositories } from '../../../persistence/course-authoring-repositories.js';
 import type { CourseMode } from '../model/commands.js';
 import type { OutlineMessage } from '../model/outline-message.js';
@@ -23,6 +24,9 @@ export function createCourseAuthoringModule(options: {
       priority: number;
       prompt: string;
     }): Promise<{ taskId: string }>;
+    readonly get?: (taskId: string) => Promise<GenerationTask>;
+    readonly cancel?: (taskId: string) => Promise<GenerationTask>;
+    readonly recoverExpiredLeases?: () => Promise<number>;
   };
   readonly draftStore: { saveDraft(artifactRef: string, markdown: string): Promise<void> };
   readonly providerId?: string;
@@ -97,12 +101,50 @@ export function createCourseAuthoringModule(options: {
       promptInput?: CandidatePromptInput;
       promptInputArtifactRef?: string;
     }) {
-      const record = await options.repositories.outlineSessions.get(input.outlineSessionId);
+      let record = await options.repositories.outlineSessions.get(input.outlineSessionId);
       if (record === undefined) throw new Error('OUTLINE_SESSION_NOT_FOUND');
       const receipt = record.candidateCommandReceipts[input.commandId];
       if (receipt !== undefined) return receipt;
       if (record.session.completedAssessmentRounds < 3) {
         throw new Error('assessment_required');
+      }
+      let reusableTask: { taskId: string } | undefined;
+      if (record.session.state === 'generating-candidates') {
+        const activeTaskId = record.session.activeCandidateTaskId;
+        const getTask = options.generationRuntime.get;
+        const cancelTask = options.generationRuntime.cancel;
+        const recoverExpiredLeases = options.generationRuntime.recoverExpiredLeases;
+        if (activeTaskId === undefined || getTask === undefined || cancelTask === undefined) {
+          throw new Error('generation_in_progress');
+        }
+        await recoverExpiredLeases?.();
+        const activeTask = await getTask(activeTaskId);
+        const leaseExpired =
+          activeTask.leaseExpiresAt !== undefined &&
+          new Date(activeTask.leaseExpiresAt).getTime() < now().getTime();
+        const hadRunningAttempt = activeTask.attempts?.at(-1)?.status === 'running';
+        if (activeTask.status === 'queued' && !hadRunningAttempt && !leaseExpired) {
+          reusableTask = { taskId: activeTaskId };
+        } else if (
+          !leaseExpired ||
+          !hadRunningAttempt ||
+          !['queued', 'running'].includes(activeTask.status)
+        ) {
+          throw new Error('generation_in_progress');
+        }
+        if (reusableTask === undefined) {
+          await cancelTask(activeTaskId);
+          record = {
+            ...record,
+            session: evolveAll(
+              record.session,
+              decide(record.session, {
+                type: 'candidateGenerationFailed',
+                generationTaskId: activeTaskId,
+              }),
+            ),
+          };
+        }
       }
       const promptInput: CandidatePromptInput = input.promptInput ?? {
         courseDirection: record.session.topic,
@@ -120,23 +162,28 @@ export function createCourseAuthoringModule(options: {
           },
         ],
       };
-      const task = await options.generationRuntime.submit({
-        taskKey: `outline-candidate:${input.outlineSessionId}:${input.commandId}`,
-        inputSnapshotHash: input.inputSnapshotHash,
-        taskKind: 'outline-candidate',
-        taskGroup: 'interactive',
-        ownerRef: input.outlineSessionId,
-        providerId: options.providerId ?? 'current',
-        priority: 100,
-        prompt: buildCandidateGenerationPrompt(promptInput),
-      });
-      const session = evolveAll(
-        record.session,
-        decide(record.session, {
-          type: 'requestCandidate',
-          generationTaskId: task.taskId,
-        }),
-      );
+      const task =
+        reusableTask ??
+        (await options.generationRuntime.submit({
+          taskKey: `outline-candidate:${input.outlineSessionId}:${input.commandId}`,
+          inputSnapshotHash: input.inputSnapshotHash,
+          taskKind: 'outline-candidate',
+          taskGroup: 'interactive',
+          ownerRef: input.outlineSessionId,
+          providerId: options.providerId ?? 'current',
+          priority: 100,
+          prompt: buildCandidateGenerationPrompt(promptInput),
+        }));
+      const session =
+        reusableTask === undefined
+          ? evolveAll(
+              record.session,
+              decide(record.session, {
+                type: 'requestCandidate',
+                generationTaskId: task.taskId,
+              }),
+            )
+          : record.session;
       await options.unitOfWork.execute({ transactionId: `tx_authoring_${randomUUID()}` }, (tx) =>
         options.repositories.outlineSessions.save(
           tx,

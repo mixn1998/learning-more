@@ -18,6 +18,8 @@ import { learningClient, type LearningClient } from '../../client/learning-clien
 import { getPageInstanceId } from '../../state/page-instance.js';
 import { useAppShellHeaderStatus } from '../../state/app-shell-header.js';
 import { FormalCourseView, type CourseDirectoryItem } from '../course/formal-course-view.js';
+import { diffOutlineMarkdown } from '../course/outline-markdown-diff.js';
+import { projectOutlineMarkdown } from '../course/outline-markdown-projection.js';
 import {
   OutlineRevisionWorkspace,
   type CourseRevisionCandidate,
@@ -29,13 +31,11 @@ import { CourseReviewView } from './course-review-view.js';
 type CoursePageAuthoringClient = Pick<
   CourseAuthoringClient,
   | 'appendMessage'
-  | 'createOutlineSession'
+  | 'createOutlineAdjustmentSession'
   | 'getCourse'
   | 'getOutlineSession'
   | 'getOutlineVersion'
-  | 'requestCandidateGeneration'
   | 'reviseOutline'
-  | 'streamGeneration'
 >;
 
 export type CoursePageView = 'outline' | 'revision' | 'review';
@@ -47,59 +47,63 @@ function errorCode(error: unknown): string | undefined {
 
 function candidateFromSession(
   course: CourseArchiveView,
+  currentOutline: CourseOutlineVersionView,
   session: OutlineSessionView,
 ): CourseRevisionCandidate | undefined {
   const candidateVersionId = session.candidateVersionId;
-  if (candidateVersionId === undefined) return undefined;
-  const markdown = session.candidateMarkdown ?? '';
-  const markdownTitle = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim();
-  const paragraphs = markdown
-    .replace(/^#{1,6}\s+.+$/gm, '')
-    .split(/\n\s*\n/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const lessons = course.lessons ?? [];
-  const modules: Array<CourseRevisionCandidate['modules'][number]> = [];
-  for (let offset = 0; offset < lessons.length; offset += 2) {
-    const group = lessons.slice(offset, offset + 2);
-    const first = group[0];
-    if (first === undefined) continue;
-    modules.push({
-      title: `模块${['一', '二', '三', '四', '五'][Math.floor(offset / 2)] ?? ` ${Math.floor(offset / 2) + 1}`} · ${first.objective}`,
-      change: offset === 0 ? '调整' : '保留',
-      lessons: group.map((lesson) => ({
-        title: lesson.title,
-        detail:
-          lesson.coreKnowledgePoints.length === 0
-            ? lesson.objective
-            : `${lesson.coreKnowledgePoints.join('、')}。`,
-      })),
-    });
+  const markdown = session.candidateMarkdown?.trim() ?? '';
+  if (
+    candidateVersionId === undefined ||
+    candidateVersionId === currentOutline.sourceCandidateVersionId ||
+    markdown === ''
+  ) {
+    return undefined;
   }
+  const formalLessons = (course.lessons ?? []).map((lesson) => ({
+    lessonId: lesson.lessonId,
+    title: lesson.title,
+  }));
+  const diff = diffOutlineMarkdown(currentOutline.outlineMarkdown, markdown, formalLessons);
+  const counts = diff.modules
+    .flatMap((module) => [module.status, ...module.lessons.map((lesson) => lesson.status)])
+    .reduce<Record<string, number>>((current, status) => {
+      current[status] = (current[status] ?? 0) + 1;
+      return current;
+    }, {});
+  const title = projectOutlineMarkdown(markdown).title ?? course.title;
   return {
     candidateVersionId,
-    title: markdownTitle ?? course.title,
-    summary: paragraphs[0] ?? '候选版本已根据本轮调整要求生成。',
-    discipline: '课程主题',
-    tags: [courseModeLabel(course.courseMode)],
+    title,
+    markdown,
     versionLabel: `基于当前版 · 候选 ${candidateVersionId.slice(-4)}`,
-    modules,
-    impact: '当前确认版与既有课节归档保持不变；发布后候选版本成为新的正式大纲。',
+    diff,
+    impact: `保持不变 ${counts.unchanged ?? 0} · 内容调整 ${counts.modified ?? 0} · 新增 ${counts.added ?? 0} · 删除 ${counts.removed ?? 0}`,
   };
 }
 
-function courseModeLabel(mode: CourseArchiveView['courseMode']): string {
-  return {
-    standard: '标准模式',
-    brainstorm: '头脑风暴',
-    argument_clash: '论证交锋',
-    case_study: '案例研习',
-    business_insight: '商业洞察',
-    process_decomposition: '流程拆解',
-    decision_analysis: '决策分析',
-    cross_explore: '交叉探索',
-    reading_seminar: '阅读研讨',
-  }[mode];
+async function waitForAdjustedSession(input: {
+  readonly authoring: CoursePageAuthoringClient;
+  readonly outlineSessionId: string;
+  readonly baselineCandidateVersionId?: string | undefined;
+  readonly appendState: string;
+}): Promise<OutlineSessionView> {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    const session = await input.authoring.getOutlineSession(input.outlineSessionId);
+    if (
+      session.candidateVersionId !== undefined &&
+      session.candidateVersionId !== input.baselineCandidateVersionId
+    ) {
+      return session;
+    }
+    if (input.appendState === 'candidate-ready' && session.state === 'candidate-ready') {
+      return session;
+    }
+    if (session.state !== 'generating-candidates' && session.state !== 'alignment-turn-running') {
+      return session;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error('outline_adjustment_generation_timeout');
 }
 
 export function CoursePage(props: {
@@ -277,36 +281,44 @@ export function CoursePage(props: {
     try {
       let session = revisionSession;
       if (session === undefined) {
-        session = await authoring.createOutlineSession({
-          topic: `${course.title}（大纲调整）`,
-          courseMode: course.courseMode,
+        session = await authoring.createOutlineAdjustmentSession({
+          courseId: course.courseId,
+          resourceVersion: course.resourceVersion,
           pageInstanceId: getPageInstanceId(),
         });
       }
+      const baselineCandidateVersionId = session.candidateVersionId;
       const appended = await authoring.appendMessage({
         outlineSessionId: session.outlineSessionId,
         content: message,
         resourceVersion: session.resourceVersion,
         pageInstanceId: getPageInstanceId(),
       });
-      const generation = await authoring.requestCandidateGeneration({
+      const refreshed = await waitForAdjustedSession({
+        authoring,
         outlineSessionId: session.outlineSessionId,
-        resourceVersion: appended.resourceVersion,
-        pageInstanceId: getPageInstanceId(),
+        baselineCandidateVersionId,
+        appendState: appended.state,
       });
-      await authoring.streamGeneration(generation.taskId, { onEvent: () => undefined });
-      const refreshed = await authoring.getOutlineSession(session.outlineSessionId);
-      const candidate = candidateFromSession(course, refreshed);
+      const candidate =
+        currentOutline === undefined
+          ? undefined
+          : candidateFromSession(course, currentOutline, refreshed);
+      const assistantReply = refreshed.messages
+        ?.slice()
+        .reverse()
+        .find((message) => message.role === 'assistant')?.content;
       setRevisionSession(refreshed);
-      setRevisionCandidate(candidate);
+      if (candidate !== undefined) setRevisionCandidate(candidate);
       setRevisionMessages((current) => [
         ...current,
         {
           role: 'assistant',
           markdown:
-            candidate === undefined
-              ? '生成任务已经结束，但候选版本尚未就绪。请重试本轮调整。'
-              : '已将这项要求纳入完整候选版本，并保留当前正式大纲与既有课节归档。你可以继续调整或发布右侧版本。',
+            assistantReply ??
+            (candidate === undefined
+              ? '我需要再确认一个边界；当前正式大纲仍保持不变。'
+              : '已将这项要求纳入候选版本。你可以继续调整，或在核对变化后发布。'),
         },
       ]);
     } catch (caught) {
@@ -336,6 +348,8 @@ export function CoursePage(props: {
     } catch (caught) {
       if (errorCode(caught) === 'version_conflict') {
         setRevisionError('课程大纲已被更新。最新正式版本已重新读取，请基于最新版本再次生成候选。');
+        setRevisionSession(undefined);
+        setRevisionCandidate(undefined);
         await loadCourse();
         return;
       }

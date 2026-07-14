@@ -48,6 +48,7 @@ describe('candidate output protocol', () => {
     });
 
     expect(prompt).toContain('[MACHINE OUTPUT CONTRACT]');
+    expect(prompt).toContain('[OUTLINE READABILITY]');
     expect(prompt).toContain('[KNOWN LEARNING BACKGROUND]');
     expect(prompt).toContain('[ORIGINAL CONVERSATION]');
     expect(prompt).toContain('"protocol":"learning-more.candidate"');
@@ -55,8 +56,32 @@ describe('candidate output protocol', () => {
     expect(prompt).toContain('"courseGoals"');
     expect(prompt).toContain('"modules"');
     expect(prompt).toContain('"lessons"');
+    expect(prompt).toContain('What is the lesson name?');
+    expect(prompt).toContain('What is its concise summary?');
+    expect(prompt).toContain('keywords or core knowledge points');
+    expect(prompt).toContain('outline.lessons[].title');
+    expect(prompt).toContain('choose the module count, lesson count');
+    expect(prompt).toContain('Do not force a fixed lesson template');
     expect(prompt).not.toContain('outlineSessionId');
     expect(prompt).not.toContain('completedAssessmentRounds');
     expect(prompt).not.toContain('messageId');
+  });
+
+  it('keeps the current formal Markdown in an adjustment prompt without turning it into output fields', () => {
+    const prompt = buildCandidateGenerationPrompt({
+      courseDirection: '微积分',
+      learningApproach: '根据学习者的调整要求继续优化。',
+      conversation: [{ role: 'user', content: '强化导数应用，但保留极限模块。' }],
+      sources: [{ sourceRef: 'source_topic', title: '初始课程方向', excerpt: '微积分' }],
+      currentCandidate: {
+        markdown: '# 微积分 v1\n\n## 极限\n### 极限是什么',
+      },
+      requestedAdjustment: { action: 'patch', targetModuleIds: ['module_derivative'] },
+    });
+
+    expect(prompt).toContain('[CURRENT CANDIDATE]');
+    expect(prompt).toContain('# 微积分 v1\n\n## 极限\n### 极限是什么');
+    expect(prompt).toContain('[CURRENT REQUEST]');
+    expect(prompt).not.toContain('outlineSessionId');
   });
 });

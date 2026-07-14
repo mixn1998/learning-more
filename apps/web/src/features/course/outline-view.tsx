@@ -1,5 +1,8 @@
 import type { CourseArchiveView } from '@learning-more/contracts';
 
+import { toLessonKnowledgeSummary } from '../learning/knowledge-point-presentation.js';
+import { projectOutlineMarkdown } from './outline-markdown-projection.js';
+
 export type CourseLessonProgress = 'not_started' | 'in_progress' | 'abandoned' | 'completed';
 
 export type CourseLessonRuntimeState = Readonly<{
@@ -7,26 +10,7 @@ export type CourseLessonRuntimeState = Readonly<{
   sessionId?: string | undefined;
 }>;
 
-export type CourseOutlineModule = Readonly<{
-  title: string;
-  lessonIds: readonly string[];
-}>;
-
 type CourseLesson = NonNullable<CourseArchiveView['lessons']>[number];
-
-function defaultModules(lessons: readonly CourseLesson[]): readonly CourseOutlineModule[] {
-  const modules: CourseOutlineModule[] = [];
-  for (let offset = 0; offset < lessons.length; offset += 2) {
-    const group = lessons.slice(offset, offset + 2);
-    const first = group[0];
-    if (first === undefined) continue;
-    modules.push({
-      title: first.objective,
-      lessonIds: group.map((lesson) => lesson.lessonId),
-    });
-  }
-  return modules;
-}
 
 function lessonStateLabel(
   progress: CourseLessonProgress,
@@ -43,13 +27,27 @@ function lessonStateLabel(
 export function OutlineView(props: {
   readonly course: CourseArchiveView;
   readonly lessonStates: Readonly<Record<string, CourseLessonRuntimeState | undefined>>;
-  readonly modules?: readonly CourseOutlineModule[] | undefined;
   readonly lessonDescriptions?: Readonly<Record<string, string | undefined>> | undefined;
   readonly onOpenLesson: (lessonId: string, destination: 'lesson' | 'record') => void;
 }) {
   const lessons = props.course.lessons ?? [];
   const lessonById = new Map(lessons.map((lesson) => [lesson.lessonId, lesson]));
-  const modules = props.modules ?? defaultModules(lessons);
+  const projection = projectOutlineMarkdown(
+    props.course.outlineMarkdown ?? '',
+    lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+  );
+  const modules = [
+    ...projection.modules,
+    ...(projection.ungroupedLessons.length === 0
+      ? []
+      : [
+          {
+            key: 'ungrouped-lessons',
+            title: '未分组课程',
+            lessons: projection.ungroupedLessons,
+          },
+        ]),
+  ];
   const closed = props.course.status === 'closed';
   const completed = closed
     ? lessons.length
@@ -75,12 +73,14 @@ export function OutlineView(props: {
         </span>
       </div>
       {modules.map((module, moduleIndex) => {
-        const moduleLessons = module.lessonIds
-          .map((lessonId) => lessonById.get(lessonId))
+        const moduleLessons = module.lessons
+          .map((lesson) =>
+            lesson.lessonId === undefined ? undefined : lessonById.get(lesson.lessonId),
+          )
           .filter((lesson): lesson is CourseLesson => lesson !== undefined);
         if (moduleLessons.length === 0) return null;
         return (
-          <section key={`${moduleIndex}-${module.title}`} className="course-module">
+          <section key={module.key} className="course-module">
             <div className="course-module__title">
               <span>{String(moduleIndex + 1).padStart(2, '0')}</span>
               <b>{module.title}</b>
@@ -107,7 +107,7 @@ export function OutlineView(props: {
                         {props.lessonDescriptions?.[lesson.lessonId] ??
                           (lesson.coreKnowledgePoints.length === 0
                             ? lesson.objective
-                            : `${lesson.coreKnowledgePoints.join('、')}。`)}
+                            : `${toLessonKnowledgeSummary(lesson.coreKnowledgePoints).join('、')}。`)}
                       </p>
                     </div>
                     <span className="course-lesson__state">

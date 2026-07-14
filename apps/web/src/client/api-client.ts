@@ -27,6 +27,7 @@ export async function apiRequest<T>(
     command?: CommandAttempt;
     resourceVersion?: number;
     signal?: AbortSignal;
+    cache?: RequestCache;
   }>,
 ): Promise<Readonly<{ data: T; response: Response }>> {
   const unsafeMethod = options.method !== undefined && options.method !== 'GET';
@@ -48,6 +49,7 @@ export async function apiRequest<T>(
     },
     ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.cache === undefined ? {} : { cache: options.cache }),
   });
   const value: unknown = await response.json().catch(() => undefined);
   if (!response.ok) {

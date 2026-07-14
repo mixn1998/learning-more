@@ -54,6 +54,7 @@ export function createAuthoringWorkspaceData(input: {
     completedAssessmentRounds: input.completedAssessmentRounds,
     outline: parsed?.title ?? `${input.topic || '待命名课程'} · 候选大纲`,
     summary: parsed?.summary ?? '完成至少三轮基础评估后，将根据真实对话与材料生成候选课程结构。',
+    candidateMarkdown: parsed?.bodyMarkdown ?? input.candidateMarkdown,
     discipline: parsed?.discipline ?? mode.label,
     tags: parsed?.tags.length === 0 || parsed === undefined ? [mode.shortLabel] : parsed.tags,
     modules: parsed?.modules ?? [

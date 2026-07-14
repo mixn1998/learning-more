@@ -29,6 +29,7 @@ export interface GenerationRuntimeOptions {
 }
 
 export function createGenerationRuntime(options: GenerationRuntimeOptions): GenerationRuntime & {
+  drainQueued(maxDispatches?: number): Promise<number>;
   validateProvider(
     providerId: string,
     config: ProviderPublicConfig,
@@ -50,6 +51,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   const taskTimeoutMs = options.taskTimeoutMs ?? 20 * 60 * 1_000;
   let currentProviderId = options.initialProviderId ?? options.providers[0]?.describe().id ?? '';
   let currentModel: string | undefined;
+  let claimBarrier: Promise<void> = Promise.resolve();
 
   async function allTasks(): Promise<GenerationTask[]> {
     const tasks: GenerationTask[] = [];
@@ -70,6 +72,60 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     const task = await options.repository.get(taskId);
     if (task === undefined) throw new Error('GENERATION_TASK_NOT_FOUND');
     return task;
+  }
+
+  async function claimNext(): Promise<
+    | Readonly<{
+        kind: 'claimed';
+        current: GenerationTask;
+        providerIds: readonly string[];
+        maxAttempts: number;
+      }>
+    | Readonly<{ kind: 'terminal'; taskId: string }>
+    | undefined
+  > {
+    const previousClaim = claimBarrier;
+    let releaseClaim!: () => void;
+    claimBarrier = new Promise<void>((resolve) => {
+      releaseClaim = resolve;
+    });
+    await previousClaim;
+    try {
+      const tasks = await allTasks();
+      const selected = selectNextGenerationTask(
+        tasks.filter((task) => task.status === 'queued'),
+        tasks.filter((task) => task.status === 'running'),
+        providers,
+        now(),
+      );
+      if (selected === undefined) return undefined;
+      const providerIds = [
+        selected.providerId ?? '',
+        ...(selected.fallbackProviderIds ?? []),
+      ].filter((providerId, index, all) => providerId !== '' && all.indexOf(providerId) === index);
+      const maxAttempts = Math.max(
+        1,
+        Math.min(selected.maxAttempts ?? providerIds.length, providerIds.length),
+      );
+      if (providerIds.length === 0) {
+        const terminal = await persist({
+          ...selected,
+          status: 'failed',
+          errorCode: 'provider_unavailable',
+          updatedAt: now().toISOString(),
+        });
+        return { kind: 'terminal', taskId: terminal.id };
+      }
+      const current = await persist({
+        ...selected,
+        status: 'running',
+        updatedAt: now().toISOString(),
+        leaseExpiresAt: new Date(now().getTime() + 30_000).toISOString(),
+      });
+      return { kind: 'claimed', current, providerIds, maxAttempts };
+    } finally {
+      releaseClaim();
+    }
   }
 
   async function submit(request: GenerationRequest): Promise<GenerationTaskHandle> {
@@ -121,36 +177,11 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   }
 
   async function runNext(): Promise<string | undefined> {
-    const tasks = await allTasks();
-    const selected = selectNextGenerationTask(
-      tasks.filter((task) => task.status === 'queued'),
-      tasks.filter((task) => task.status === 'running'),
-      providers,
-      now(),
-    );
-    if (selected === undefined) return undefined;
-    const providerIds = [selected.providerId ?? '', ...(selected.fallbackProviderIds ?? [])].filter(
-      (providerId, index, all) => providerId !== '' && all.indexOf(providerId) === index,
-    );
-    const maxAttempts = Math.max(
-      1,
-      Math.min(selected.maxAttempts ?? providerIds.length, providerIds.length),
-    );
-    if (providerIds.length === 0) {
-      await persist({
-        ...selected,
-        status: 'failed',
-        errorCode: 'provider_unavailable',
-        updatedAt: now().toISOString(),
-      });
-      return selected.id;
-    }
-    let current = await persist({
-      ...selected,
-      status: 'running',
-      updatedAt: now().toISOString(),
-      leaseExpiresAt: new Date(now().getTime() + 30_000).toISOString(),
-    });
+    const claim = await claimNext();
+    if (claim === undefined) return undefined;
+    if (claim.kind === 'terminal') return claim.taskId;
+    const { providerIds, maxAttempts } = claim;
+    let current = claim.current;
     for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
       const providerId = providerIds[attemptIndex]!;
       const provider = providers.get(providerId);
@@ -282,6 +313,16 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     return current.id;
   }
 
+  async function drainQueued(maxDispatches = 1_000): Promise<number> {
+    let dispatched = 0;
+    while (dispatched < maxDispatches) {
+      const taskId = await runNext();
+      if (taskId === undefined) return dispatched;
+      dispatched += 1;
+    }
+    return dispatched;
+  }
+
   return {
     submit,
     runNext,
@@ -320,6 +361,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       }
       return recovered;
     },
+    drainQueued,
     async getMetrics() {
       const byStatus: Record<string, number> = {};
       const byErrorCode: Record<string, number> = {};

@@ -7,6 +7,7 @@ import { acquireHostLease } from './host-lease.js';
 import { createHostManager, type HostManager } from './host-manager.js';
 import { startOrAdoptLauncher, waitForLauncherReady } from './launcher-process.js';
 import { createHostSupervisor } from './supervisor.js';
+import { createWorkspaceActivationWorker } from './workspace-activation.js';
 import type { HostTaskDefinition } from './task-scheduler.js';
 import { createWindowsTaskScheduler } from './windows-task-scheduler.js';
 import { observeWindowsProcess } from './windows-process-observer.js';
@@ -158,6 +159,8 @@ export async function runHost(projectRoot: string): Promise<void> {
     : path.join(resolvedRoot, '.learning-more-data');
   const secretDirectory = path.join(localApplicationData, 'Learning MORE', 'secrets');
   const releasesRoot = path.join(hostRoot, 'releases');
+  const activationRequestPath = path.join(hostRoot, 'workspace-activation-request.json');
+  const activationStatusPath = path.join(hostRoot, 'workspace-activation-status.json');
   await mkdir(path.join(releasesRoot, 'workspace'), { recursive: true });
 
   const lease = await acquireHostLease({
@@ -191,6 +194,7 @@ export async function runHost(projectRoot: string): Promise<void> {
         serverEntry: selected.serverEntry,
         webRoot: selected.webRoot,
         buildId: selectedIdentity.buildId,
+        ...(identity.portable ? {} : { activationRequestPath, activationStatusPath }),
         acceptedCommandMarkers:
           releaseRoot === resolvedRoot && !identity.portable
             ? [selected.launcherEntry, path.join('tools', 'start-learning-more.mjs')]
@@ -206,19 +210,31 @@ export async function runHost(projectRoot: string): Promise<void> {
         access(selected.webRoot),
       ]);
     },
-    verifyReady: async () => waitForLauncherReady(),
+    verifyReady: async (releaseRoot) =>
+      waitForLauncherReady((await readReleaseIdentity(releaseRoot)).buildId),
     wait: async (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
     now: Date.now,
   });
   const stop = () => void supervisor.stop();
+  const workspaceActivation = identity.portable
+    ? undefined
+    : createWorkspaceActivationWorker({
+        projectRoot: resolvedRoot,
+        releasesRoot,
+        requestPath: activationRequestPath,
+        statusPath: activationStatusPath,
+        supervisor,
+      });
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   try {
+    workspaceActivation?.start();
     await supervisor.run(activeReleaseRoot);
     if (supervisor.status().state === 'blocked_restart_storm') {
       throw new Error('host_launcher_restart_storm');
     }
   } finally {
+    workspaceActivation?.stop();
     process.off('SIGINT', stop);
     process.off('SIGTERM', stop);
     await supervisor.stop();

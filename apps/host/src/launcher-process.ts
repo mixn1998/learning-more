@@ -104,6 +104,8 @@ export async function startOrAdoptLauncher(options: {
   serverEntry: string;
   webRoot: string;
   buildId: string;
+  activationRequestPath?: string;
+  activationStatusPath?: string;
   acceptedCommandMarkers?: readonly string[];
   observeProcess(pid: number): Promise<ObservedProcess>;
 }): Promise<ManagedLauncherProcess> {
@@ -138,6 +140,12 @@ export async function startOrAdoptLauncher(options: {
         LEARNING_MORE_WEB_URL: 'http://127.0.0.1:43119',
         LEARNING_MORE_ALLOWED_ORIGIN: 'http://127.0.0.1:43119',
         LEARNING_MORE_BUILD_ID: options.buildId,
+        ...(options.activationRequestPath === undefined
+          ? {}
+          : { LEARNING_MORE_ACTIVATION_REQUEST: options.activationRequestPath }),
+        ...(options.activationStatusPath === undefined
+          ? {}
+          : { LEARNING_MORE_ACTIVATION_STATUS: options.activationStatusPath }),
         LEARNING_MORE_NO_OPEN: '1',
       },
       shell: false,
@@ -147,13 +155,16 @@ export async function startOrAdoptLauncher(options: {
   );
 }
 
-export async function waitForLauncherReady(timeoutMs = 20_000): Promise<void> {
+export async function waitForLauncherReady(
+  expectedBuildId?: string,
+  timeoutMs = 20_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const [control, readiness] = await Promise.all([
         fetch('http://127.0.0.1:43119/control/v1/status', {
-          headers: { accept: 'application/json' },
+          headers: { accept: 'application/json', origin: 'http://127.0.0.1:43119' },
           signal: AbortSignal.timeout(1_000),
         }),
         fetch('http://127.0.0.1:43119/api/v1/runtime/ready', {
@@ -164,7 +175,13 @@ export async function waitForLauncherReady(timeoutMs = 20_000): Promise<void> {
       if (control.ok && readiness.ok) {
         const status = (await control.json()) as Record<string, unknown>;
         const ready = (await readiness.json()) as Record<string, unknown>;
-        if (status.state === 'healthy' && ready.status === 'ready') return;
+        if (
+          status.state === 'healthy' &&
+          ready.status === 'ready' &&
+          (expectedBuildId === undefined || ready.buildId === expectedBuildId)
+        ) {
+          return;
+        }
       }
     } catch {
       // Launcher and Server can both be unavailable during a verified replacement.

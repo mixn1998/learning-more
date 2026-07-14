@@ -2,11 +2,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import {
   AppendOutlineSessionMessageBodySchema,
+  CancelCandidateGenerationResponseSchema,
   ConfirmationResponseSchema,
   ConfirmOutlineCandidateBodySchema,
   CourseParamsSchema,
   CourseArchiveResponseSchema,
   CourseOutlineVersionResponseSchema,
+  CreateOutlineAdjustmentSessionBodySchema,
   CreateOutlineSessionBodySchema,
   DeleteCourseArchiveResponseSchema,
   DeleteOutlineSessionResponseSchema,
@@ -95,6 +97,41 @@ export async function registerCourseAuthoringRoutes(
       return reply.code(problem.status).send(problem);
     }
   });
+
+  app.post<{ Params: { courseId: string } }>(
+    '/api/v1/courses/:courseId/outline-adjustment-sessions',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { courseId } = CourseParamsSchema.parse(request.params);
+        CreateOutlineAdjustmentSessionBodySchema.parse(request.body);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const result = await options.module.execute(
+          { type: 'CreateOutlineAdjustmentSession', courseId },
+          context,
+        );
+        if (result.value.kind !== 'outline-session') throw new Error('unexpected_module_result');
+        const view = await options.module.query(
+          { type: 'GetOutlineSession', outlineSessionId: result.value.outlineSessionId },
+          buildQueryContext(correlation, options.now()),
+        );
+        const response = OutlineSessionViewResponseSchema.parse(view);
+        return etag(reply, result.resourceVersion)
+          .header('location', `/api/v1/outline-sessions/${result.value.outlineSessionId}`)
+          .code(201)
+          .send(response);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
 
   app.post<{ Params: { sessionId: string } }>(
     '/api/v1/outline-sessions/:sessionId/messages',
@@ -208,6 +245,44 @@ export async function registerCourseAuthoringRoutes(
   );
 
   app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/outline-sessions/:sessionId/candidate-generations/cancellation',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { sessionId } = OutlineSessionParamsSchema.parse(request.params);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const result = await options.module.execute(
+          { type: 'CancelCandidateGeneration', outlineSessionId: sessionId },
+          context,
+        );
+        if (result.value.kind !== 'generation') throw new Error('unexpected_module_result');
+        const view = await options.module.query(
+          { type: 'GetOutlineSession', outlineSessionId: sessionId },
+          buildQueryContext(correlation, options.now()),
+        );
+        return etag(reply, result.resourceVersion)
+          .code(202)
+          .send(
+            CancelCandidateGenerationResponseSchema.parse({
+              outlineSessionId: sessionId,
+              state: view.state,
+              resourceVersion: result.resourceVersion,
+            }),
+          );
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
     '/api/v1/outline-sessions/:sessionId/confirmations',
     async (request, reply) => {
       const correlation = correlationId(request, options);
@@ -254,7 +329,10 @@ export async function registerCourseAuthoringRoutes(
           buildQueryContext(correlation, options.now()),
         );
         const response = OutlineSessionViewResponseSchema.parse(view);
-        return etag(reply, view.resourceVersion).code(200).send(response);
+        return etag(reply, view.resourceVersion)
+          .header('cache-control', 'no-store')
+          .code(200)
+          .send(response);
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);

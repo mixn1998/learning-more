@@ -14,8 +14,8 @@ const readiness = {
 
 describe('RuntimeRecoveryCoordinator', () => {
   it('stays recovering through transient probe failures and becomes ready after verification', async () => {
-    let releaseReconnect!: () => void;
-    const reconnectGate = new Promise<void>((resolve) => {
+    let releaseReconnect!: (value: Readonly<{ targetBuildId: string }>) => void;
+    const reconnectGate = new Promise<Readonly<{ targetBuildId: string }>>((resolve) => {
       releaseReconnect = resolve;
     });
     const snapshots: Array<{ readonly kind: string }> = [];
@@ -34,11 +34,26 @@ describe('RuntimeRecoveryCoordinator', () => {
     for (let index = 0; index < 7; index += 1) {
       expect(coordinator.shouldTreatProbeFailureAsOffline()).toBe(false);
     }
-    releaseReconnect();
+    releaseReconnect({ targetBuildId: 'development' });
     await recovery;
 
     expect(snapshots.some((snapshot) => snapshot.kind === 'offline')).toBe(false);
     expect(coordinator.snapshot()).toMatchObject({ kind: 'completed', aiRecoveryFailed: false });
+  });
+
+  it('waits for the build selected by a workspace activation instead of accepting the old ready instance', async () => {
+    const coordinator = createRuntimeRecoveryCoordinator();
+    const waitUntilReady = vi.fn().mockResolvedValue({ ...readiness, buildId: 'build_new' });
+
+    await coordinator.recover({
+      verify: vi.fn().mockResolvedValue(undefined),
+      reconnect: vi.fn().mockResolvedValue({ targetBuildId: 'build_new' }),
+      waitUntilReady,
+      refreshRuntime: vi.fn().mockResolvedValue(undefined),
+      refreshAi: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(waitUntilReady).toHaveBeenCalledWith('build_new');
   });
 
   it('separates AI refresh failure from recovered local service health', async () => {
@@ -46,7 +61,7 @@ describe('RuntimeRecoveryCoordinator', () => {
 
     await coordinator.recover({
       verify: vi.fn().mockResolvedValue(undefined),
-      reconnect: vi.fn().mockResolvedValue(undefined),
+      reconnect: vi.fn().mockResolvedValue({}),
       waitUntilReady: vi.fn().mockResolvedValue(readiness),
       refreshRuntime: vi.fn().mockResolvedValue(undefined),
       refreshAi: vi.fn().mockRejectedValue(new Error('ai unavailable')),
@@ -64,7 +79,7 @@ describe('RuntimeRecoveryCoordinator', () => {
     await expect(
       coordinator.recover({
         verify: vi.fn().mockResolvedValue(undefined),
-        reconnect: vi.fn().mockResolvedValue(undefined),
+        reconnect: vi.fn().mockResolvedValue({}),
         waitUntilReady: vi.fn().mockRejectedValue(new Error('runtime_ready_timeout')),
         refreshRuntime: vi.fn(),
         refreshAi: vi.fn(),
@@ -82,7 +97,7 @@ describe('RuntimeRecoveryCoordinator', () => {
     await expect(
       coordinator.recover({
         verify: vi.fn().mockResolvedValue(undefined),
-        reconnect: vi.fn().mockResolvedValue(undefined),
+        reconnect: vi.fn().mockResolvedValue({}),
         waitUntilReady: vi.fn().mockRejectedValue(new Error('runtime_ready_timeout')),
         refreshRuntime: vi.fn(),
         refreshAi: vi.fn(),

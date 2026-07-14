@@ -300,6 +300,34 @@ async function fixture(
 }
 
 describe('InteractiveTeaching deep module', () => {
+  it('opens a lesson with an assistant message without creating learner evidence', async () => {
+    const {
+      module,
+      drainObservations,
+      messageLog,
+      capturedReasoningObservations,
+      submittedContext,
+    } = await fixture();
+
+    const accepted = await module.openLesson(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      commandContext,
+    );
+
+    expect(accepted.taskId).toBe('task_1');
+    expect(submittedContext()).toMatchObject({ turnKind: 'opening', recentMessages: [] });
+    await drainObservations('session_1');
+
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({
+        id: 'message_ai_1',
+        role: 'assistant',
+        completionStatus: 'complete',
+      }),
+    ]);
+    expect(capturedReasoningObservations).toEqual([]);
+  });
+
   it('emits a valid failure terminal and releases the session generation slot', async () => {
     const { module, drainObservations, frames, sessionModule } = await fixture({
       artifactSaveFails: true,

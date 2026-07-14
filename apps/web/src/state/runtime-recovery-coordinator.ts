@@ -25,8 +25,8 @@ export type RuntimeRecoverySnapshot =
 
 export type RuntimeRecoveryDependencies = Readonly<{
   verify(): Promise<void>;
-  reconnect(): Promise<unknown>;
-  waitUntilReady(): Promise<RuntimeReady>;
+  reconnect(): Promise<Readonly<{ targetBuildId?: string | undefined }>>;
+  waitUntilReady(targetBuildId?: string): Promise<RuntimeReady>;
   refreshRuntime(readiness: RuntimeReady): Promise<void>;
   refreshAi(): Promise<void>;
 }>;
@@ -75,9 +75,9 @@ export function createRuntimeRecoveryCoordinator(): RuntimeRecoveryCoordinator {
       try {
         await dependencies.verify();
         if (!publishStage(operationId, 'reconnecting')) return;
-        await dependencies.reconnect();
+        const reconnect = await dependencies.reconnect();
         if (!publishStage(operationId, 'waiting')) return;
-        const readiness = await dependencies.waitUntilReady();
+        const readiness = await dependencies.waitUntilReady(reconnect.targetBuildId);
         if (!publishStage(operationId, 'refreshing')) return;
         await dependencies.refreshRuntime(readiness);
         let aiRecoveryFailed = false;

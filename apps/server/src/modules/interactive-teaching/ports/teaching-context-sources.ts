@@ -41,6 +41,7 @@ export type CourseLessonTeachingContext = Readonly<{
 
 export type TeachingContextPackage = Readonly<{
   schemaVersion: 1;
+  turnKind?: 'opening' | 'response';
   course: CourseLessonTeachingContext['course'];
   lesson: CourseLessonTeachingContext['lesson'];
   learningStartSummary?: string;
@@ -72,7 +73,8 @@ export interface TeachingContextAssembler {
     courseId: string;
     lessonId: string;
     sessionId: string;
-    currentUserMessageId: string;
+    currentUserMessageId?: string;
+    turnKind?: 'opening' | 'response';
     teachingState: TeachingStateSnapshot;
     unobservedMessageIds: readonly string[];
   }): Promise<TeachingContextPackage>;

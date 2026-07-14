@@ -53,6 +53,13 @@ export interface LearningClient {
     writable: boolean;
     leaseToken?: string | undefined;
   }>;
+  openLesson(
+    sessionId: string,
+    resourceVersion: number,
+  ): Promise<{
+    taskId: string;
+    resourceVersion: number;
+  }>;
   getSession(sessionId: string): Promise<LearningSessionView>;
   sendMessage(input: {
     sessionId: string;
@@ -160,6 +167,12 @@ export const learningClient: LearningClient = {
     commandRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/sessions`, {
       body: {},
       schema: LessonSessionStartedResponseSchema,
+    }),
+  openLesson: (sessionId, resourceVersion) =>
+    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/opening`, {
+      body: {},
+      schema: GenerationTaskAcceptedResponseSchema,
+      resourceVersion,
     }),
   async getSession(sessionId) {
     return (

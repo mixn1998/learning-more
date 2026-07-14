@@ -1,4 +1,5 @@
 import { LessonNavigationWorkspace } from './lesson-navigation-workspace.js';
+import { toKnowledgePointPresentation } from './knowledge-point-presentation.js';
 
 export function AbandonedLessonRecord(props: {
   readonly learnedPoints: readonly string[];
@@ -20,14 +21,14 @@ export function AbandonedLessonRecord(props: {
         : { outlineVersionLabel: props.outlineVersionLabel })}
       points={[
         ...props.learnedPoints.map((point) => ({
+          ...toKnowledgePointPresentation(point),
           marker: '✓',
-          title: `已学习：${point}`,
-          description: '此知识点已在冻结的原始学习会话中形成可追溯证据。',
+          description: `已学习：${toKnowledgePointPresentation(point).summary}`,
         })),
         ...props.remainingPoints.map((point) => ({
+          ...toKnowledgePointPresentation(point),
           marker: '→',
-          title: `待完成：${point}`,
-          description: '恢复同一会话后继续推进，不会把既有学习证据重新计入。',
+          description: `待完成：${toKnowledgePointPresentation(point).summary}`,
         })),
       ]}
       state="abandoned"

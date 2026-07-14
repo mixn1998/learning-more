@@ -61,7 +61,7 @@ describe('CoursePage', () => {
       />,
     );
 
-    await screen.findByText('Probability');
+    await screen.findAllByText('Probability');
     fireEvent.click(screen.getByRole('button', { name: '关闭课程并生成总结' }));
     const close = screen.getByRole('button', { name: '确认关闭课程' });
     fireEvent.click(close);
@@ -255,28 +255,34 @@ describe('CoursePage', () => {
       ],
       resourceVersion: 7,
     };
-    const createOutlineSession = vi.fn().mockResolvedValue({
+    const createOutlineAdjustmentSession = vi.fn().mockResolvedValue({
       outlineSessionId: 'outline_session_01',
       resourceVersion: 1,
-      state: 'assessing',
+      state: 'candidate-ready',
+      candidateVersionId: 'candidate_01',
+      candidateMarkdown: '# Probability\n\n## Foundations\n### Evidence',
     });
     const appendMessage = vi.fn().mockResolvedValue({
       outlineSessionId: 'outline_session_01',
       resourceVersion: 2,
-      state: 'assessing',
+      state: 'generating-candidates',
     });
-    const requestCandidateGeneration = vi.fn().mockResolvedValue({
-      taskId: 'task_01',
-      resourceVersion: 3,
-      state: 'queued',
-    });
-    const streamGeneration = vi.fn().mockResolvedValue(undefined);
     const getOutlineSession = vi.fn().mockResolvedValue({
       outlineSessionId: 'outline_session_01',
       resourceVersion: 4,
       state: 'candidate-ready',
       candidateVersionId: 'candidate_02',
-      candidateMarkdown: '# Revised Probability\n\nA tighter evidence loop.',
+      candidateMarkdown:
+        '# Revised Probability\n\n## Foundations\n### Evidence\nA tighter evidence loop.',
+      messages: [
+        {
+          messageId: 'assistant_01',
+          role: 'assistant',
+          content: 'I updated the evidence loop.',
+          status: 'complete',
+          createdAt: '2026-07-14T08:01:00.000Z',
+        },
+      ],
     });
     const reviseOutline = vi.fn().mockResolvedValue({
       courseId: 'course_01',
@@ -292,14 +298,16 @@ describe('CoursePage', () => {
       getOutlineVersion: vi.fn().mockResolvedValue({
         courseId: 'course_01',
         outlineVersionId: 'outline_01',
+        sourceCandidateVersionId: 'candidate_01',
         current: true,
-        markdown: '# Probability',
+        outlineMarkdown: '# Probability\n\n## Foundations\n### Evidence',
+        disciplineTag: 'Mathematics',
+        topicTags: ['Probability'],
+        resourceVersion: 1,
         createdAt: '2026-07-14T08:00:00.000Z',
       }),
-      createOutlineSession,
+      createOutlineAdjustmentSession,
       appendMessage,
-      requestCandidateGeneration,
-      streamGeneration,
       getOutlineSession,
       reviseOutline,
     } as unknown as CourseAuthoringClient;
@@ -324,13 +332,19 @@ describe('CoursePage', () => {
       />,
     );
 
-    fireEvent.change(await screen.findByRole('textbox', { name: '继续说明希望怎样调整大纲' }), {
+    expect(await screen.findByRole('heading', { name: '当前正式大纲' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: 'Probability' }).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByRole('textbox', { name: '继续说明希望怎样调整大纲' }), {
       target: { value: 'Strengthen the evidence loop' },
     });
     fireEvent.click(screen.getByRole('button', { name: '发送调整要求' }));
 
-    expect(await screen.findByRole('heading', { name: 'Revised Probability' })).toBeInTheDocument();
-    expect(createOutlineSession).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByRole('heading', { name: 'Revised Probability', level: 2 }),
+    ).toBeInTheDocument();
+    expect(createOutlineAdjustmentSession).toHaveBeenCalledWith(
+      expect.objectContaining({ courseId: 'course_01', resourceVersion: 7 }),
+    );
     expect(appendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         outlineSessionId: 'outline_session_01',
@@ -338,10 +352,7 @@ describe('CoursePage', () => {
         resourceVersion: 1,
       }),
     );
-    expect(requestCandidateGeneration).toHaveBeenCalledWith(
-      expect.objectContaining({ outlineSessionId: 'outline_session_01', resourceVersion: 2 }),
-    );
-    expect(streamGeneration).toHaveBeenCalledWith('task_01', expect.any(Object));
+    expect(screen.getAllByText('内容调整').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: '确认并发布 v2' }));
     fireEvent.click(screen.getByRole('button', { name: '确认发布' }));
@@ -390,32 +401,34 @@ describe('CoursePage', () => {
       getOutlineVersion: vi.fn().mockResolvedValue({
         courseId: 'course_01',
         outlineVersionId: 'outline_01',
+        sourceCandidateVersionId: 'candidate_01',
         current: true,
-        markdown: '# Probability',
+        outlineMarkdown: '# Probability\n\n## Foundations\n### Evidence',
+        disciplineTag: 'Mathematics',
+        topicTags: ['Probability'],
+        resourceVersion: 1,
         createdAt: '2026-07-14T08:00:00.000Z',
       }),
-      createOutlineSession: vi.fn().mockResolvedValue({
+      createOutlineAdjustmentSession: vi.fn().mockResolvedValue({
         outlineSessionId: 'outline_session_01',
         resourceVersion: 1,
-        state: 'assessing',
+        state: 'candidate-ready',
+        candidateVersionId: 'candidate_01',
+        candidateMarkdown: '# Probability\n\n## Foundations\n### Evidence',
       }),
       appendMessage: vi.fn().mockResolvedValue({
         outlineSessionId: 'outline_session_01',
         resourceVersion: 2,
-        state: 'assessing',
+        state: 'generating-candidates',
       }),
-      requestCandidateGeneration: vi.fn().mockResolvedValue({
-        taskId: 'task_01',
-        resourceVersion: 3,
-        state: 'queued',
-      }),
-      streamGeneration: vi.fn().mockResolvedValue(undefined),
       getOutlineSession: vi.fn().mockResolvedValue({
         outlineSessionId: 'outline_session_01',
         resourceVersion: 4,
         state: 'candidate-ready',
         candidateVersionId: 'candidate_02',
-        candidateMarkdown: '# Revised Probability\n\nA tighter evidence loop.',
+        candidateMarkdown:
+          '# Revised Probability\n\n## Foundations\n### Evidence\nA tighter evidence loop.',
+        messages: [],
       }),
       reviseOutline,
     } as unknown as CourseAuthoringClient;
@@ -442,7 +455,7 @@ describe('CoursePage', () => {
       target: { value: 'Strengthen the evidence loop' },
     });
     fireEvent.click(screen.getByRole('button', { name: '发送调整要求' }));
-    await screen.findByRole('heading', { name: 'Revised Probability' });
+    await screen.findByRole('heading', { name: 'Revised Probability', level: 2 });
     fireEvent.click(screen.getByRole('button', { name: '确认并发布 v2' }));
     fireEvent.click(screen.getByRole('button', { name: '确认发布' }));
 

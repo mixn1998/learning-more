@@ -5,6 +5,7 @@ import type { OutlineWorkspaceModule } from './outline-workspace-view.js';
 export type ParsedCandidateMarkdown = Readonly<{
   title: string;
   summary: string;
+  bodyMarkdown: string;
   discipline?: string | undefined;
   tags: readonly string[];
   modules: readonly OutlineWorkspaceModule[];
@@ -52,6 +53,7 @@ export function parseCandidateMarkdown(markdown: string): ParsedCandidateMarkdow
         return {
           title: markdownTitle(body) ?? metadata.courseGoals[0]!,
           summary: metadata.courseGoals.join('；'),
+          bodyMarkdown: body,
           discipline: metadata.disciplineTag,
           tags: metadata.topicTags,
           modules: metadata.modules.map((module) => ({
@@ -83,6 +85,7 @@ export function parseCandidateMarkdown(markdown: string): ParsedCandidateMarkdow
   return {
     title,
     summary: firstPlainParagraph(markdown) ?? '候选内容已生成，等待确认。',
+    bodyMarkdown: markdown,
     tags: [],
     modules: [
       {

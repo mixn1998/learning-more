@@ -116,7 +116,9 @@ describe('reviseCourseOutline', () => {
       lessonIds: ['lesson_stable'],
       resourceVersion: 2,
     });
-    await expect(repositories.outlineVersions.get('outline_v1')).resolves.toBeDefined();
+    await expect(repositories.outlineVersions.get('outline_v1')).resolves.toMatchObject({
+      outlineMarkdown: '# v1',
+    });
     await expect(repositories.outlineVersions.get('outline_v2')).resolves.toBeDefined();
   });
 

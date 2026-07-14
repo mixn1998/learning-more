@@ -82,6 +82,8 @@ export function LessonSessionFixture() {
     <LessonSessionWorkspace
       abandoned={false}
       assistantPending={false}
+      opening={false}
+      openingError={false}
       canComplete
       canStop
       courseTitle="从反馈到核心循环"
@@ -143,6 +145,8 @@ export function LessonSessionFixture() {
       onInput={() => undefined}
       onPause={() => undefined}
       onRestore={() => undefined}
+      onRetryOpening={() => undefined}
+      onSkipOpening={() => undefined}
       onResume={() => undefined}
       onSend={() => undefined}
       onStop={() => undefined}

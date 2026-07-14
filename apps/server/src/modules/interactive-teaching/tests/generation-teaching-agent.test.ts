@@ -100,6 +100,18 @@ function runtime() {
 }
 
 describe('GenerationTeachingAgent', () => {
+  it('renders an active opening instruction without a fabricated learner request', async () => {
+    const fake = runtime();
+    const opening = { ...context(), turnKind: 'opening' as const, recentMessages: [] };
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(opening);
+
+    expect(fake.request()?.prompt).toContain('主动导入语境');
+    expect(fake.request()?.prompt).toContain('【本课知识责任与现有证据】');
+    expect(fake.request()?.prompt).not.toContain('【当前诉求｜用户原话】');
+  });
+
   it('submits materialized context with one stable capability contract and no scene template', async () => {
     const fake = runtime();
     const agent = createGenerationTeachingAgent({

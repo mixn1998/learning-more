@@ -21,25 +21,95 @@
   font-size: 12px;
 }
 
-.course-revision-page .course-revision-empty {
+.course-revision-page .course-revision-outlines {
   display: grid;
-  align-content: center;
-  min-height: 550px;
+  gap: 18px;
+}
+
+.course-revision-page .course-revision-version {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+}
+
+.course-revision-page .course-revision-version__head,
+.course-revision-page .course-revision-diff__row,
+.course-revision-page .course-revision-diff__lesson {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.course-revision-page .course-revision-version__head h2,
+.course-revision-page .course-revision-diff__head h3,
+.course-revision-page .course-revision-diff__head p {
+  margin: 0;
+}
+
+.course-revision-page .course-revision-markdown {
+  margin-top: 16px;
+}
+
+.course-revision-page .course-revision-guidance {
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  color: var(--muted);
   text-align: center;
 }
 
-.course-revision-page .course-revision-empty h2 {
-  margin: 8px 0;
+.course-revision-page .course-revision-guidance p {
+  margin: 0;
 }
 
-.course-revision-page .course-revision-empty p {
-  max-width: 520px;
-  margin: 0 auto;
+.course-revision-page .course-revision-diff {
+  display: grid;
+  gap: 12px;
+}
+
+.course-revision-page .course-revision-diff__head p {
   color: var(--muted);
 }
 
-.course-revision-page .course-revision-impact {
-  margin-top: 14px;
+.course-revision-page .course-revision-diff__module {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.course-revision-page .course-revision-diff__row,
+.course-revision-page .course-revision-diff__lesson {
+  padding: 12px 14px;
+}
+
+.course-revision-page .course-revision-diff__lesson {
+  border-top: 1px solid var(--line);
+}
+
+.course-revision-page .course-revision-change {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.course-revision-page .course-revision-change--modified {
+  background: color-mix(in srgb, var(--accent) 14%, var(--paper));
+  color: var(--accent-dark);
+}
+
+.course-revision-page .course-revision-change--added {
+  background: color-mix(in srgb, #2f8f68 14%, var(--paper));
+  color: #23684d;
+}
+
+.course-revision-page .course-revision-change--removed {
+  background: color-mix(in srgb, #b8564d 14%, var(--paper));
+  color: #914038;
 }
 
 @media (max-width: 680px) {

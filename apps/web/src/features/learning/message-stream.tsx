@@ -15,7 +15,7 @@ export function MessageStream(props: {
   return (
     <section aria-live="polite" aria-label="学习对话" className="authoring-panel message-stream">
       {messages.length === 0 && props.assistantMarkdown === '' ? (
-        <p className="lm-content-state">开始提问后，回答会显示在这里。</p>
+        <p className="lm-content-state">AI 导师的回复会显示在这里。</p>
       ) : (
         <Stack>
           {messages.map((message) => (

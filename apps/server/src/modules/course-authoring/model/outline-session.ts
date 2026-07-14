@@ -48,6 +48,24 @@ export function createOutlineSession(input: {
   };
 }
 
+export function createOutlineAdjustmentSession(input: {
+  readonly outlineSessionId: string;
+  readonly courseMode: CourseMode;
+  readonly topic: string;
+  readonly baselineCandidateVersionId: string;
+}): OutlineSession {
+  return {
+    outlineSessionId: input.outlineSessionId,
+    courseMode: input.courseMode,
+    topic: input.topic.trim(),
+    state: 'candidate-ready',
+    messageIds: [],
+    completedAssessmentRounds: 3,
+    candidateVersionIds: [input.baselineCandidateVersionId],
+    latestCandidateVersionId: input.baselineCandidateVersionId,
+  };
+}
+
 export function decide(
   session: OutlineSession,
   command: OutlineSessionCommand,

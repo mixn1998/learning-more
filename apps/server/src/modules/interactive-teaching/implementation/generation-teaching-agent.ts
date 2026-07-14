@@ -89,12 +89,17 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
       : `- 待继续验证的观察：${signal.summary}`,
   );
   const currentRequest = currentUserMessage(context);
-  if (currentRequest.length === 0) throw new Error('current_teaching_request_missing');
+  const opening = context.turnKind === 'opening';
+  if (!opening && currentRequest.length === 0) throw new Error('current_teaching_request_missing');
   return [
     TEACHING_CAPABILITY,
     '下面是以学习者为中心整理的自然语言背景。它不是要展示给学习者的状态报告或字段清单。',
-    '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
-    '不要复述栏目名或内部状态，直接回应当前诉求。',
+    opening
+      ? '这是学习者刚进入本课的开场回合。请由教学助手主动导入语境，连接学习目标，选择一个合适的核心知识点开始讲解，并在自然收束处提出一个容易回应的互动问题。不要要求学习者先提问，也不要一次讲完全部知识点。'
+      : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
+    opening
+      ? '直接面向学习者输出自然的开场教学，不复述栏目名或内部状态。'
+      : '不要复述栏目名或内部状态，直接回应当前诉求。',
     '',
     `【已知学习背景】\n课程：${context.course.title}\n课程目标：${context.course.goals.join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
     section('课程关系', relations),
@@ -121,7 +126,7 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
       context.readingMaterialExcerpts.map((material) => material.markdown),
     ),
     section('此前真实对话', priorConversation(context)),
-    `【当前诉求｜用户原话】\n${currentRequest}`,
+    ...(opening ? [] : [`【当前诉求｜用户原话】\n${currentRequest}`]),
   ]
     .filter((value): value is string => value !== undefined)
     .join('\n\n');

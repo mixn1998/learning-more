@@ -62,7 +62,7 @@ export function createGenerationCandidateAlignmentPlanner(options: {
         inputSnapshotHash: hash(input),
         taskKind: 'outline-candidate-alignment',
         taskGroup: 'interactive',
-        ownerRef: context.outlineSessionId,
+        ownerRef: `${context.outlineSessionId}:alignment-plan`,
         providerId: options.providerId,
         priority: 115,
         prompt: input,

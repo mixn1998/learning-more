@@ -17,6 +17,10 @@ import { PortraitView } from './portrait-view.js';
 import { PortraitWorkspace } from './portrait-workspace.js';
 import { buildPortraitInsights, portraitUpdatedLabel } from './portrait-workspace-model.js';
 
+const insufficientPortraitTitle = '学习画像：证据尚不足';
+const insufficientPortraitSummary =
+  '当前冻结的证据尚不足以形成可独立验证的学习观察，因此暂不生成稳定结论。后续学习、复盘或补充对话积累到足够的可追溯证据后，画像会再更新；这不会改写全局用户档案中的长期事实。';
+
 export function ProfilePage(props: { readonly client?: ProfileClient }) {
   const api = props.client ?? profileClient;
   const navigate = useNavigate();
@@ -149,6 +153,7 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
 
   if ('versionId' in (portrait ?? {}) && portrait?.state === 'completed') {
     const completedPortrait = portrait as PortraitVersion;
+    const hasInsights = completedPortrait.claims.length > 0;
     return (
       <PortraitWorkspace
         {...(refreshError === undefined ? {} : { errorMessage: refreshError })}
@@ -163,8 +168,14 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
           navigate(section === 'calendar' ? '/history?tab=calendar' : '/history')
         }
         refreshing={refreshing}
-        summary={completedPortrait.summary ?? '当前成功版本未生成摘要。'}
-        title={completedPortrait.title ?? '有边界的学习观察'}
+        summary={
+          hasInsights
+            ? (completedPortrait.summary ?? '当前成功版本未生成摘要。')
+            : insufficientPortraitSummary
+        }
+        title={
+          hasInsights ? (completedPortrait.title ?? '有边界的学习观察') : insufficientPortraitTitle
+        }
         updatedLabel={portraitUpdatedLabel(
           completedPortrait.completedAt ?? completedPortrait.updatedAt,
         )}

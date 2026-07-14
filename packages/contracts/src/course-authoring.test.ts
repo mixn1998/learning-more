@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   CandidateModelResponseSchema,
   CandidateOutlineMetadataSchema,
+  CancelCandidateGenerationResponseSchema,
   COURSE_MODES,
   CreateOutlineSessionBodySchema,
   GenerationAcceptedResponseSchema,
+  OutlineSessionViewResponseSchema,
   RequestCandidateGenerationBodySchema,
 } from './course-authoring.js';
 
@@ -75,6 +77,36 @@ describe('CourseAuthoring transport contracts', () => {
     ).toBe(false);
   });
 
+  it('accepts a richer set of descriptive topic tags', () => {
+    const result = CandidateOutlineMetadataSchema.safeParse({
+      courseGoals: ['理解 AI token 与货币的关系'],
+      disciplineTag: '跨学科',
+      topicTags: [
+        'AI token',
+        '算力经济',
+        '货币',
+        'AI 智能体',
+        '机器间交易',
+        '平台治理',
+        '未来推演',
+      ],
+      modules: [{ id: 'module_1', title: '基础', lessonIds: ['lesson_1'] }],
+      lessons: [
+        {
+          id: 'lesson_1',
+          title: '概念基础',
+          objective: '建立概念地图',
+          coreKnowledgePoints: ['token', '货币'],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: ['source_topic'],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it('transports the recoverable candidate failure category without exposing compiler details', () => {
     expect(
       GenerationAcceptedResponseSchema.parse({
@@ -84,5 +116,32 @@ describe('CourseAuthoring transport contracts', () => {
         resourceVersion: 3,
       }),
     ).toMatchObject({ failureCode: 'candidate_invalid' });
+  });
+
+  it('transports a cancelled candidate generation as a retryable session state', () => {
+    expect(
+      CancelCandidateGenerationResponseSchema.parse({
+        outlineSessionId: 'session_01',
+        state: 'assessment-ready',
+        resourceVersion: 4,
+      }),
+    ).toMatchObject({ state: 'assessment-ready' });
+  });
+
+  it('exposes the active generation task so a client can reconnect after navigation', () => {
+    expect(
+      OutlineSessionViewResponseSchema.parse({
+        outlineSessionId: 'session_01',
+        resourceVersion: 2,
+        state: 'generating-candidates',
+        topic: 'probability',
+        courseMode: 'standard',
+        candidateVersionIds: [],
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: false,
+        messages: [],
+        generationTaskId: 'task_01',
+      }),
+    ).toMatchObject({ generationTaskId: 'task_01' });
   });
 });

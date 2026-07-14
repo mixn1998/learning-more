@@ -40,6 +40,7 @@ export type OutlineWorkspaceData = Readonly<{
   follow?: string;
   outline: string;
   summary: string;
+  candidateMarkdown?: string;
   discipline: string;
   tags: readonly string[];
   modules: readonly OutlineWorkspaceModule[];
@@ -54,12 +55,14 @@ export type OutlineWorkspaceViewProps = Readonly<{
   sendBusy?: boolean | undefined;
   assistantPending?: boolean | undefined;
   candidatePending?: boolean | undefined;
+  generationCancelBusy?: boolean | undefined;
   turnError?: string | undefined;
   confirmBusy?: boolean | undefined;
   confirmDisabled?: boolean | undefined;
   composerLabel?: string | undefined;
   sendLabel?: string | undefined;
   secondaryLabel?: string | undefined;
+  secondaryActionVisible?: boolean | undefined;
   primaryLabel?: string | undefined;
   primaryBusyLabel?: string | undefined;
   materialTools?: ReactNode | undefined;
@@ -69,11 +72,15 @@ export type OutlineWorkspaceViewProps = Readonly<{
   onSend?: (() => void) | undefined;
   onAdjust?: (() => void) | undefined;
   onConfirm?: (() => void) | undefined;
+  onCancelGeneration?: (() => void) | undefined;
 }>;
 
 export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
   const { data } = props;
   const mode = courseModeDefinition(data.mode);
+  const candidateMarkdown = data.candidateMarkdown?.trim() ?? '';
+  const firstCandidateLine = candidateMarkdown.split(/\r?\n/).find((line) => line.trim() !== '');
+  const candidateOwnsTitle = firstCandidateLine?.match(/^#{1,6}\s+/) !== null;
   const messages = data.messages ?? [
     ...(data.ai === undefined
       ? []
@@ -156,12 +163,12 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
       )}
 
       <div className="ow-workbench">
-        <Card className="ow-panel">
+        <Card className="ow-panel ow-panel--conversation">
           <header className="ow-panel-head">
             <strong>学习起点评估</strong>
             <span>{data.status}</span>
           </header>
-          <div className="ow-chat">
+          <div aria-label="对话记录" className="ow-chat" role="log">
             <AiContent
               className="ow-ai ow-opening-guidance"
               markdown="开始前，我会先了解你的学习目标与当前基础，再与你一起形成课程大纲。"
@@ -200,7 +207,7 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
                 : `已完成 ${completedAssessmentRounds} 轮对话，可生成候选大纲或继续澄清`}
             </p>
           </div>
-          <form className="ow-composer" onSubmit={submit}>
+          <form aria-label="对话交互" className="ow-composer" onSubmit={submit}>
             <div className="ow-composer-box">
               <textarea
                 ref={props.composerRef}
@@ -221,24 +228,50 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
               </button>
             </div>
           </form>
+          <footer className="ow-conversation-actions">
+            {props.secondaryActionVisible === false ? null : (
+              <Button type="button" onClick={props.onAdjust}>
+                {props.secondaryLabel ?? '继续调整'}
+              </Button>
+            )}
+            <Button
+              busy={props.confirmBusy === true}
+              disabled={props.confirmDisabled === true}
+              type="button"
+              variant="primary"
+              onClick={props.onConfirm}
+            >
+              {props.confirmBusy
+                ? (props.primaryBusyLabel ?? '正在创建…')
+                : (props.primaryLabel ?? '生成候选大纲')}
+            </Button>
+          </footer>
         </Card>
 
-        <Card className="ow-panel">
+        <Card className="ow-panel ow-panel--outline">
           <header className="ow-panel-head">
             <strong>候选大纲</strong>
             <span>完整 Markdown 快照 · 可继续对话调整</span>
           </header>
           {props.candidatePending ? (
             <div aria-label="候选大纲生成状态" className="ow-candidate-pending" role="status">
-              正在生成候选大纲…
+              <span>正在生成候选大纲…</span>
+              <Button
+                busy={props.generationCancelBusy === true}
+                disabled={props.generationCancelBusy === true}
+                type="button"
+                onClick={props.onCancelGeneration}
+              >
+                {props.generationCancelBusy ? '正在取消…' : '取消生成'}
+              </Button>
             </div>
           ) : null}
           <AiSurface className="ow-outline">
             <div className="ow-outline-title">
               <div>
                 <div className="lm-kicker">AI DRAFT</div>
-                <h2>{data.outline}</h2>
-                <p>{data.summary}</p>
+                {candidateOwnsTitle ? null : <h2>{data.outline}</h2>}
+                {candidateOwnsTitle ? null : <p>{data.summary}</p>}
               </div>
               <div className="lm-chips">
                 <span className="lm-pill">{data.discipline}</span>
@@ -249,43 +282,31 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
                 ))}
               </div>
             </div>
-            {data.modules.map((module, moduleIndex) => (
-              <section key={module.title} className="ow-module">
-                <div className="ow-module-head">
-                  <strong>{`模块 ${moduleIndex + 1} · ${module.title}`}</strong>
-                  <span>{`${moduleIndex + 1}/${data.modules.length}`}</span>
-                </div>
-                {module.lessons.map((lesson, lessonIndex) => (
-                  <div key={lesson.title} className="ow-lesson">
-                    <b>{`${moduleIndex + 1}.${lessonIndex + 1} ${lesson.title}`}</b>
-                    {lesson.points.length === 0 ? null : <p>{lesson.points.join('、')}</p>}
-                    {lesson.source === undefined ? null : (
-                      <div className="ow-source">材料映射：{lesson.source}</div>
-                    )}
+            {candidateMarkdown !== '' ? (
+              <AiContent className="ow-outline-markdown" markdown={candidateMarkdown} />
+            ) : (
+              data.modules.map((module, moduleIndex) => (
+                <section key={module.title} className="ow-module">
+                  <div className="ow-module-head">
+                    <strong>{`模块 ${moduleIndex + 1} · ${module.title}`}</strong>
+                    <span>{`${moduleIndex + 1}/${data.modules.length}`}</span>
                   </div>
-                ))}
-              </section>
-            ))}
+                  {module.lessons.map((lesson, lessonIndex) => (
+                    <div key={lesson.title} className="ow-lesson">
+                      <b>{`${moduleIndex + 1}.${lessonIndex + 1} ${lesson.title}`}</b>
+                      {lesson.points.length === 0 ? null : <p>{lesson.points.join('、')}</p>}
+                      {lesson.source === undefined ? null : (
+                        <div className="ow-source">材料映射：{lesson.source}</div>
+                      )}
+                    </div>
+                  ))}
+                </section>
+              ))
+            )}
           </AiSurface>
-          <footer className="ow-footer">
-            {props.dangerAction}
-            <div className="lm-actions">
-              <Button type="button" onClick={props.onAdjust}>
-                {props.secondaryLabel ?? '继续调整'}
-              </Button>
-              <Button
-                busy={props.confirmBusy === true}
-                disabled={props.confirmDisabled === true}
-                type="button"
-                variant="primary"
-                onClick={props.onConfirm}
-              >
-                {props.confirmBusy
-                  ? (props.primaryBusyLabel ?? '正在创建…')
-                  : (props.primaryLabel ?? '确认并创建课程')}
-              </Button>
-            </div>
-          </footer>
+          {props.dangerAction === undefined ? null : (
+            <footer className="ow-footer">{props.dangerAction}</footer>
+          )}
         </Card>
       </div>
     </main>

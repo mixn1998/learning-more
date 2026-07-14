@@ -86,10 +86,15 @@ body {
   color: color-mix(in srgb, var(--lm-ink) 78%, var(--lm-muted));
 }
 
-.lm-ai-content table {
-  display: block;
+.lm-ai-table-wrap {
   max-width: 100%;
+  margin: 0 0 var(--lm-ai-block-gap);
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.lm-ai-content table {
+  min-width: 34rem;
   width: 100%;
   border-collapse: collapse;
 }
@@ -126,4 +131,17 @@ body {
 .lm-ai-content pre code {
   padding: 0;
   background: transparent;
+}
+
+.lm-ai-content [data-diagram-fallback='mermaid'] {
+  display: block;
+  white-space: pre;
+}
+
+.lm-ai-content .katex-display {
+  max-width: 100%;
+  margin: 0 0 var(--lm-ai-block-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.35em;
 }

@@ -10,7 +10,11 @@ import type {
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { GenerationFrameLog } from '../../generation-runtime/interface.js';
 import type { LearningSessionModule } from '../../learning-session/interface.js';
-import type { InteractiveTeaching, TeachingTurnStopped } from '../interface.js';
+import type {
+  InteractiveTeaching,
+  TeachingTurnAccepted,
+  TeachingTurnStopped,
+} from '../interface.js';
 import type { TeachingAgent } from '../ports/teaching-agent.js';
 import type {
   TeachingContextAssembler,
@@ -100,6 +104,105 @@ export function createInteractiveTeaching(options: {
       commandContext: CommandContext;
     }>
   >();
+
+  async function scheduleGeneration(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    context: CommandContext;
+    assembled: Awaited<ReturnType<TeachingContextAssembler['assemble']>>;
+    expectedVersion: number;
+    observe: boolean;
+  }): Promise<TeachingTurnAccepted> {
+    const accepted = await options.agent.submit(input.assembled);
+    const started = await options.sessionModule.execute(
+      { type: 'StartSessionGeneration', lessonId: input.lessonId, taskId: accepted.taskId },
+      {
+        ...input.context,
+        commandId: `${input.context.commandId}:start-generation`,
+        idempotencyKey: `${input.context.idempotencyKey}:start-generation`,
+        expectedVersion: input.expectedVersion,
+      },
+    );
+    await options.frameLog?.ensureTask(accepted.taskId, 'running');
+    taskContext.set(accepted.taskId, {
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+      sessionId: input.sessionId,
+      commandContext: input.context,
+    });
+    const completion = (async () => {
+      try {
+        const result = await options.agent.complete(accepted.taskId);
+        const assistantMessageId = options.nextAssistantMessageId();
+        const artifactRef = `assistant-message:${assistantMessageId}`;
+        await options.frameLog?.append(accepted.taskId, 'message.started', {
+          messageId: assistantMessageId,
+        });
+        if (result.markdown.length > 0) {
+          await options.frameLog?.append(accepted.taskId, 'message.delta', {
+            messageId: assistantMessageId,
+            markdown: result.markdown,
+          });
+        }
+        await options.assistantArtifacts.save({
+          artifactRef,
+          markdown: result.markdown,
+          completionStatus: 'complete',
+        });
+        await options.sessionModule.execute(
+          {
+            type: 'CommitAssistantMessage',
+            lessonId: input.lessonId,
+            messageId: assistantMessageId,
+            contentArtifactRef: artifactRef,
+            generationTaskId: accepted.taskId,
+            completionStatus: 'complete',
+          },
+          backgroundContext(input.context, `${input.context.commandId}:assistant-complete`),
+        );
+        taskContext.delete(accepted.taskId);
+        await options.frameLog?.append(accepted.taskId, 'message.completed', {
+          messageId: assistantMessageId,
+          contentSha256: sha256(result.markdown),
+        });
+        await options.frameLog?.append(accepted.taskId, 'artifact.ready', {
+          artifactId: artifactRef,
+          kind: 'assistant-message',
+          contentSha256: sha256(result.markdown),
+        });
+        if (input.observe) {
+          await observationQueue.enqueue(input.sessionId, () =>
+            observeCompletedTurn({
+              courseId: input.courseId,
+              lessonId: input.lessonId,
+              sessionId: input.sessionId,
+              context: input.context,
+            }),
+          );
+        }
+        await options.frameLog?.append(accepted.taskId, 'task.completed', {
+          resultRef: artifactRef,
+        });
+      } catch (error) {
+        taskContext.delete(accepted.taskId);
+        try {
+          await options.sessionModule.execute(
+            { type: 'StopSessionGeneration', lessonId: input.lessonId },
+            backgroundContext(input.context, `${input.context.commandId}:assistant-failed`),
+          );
+        } catch {
+          // The terminal stream event must still be emitted if session cleanup needs recovery.
+        }
+        await options.frameLog?.append(accepted.taskId, 'task.failed', {
+          problem: failureProblem(accepted.taskId),
+        });
+        throw error;
+      }
+    })();
+    track(input.sessionId, completion);
+    return { taskId: accepted.taskId, resourceVersion: started.value.resourceVersion };
+  }
 
   function track(sessionId: string, promise: Promise<unknown>): void {
     const tasks = background.get(sessionId) ?? new Set<Promise<unknown>>();
@@ -298,92 +401,46 @@ export function createInteractiveTeaching(options: {
         teachingState: state,
         unobservedMessageIds: [input.userMessageId],
       });
-      const accepted = await options.agent.submit(assembled);
-      const started = await options.sessionModule.execute(
-        { type: 'StartSessionGeneration', lessonId: input.lessonId, taskId: accepted.taskId },
+      return scheduleGeneration({
+        ...input,
+        context,
+        assembled,
+        expectedVersion: appended.value.resourceVersion,
+        observe: true,
+      });
+    },
+    async openLesson(input, context) {
+      const learning = await options.sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: input.lessonId },
         {
-          ...context,
-          commandId: `${context.commandId}:start-generation`,
-          idempotencyKey: `${context.idempotencyKey}:start-generation`,
-          expectedVersion: appended.value.resourceVersion,
+          correlationId: context.correlationId,
+          actor: context.actor,
+          requestedAt: context.requestedAt,
+          receivedAt: context.receivedAt,
         },
       );
-      await options.frameLog?.ensureTask(accepted.taskId, 'running');
-      taskContext.set(accepted.taskId, {
+      const activeTaskId = learning.learning.session?.activeGenerationTaskId;
+      if (activeTaskId !== undefined) {
+        return { taskId: activeTaskId, resourceVersion: learning.resourceVersion };
+      }
+      const messages = await options.contextSources.listMessages(input.sessionId);
+      if (messages.length > 0) throw new Error('teaching_opening_already_completed');
+      const state = await initialState(input.courseId, input.lessonId, input.sessionId);
+      const assembled = await options.contextAssembler.assemble({
         courseId: input.courseId,
         lessonId: input.lessonId,
         sessionId: input.sessionId,
-        commandContext: context,
+        turnKind: 'opening',
+        teachingState: state,
+        unobservedMessageIds: [],
       });
-      const completion = (async () => {
-        try {
-          const result = await options.agent.complete(accepted.taskId);
-          const assistantMessageId = options.nextAssistantMessageId();
-          const artifactRef = `assistant-message:${assistantMessageId}`;
-          await options.frameLog?.append(accepted.taskId, 'message.started', {
-            messageId: assistantMessageId,
-          });
-          if (result.markdown.length > 0) {
-            await options.frameLog?.append(accepted.taskId, 'message.delta', {
-              messageId: assistantMessageId,
-              markdown: result.markdown,
-            });
-          }
-          await options.assistantArtifacts.save({
-            artifactRef,
-            markdown: result.markdown,
-            completionStatus: 'complete',
-          });
-          await options.sessionModule.execute(
-            {
-              type: 'CommitAssistantMessage',
-              lessonId: input.lessonId,
-              messageId: assistantMessageId,
-              contentArtifactRef: artifactRef,
-              generationTaskId: accepted.taskId,
-              completionStatus: 'complete',
-            },
-            backgroundContext(context, `${context.commandId}:assistant-complete`),
-          );
-          taskContext.delete(accepted.taskId);
-          await options.frameLog?.append(accepted.taskId, 'message.completed', {
-            messageId: assistantMessageId,
-            contentSha256: sha256(result.markdown),
-          });
-          await options.frameLog?.append(accepted.taskId, 'artifact.ready', {
-            artifactId: artifactRef,
-            kind: 'assistant-message',
-            contentSha256: sha256(result.markdown),
-          });
-          await observationQueue.enqueue(input.sessionId, () =>
-            observeCompletedTurn({
-              courseId: input.courseId,
-              lessonId: input.lessonId,
-              sessionId: input.sessionId,
-              context,
-            }),
-          );
-          await options.frameLog?.append(accepted.taskId, 'task.completed', {
-            resultRef: artifactRef,
-          });
-        } catch (error) {
-          taskContext.delete(accepted.taskId);
-          try {
-            await options.sessionModule.execute(
-              { type: 'StopSessionGeneration', lessonId: input.lessonId },
-              backgroundContext(context, `${context.commandId}:assistant-failed`),
-            );
-          } catch {
-            // The terminal stream event must still be emitted if session cleanup needs recovery.
-          }
-          await options.frameLog?.append(accepted.taskId, 'task.failed', {
-            problem: failureProblem(accepted.taskId),
-          });
-          throw error;
-        }
-      })();
-      track(input.sessionId, completion);
-      return { taskId: accepted.taskId, resourceVersion: started.value.resourceVersion };
+      return scheduleGeneration({
+        ...input,
+        context,
+        assembled,
+        expectedVersion: learning.resourceVersion,
+        observe: false,
+      });
     },
     async stopTurn(input, context): Promise<TeachingTurnStopped> {
       const owner = taskContext.get(input.taskId);
@@ -561,7 +618,7 @@ export function createInteractiveTeaching(options: {
       }
 
       const messages = await options.contextSources.listMessages(input.sessionId);
-      if (messages.length === 0) return;
+      if (messages.length === 0 || !messages.some((message) => message.role === 'user')) return;
       let ledger = await options.ledgerRepository.get(input.sessionId);
       const observedThrough = ledger?.state.observedThroughMessageId;
       const lastMessage = messages.at(-1)?.messageId;

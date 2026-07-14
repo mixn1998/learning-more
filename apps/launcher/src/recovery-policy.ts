@@ -4,6 +4,7 @@ export type LauncherState =
   | 'healthy'
   | 'degraded'
   | 'restarting'
+  | 'rebuilding'
   | 'backoff'
   | 'blocked_external_port'
   | 'blocked_identity_mismatch'

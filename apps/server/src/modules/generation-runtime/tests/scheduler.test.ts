@@ -6,6 +6,13 @@ import { createGenerationRuntime } from '../implementation/generation-runtime.js
 import { createInMemoryRepositories } from '../../../persistence/in-memory-repositories.js';
 import { selectNextGenerationTask } from '../../../workers/generation-scheduler.js';
 import type { GenerationTask } from '../ports/generation-task-repository.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { DataRoot } from '../../../persistence/data-root.js';
+import { createLocalFileRepositories } from '../../../persistence/local-file-repositories.js';
+import { createStorePaths, initializeStoreLayout } from '../../../persistence/paths.js';
+import { createUnitOfWork } from '../../../persistence/unit-of-work.js';
 
 const tx = {
   stageJson: async () => undefined,
@@ -174,6 +181,51 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     await expect(runtime.get(first.taskId)).resolves.toMatchObject({
       status: 'completed',
       draftMarkdown: 'answer',
+    });
+  });
+
+  it('atomically claims different queued tasks when dispatchers run concurrently', async () => {
+    const repositories = createInMemoryRepositories();
+    const provider = createMockProvider({
+      id: 'mock',
+      scriptFactory: (_attempt, request) => [{ type: 'text', text: request.prompt }],
+    });
+    const ids = ['task_01', 'task_02'];
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [provider],
+      nextId: () => ids.shift()!,
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+
+    for (const [ownerRef, prompt] of [
+      ['alignment-plan', 'plan'],
+      ['conversation', 'reply'],
+    ] as const) {
+      await runtime.submit({
+        taskKey: ownerRef,
+        inputSnapshotHash: ownerRef,
+        taskKind: ownerRef,
+        taskGroup: 'interactive',
+        ownerRef,
+        providerId: 'mock',
+        priority: 100,
+        prompt,
+      });
+    }
+
+    await expect(Promise.all([runtime.runNext(), runtime.runNext()])).resolves.toEqual([
+      'task_01',
+      'task_02',
+    ]);
+    await expect(runtime.get('task_01')).resolves.toMatchObject({
+      status: 'completed',
+      draftMarkdown: 'plan',
+    });
+    await expect(runtime.get('task_02')).resolves.toMatchObject({
+      status: 'completed',
+      draftMarkdown: 'reply',
     });
   });
 
@@ -400,6 +452,78 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
       errorCode: 'failed_recoverable',
       draftMarkdown: 'partial',
     });
+  });
+
+  it('replays an interrupted task after runtime recreation and drains the recovered queue', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'learning-more-generation-replay-'));
+    try {
+      const dataRoot = DataRoot.create(root);
+      await initializeStoreLayout(createStorePaths(dataRoot));
+      const repository = createLocalFileRepositories(dataRoot).generationTasks;
+      const fileUnitOfWork = createUnitOfWork({ dataRoot });
+      const replayProvider = () =>
+        createApiProvider({
+          id: 'replay-api',
+          transport: async function* () {
+            yield { type: 'text' as const, text: '# Replayed outline' };
+          },
+        });
+      const firstRuntime = createGenerationRuntime({
+        repository,
+        unitOfWork: fileUnitOfWork,
+        providers: [replayProvider()],
+        nextId: () => 'task_replay',
+        now: () => new Date('2026-07-13T00:00:00.000Z'),
+      });
+      await firstRuntime.submit({
+        taskKey: 'outline-candidate:session_replay:command_01',
+        inputSnapshotHash: 'replay-hash',
+        taskKind: 'outline-candidate',
+        taskGroup: 'interactive',
+        ownerRef: 'session_replay',
+        providerId: 'replay-api',
+        priority: 100,
+        prompt: 'outline',
+      });
+      const persisted = await firstRuntime.get('task_replay');
+      await fileUnitOfWork.execute({ transactionId: 'tx_seed_interrupted_task' }, (context) =>
+        repository.save(
+          context,
+          {
+            ...persisted,
+            status: 'running',
+            leaseExpiresAt: '2026-07-13T00:00:30.000Z',
+            attempts: [
+              {
+                providerId: 'replay-api',
+                startedAt: '2026-07-13T00:00:00.000Z',
+                status: 'running',
+                emittedDelta: false,
+              },
+            ],
+          },
+          persisted.resourceVersion,
+        ),
+      );
+
+      const restartedRuntime = createGenerationRuntime({
+        repository,
+        unitOfWork: fileUnitOfWork,
+        providers: [replayProvider()],
+        now: () => new Date('2026-07-13T00:01:00.000Z'),
+      });
+      await restartedRuntime.recoverExpiredLeases();
+      await expect(restartedRuntime.get('task_replay')).resolves.toMatchObject({
+        status: 'queued',
+      });
+      await expect(restartedRuntime.drainQueued()).resolves.toBe(1);
+      await expect(restartedRuntime.get('task_replay')).resolves.toMatchObject({
+        status: 'completed',
+        draftMarkdown: '# Replayed outline',
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('[EQ-GEN-02] persists cancel and timeout terminal codes and exposes complete task metrics', async () => {

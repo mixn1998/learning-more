@@ -55,14 +55,22 @@ export function createTeachingContextAssembler(options: {
       ) {
         throw new Error('standard_mode_play_intent_forbidden');
       }
-      const currentMessage = allMessages.find(
-        (message) => message.messageId === input.currentUserMessageId && message.role === 'user',
-      );
-      if (currentMessage === undefined) throw new Error('current_user_message_not_materialized');
+      const turnKind = input.turnKind ?? 'response';
+      const currentMessage =
+        input.currentUserMessageId === undefined
+          ? undefined
+          : allMessages.find(
+              (message) =>
+                message.messageId === input.currentUserMessageId && message.role === 'user',
+            );
+      if (turnKind === 'response' && currentMessage === undefined) {
+        throw new Error('current_user_message_not_materialized');
+      }
 
       const unobservedIds = new Set(input.unobservedMessageIds);
       let context: TeachingContextPackage = {
         schemaVersion: 1,
+        ...(turnKind === 'opening' ? { turnKind } : {}),
         course: courseAndLesson.course,
         lesson: courseAndLesson.lesson,
         ...(learningStartSummary === undefined ? {} : { learningStartSummary }),
@@ -106,14 +114,17 @@ export function createTeachingContextAssembler(options: {
       }
 
       const protectedMessages: readonly MaterializedTeachingMessage[] = [
-        currentMessage,
+        ...(currentMessage === undefined ? [] : [currentMessage]),
         ...context.unobservedMessages.filter(
-          (message) => message.messageId !== currentMessage.messageId,
+          (message) => message.messageId !== currentMessage?.messageId,
         ),
       ];
       const protectedIds = new Set(protectedMessages.map((message) => message.messageId));
       if (
-        !context.recentMessages.some((message) => message.messageId === currentMessage.messageId) ||
+        (currentMessage !== undefined &&
+          !context.recentMessages.some(
+            (message) => message.messageId === currentMessage.messageId,
+          )) ||
         context.unobservedMessages.some((message) => !protectedIds.has(message.messageId))
       ) {
         throw new Error('protected_teaching_context_trimmed');

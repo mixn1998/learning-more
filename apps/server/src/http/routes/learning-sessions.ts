@@ -224,6 +224,30 @@ export async function registerLearningSessionRoutes(
   );
 
   app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/lesson-sessions/:sessionId/opening',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        EmptyLearningSessionCommandBodySchema.parse(request.body ?? {});
+        const reference = await options.resolveSession(request.params.sessionId);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const task = await options.teaching.openLesson(reference, context);
+        const response = GenerationTaskAcceptedResponseSchema.parse(task);
+        return reply.header('etag', `"${response.resourceVersion}"`).code(202).send(response);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
     '/api/v1/lesson-sessions/:sessionId/messages',
     async (request, reply) => {
       const correlation = correlationId(request, options);

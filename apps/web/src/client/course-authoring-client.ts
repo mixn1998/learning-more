@@ -1,7 +1,9 @@
 import {
   ConfirmationResponseSchema,
+  CancelCandidateGenerationResponseSchema,
   CourseArchiveResponseSchema,
   CourseOutlineVersionResponseSchema,
+  CreateOutlineAdjustmentSessionBodySchema,
   CreateOutlineSessionBodySchema,
   DeleteOutlineSessionResponseSchema,
   SaveOutlineSessionDraftResponseSchema,
@@ -45,6 +47,7 @@ export type OutlineSessionView = Readonly<{
       }>[]
     | undefined;
   candidateVersionIds?: readonly string[] | undefined;
+  generationTaskId?: string | undefined;
   candidateVersionId?: string | undefined;
   candidateMarkdown?: string | undefined;
   confirmedCourseId?: string | undefined;
@@ -64,6 +67,11 @@ export interface CourseAuthoringClient {
   createOutlineSession(input: {
     topic: string;
     courseMode: CourseMode;
+    pageInstanceId: string;
+  }): Promise<OutlineSessionView>;
+  createOutlineAdjustmentSession(input: {
+    courseId: string;
+    resourceVersion: number;
     pageInstanceId: string;
   }): Promise<OutlineSessionView>;
   getOutlineSession(outlineSessionId: string): Promise<OutlineSessionView>;
@@ -100,6 +108,11 @@ export interface CourseAuthoringClient {
     failureCode?: CandidateGenerationFailureCode;
     resourceVersion: number;
   }>;
+  cancelCandidateGeneration(input: {
+    outlineSessionId: string;
+    resourceVersion: number;
+    pageInstanceId: string;
+  }): Promise<{ outlineSessionId: string; state: string; resourceVersion: number }>;
   streamGeneration(
     taskId: string,
     handlers: { readonly onEvent: (event: AuthoringStreamEvent) => void },
@@ -156,10 +169,25 @@ export const courseAuthoringClient: CourseAuthoringClient = {
       })
     ).data;
   },
+  async createOutlineAdjustmentSession(input) {
+    return (
+      await apiRequest(
+        `/api/v1/courses/${encodeURIComponent(input.courseId)}/outline-adjustment-sessions`,
+        {
+          method: 'POST',
+          body: CreateOutlineAdjustmentSessionBodySchema.parse({}),
+          schema: OutlineSessionViewResponseSchema,
+          command: command(input.pageInstanceId),
+          resourceVersion: input.resourceVersion,
+        },
+      )
+    ).data;
+  },
   async getOutlineSession(outlineSessionId) {
     return (
       await apiRequest(`/api/v1/outline-sessions/${encodeURIComponent(outlineSessionId)}`, {
         schema: OutlineSessionViewResponseSchema,
+        cache: 'no-store',
       })
     ).data;
   },
@@ -223,6 +251,20 @@ export const courseAuthoringClient: CourseAuthoringClient = {
         ? {}
         : { draftArtifactRef: parsed.draftArtifactRef }),
     };
+  },
+  async cancelCandidateGeneration(input) {
+    return (
+      await apiRequest(
+        `/api/v1/outline-sessions/${encodeURIComponent(input.outlineSessionId)}/candidate-generations/cancellation`,
+        {
+          method: 'POST',
+          body: {},
+          schema: CancelCandidateGenerationResponseSchema,
+          command: command(input.pageInstanceId),
+          resourceVersion: input.resourceVersion,
+        },
+      )
+    ).data;
   },
   async streamGeneration(taskId, handlers, signal) {
     await streamGenerationEvents({

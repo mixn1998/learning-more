@@ -36,6 +36,54 @@ function appWith(
 const headers = { 'idempotency-key': 'idem_01', 'x-csrf-token': 'csrf' };
 
 describe('CourseAuthoring HTTP contract', () => {
+  it('creates a conditional outline adjustment session with the current candidate visible', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      commandId: 'command_01',
+      outcome: 'completed',
+      resourceVersion: 1,
+      value: {
+        kind: 'outline-session',
+        outlineSessionId: 'adjustment_01',
+        state: 'candidate-ready',
+      },
+    });
+    const query = vi.fn().mockResolvedValue({
+      outlineSessionId: 'adjustment_01',
+      resourceVersion: 1,
+      state: 'candidate-ready',
+      topic: '微积分',
+      courseMode: 'standard',
+      candidateVersionIds: ['candidate_v1'],
+      candidateVersionId: 'candidate_v1',
+      candidateMarkdown: '# 微积分\n\n## 极限',
+      completedAssessmentRounds: 3,
+      canGenerateCandidate: true,
+      messages: [],
+    });
+    const response = await appWith(execute, query).inject({
+      method: 'POST',
+      url: '/api/v1/courses/course_1/outline-adjustment-sessions',
+      headers: {
+        ...headers,
+        'if-match': '"4"',
+        'x-page-instance-id': 'page_1',
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect(response.headers.location).toBe('/api/v1/outline-sessions/adjustment_01');
+    expect(response.json()).toMatchObject({
+      state: 'candidate-ready',
+      candidateVersionId: 'candidate_v1',
+      candidateMarkdown: '# 微积分\n\n## 极限',
+    });
+    expect(execute).toHaveBeenCalledWith(
+      { type: 'CreateOutlineAdjustmentSession', courseId: 'course_1' },
+      expect.objectContaining({ expectedVersion: 4, pageInstanceId: 'page_1' }),
+    );
+  });
+
   it('creates an OutlineSession with Location and ETag', async () => {
     const execute = vi.fn().mockResolvedValue({
       commandId: 'command_01',
@@ -165,6 +213,49 @@ describe('CourseAuthoring HTTP contract', () => {
 
     expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({ taskId: 'task_01', draftArtifactRef: 'draft_01' });
+  });
+
+  it('cancels an active candidate generation and returns the retryable session state', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      commandId: 'command_01',
+      outcome: 'accepted',
+      resourceVersion: 9,
+      value: {
+        kind: 'generation',
+        taskId: 'task_01',
+        state: 'failed_recoverable',
+        failureCode: 'generation_interrupted',
+      },
+    });
+    const query = vi.fn().mockResolvedValue({
+      outlineSessionId: 'session_01',
+      resourceVersion: 9,
+      state: 'assessment-ready',
+      topic: 'probability theory',
+      courseMode: 'standard',
+      candidateVersionIds: [],
+      completedAssessmentRounds: 3,
+      canGenerateCandidate: true,
+      messages: [],
+    });
+    const response = await appWith(execute, query).inject({
+      method: 'POST',
+      url: '/api/v1/outline-sessions/session_01/candidate-generations/cancellation',
+      headers: { ...headers, 'if-match': '"8"', 'x-page-instance-id': 'page_01' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers.etag).toBe('"9"');
+    expect(response.json()).toMatchObject({
+      outlineSessionId: 'session_01',
+      state: 'assessment-ready',
+      resourceVersion: 9,
+    });
+    expect(execute).toHaveBeenCalledWith(
+      { type: 'CancelCandidateGeneration', outlineSessionId: 'session_01' },
+      expect.objectContaining({ expectedVersion: 8, pageInstanceId: 'page_01' }),
+    );
   });
 
   it('queries an OutlineSession through the module and returns its ETag', async () => {

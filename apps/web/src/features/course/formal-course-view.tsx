@@ -5,16 +5,13 @@ import type {
   CourseMode,
   CourseOutlineVersionView,
 } from '@learning-more/contracts';
-import { Button, Dialog } from '@learning-more/ui';
+import { AiContent, Button, Dialog } from '@learning-more/ui';
 
 import { courseModeDefinition } from '../../course-mode-registry.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
+import { toLessonKnowledgeSummary } from '../learning/knowledge-point-presentation.js';
 import { CourseArchiveDangerZone } from '../review/course-archive-danger-zone.js';
-import {
-  OutlineView,
-  type CourseLessonRuntimeState,
-  type CourseOutlineModule,
-} from './outline-view.js';
+import { OutlineView, type CourseLessonRuntimeState } from './outline-view.js';
 import { OutlineVersionHistory } from './outline-version-history.js';
 
 import './formal-course-view.css';
@@ -32,7 +29,6 @@ export function FormalCourseView(props: {
   readonly currentOutline?: CourseOutlineVersionView | undefined;
   readonly lessonStates: Readonly<Record<string, CourseLessonRuntimeState | undefined>>;
   readonly lessonDescriptions?: Readonly<Record<string, string | undefined>> | undefined;
-  readonly modules?: readonly CourseOutlineModule[] | undefined;
   readonly availableCourses?: readonly CourseDirectoryItem[] | undefined;
   readonly initiallyOpenDelete?: boolean | undefined;
   readonly onCloseCourse: () => void;
@@ -136,7 +132,6 @@ export function FormalCourseView(props: {
           course={course}
           lessonDescriptions={props.lessonDescriptions}
           lessonStates={props.lessonStates}
-          modules={props.modules}
           onOpenLesson={(lessonId, destination) =>
             props.onNavigate(
               destination === 'record'
@@ -177,7 +172,11 @@ export function FormalCourseView(props: {
           ) : recommended === undefined ? null : (
             <section className="course-recommendation">
               <strong>{recommended.title}</strong>
-              <p>{recommended.objective}</p>
+              <p>
+                {recommended.coreKnowledgePoints.length === 0
+                  ? recommended.objective
+                  : `${toLessonKnowledgeSummary(recommended.coreKnowledgePoints).join('、')}。`}
+              </p>
               <Button
                 type="button"
                 variant="primary"
@@ -223,7 +222,7 @@ export function FormalCourseView(props: {
         {selectedVersion === undefined ? null : (
           <section className="course-version-preview">
             <b>{selectedVersion.current ? '当前确认版' : '只读历史版'}</b>
-            <p>{selectedVersion.outlineMarkdown}</p>
+            <AiContent markdown={selectedVersion.outlineMarkdown} />
           </section>
         )}
         {versionError === undefined ? null : <p role="alert">{versionError}</p>}

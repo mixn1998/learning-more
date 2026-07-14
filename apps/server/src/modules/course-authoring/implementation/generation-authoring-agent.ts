@@ -85,7 +85,7 @@ export function createGenerationAuthoringAgent(options: {
         inputSnapshotHash: hash(input),
         taskKind: 'course-authoring-conversation',
         taskGroup: 'interactive',
-        ownerRef: context.outlineSessionId,
+        ownerRef: `${context.outlineSessionId}:conversation`,
         providerId: options.providerId,
         priority: 110,
         prompt: input,

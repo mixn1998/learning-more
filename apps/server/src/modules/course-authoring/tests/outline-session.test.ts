@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
 import {
+  createOutlineAdjustmentSession,
   createOutlineSession,
   decide,
   evolveAll,
@@ -34,6 +35,26 @@ function completeTurn(session: OutlineSession, index: number): OutlineSession {
 }
 
 describe('OutlineSession', () => {
+  it('starts an outline adjustment from the current candidate without replaying assessment', () => {
+    const session = createOutlineAdjustmentSession({
+      outlineSessionId: 'adjustment_01',
+      courseMode: 'standard',
+      topic: '微积分',
+      baselineCandidateVersionId: 'candidate_v1',
+    });
+
+    expect(session).toMatchObject({
+      state: 'candidate-ready',
+      completedAssessmentRounds: 3,
+      candidateVersionIds: ['candidate_v1'],
+      latestCandidateVersionId: 'candidate_v1',
+      messageIds: [],
+    });
+    expect(decide(session, { type: 'startAlignmentTurn', userMessageId: 'change_01' })).toEqual([
+      { type: 'AlignmentTurnStarted', userMessageId: 'change_01' },
+    ]);
+  });
+
   it('counts only complete user and assistant pairs and opens generation after round three', () => {
     let session = started();
     expect(session).toMatchObject({ state: 'assessing', completedAssessmentRounds: 0 });

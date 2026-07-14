@@ -47,7 +47,10 @@ export const CandidateModuleSchema = z.strictObject({
 export const CandidateOutlineMetadataSchema = z.strictObject({
   courseGoals: z.array(z.string().min(1)).min(1).max(12),
   disciplineTag: z.string().min(1),
-  topicTags: z.array(z.string().min(1)).min(1).max(3),
+  // Tags are descriptive metadata, not a teaching-shape constraint. Keep the
+  // machine contract concerned with non-empty values while allowing the model
+  // to preserve a richer set of relevant concepts from the learner's goal.
+  topicTags: z.array(z.string().min(1)).min(1),
   modules: z.array(CandidateModuleSchema).min(1).max(50),
   lessons: z.array(CandidateLessonSchema).min(1).max(100),
 });
@@ -78,6 +81,8 @@ export const CreateOutlineSessionBodySchema = z.strictObject({
   topic: z.string().trim().min(1).max(2_000),
   courseMode: CourseModeSchema,
 });
+
+export const CreateOutlineAdjustmentSessionBodySchema = z.strictObject({});
 
 export const AppendOutlineSessionMessageBodySchema = z.strictObject({
   content: z.string().trim().min(1).max(100_000),
@@ -169,6 +174,7 @@ export const OutlineSessionViewResponseSchema = z.strictObject({
   canGenerateCandidate: z.boolean(),
   savedAsDraft: z.boolean().optional(),
   messages: z.array(OutlineMessageSchema),
+  generationTaskId: identifierSchema.optional(),
   candidateVersionId: identifierSchema.optional(),
   candidateMarkdown: z.string().optional(),
   confirmedCourseId: identifierSchema.optional(),
@@ -199,6 +205,12 @@ export const GenerationAcceptedResponseSchema = z.strictObject({
   draftArtifactRef: identifierSchema.optional(),
   state: z.string().trim().min(1).max(100),
   failureCode: CandidateGenerationFailureCodeSchema.optional(),
+  resourceVersion: resourceVersionSchema,
+});
+
+export const CancelCandidateGenerationResponseSchema = z.strictObject({
+  outlineSessionId: identifierSchema,
+  state: outlineSessionStateSchema,
   resourceVersion: resourceVersionSchema,
 });
 

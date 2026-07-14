@@ -21,6 +21,9 @@ export interface LauncherDependencies {
   openApplication(): Promise<void>;
   drainServer(timeoutMs: number): Promise<boolean>;
   terminateVerifiedServer(): Promise<boolean>;
+  requestWorkspaceActivation?(): Promise<
+    Readonly<{ mode: 'reconnect' }> | Readonly<{ mode: 'activate'; targetBuildId: string }>
+  >;
   syncFrontend(): Promise<void>;
   createDiagnostics(): Promise<Readonly<{ artifactRef: string }>>;
   wait(delayMs: number): Promise<void>;
@@ -29,15 +32,18 @@ export interface LauncherDependencies {
 
 export interface LauncherRuntime {
   start(): Promise<void>;
-  reconnect(): Promise<void>;
+  reconnect(): Promise<
+    Readonly<{ state: LauncherState; crashCount: number; targetBuildId?: string }>
+  >;
   syncFrontend(): Promise<void>;
   diagnose(): Promise<Readonly<{ artifactRef: string }>>;
   serverExitedUnexpectedly(): Promise<void>;
-  status(): Readonly<{ state: LauncherState; crashCount: number }>;
+  status(): Readonly<{ state: LauncherState; crashCount: number; targetBuildId?: string }>;
 }
 
 export function createLauncherRuntime(dependencies: LauncherDependencies): LauncherRuntime {
   let state: LauncherState = 'stopped';
+  let targetBuildId: string | undefined;
   const crashTimestamps: number[] = [];
 
   async function startNewServer(): Promise<void> {
@@ -50,6 +56,7 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
   return {
     async start() {
       state = 'starting';
+      targetBuildId = undefined;
       await dependencies.acquireLease();
       let applicationOpened = false;
       try {
@@ -85,12 +92,19 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
       }
     },
     async reconnect() {
+      const activation = await dependencies.requestWorkspaceActivation?.();
+      if (activation?.mode === 'activate') {
+        state = 'rebuilding';
+        targetBuildId = activation.targetBuildId;
+        return { state, crashCount: crashTimestamps.length, targetBuildId };
+      }
+      targetBuildId = undefined;
       state = 'restarting';
       try {
         const drained = await dependencies.drainServer(10_000);
         if (!drained && !(await dependencies.terminateVerifiedServer())) {
           state = 'blocked_identity_mismatch';
-          return;
+          return { state, crashCount: crashTimestamps.length };
         }
         await dependencies.startServer();
         await dependencies.waitForVerifiedReady();
@@ -99,6 +113,7 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
         state = 'degraded';
         throw error;
       }
+      return { state, crashCount: crashTimestamps.length };
     },
     async syncFrontend() {
       await dependencies.syncFrontend();
@@ -126,7 +141,11 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
       }
     },
     status() {
-      return { state, crashCount: crashTimestamps.length };
+      return {
+        state,
+        crashCount: crashTimestamps.length,
+        ...(targetBuildId === undefined ? {} : { targetBuildId }),
+      };
     },
   };
 }
@@ -154,6 +173,13 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
     onUnexpectedExit: () => {
       void runtimeReference.current?.serverExitedUnexpectedly();
     },
+    ...(process.env.LEARNING_MORE_ACTIVATION_REQUEST === undefined ||
+    process.env.LEARNING_MORE_ACTIVATION_STATUS === undefined
+      ? {}
+      : {
+          activationRequestPath: path.resolve(process.env.LEARNING_MORE_ACTIVATION_REQUEST),
+          activationStatusPath: path.resolve(process.env.LEARNING_MORE_ACTIVATION_STATUS),
+        }),
   });
   const activeRuntime = createLauncherRuntime(adapters.dependencies);
   runtimeReference.current = activeRuntime;
@@ -169,8 +195,7 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
       };
     },
     reconnect: async () => {
-      await activeRuntime.reconnect();
-      return activeRuntime.status();
+      return activeRuntime.reconnect();
     },
     syncFrontend: async () => {
       await activeRuntime.syncFrontend();
@@ -190,7 +215,9 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
     await adapters.close();
     throw error;
   }
-  const configRestart = createConfigRestartDebouncer(() => activeRuntime.reconnect());
+  const configRestart = createConfigRestartDebouncer(async () => {
+    await activeRuntime.reconnect();
+  });
   const configWatcher = watch(projectRoot, { persistent: false }, (_event, filename) => {
     if (filename?.toString().toLowerCase() === 'runtime.json') configRestart.changed();
   });

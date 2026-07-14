@@ -556,6 +556,7 @@ export async function createLocalApplication(options: {
     module: authoringModule,
     repositories: authoringRepositories,
     runtime: generationRuntime,
+    execution: generationExecution,
     frameLog,
     nextCandidateId: () => `candidate_${randomUUID()}`,
   });
@@ -1964,6 +1965,27 @@ export async function createLocalApplication(options: {
     };
   }
   await generationRuntime.recoverExpiredLeases();
+  // Candidate tasks need the authoring coordinator after execution so their
+  // Markdown is compiled and the outline session is advanced. Resume both
+  // pending work and terminal tasks whose authoring projection was not saved.
+  void (async () => {
+    for await (const record of authoringRepositories.outlineSessions.list()) {
+      if (record.session.state !== 'generating-candidates') continue;
+      const taskId = record.session.activeCandidateTaskId;
+      if (taskId === undefined) continue;
+      const task = await generationRuntime.get(taskId).catch(() => undefined);
+      if (task === undefined) continue;
+      try {
+        await candidateGeneration.recover({
+          outlineSessionId: record.session.outlineSessionId,
+          taskId,
+        });
+      } catch {
+        // The task and session retain their durable state for a user-visible retry.
+      }
+    }
+    await generationRuntime.drainQueued();
+  })().catch(() => undefined);
   for await (const record of learningRepositories.list()) {
     const sessionId = record.learning.session?.id;
     if (sessionId === undefined || (await messageLog.list(sessionId)).length === 0) continue;

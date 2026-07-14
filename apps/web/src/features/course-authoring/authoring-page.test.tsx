@@ -38,6 +38,7 @@ function client(overrides: Partial<CourseAuthoringClient> = {}): CourseAuthoring
         },
       ],
     }),
+    createOutlineAdjustmentSession: vi.fn(),
     getOutlineSession: vi.fn(),
     deleteOutlineSession: vi.fn().mockResolvedValue({
       outlineSessionId: 'session_01',
@@ -58,6 +59,11 @@ function client(overrides: Partial<CourseAuthoringClient> = {}): CourseAuthoring
       resourceVersion: 3,
     }),
     streamGeneration: vi.fn().mockResolvedValue(undefined),
+    cancelCandidateGeneration: vi.fn().mockResolvedValue({
+      outlineSessionId: 'session_01',
+      state: 'assessment-ready',
+      resourceVersion: 4,
+    }),
     confirmCandidate: vi.fn().mockResolvedValue({
       courseId: 'course_01',
       outlineVersionId: 'outline_01',
@@ -388,6 +394,186 @@ describe('CourseAuthoring page', () => {
     expect(screen.getByText('第一课', { exact: false })).toBeInTheDocument();
   });
 
+  it('reconnects a restored generation task and shows its persisted candidate automatically', async () => {
+    const getOutlineSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_restored',
+        resourceVersion: 2,
+        state: 'generating-candidates',
+        generationTaskId: 'task_restored',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: false,
+        candidateVersionIds: [],
+        messages: [],
+        materials: [],
+      })
+      .mockResolvedValue({
+        outlineSessionId: 'session_restored',
+        resourceVersion: 3,
+        state: 'candidate-ready',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: true,
+        candidateVersionIds: ['candidate_restored'],
+        candidateVersionId: 'candidate_restored',
+        candidateMarkdown: '# restored candidate',
+        messages: [],
+        materials: [],
+      });
+    const streamGeneration = vi.fn().mockImplementation(async (_taskId, handlers) => {
+      handlers.onEvent({ type: 'task.completed', data: {} });
+    });
+
+    render(
+      <AuthoringPage
+        client={client({ getOutlineSession, streamGeneration })}
+        initialOutlineSessionId="session_restored"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(streamGeneration).toHaveBeenCalledWith(
+        'task_restored',
+        expect.anything(),
+        expect.anything(),
+      ),
+    );
+    expect(await screen.findByRole('heading', { name: 'restored candidate' })).toBeVisible();
+  });
+
+  it('connects to an adjustment generation task returned through the refreshed session', async () => {
+    const getOutlineSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_adjust',
+        resourceVersion: 3,
+        state: 'candidate-ready',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: true,
+        candidateVersionIds: ['candidate_old'],
+        candidateVersionId: 'candidate_old',
+        candidateMarkdown: '# old candidate',
+        messages: [],
+        materials: [],
+      })
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_adjust',
+        resourceVersion: 5,
+        state: 'generating-candidates',
+        generationTaskId: 'task_adjust',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: false,
+        candidateVersionIds: ['candidate_old'],
+        candidateVersionId: 'candidate_old',
+        candidateMarkdown: '# old candidate',
+        messages: [],
+        materials: [],
+      })
+      .mockResolvedValue({
+        outlineSessionId: 'session_adjust',
+        resourceVersion: 6,
+        state: 'candidate-ready',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: true,
+        candidateVersionIds: ['candidate_old', 'candidate_new'],
+        candidateVersionId: 'candidate_new',
+        candidateMarkdown: '# adjusted candidate',
+        messages: [],
+        materials: [],
+      });
+    const streamGeneration = vi.fn().mockImplementation(async (_taskId, handlers) => {
+      handlers.onEvent({ type: 'task.completed', data: {} });
+    });
+    const api = client({
+      getOutlineSession,
+      streamGeneration,
+      appendMessage: vi.fn().mockResolvedValue({
+        outlineSessionId: 'session_adjust',
+        state: 'generating-candidates',
+        resourceVersion: 5,
+      }),
+    });
+    render(<AuthoringPage client={api} initialOutlineSessionId="session_adjust" />);
+
+    const composer = await screen.findByLabelText('补充需求');
+    fireEvent.change(composer, { target: { value: 'add practical examples' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存调整' }));
+
+    await waitFor(() =>
+      expect(streamGeneration).toHaveBeenCalledWith(
+        'task_adjust',
+        expect.anything(),
+        expect.anything(),
+      ),
+    );
+    expect(await screen.findByRole('heading', { name: 'adjusted candidate' })).toBeVisible();
+  });
+
+  it('waits for persisted candidate Markdown after the generation stream completes', async () => {
+    const getOutlineSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_01',
+        resourceVersion: 4,
+        state: 'generating-candidates',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: false,
+        candidateVersionIds: [],
+        messages: [],
+        materials: [],
+      })
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_01',
+        resourceVersion: 5,
+        state: 'candidate-ready',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: true,
+        candidateVersionIds: ['candidate_01'],
+        candidateVersionId: 'candidate_01',
+        candidateMarkdown: '# candidate-ready',
+        messages: [],
+        materials: [],
+      });
+    const api = client({
+      getOutlineSession,
+      createOutlineSession: vi.fn().mockResolvedValue({
+        outlineSessionId: 'session_01',
+        resourceVersion: 1,
+        state: 'ready-for-candidates',
+      }),
+      streamGeneration: vi.fn().mockImplementation(async (_taskId, handlers) => {
+        handlers.onEvent({
+          type: 'artifact.ready',
+          data: { artifactId: 'candidate_01', kind: 'outline-candidate' },
+        });
+        handlers.onEvent({ type: 'task.completed', data: {} });
+      }),
+    });
+    render(<AuthoringPage client={api} />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '概率论' } });
+    fireEvent.click(screen.getByRole('button', { name: /开始创建/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /生成候选大纲/ }));
+
+    expect(await screen.findByRole('heading', { name: 'candidate-ready' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '继续调整' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '生成新版本' })).not.toBeInTheDocument();
+    expect(getOutlineSession).toHaveBeenCalledTimes(2);
+  });
+
   it('shows candidate generation feedback before the request is accepted', async () => {
     const requestCandidateGeneration = vi.fn(() => new Promise<never>(() => undefined));
     const api = client({
@@ -413,6 +599,46 @@ describe('CourseAuthoring page', () => {
     );
     expect(screen.getByRole('button', { name: '正在生成…' })).toHaveAttribute('aria-busy', 'true');
     expect(requestCandidateGeneration).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a pending generation and reloads the authoritative retry state', async () => {
+    const getOutlineSession = vi.fn().mockResolvedValue({
+      outlineSessionId: 'session_01',
+      resourceVersion: 3,
+      state: 'assessment-ready',
+      topic: '概率论',
+      courseMode: 'standard',
+      completedAssessmentRounds: 3,
+      canGenerateCandidate: true,
+      candidateVersionIds: [],
+      messages: [],
+    });
+    const requestCandidateGeneration = vi.fn(() => new Promise<never>(() => undefined));
+    const cancelCandidateGeneration = vi.fn().mockResolvedValue({
+      outlineSessionId: 'session_01',
+      state: 'ready-for-candidates',
+      resourceVersion: 4,
+    });
+    const api = client({
+      getOutlineSession,
+      requestCandidateGeneration,
+      cancelCandidateGeneration,
+    });
+    render(<AuthoringPage client={api} initialOutlineSessionId="session_01" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '生成候选大纲' }));
+    fireEvent.click(await screen.findByRole('button', { name: '取消生成' }));
+
+    await waitFor(() =>
+      expect(cancelCandidateGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outlineSessionId: 'session_01',
+          resourceVersion: 3,
+        }),
+      ),
+    );
+    expect(await screen.findByRole('button', { name: '生成候选大纲' })).toBeEnabled();
+    expect(getOutlineSession).toHaveBeenCalledTimes(2);
   });
 
   it('keeps assessment text when the server reports a version conflict', async () => {

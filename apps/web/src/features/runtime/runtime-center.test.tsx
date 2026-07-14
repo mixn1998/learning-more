@@ -2,7 +2,7 @@
 
 import '@testing-library/jest-dom/vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProviderCatalog, ProviderRuntimeStatus } from '@learning-more/contracts';
@@ -84,8 +84,37 @@ const providerCatalog = {
   ],
 } satisfies ProviderCatalog;
 
+function CurrentPath() {
+  return <output data-testid="current-path">{useLocation().pathname}</output>;
+}
+
 describe('RuntimeCenter', () => {
   afterEach(cleanup);
+
+  it('returns to the page that opened the runtime center when it is closed', () => {
+    render(
+      <MemoryRouter initialEntries={['/profile', '/runtime']} initialIndex={1}>
+        <CurrentPath />
+        <RuntimeStateContext.Provider value={{ state, refresh: vi.fn() }}>
+          <RuntimeCenter
+            api={{
+              reconnect: vi.fn(),
+              waitUntilReady: vi.fn(),
+              refreshAi: vi.fn(),
+              switchProvider: vi.fn(),
+              getProviderStatus: vi.fn().mockResolvedValue(providerStatus),
+              getProviderCatalog: vi.fn().mockResolvedValue(providerCatalog),
+              createDiagnostics: vi.fn(),
+            }}
+          />
+        </RuntimeStateContext.Provider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/profile');
+  });
 
   it('does not label the local service healthy while the shared recovery state is failed', async () => {
     render(

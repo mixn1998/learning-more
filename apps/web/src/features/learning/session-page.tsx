@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { learningClient, type LearningClient } from '../../client/learning-client.js';
 import { ReviewDialog } from '../review/review-dialog.js';
@@ -13,6 +13,8 @@ type State = Readonly<{
   input: string;
   assistantMarkdown: string;
   assistantPending: boolean;
+  opening: boolean;
+  openingError: boolean;
   pendingUserMessage?:
     | Readonly<{
         id: string;
@@ -48,6 +50,9 @@ type State = Readonly<{
 
 type Action =
   | Readonly<{ type: 'started'; sessionId: string; resourceVersion: number; writable: boolean }>
+  | Readonly<{ type: 'opening-started' }>
+  | Readonly<{ type: 'opening-failed' }>
+  | Readonly<{ type: 'opening-skipped' }>
   | Readonly<{
       type: 'hydrated';
       resourceVersion: number;
@@ -93,6 +98,8 @@ const initial: State = {
   input: '',
   assistantMarkdown: '',
   assistantPending: false,
+  opening: false,
+  openingError: false,
   phase: 'starting',
   progress: 'in_progress',
   activity: 'active',
@@ -111,6 +118,30 @@ function reducer(state: State, action: Action): State {
       writable: action.writable,
       phase: 'ready',
     };
+  }
+  if (action.type === 'opening-started') {
+    return {
+      ...state,
+      opening: true,
+      openingError: false,
+      phase: 'generating',
+      assistantPending: true,
+      sendError: undefined,
+    };
+  }
+  if (action.type === 'opening-failed') {
+    return {
+      ...state,
+      opening: false,
+      openingError: true,
+      phase: 'ready',
+      assistantPending: false,
+      taskId: undefined,
+      sendError: undefined,
+    };
+  }
+  if (action.type === 'opening-skipped') {
+    return { ...state, opening: false, openingError: false, phase: 'ready' };
   }
   if (action.type === 'hydrated') {
     const pendingUserPersisted =
@@ -153,6 +184,8 @@ function reducer(state: State, action: Action): State {
         status: 'submitting',
       },
       sendError: undefined,
+      opening: false,
+      openingError: false,
       taskId: undefined,
       draftArtifactRef: undefined,
     };
@@ -178,6 +211,7 @@ function reducer(state: State, action: Action): State {
     return {
       ...state,
       phase: 'generating',
+      opening: state.opening,
       taskId: action.taskId,
       resourceVersion: action.resourceVersion,
       assistantPending: state.assistantMarkdown === '',
@@ -197,6 +231,8 @@ function reducer(state: State, action: Action): State {
   if (action.type === 'completed')
     return {
       ...state,
+      opening: false,
+      openingError: false,
       phase: state.draftArtifactRef === undefined ? 'ready' : 'stopped',
       assistantPending: false,
       ...(state.draftArtifactRef === undefined ? { pendingUserMessage: undefined } : {}),
@@ -258,6 +294,7 @@ export function SessionPage(props: {
   readonly title?: string;
   readonly courseTitle?: string;
   readonly courseId?: string;
+  readonly autoOpen?: boolean;
   readonly moduleLabel?: string;
   readonly outlineVersionLabel?: string;
   readonly knowledgePoints?: readonly string[];
@@ -266,6 +303,7 @@ export function SessionPage(props: {
   const api = props.client ?? learningClient;
   const [state, dispatch] = useReducer(reducer, initial);
   const inFlight = useRef(new Set<string>());
+  const [navigationError, setNavigationError] = useState<string>();
 
   const hydrate = (snapshot: Awaited<ReturnType<LearningClient['getSession']>>) => {
     dispatch({
@@ -313,9 +351,15 @@ export function SessionPage(props: {
         const refreshed = await api.getSession(started.sessionId);
         hydrate(refreshed);
         dispatch({ type: 'completed' });
+      } else if (
+        props.autoOpen === true &&
+        snapshot.learning.progress === 'in_progress' &&
+        (snapshot.messages?.length ?? 0) === 0
+      ) {
+        await openOpening(started.sessionId, snapshot.resourceVersion);
       }
     });
-  }, [api, props.lessonId]);
+  }, [api, props.autoOpen, props.lessonId]);
 
   useEffect(() => {
     if (state.activity !== 'active' || state.progress !== 'in_progress') return undefined;
@@ -332,6 +376,39 @@ export function SessionPage(props: {
       inFlight.current.delete(key);
     }
   };
+
+  const openOpening = (sessionId: string, resourceVersion: number) =>
+    once('opening', async () => {
+      dispatch({ type: 'opening-started' });
+      try {
+        const opening = await api.openLesson(sessionId, resourceVersion);
+        dispatch({
+          type: 'generating',
+          taskId: opening.taskId,
+          resourceVersion: opening.resourceVersion,
+        });
+        await api.stream(opening.taskId, (event) => {
+          if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+            dispatch({ type: 'delta', markdown: event.data.markdown });
+          }
+        });
+        const refreshed = await api.getSession(sessionId);
+        hydrate(refreshed);
+        dispatch({ type: 'completed' });
+      } catch {
+        try {
+          const recovered = await api.getSession(sessionId);
+          if (recovered.messages?.some((message) => message.role === 'assistant')) {
+            hydrate(recovered);
+            dispatch({ type: 'completed' });
+            return;
+          }
+        } catch {
+          // Keep the explicit opening retry state below when reconciliation also fails.
+        }
+        dispatch({ type: 'opening-failed' });
+      }
+    });
 
   const withLatestSessionVersion = async <T,>(
     work: (
@@ -395,6 +472,11 @@ export function SessionPage(props: {
       dispatch({ type: 'completed' });
     });
 
+  const retryOpening = () => {
+    if (state.sessionId === undefined) return;
+    void openOpening(state.sessionId, state.resourceVersion);
+  };
+
   const stop = () =>
     once('stop', async () => {
       if (state.sessionId === undefined || state.taskId === undefined) return;
@@ -437,6 +519,25 @@ export function SessionPage(props: {
         api.resume(state.sessionId!, resourceVersion),
       );
       dispatch({ type: 'activity', activity: 'active', resourceVersion: result.resourceVersion });
+    });
+
+  const backToOutline = () =>
+    once('back-to-outline', async () => {
+      setNavigationError(undefined);
+      if (
+        state.sessionId !== undefined &&
+        state.activity === 'active' &&
+        state.progress === 'in_progress' &&
+        state.writable
+      ) {
+        try {
+          await pause();
+        } catch {
+          setNavigationError('课程暂停失败，请重试后再返回课程大纲。');
+          return;
+        }
+      }
+      props.onNavigate?.(props.courseId === undefined ? '/' : `/courses/${props.courseId}`);
     });
 
   useSessionWindowLifecycle({
@@ -588,6 +689,8 @@ export function SessionPage(props: {
         courseTitle={props.courseTitle ?? '当前课程'}
         elapsedSeconds={state.actualSeconds}
         generating={state.phase === 'generating'}
+        opening={state.opening}
+        openingError={state.openingError}
         input={state.input}
         messages={messages}
         moduleLabel={props.moduleLabel ?? '正式课程课节'}
@@ -598,18 +701,18 @@ export function SessionPage(props: {
           state: index === 0 ? 'active' : 'pending',
         }))}
         paused={state.activity === 'paused'}
-        sendError={state.sendError}
+        sendError={navigationError ?? state.sendError}
         stopped={state.draftArtifactRef !== undefined}
         title={props.title ?? '当前课节'}
         writable={state.writable && state.progress === 'in_progress'}
         onAbandon={() => void abandon()}
-        onBackToOutline={() =>
-          props.onNavigate?.(props.courseId === undefined ? '/' : `/courses/${props.courseId}`)
-        }
+        onBackToOutline={backToOutline}
         onComplete={() => void finish()}
         onInput={(value) => dispatch({ type: 'input', value })}
         onPause={() => void pause()}
         onRestore={() => void restore()}
+        onRetryOpening={retryOpening}
+        onSkipOpening={() => dispatch({ type: 'opening-skipped' })}
         onResume={() => void resume()}
         onSend={() => void send()}
         onStop={() => void stop()}

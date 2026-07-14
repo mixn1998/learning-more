@@ -58,6 +58,42 @@ describe('compileCandidate', () => {
     });
   });
 
+  it('compiles a real high-freedom draft with more than three topic tags', () => {
+    const result = compileCandidate(
+      markdownFor({
+        ...baseMetadata,
+        topicTags: [
+          'AI token',
+          '算力经济',
+          '货币',
+          'AI 智能体',
+          '机器间交易',
+          '平台治理',
+          '未来推演',
+        ],
+      }),
+      {
+        draftArtifactRef: 'artifact_draft_rich_tags',
+        sourceRefs: ['source_topic'],
+      },
+    );
+
+    expect(result).toMatchObject({
+      valid: true,
+      candidate: {
+        topicTags: [
+          'AI token',
+          '算力经济',
+          '货币',
+          'AI 智能体',
+          '机器间交易',
+          '平台治理',
+          '未来推演',
+        ],
+      },
+    });
+  });
+
   it('rejects a context envelope even when it is fenced as a candidate response', () => {
     expect(
       compileCandidate(

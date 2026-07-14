@@ -8,6 +8,7 @@ import {
   courseAuthoringClient,
   type AuthoringStreamEvent,
   type CourseAuthoringClient,
+  type OutlineSessionView,
 } from '../../client/course-authoring-client.js';
 import { useAppShellHeaderStatus } from '../../state/app-shell-header.js';
 import type { AuthoringStartIntent } from '../../state/authoring-start-intent.js';
@@ -58,6 +59,7 @@ type State = Readonly<{
   resourceVersion?: number;
   savedAsDraft?: boolean;
   candidateMarkdown: string;
+  generationTaskId?: string | undefined;
   candidateVersionId?: string;
   confirmedCourseId?: string;
   draftArtifactRef?: string;
@@ -102,6 +104,7 @@ type Action =
       state: string;
       topic?: string;
       courseMode?: CourseMode;
+      generationTaskId?: string;
       candidateMarkdown?: string;
       candidateVersionId?: string;
       confirmedCourseId?: string;
@@ -113,7 +116,12 @@ type Action =
     }>
   | Readonly<{ type: 'draft-saved'; resourceVersion: number }>
   | Readonly<{ type: 'generation-requested' }>
-  | Readonly<{ type: 'generating'; resourceVersion: number; draftArtifactRef?: string }>
+  | Readonly<{
+      type: 'generating';
+      taskId: string;
+      resourceVersion: number;
+      draftArtifactRef?: string;
+    }>
   | Readonly<{
       type: 'generation-failed';
       resourceVersion: number;
@@ -221,6 +229,7 @@ export function authoringReducer(state: State, action: Action): State {
         phase: phaseFromServer(action.state),
         outlineSessionId: action.outlineSessionId,
         resourceVersion: action.resourceVersion,
+        generationTaskId: action.generationTaskId,
         ...(action.savedAsDraft === undefined ? {} : { savedAsDraft: action.savedAsDraft }),
         ...(action.topic === undefined ? {} : { topic: action.topic }),
         ...(action.courseMode === undefined ? {} : { courseMode: action.courseMode }),
@@ -255,6 +264,7 @@ export function authoringReducer(state: State, action: Action): State {
       return {
         ...state,
         phase: 'generating',
+        generationTaskId: action.taskId,
         resourceVersion: action.resourceVersion,
         candidateMarkdown: '',
         ...(action.draftArtifactRef === undefined
@@ -265,6 +275,7 @@ export function authoringReducer(state: State, action: Action): State {
       return {
         ...state,
         phase: 'generation-failed',
+        generationTaskId: undefined,
         generationFailureCode: action.failureCode,
         resourceVersion: action.resourceVersion,
         ...(action.draftArtifactRef === undefined
@@ -284,12 +295,21 @@ export function authoringReducer(state: State, action: Action): State {
           ? { ...state, candidateVersionId: artifactId }
           : state;
       }
-      if (action.event.type === 'task.completed') return { ...state, phase: 'candidate-ready' };
+      if (action.event.type === 'task.completed')
+        return { ...state, phase: 'candidate-ready', generationTaskId: undefined };
       if (action.event.type === 'task.failed')
         return {
           ...state,
           phase: 'generation-failed',
           generationFailureCode: candidateGenerationFailureFromEvent(action.event.data),
+          generationTaskId: undefined,
+        };
+      if (action.event.type === 'task.cancelled')
+        return {
+          ...state,
+          phase: 'generation-failed',
+          generationFailureCode: 'generation_interrupted',
+          generationTaskId: undefined,
         };
       return state;
     }
@@ -341,6 +361,7 @@ export function AuthoringPage(props: {
   }, [props.initialStartIntent]);
   const [state, dispatch] = useReducer(authoringReducer, initialAuthoringState);
   const inFlight = useRef(new Set<string>());
+  const generationAbortController = useRef<AbortController | undefined>(undefined);
   const startIntentSubmitted = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<File | undefined>(
@@ -351,6 +372,7 @@ export function AuthoringPage(props: {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string>();
+  const [generationCancelBusy, setGenerationCancelBusy] = useState(false);
   const [restoreStatus, setRestoreStatus] = useState<RestoreStatus>(() =>
     props.initialOutlineSessionId === undefined ? 'idle' : 'loading',
   );
@@ -397,8 +419,7 @@ export function AuthoringPage(props: {
               : { tone: 'warning', text: '● 建档进行中 · 未保存' },
   );
 
-  const loadSession = async (outlineSessionId: string) => {
-    const view = await api.getOutlineSession(outlineSessionId);
+  const applySessionView = (view: OutlineSessionView) => {
     dispatch({
       type: 'session-loaded',
       outlineSessionId: view.outlineSessionId,
@@ -406,6 +427,7 @@ export function AuthoringPage(props: {
       state: view.state,
       ...(view.topic === undefined ? {} : { topic: view.topic }),
       ...(view.courseMode === undefined ? {} : { courseMode: view.courseMode }),
+      ...(view.generationTaskId === undefined ? {} : { generationTaskId: view.generationTaskId }),
       ...(typeof view.candidateMarkdown === 'string'
         ? { candidateMarkdown: view.candidateMarkdown }
         : {}),
@@ -425,6 +447,21 @@ export function AuthoringPage(props: {
       ...(view.savedAsDraft === undefined ? {} : { savedAsDraft: view.savedAsDraft }),
       ...(view.messages === undefined ? {} : { messages: view.messages }),
     });
+  };
+
+  const loadSession = async (outlineSessionId: string) => {
+    applySessionView(await api.getOutlineSession(outlineSessionId));
+  };
+
+  const loadCandidateSession = async (outlineSessionId: string) => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const view = await api.getOutlineSession(outlineSessionId);
+      applySessionView(view);
+      if (typeof view.candidateMarkdown === 'string' && view.candidateMarkdown.trim() !== '')
+        return;
+      if (view.state !== 'generating-candidates' && view.candidateVersionId === undefined) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
   };
 
   useEffect(() => {
@@ -447,6 +484,79 @@ export function AuthoringPage(props: {
       current = false;
     };
   }, [props.initialOutlineSessionId]);
+
+  useEffect(() => {
+    if (
+      state.phase !== 'generating' ||
+      state.outlineSessionId === undefined ||
+      state.generationTaskId === undefined
+    ) {
+      return;
+    }
+    const outlineSessionId = state.outlineSessionId;
+    const taskId = state.generationTaskId;
+    const resourceVersion = state.resourceVersion ?? 0;
+    const controller = new AbortController();
+    generationAbortController.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 120_000);
+    let terminalRefresh: Promise<void> | undefined;
+
+    void api
+      .streamGeneration(
+        taskId,
+        {
+          onEvent: (event) => {
+            if (
+              event.type === 'task.completed' ||
+              event.type === 'task.failed' ||
+              event.type === 'task.cancelled'
+            ) {
+              terminalRefresh ??= loadCandidateSession(outlineSessionId).catch(() => undefined);
+            }
+            dispatch({ type: 'stream-event', event });
+          },
+        },
+        controller.signal,
+      )
+      .then(async () => {
+        await (terminalRefresh ?? loadSession(outlineSessionId));
+      })
+      .catch(async () => {
+        if (controller.signal.aborted) {
+          await (terminalRefresh ?? loadSession(outlineSessionId)).catch(() => undefined);
+          return;
+        }
+        const recovered = await Promise.resolve(api.getOutlineSession(outlineSessionId)).catch(
+          () => undefined,
+        );
+        if (recovered !== undefined && recovered.state !== 'generating-candidates') {
+          applySessionView(recovered);
+          return;
+        }
+        dispatch({
+          type: 'generation-failed',
+          resourceVersion,
+          failureCode: 'generation_interrupted',
+          ...(state.draftArtifactRef === undefined
+            ? {}
+            : { draftArtifactRef: state.draftArtifactRef }),
+        });
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
+        if (generationAbortController.current === controller) {
+          generationAbortController.current = undefined;
+        }
+      });
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+      if (generationAbortController.current === controller) {
+        generationAbortController.current = undefined;
+      }
+    };
+  }, [api, state.generationTaskId, state.outlineSessionId, state.phase]);
 
   const once = async (key: string, work: () => Promise<void>) => {
     if (inFlight.current.has(key)) return;
@@ -597,24 +707,28 @@ export function AuthoringPage(props: {
       }
       dispatch({
         type: 'generating',
+        taskId: accepted.taskId,
         resourceVersion: accepted.resourceVersion,
         ...(accepted.draftArtifactRef === undefined
           ? {}
           : { draftArtifactRef: accepted.draftArtifactRef }),
       });
+    });
+
+  const cancelGeneration = () =>
+    once('cancel-generation', async () => {
+      if (state.outlineSessionId === undefined || state.resourceVersion === undefined) return;
+      setGenerationCancelBusy(true);
+      generationAbortController.current?.abort();
       try {
-        await api.streamGeneration(accepted.taskId, {
-          onEvent: (event) => dispatch({ type: 'stream-event', event }),
+        await api.cancelCandidateGeneration({
+          outlineSessionId: state.outlineSessionId,
+          resourceVersion: state.resourceVersion,
+          pageInstanceId: instanceId,
         });
-      } catch {
-        dispatch({
-          type: 'generation-failed',
-          resourceVersion: accepted.resourceVersion,
-          failureCode: 'generation_interrupted',
-          ...(accepted.draftArtifactRef === undefined
-            ? {}
-            : { draftArtifactRef: accepted.draftArtifactRef }),
-        });
+      } finally {
+        await loadSession(state.outlineSessionId).catch(() => undefined);
+        setGenerationCancelBusy(false);
       }
     });
 
@@ -850,6 +964,8 @@ export function AuthoringPage(props: {
       <OutlineWorkspaceView
         assistantPending={state.assistantPending}
         candidatePending={state.phase === 'generating'}
+        generationCancelBusy={generationCancelBusy}
+        onCancelGeneration={() => void cancelGeneration()}
         composerDisabled={['creating', 'generating', 'confirming', 'confirmed'].includes(
           state.phase,
         )}
@@ -896,22 +1012,13 @@ export function AuthoringPage(props: {
         materialTools={materialTools}
         primaryBusyLabel={state.phase === 'generating' ? '正在生成…' : '正在创建…'}
         primaryLabel={workspacePrimaryLabel(state.phase)}
-        secondaryLabel={
-          state.phase === 'confirmed'
-            ? '返回主页'
-            : state.phase === 'candidate-ready'
-              ? '生成新版本'
-              : '继续调整'
-        }
+        secondaryActionVisible={false}
+        secondaryLabel=""
         sendBusy={state.assistantPending || inFlight.current.has('assessment')}
         sendDisabled={!canSubmitAssessment || state.assessment.trim() === ''}
         sendLabel={state.phase === 'assessing' ? '完成评估' : '保存调整'}
         turnError={state.turnError}
-        onAdjust={() => {
-          if (state.phase === 'confirmed') props.onNavigate?.('/');
-          else if (state.phase === 'candidate-ready') void generate();
-          else composerRef.current?.focus();
-        }}
+        onAdjust={() => composerRef.current?.focus()}
         onComposerChange={(value) => dispatch({ type: 'edit-assessment', value })}
         onConfirm={runPrimaryAction}
         onSend={() => void completeAssessment()}

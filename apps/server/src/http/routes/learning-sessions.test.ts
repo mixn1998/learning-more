@@ -32,6 +32,7 @@ function fixture(overrides: Partial<Parameters<typeof registerLearningSessionRou
     module,
     teaching: {
       advanceTurn: vi.fn().mockResolvedValue({ taskId: 'task_01', resourceVersion: 2 }),
+      openLesson: vi.fn().mockResolvedValue({ taskId: 'task_opening_01', resourceVersion: 2 }),
       stopTurn: vi.fn().mockResolvedValue({
         taskId: 'task_01',
         draftArtifactRef: 'draft_task_01',
@@ -82,6 +83,24 @@ describe('LearningSession HTTP contract', () => {
     expect(response.headers.location).toBe('/api/v1/lesson-sessions/session_01');
     expect(response.headers.etag).toBe('"1"');
     expect(response.json()).toMatchObject({ sessionId: 'session_01', leaseToken: 'lease_01' });
+  });
+
+  it('starts an AI-led opening generation without adding a user message', async () => {
+    const { app, options } = fixture();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/lesson-sessions/session_01/opening',
+      headers: { ...headers, 'if-match': '"1"' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ taskId: 'task_opening_01', resourceVersion: 2 });
+    expect(options.teaching.openLesson).toHaveBeenCalledWith(
+      expect.objectContaining({ courseId: 'course_01', lessonId: 'lesson_01' }),
+      expect.objectContaining({ expectedVersion: 1 }),
+    );
+    expect(options.saveUserMessage).not.toHaveBeenCalled();
   });
 
   it('persists a user message then returns its single generation task', async () => {

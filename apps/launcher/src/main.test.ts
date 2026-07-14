@@ -93,6 +93,27 @@ describe('Launcher runtime orchestration', () => {
     expect(launcher.status().state).toBe('healthy');
   });
 
+  it('delegates a changed workspace to Host activation instead of restarting the old server', async () => {
+    const requestWorkspaceActivation = vi.fn().mockResolvedValue({
+      mode: 'activate' as const,
+      targetBuildId: 'build_new',
+    });
+    const adapters = dependencies({ requestWorkspaceActivation });
+    const launcher = createLauncherRuntime(adapters);
+    await launcher.start();
+    adapters.calls.length = 0;
+
+    await launcher.reconnect();
+
+    expect(requestWorkspaceActivation).toHaveBeenCalledTimes(1);
+    expect(adapters.calls).toEqual([]);
+    expect(launcher.status()).toEqual({
+      state: 'rebuilding',
+      crashCount: 0,
+      targetBuildId: 'build_new',
+    });
+  });
+
   it('keeps the launcher available in degraded state when the internal server cannot start', async () => {
     const waitForVerifiedReady = vi
       .fn()
@@ -105,7 +126,7 @@ describe('Launcher runtime orchestration', () => {
     expect(launcher.status()).toEqual({ state: 'degraded', crashCount: 0 });
     expect(adapters.calls).toContain('open');
 
-    await expect(launcher.reconnect()).resolves.toBeUndefined();
+    await expect(launcher.reconnect()).resolves.toEqual({ state: 'healthy', crashCount: 0 });
     expect(launcher.status()).toEqual({ state: 'healthy', crashCount: 0 });
   });
 

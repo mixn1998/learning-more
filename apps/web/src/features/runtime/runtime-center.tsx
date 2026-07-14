@@ -55,6 +55,7 @@ export function RuntimeCenter({
 }) {
   const { state, refresh, recovery, recover: recoverRuntime } = useRuntimeState();
   const navigate = useNavigate();
+  const closeRuntimeCenter = () => navigate(-1);
   const [activeTab, setActiveTab] = useState<'ai' | 'service'>('ai');
   const [stage, setStage] = useState<Stage>('idle');
   const [providerId, setProviderId] = useState('mock');
@@ -457,7 +458,7 @@ export function RuntimeCenter({
       className="rc-frame runtime-center-workspace"
       initialFocusId="runtime-center-title"
       labelledBy="runtime-center-title"
-      onClose={() => navigate('/')}
+      onClose={closeRuntimeCenter}
       open
     >
       <header className="rc-top">
@@ -529,7 +530,7 @@ export function RuntimeCenter({
             <button
               aria-label="关闭"
               className="rc-close"
-              onClick={() => navigate('/')}
+              onClick={closeRuntimeCenter}
               type="button"
             >
               ×

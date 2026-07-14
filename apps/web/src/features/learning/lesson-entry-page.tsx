@@ -4,6 +4,7 @@ import { ContentState } from '@learning-more/ui';
 
 import { learningClient, type LearningClient } from '../../client/learning-client.js';
 import { AbandonedLessonRecord } from './abandoned-lesson-record.js';
+import { toKnowledgePointPresentation } from './knowledge-point-presentation.js';
 import { LessonNavigationWorkspace } from './lesson-navigation-workspace.js';
 import { SessionPage } from './session-page.js';
 
@@ -43,6 +44,7 @@ export function LessonEntryPage(props: {
     return (
       <SessionPage
         client={api}
+        autoOpen
         courseId={preview.courseId}
         courseTitle={courseTitle}
         knowledgePoints={preview.coreKnowledgePoints}
@@ -90,11 +92,14 @@ export function LessonEntryPage(props: {
     <LessonNavigationWorkspace
       courseTitle={courseTitle}
       moduleLabel="正式课程课节"
-      points={preview.coreKnowledgePoints.map((point, index) => ({
-        marker: String(index + 1).padStart(2, '0'),
-        title: point,
-        description: `围绕此知识点完成本课目标：${preview.objective}`,
-      }))}
+      points={preview.coreKnowledgePoints.map((point, index) => {
+        const presentation = toKnowledgePointPresentation(point);
+        return {
+          marker: String(index + 1).padStart(2, '0'),
+          title: presentation.title,
+          description: presentation.summary,
+        };
+      })}
       primaryLabel={
         lessonState.progress === 'completed'
           ? '查看课节记录'

@@ -17,6 +17,7 @@ import {
   terminateVerifiedChild,
   type ManagedChildProcess,
 } from './server-process.js';
+import { requestWorkspaceActivation } from './workspace-activation.js';
 
 export type LocalRuntimeOptions = Readonly<{
   projectRoot: string;
@@ -27,6 +28,8 @@ export type LocalRuntimeOptions = Readonly<{
   webUrl: string;
   allowedOrigin: string;
   openBrowser: boolean;
+  activationRequestPath?: string;
+  activationStatusPath?: string;
   onUnexpectedExit?(): void;
 }>;
 
@@ -307,6 +310,18 @@ export async function createLocalRuntimeAdapters(
       });
       if (!result.terminated) expectedExit = false;
       return result.terminated;
+    },
+    async requestWorkspaceActivation() {
+      if (
+        options.activationRequestPath === undefined ||
+        options.activationStatusPath === undefined
+      ) {
+        return { mode: 'reconnect' } as const;
+      }
+      return requestWorkspaceActivation({
+        requestPath: options.activationRequestPath,
+        statusPath: options.activationStatusPath,
+      });
     },
     async syncFrontend() {
       if (options.openBrowser) {

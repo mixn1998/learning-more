@@ -13,7 +13,6 @@ import {
   COURSE_FIXTURE_CLOSED,
   COURSE_FIXTURE_CLOSED_STATES,
   COURSE_FIXTURE_DIRECTORY,
-  COURSE_FIXTURE_MODULES,
   COURSE_FIXTURE_OUTLINE,
   COURSE_FIXTURE_REVIEW_DOCUMENT,
   COURSE_FIXTURE_REVISION_CANDIDATE,
@@ -203,7 +202,6 @@ export function CourseFixture(props: { readonly fixtureId: CourseFixtureId }) {
           closed ? undefined : { lesson_04: '阶段 Review 已保存，可恢复原始会话。' }
         }
         lessonStates={closed ? COURSE_FIXTURE_CLOSED_STATES : COURSE_FIXTURE_ACTIVE_STATES}
-        modules={COURSE_FIXTURE_MODULES}
         onCloseCourse={() => undefined}
         onDeleteCourse={async () => undefined}
         onModifyOutline={() => undefined}

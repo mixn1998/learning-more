@@ -35,6 +35,7 @@ export const LauncherRuntimeStatusSchema = z.strictObject({
     'healthy',
     'degraded',
     'restarting',
+    'rebuilding',
     'backoff',
     'blocked_external_port',
     'blocked_identity_mismatch',
@@ -44,6 +45,7 @@ export const LauncherRuntimeStatusSchema = z.strictObject({
     'blocked_migration_failed',
   ]),
   crashCount: z.number().int().nonnegative(),
+  targetBuildId: z.string().trim().min(1).max(200).optional(),
 });
 
 export type LauncherRuntimeStatus = Readonly<z.infer<typeof LauncherRuntimeStatusSchema>>;

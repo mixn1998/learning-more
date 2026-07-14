@@ -30,7 +30,7 @@ export async function fetchRuntimeReadiness(signal: AbortSignal): Promise<Runtim
 
 export interface RuntimeCenterClient {
   reconnect(): Promise<LauncherRuntimeStatus>;
-  waitUntilReady(): Promise<RuntimeReady>;
+  waitUntilReady(targetBuildId?: string): Promise<RuntimeReady>;
   refreshAi(): Promise<void>;
   reconnectAi?(): Promise<ProviderRuntimeStatus>;
   getProviderStatus(): Promise<ProviderRuntimeStatus>;
@@ -147,14 +147,19 @@ export const runtimeCenterClient: RuntimeCenterClient = {
     return { diagnosticId: response.artifactRef };
   },
   reconnect: () => controlWrite('reconnect'),
-  async waitUntilReady() {
-    const deadline = Date.now() + 10_000;
+  async waitUntilReady(targetBuildId) {
+    const deadline = Date.now() + (targetBuildId === undefined ? 10_000 : 5 * 60_000);
     while (Date.now() < deadline) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1_000);
       try {
         const readiness = await fetchRuntimeReadiness(controller.signal);
-        if (readiness.status === 'ready') return readiness;
+        if (
+          readiness.status === 'ready' &&
+          (targetBuildId === undefined || readiness.buildId === targetBuildId)
+        ) {
+          return readiness;
+        }
       } catch {
         // The verified server can be unavailable while Launcher replaces it.
       } finally {

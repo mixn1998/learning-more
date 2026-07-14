@@ -43,8 +43,8 @@ describe('LessonEntryPage', () => {
     render(<LessonEntryPage lessonId="lesson_01" client={client} />);
 
     expect(await screen.findByRole('heading', { name: 'Probability spaces' })).toBeInTheDocument();
-    expect(screen.getByText('sample space')).toBeInTheDocument();
-    expect(screen.getByText('event algebra')).toBeInTheDocument();
+    expect(screen.getAllByText('sample space')).toHaveLength(2);
+    expect(screen.getAllByText('event algebra')).toHaveLength(2);
     expect(start).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '开始学习' }));

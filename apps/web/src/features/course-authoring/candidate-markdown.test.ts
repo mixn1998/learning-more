@@ -28,5 +28,13 @@ describe('candidate Markdown adapter', () => {
 
     expect(result?.title).toBe('候选 A');
     expect(result?.modules[0]?.lessons[0]?.title).toBe('第一课');
+    expect(result?.bodyMarkdown).toBe('## 候选 A\n- 第一课');
+  });
+
+  it('preserves AI-defined heading depth and non-module sections in the body projection', () => {
+    const markdown = `# 课程地图\n\n## 案例工作坊\n\n### 关键决策\n- 识别约束\n\n## 延伸阅读\n> 一条支线`;
+    const result = parseCandidateMarkdown(markdown);
+
+    expect(result?.bodyMarkdown).toBe(markdown);
   });
 });

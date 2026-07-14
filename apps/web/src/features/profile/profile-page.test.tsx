@@ -36,7 +36,7 @@ function version(overrides: Partial<PortraitVersion> = {}): PortraitVersion {
   };
 }
 
-function client(): ProfileClient {
+function client(overrides: Partial<ProfileClient> = {}): ProfileClient {
   return {
     getProfile: vi.fn().mockResolvedValue({ profileSchemaVersion: 1 }),
     getEvidence: vi.fn().mockResolvedValue([
@@ -62,6 +62,7 @@ function client(): ProfileClient {
         resourceVersion: 2,
       }),
     ),
+    ...overrides,
   };
 }
 
@@ -99,5 +100,25 @@ describe('ProfilePage', () => {
 
     expect(await screen.findByRole('heading', { name: '刷新后的有边界观察' })).toBeVisible();
     expect(api.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('localizes a completed zero-insight portrait instead of replaying legacy English fallback copy', async () => {
+    const legacyEnglishPortrait = version({
+      title: 'Learning Portrait V2 — Insufficient Evidence',
+      summary: 'The frozen evidence pack contains no eligible evidence IDs or evidence records.',
+      claims: [],
+    });
+    render(
+      <MemoryRouter initialEntries={['/profile']}>
+        <ProfilePage
+          client={client({ getPortrait: vi.fn().mockResolvedValue(legacyEnglishPortrait) })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: '学习画像：证据尚不足' })).toBeVisible();
+    expect(screen.getByText(/当前冻结的证据尚不足以形成可独立验证的学习观察/)).toBeVisible();
+    expect(document.body).not.toHaveTextContent('Learning Portrait V2');
+    expect(document.body).not.toHaveTextContent('The frozen evidence pack');
   });
 });

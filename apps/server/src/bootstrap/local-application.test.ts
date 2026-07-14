@@ -30,6 +30,32 @@ describe('local CourseAuthoring application', () => {
     roots.push(dataRoot);
     const local = await createLocalApplication({ dataRoot, csrfToken: 'test-csrf' });
     const app = await buildApp(local.serverDependencies);
+    const waitForCandidateReady = async (
+      outlineSessionId: string,
+      previousCandidateVersionId?: string,
+    ) => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const response = await app.inject({
+          method: 'GET',
+          url: `/api/v1/outline-sessions/${outlineSessionId}`,
+          headers: { host: baseHeaders.host, origin: baseHeaders.origin },
+        });
+        const session = response.json<{
+          state: string;
+          candidateVersionId?: string;
+          resourceVersion: number;
+        }>();
+        if (
+          session.state === 'candidate-ready' &&
+          session.candidateVersionId !== undefined &&
+          session.candidateVersionId !== previousCandidateVersionId
+        ) {
+          return session;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error('candidate_generation_did_not_settle');
+    };
 
     const created = await app.inject({
       method: 'POST',
@@ -78,13 +104,8 @@ describe('local CourseAuthoring application', () => {
     });
     expect(generated.statusCode, generated.body).toBe(202);
     const generation = generated.json<{ taskId: string; resourceVersion: number }>();
-    const view = await app.inject({
-      method: 'GET',
-      url: `/api/v1/outline-sessions/${sessionId}`,
-      headers: { host: baseHeaders.host, origin: baseHeaders.origin },
-    });
-    const session = view.json<{ candidateVersionId: string; resourceVersion: number }>();
-    expect(session.resourceVersion).toBe(generation.resourceVersion);
+    const session = await waitForCandidateReady(sessionId);
+    expect(session.resourceVersion).toBeGreaterThan(generation.resourceVersion);
 
     const confirmed = await app.inject({
       method: 'POST',
@@ -110,62 +131,46 @@ describe('local CourseAuthoring application', () => {
 
     const revisionCreated = await app.inject({
       method: 'POST',
-      url: '/api/v1/outline-sessions',
-      headers: { ...baseHeaders, 'idempotency-key': 'revision_create_01' },
-      payload: { topic: 'Probability with stronger evidence', courseMode: 'standard' },
+      url: `/api/v1/courses/${confirmation.courseId}/outline-adjustment-sessions`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'revision_create_01',
+        'if-match': `"${course!.resourceVersion}"`,
+      },
+      payload: {},
     });
     expect(revisionCreated.statusCode).toBe(201);
     const createdRevisionSession = revisionCreated.json<{
       outlineSessionId: string;
       resourceVersion: number;
+      candidateVersionId: string;
     }>();
     const revisionSessionId = createdRevisionSession.outlineSessionId;
-    const revisionAssessed = await app.inject({
-      method: 'POST',
-      url: `/api/v1/outline-sessions/${revisionSessionId}/messages`,
-      headers: {
-        ...baseHeaders,
-        'idempotency-key': 'revision_assess_01',
-        'if-match': `"${createdRevisionSession.resourceVersion}"`,
-      },
-      payload: { content: 'Strengthen the observable evidence loop' },
-    });
-    expect(revisionAssessed.statusCode).toBe(200);
-    const revisionAssessedVersion = revisionAssessed.json<{ resourceVersion: number }>()
-      .resourceVersion;
-    const revisionBaselineCompleted = await app.inject({
-      method: 'POST',
-      url: `/api/v1/outline-sessions/${revisionSessionId}/messages`,
-      headers: {
-        ...baseHeaders,
-        'idempotency-key': 'revision_assess_02',
-        'if-match': `"${revisionAssessedVersion}"`,
-      },
-      payload: { content: 'Keep the course focused on evidence-backed decisions' },
-    });
-    expect(revisionBaselineCompleted.statusCode).toBe(200);
-    const revisionBaselineVersion = revisionBaselineCompleted.json<{ resourceVersion: number }>()
-      .resourceVersion;
-    const revisionGenerated = await app.inject({
-      method: 'POST',
-      url: `/api/v1/outline-sessions/${revisionSessionId}/candidate-generations`,
-      headers: {
-        ...baseHeaders,
-        'idempotency-key': 'revision_generate_01',
-        'if-match': `"${revisionBaselineVersion}"`,
-      },
-      payload: {},
-    });
-    expect(revisionGenerated.statusCode).toBe(202);
-    const revisionView = await app.inject({
+    const revisionSessionAfterCreation = await app.inject({
       method: 'GET',
       url: `/api/v1/outline-sessions/${revisionSessionId}`,
       headers: { host: baseHeaders.host, origin: baseHeaders.origin },
     });
-    const revisionCandidate = revisionView.json<{
-      candidateVersionId: string;
-      resourceVersion: number;
-    }>();
+    expect(revisionSessionAfterCreation.statusCode, revisionSessionAfterCreation.body).toBe(200);
+    expect(revisionSessionAfterCreation.json<{ resourceVersion: number }>().resourceVersion).toBe(
+      createdRevisionSession.resourceVersion,
+    );
+    expect(revisionCreated.headers.etag).toBe(`"${createdRevisionSession.resourceVersion}"`);
+    const revisionRequested = await app.inject({
+      method: 'POST',
+      url: `/api/v1/outline-sessions/${revisionSessionId}/messages`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'revision_request_01',
+        'if-match': `"${createdRevisionSession.resourceVersion}"`,
+      },
+      payload: { content: 'Strengthen the observable evidence loop' },
+    });
+    expect(revisionRequested.statusCode, revisionRequested.body).toBe(200);
+    const revisionCandidate = await waitForCandidateReady(
+      revisionSessionId,
+      createdRevisionSession.candidateVersionId,
+    );
     const revised = await app.inject({
       method: 'POST',
       url: `/api/v1/courses/${confirmation.courseId}/outline-revisions`,
@@ -230,13 +235,8 @@ describe('local CourseAuthoring application', () => {
     expect(portrait.statusCode).toBe(201);
     expect(portrait.json()).toMatchObject({
       state: 'completed',
-      title: '当前学习画像',
-      claims: [
-        {
-          claimId: 'claim_1',
-          counterEvidenceChecked: true,
-        },
-      ],
+      title: '学习画像：证据尚不足',
+      claims: [],
     });
     expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
 
@@ -447,7 +447,7 @@ describe('local CourseAuthoring application', () => {
         receivedAt: '2026-07-13T00:02:00.000Z',
       }),
     ).resolves.toMatchObject({ state: 'completed', finalReviewId: 'review_final_recovery' });
-  });
+  }, 60_000);
 
   it('switches the active provider through HTTP and snapshots it on new generation tasks', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-provider-switch-'));

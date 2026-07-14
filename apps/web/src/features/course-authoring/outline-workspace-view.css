@@ -114,12 +114,30 @@
 .outline-workspace-view .ow-workbench {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(480px, 1.08fr);
+  align-items: start;
   gap: 12px;
   margin-top: 12px;
+  min-height: 800px;
+  height: min(960px, calc(100dvh - 120px));
 }
 
 .outline-workspace-view .ow-panel {
   overflow: hidden;
+}
+
+.outline-workspace-view .ow-panel--conversation {
+  position: sticky;
+  top: 88px;
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+}
+
+.outline-workspace-view .ow-panel--conversation .ow-panel-head,
+.outline-workspace-view .ow-panel--conversation .ow-composer,
+.outline-workspace-view .ow-panel--conversation .ow-conversation-actions {
+  flex: none;
 }
 
 .outline-workspace-view .ow-panel-head {
@@ -141,9 +159,12 @@
   display: grid;
   align-content: start;
   gap: 22px;
-  min-height: 610px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px 23px;
   background: #fff;
+  flex: 1 1 auto;
 }
 
 .outline-workspace-view .ow-ai {
@@ -218,6 +239,15 @@
   background: var(--paper-2);
 }
 
+.outline-workspace-view .ow-conversation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 13px 15px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
 .outline-workspace-view .ow-composer-box {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -266,6 +296,28 @@
   padding: 20px;
   font-size: 14px;
   line-height: 1.65;
+}
+
+.outline-workspace-view .ow-panel--outline {
+  position: sticky;
+  top: 88px;
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
+  flex-direction: column;
+  align-self: start;
+}
+
+.outline-workspace-view .ow-panel--outline .ow-panel-head,
+.outline-workspace-view .ow-panel--outline .ow-footer {
+  flex: none;
+}
+
+.outline-workspace-view .ow-panel--outline .ow-outline {
+  min-height: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
 }
 
 .outline-workspace-view .ow-outline-title {
@@ -409,11 +461,27 @@
 @media (max-width: 1000px) {
   .outline-workspace-view .ow-workbench {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
   }
 
-  .outline-workspace-view .ow-chat,
-  .outline-workspace-view .ow-outline {
-    min-height: auto;
+  .outline-workspace-view .ow-panel--conversation {
+    position: static;
+    height: min(640px, calc(100dvh - 250px));
+  }
+
+  .outline-workspace-view .ow-chat {
+    min-height: 0;
+  }
+
+  .outline-workspace-view .ow-panel--outline {
+    position: static;
+    height: auto;
+    max-height: none;
+  }
+
+  .outline-workspace-view .ow-panel--outline .ow-outline {
+    overflow-y: visible;
   }
 }
 

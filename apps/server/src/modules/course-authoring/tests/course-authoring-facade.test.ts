@@ -37,12 +37,13 @@ function setup(
   } = {},
 ) {
   const authoring = createInMemoryCourseAuthoringRepositories();
+  const courses = createInMemoryCourseCreationRepositories();
   let id = 0;
   let generationCalls = 0;
   const profileCheckpoints: unknown[] = [];
   const facade = createCourseAuthoringFacade({
     authoring,
-    courses: createInMemoryCourseCreationRepositories(),
+    courses,
     unitOfWork,
     authoringAgent: {
       respond: async ({ completedAssessmentRounds }) =>
@@ -52,6 +53,7 @@ function setup(
       plan: async () => ({ action: 'patch', rationale: 'contained change', targetModuleIds: [] }),
     },
     candidateGeneration: {
+      recover: async () => undefined,
       generate: async () => {
         generationCalls += 1;
         return { taskId: 'task_01', state: 'running', resourceVersion: 7 };
@@ -68,10 +70,93 @@ function setup(
       ? {}
       : { outlineSessionDraftStore: options.outlineSessionDraftStore }),
   });
-  return { authoring, facade, generationCalls: () => generationCalls, profileCheckpoints };
+  return { authoring, courses, facade, generationCalls: () => generationCalls, profileCheckpoints };
 }
 
 describe('CourseAuthoring public facade', () => {
+  it('creates an adjustment session from the current saved outline candidate', async () => {
+    const { authoring, courses, facade } = setup();
+    await authoring.candidateVersions.save(
+      tx,
+      {
+        id: 'candidate_v1',
+        outlineSessionId: 'original_session',
+        generationTaskId: 'task_v1',
+        draftArtifactRef: 'draft_v1',
+        candidate: {
+          outlineMarkdown: '# 微积分\n\n## 极限\n### 极限是什么',
+          courseGoals: ['理解变化'],
+          disciplineTag: '数学',
+          topicTags: ['微积分'],
+          modules: [{ id: 'module_limit', title: '极限', lessonIds: ['lesson_limit'] }],
+          lessons: [
+            {
+              id: 'lesson_limit',
+              title: '极限是什么',
+              objective: '理解极限',
+              coreKnowledgePoints: ['极限'],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 30,
+              sourceRefs: ['source_topic'],
+            },
+          ],
+        },
+        createdAt: context.requestedAt,
+        resourceVersion: 0,
+      },
+      0,
+    );
+    await courses.outlineVersions.save(
+      tx,
+      {
+        id: 'outline_v1',
+        courseId: 'course_1',
+        sourceCandidateVersionId: 'candidate_v1',
+        outlineMarkdown: '# 微积分\n\n## 极限\n### 极限是什么',
+        disciplineTag: '数学',
+        topicTags: ['微积分'],
+        createdAt: context.requestedAt,
+        resourceVersion: 0,
+      },
+      0,
+    );
+    await courses.courses.save(
+      tx,
+      {
+        id: 'course_1',
+        title: '微积分',
+        courseMode: 'standard',
+        outlineVersionId: 'outline_v1',
+        lessonIds: [],
+        status: 'active',
+        createdAt: context.requestedAt,
+        resourceVersion: 0,
+      },
+      0,
+    );
+
+    const created = await facade.execute(
+      { type: 'CreateOutlineAdjustmentSession', courseId: 'course_1' },
+      { ...context, expectedVersion: 1 },
+    );
+    if (created.value.kind !== 'outline-session') throw new Error('unexpected result');
+    const view = await facade.query(
+      { type: 'GetOutlineSession', outlineSessionId: created.value.outlineSessionId },
+      queryContext,
+    );
+
+    expect(created).toMatchObject({
+      resourceVersion: 1,
+      value: { state: 'candidate-ready', completedAssessmentRounds: 3 },
+    });
+    expect(view).toMatchObject({
+      topic: '微积分',
+      candidateVersionId: 'candidate_v1',
+      candidateMarkdown: '# 微积分\n\n## 极限\n### 极限是什么',
+      messages: [],
+    });
+  });
+
   it('permanently deletes an unconfirmed outline session at the expected version', async () => {
     const stageDelete = vi.fn(async () => ({
       outlineSessionId: 'session_1',
@@ -255,5 +340,38 @@ describe('CourseAuthoring public facade', () => {
         { ...context, commandId: 'command_02', expectedVersion: 0 },
       ),
     ).rejects.toBeInstanceOf(RepositoryVersionConflictError);
+  });
+
+  it('projects the active candidate task for reconnecting clients', async () => {
+    const { authoring, facade } = setup();
+    const created = await facade.execute(
+      { type: 'CreateOutlineSession', topic: 'probability', courseMode: 'standard' },
+      context,
+    );
+    if (created.value.kind !== 'outline-session') throw new Error('unexpected result');
+    const record = await authoring.outlineSessions.get(created.value.outlineSessionId);
+    if (record === undefined) throw new Error('missing session');
+    await authoring.outlineSessions.save(
+      tx,
+      {
+        ...record,
+        session: {
+          ...record.session,
+          state: 'generating-candidates',
+          activeCandidateTaskId: 'task_active',
+        },
+      },
+      record.resourceVersion,
+    );
+
+    await expect(
+      facade.query(
+        { type: 'GetOutlineSession', outlineSessionId: created.value.outlineSessionId },
+        queryContext,
+      ),
+    ).resolves.toMatchObject({
+      state: 'generating-candidates',
+      generationTaskId: 'task_active',
+    });
   });
 });

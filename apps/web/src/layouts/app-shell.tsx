@@ -263,32 +263,38 @@ export function AppShell() {
     return () => controller.abort();
   }, [recoveryCoordinator, requestVersion]);
 
-  const recover = useCallback(
-    () =>
-      recoveryCoordinator.recover({
-        verify: async () => undefined,
-        reconnect: () => runtimeCenterClient.reconnect(),
-        waitUntilReady: () => runtimeCenterClient.waitUntilReady(),
-        refreshRuntime: async (readiness) => {
-          const recoveredBuildId =
-            readiness.protocolVersion === clientIdentity.protocolVersion &&
-            readiness.buildId !== clientIdentity.buildId
-              ? readiness.buildId
-              : undefined;
-          recoveredBuildIdRef.current = recoveredBuildId;
-          setState({
-            kind: 'loaded',
-            readiness,
-            version: evaluateRuntimeVersion(readiness, clientIdentity, { recoveredBuildId }),
-          });
-        },
-        refreshAi: async () => {
-          const provider = await runtimeCenterClient.getProviderStatus();
-          setProviderLabel(provider.providerId);
-        },
-      }),
-    [recoveryCoordinator],
-  );
+  const recover = useCallback(async () => {
+    let targetBuildId: string | undefined;
+    await recoveryCoordinator.recover({
+      verify: async () => undefined,
+      reconnect: async () => {
+        const status = await runtimeCenterClient.reconnect();
+        targetBuildId = status.targetBuildId;
+        return status;
+      },
+      waitUntilReady: (target) => runtimeCenterClient.waitUntilReady(target),
+      refreshRuntime: async (readiness) => {
+        const recoveredBuildId =
+          readiness.protocolVersion === clientIdentity.protocolVersion &&
+          readiness.buildId !== clientIdentity.buildId
+            ? readiness.buildId
+            : undefined;
+        recoveredBuildIdRef.current = recoveredBuildId;
+        setState({
+          kind: 'loaded',
+          readiness,
+          version: evaluateRuntimeVersion(readiness, clientIdentity, { recoveredBuildId }),
+        });
+      },
+      refreshAi: async () => {
+        const provider = await runtimeCenterClient.getProviderStatus();
+        setProviderLabel(provider.providerId);
+      },
+    });
+    if (targetBuildId !== undefined && targetBuildId !== clientIdentity.buildId) {
+      globalThis.location.reload();
+    }
+  }, [recoveryCoordinator]);
 
   useEffect(() => {
     const timer = setInterval(refresh, 2_000);
