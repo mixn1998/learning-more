@@ -1,6 +1,5 @@
 import type { CourseArchiveView } from '@learning-more/contracts';
 
-import { toLessonKnowledgeSummary } from '../learning/knowledge-point-presentation.js';
 import { projectOutlineMarkdown } from './outline-markdown-projection.js';
 
 export type CourseLessonProgress = 'not_started' | 'in_progress' | 'abandoned' | 'completed';
@@ -27,7 +26,6 @@ function lessonStateLabel(
 export function OutlineView(props: {
   readonly course: CourseArchiveView;
   readonly lessonStates: Readonly<Record<string, CourseLessonRuntimeState | undefined>>;
-  readonly lessonDescriptions?: Readonly<Record<string, string | undefined>> | undefined;
   readonly onOpenLesson: (lessonId: string, destination: 'lesson' | 'record') => void;
 }) {
   const lessons = props.course.lessons ?? [];
@@ -35,6 +33,14 @@ export function OutlineView(props: {
   const projection = projectOutlineMarkdown(
     props.course.outlineMarkdown ?? '',
     lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+  );
+  const summaryByLessonId = new Map(
+    [...projection.modules.flatMap((module) => module.lessons), ...projection.ungroupedLessons]
+      .filter(
+        (lesson): lesson is typeof lesson & { lessonId: string; summary: string } =>
+          lesson.lessonId !== undefined && lesson.summary !== undefined,
+      )
+      .map((lesson) => [lesson.lessonId, lesson.summary] as const),
   );
   const modules = [
     ...projection.modules,
@@ -103,12 +109,7 @@ export function OutlineView(props: {
                     </span>
                     <div className="course-lesson__copy">
                       <b>{lesson.title}</b>
-                      <p>
-                        {props.lessonDescriptions?.[lesson.lessonId] ??
-                          (lesson.coreKnowledgePoints.length === 0
-                            ? lesson.objective
-                            : `${toLessonKnowledgeSummary(lesson.coreKnowledgePoints).join('、')}。`)}
-                      </p>
+                      <p>{summaryByLessonId.get(lesson.lessonId) ?? lesson.objective}</p>
                     </div>
                     <span className="course-lesson__state">
                       {lessonStateLabel(progress, closed, recommended)}

@@ -15,6 +15,8 @@ export function createGenerationExecution(options: {
       if (TERMINAL.has(task.status)) return task;
       const ran = await options.runtime.runNext();
       if (ran === undefined) {
+        const recovered = await options.runtime.recoverExpiredLeases();
+        if (recovered > 0) continue;
         throw Object.assign(new Error('generation_task_not_dispatchable'), {
           code: 'generation_task_not_dispatchable',
           taskId,

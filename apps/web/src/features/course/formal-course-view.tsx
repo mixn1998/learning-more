@@ -9,8 +9,8 @@ import { AiContent, Button, Dialog } from '@learning-more/ui';
 
 import { courseModeDefinition } from '../../course-mode-registry.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
-import { toLessonKnowledgeSummary } from '../learning/knowledge-point-presentation.js';
 import { CourseArchiveDangerZone } from '../review/course-archive-danger-zone.js';
+import { projectOutlineMarkdown } from './outline-markdown-projection.js';
 import { OutlineView, type CourseLessonRuntimeState } from './outline-view.js';
 import { OutlineVersionHistory } from './outline-version-history.js';
 
@@ -28,7 +28,6 @@ export function FormalCourseView(props: {
   readonly course: CourseArchiveView;
   readonly currentOutline?: CourseOutlineVersionView | undefined;
   readonly lessonStates: Readonly<Record<string, CourseLessonRuntimeState | undefined>>;
-  readonly lessonDescriptions?: Readonly<Record<string, string | undefined>> | undefined;
   readonly availableCourses?: readonly CourseDirectoryItem[] | undefined;
   readonly initiallyOpenDelete?: boolean | undefined;
   readonly onCloseCourse: () => void;
@@ -47,6 +46,20 @@ export function FormalCourseView(props: {
   useCourseModeTheme(course.courseMode);
 
   const lessons = course.lessons ?? [];
+  const projectedSummaryByLessonId = useMemo(() => {
+    const projection = projectOutlineMarkdown(
+      course.outlineMarkdown ?? '',
+      lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+    );
+    return new Map(
+      [...projection.modules.flatMap((module) => module.lessons), ...projection.ungroupedLessons]
+        .filter(
+          (lesson): lesson is typeof lesson & { lessonId: string; summary: string } =>
+            lesson.lessonId !== undefined && lesson.summary !== undefined,
+        )
+        .map((lesson) => [lesson.lessonId, lesson.summary] as const),
+    );
+  }, [course.outlineMarkdown, lessons]);
   const completed =
     course.status === 'closed'
       ? lessons.length
@@ -130,7 +143,6 @@ export function FormalCourseView(props: {
       <div className="course-layout">
         <OutlineView
           course={course}
-          lessonDescriptions={props.lessonDescriptions}
           lessonStates={props.lessonStates}
           onOpenLesson={(lessonId, destination) =>
             props.onNavigate(
@@ -172,11 +184,7 @@ export function FormalCourseView(props: {
           ) : recommended === undefined ? null : (
             <section className="course-recommendation">
               <strong>{recommended.title}</strong>
-              <p>
-                {recommended.coreKnowledgePoints.length === 0
-                  ? recommended.objective
-                  : `${toLessonKnowledgeSummary(recommended.coreKnowledgePoints).join('、')}。`}
-              </p>
+              <p>{projectedSummaryByLessonId.get(recommended.lessonId) ?? recommended.objective}</p>
               <Button
                 type="button"
                 variant="primary"

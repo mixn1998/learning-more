@@ -198,9 +198,6 @@ export function CourseFixture(props: { readonly fixtureId: CourseFixtureId }) {
         availableCourses={COURSE_FIXTURE_DIRECTORY}
         course={closed ? COURSE_FIXTURE_CLOSED : COURSE_FIXTURE_ACTIVE}
         currentOutline={COURSE_FIXTURE_OUTLINE}
-        lessonDescriptions={
-          closed ? undefined : { lesson_04: '阶段 Review 已保存，可恢复原始会话。' }
-        }
         lessonStates={closed ? COURSE_FIXTURE_CLOSED_STATES : COURSE_FIXTURE_ACTIVE_STATES}
         onCloseCourse={() => undefined}
         onDeleteCourse={async () => undefined}

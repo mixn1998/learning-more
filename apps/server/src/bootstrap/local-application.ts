@@ -2569,7 +2569,18 @@ export async function createLocalApplication(options: {
       planFlows: {
         async requestPreview(input, commandId) {
           const requested = await planFlows.requestPreview(input, commandId);
-          const task = await generationExecution.awaitTerminal(requested.generationTaskId);
+          let task;
+          try {
+            task = await generationExecution.awaitTerminal(requested.generationTaskId);
+          } catch (error) {
+            const errorCode =
+              typeof error === 'object' && error !== null && 'code' in error
+                ? String(error.code)
+                : error instanceof Error
+                  ? error.message
+                  : 'generation_task_not_dispatchable';
+            return planFlows.fail(requested.id, errorCode, `draft_${requested.generationTaskId}`);
+          }
           const markdown = task.draftMarkdown?.trim() ?? '';
           if (task.status !== 'completed' || markdown === '') {
             return planFlows.fail(

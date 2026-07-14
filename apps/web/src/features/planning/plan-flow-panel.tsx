@@ -40,6 +40,19 @@ function weeklyEstimate(minutes: number, days: number): string {
   return `预计每周 ${hours} 小时${remainder === 0 ? '' : ` ${remainder} 分钟`}`;
 }
 
+function previewFailureMessage(errorCode?: string): string {
+  if (errorCode === 'generation_task_not_dispatchable') {
+    return '后台生成队列暂时不可用，请重试。';
+  }
+  if (errorCode === 'generation_timeout' || errorCode === 'provider_timeout') {
+    return '计划预览生成超时，请重试。';
+  }
+  if (errorCode === 'plan_preview_invalid') {
+    return 'AI 返回的排期结构未通过校验，请重试。';
+  }
+  return '预览生成失败，输入约束已保留。';
+}
+
 function courseStats(course: HomeCourse, lessons: readonly HomeLesson[]) {
   const related = lessons.filter((lesson) => lesson.courseId === course.courseId);
   const remaining = related.filter(
@@ -134,18 +147,22 @@ export function PlanFlowPanel(props: {
     setBusy(true);
     setError(undefined);
     try {
-      setPreview(
-        await props.onPreview({
-          courseIds: selectedCourseIds,
-          lessonIds: selectedLessonIds,
-          startDate,
-          dailyTargetMinutes,
-          learningDays,
-          preserveExistingDates,
-          rescheduleOverdue,
-          strategy,
-        }),
-      );
+      const result = await props.onPreview({
+        courseIds: selectedCourseIds,
+        lessonIds: selectedLessonIds,
+        startDate,
+        dailyTargetMinutes,
+        learningDays,
+        preserveExistingDates,
+        rescheduleOverdue,
+        strategy,
+      });
+      if (result.state === 'failed') {
+        setPreview(undefined);
+        setError(previewFailureMessage(result.errorCode));
+      } else {
+        setPreview(result);
+      }
     } catch {
       setError('预览生成失败，输入约束已保留。');
     } finally {

@@ -7,6 +7,7 @@ export type OutlineProjectionLesson = Readonly<{
   key: string;
   title: string;
   markdown: string;
+  summary?: string | undefined;
   lessonId?: string | undefined;
 }>;
 
@@ -39,6 +40,64 @@ function stripInlineMarkdown(value: string): string {
     .replace(/[`*_~]/gu, '')
     .replace(/\s+#+\s*$/u, '')
     .trim();
+}
+
+function firstSummarySentence(value: string): string | undefined {
+  const normalized = value.replace(/\s+/gu, ' ').trim();
+  if (normalized === '') return undefined;
+  const sentenceEnd = normalized.search(/[。！？!?]/u);
+  return sentenceEnd < 0 ? normalized : normalized.slice(0, sentenceEnd + 1);
+}
+
+export function extractOutlineLessonSummary(markdown: string): string | undefined {
+  const lines = markdown.replace(/\r\n?/gu, '\n').split('\n');
+  const proseParagraphs: string[] = [];
+  let paragraph: string[] = [];
+  let fenced = false;
+  let sawLessonHeading = false;
+
+  const flushParagraph = () => {
+    if (paragraph.length > 0) proseParagraphs.push(paragraph.join(' '));
+    paragraph = [];
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (/^```/u.test(trimmed)) {
+      fenced = !fenced;
+      flushParagraph();
+      continue;
+    }
+    if (fenced) continue;
+
+    if (/^#{1,6}\s+/u.test(trimmed)) {
+      flushParagraph();
+      if (sawLessonHeading) break;
+      sawLessonHeading = true;
+      continue;
+    }
+    if (trimmed === '') {
+      flushParagraph();
+      continue;
+    }
+    if (/^(?:>|\||[-+*]\s|\d+[.)、]\s|<{1,2}[A-Za-z!/]|-{3,}$)/u.test(trimmed)) {
+      flushParagraph();
+      continue;
+    }
+
+    const plain = stripInlineMarkdown(trimmed).replace(/\s+/gu, ' ').trim();
+    const labelled = /^(?:一句话摘要|本节摘要|课节摘要|摘要)\s*[:：]\s*(.+)$/u.exec(plain);
+    if (labelled?.[1] !== undefined) return firstSummarySentence(labelled[1]);
+    if (
+      /^(?:关键词|核心知识点|知识节点|前置知识|学习目标|目标|时长|预计时长)\s*[:：]/u.test(plain)
+    ) {
+      flushParagraph();
+      continue;
+    }
+    if (plain !== '') paragraph.push(plain);
+  }
+  flushParagraph();
+  return firstSummarySentence(proseParagraphs[0] ?? '');
 }
 
 export function normalizeOutlineTitle(value: string): string {
@@ -172,13 +231,18 @@ function projectWithFormalLessons(
       title: lesson.title,
       markdown: nodeMarkdown(parsed, node, nodeIndex),
     } satisfies OutlineProjectionLesson;
+    const summary = extractOutlineLessonSummary(projected.markdown);
+    const lessonProjection = {
+      ...projected,
+      ...(summary === undefined ? {} : { summary }),
+    } satisfies OutlineProjectionLesson;
     const moduleIndex = findModuleHeadingIndex(parsed.nodes, node);
     if (moduleIndex === undefined) {
-      ungroupedLessons.push(projected);
+      ungroupedLessons.push(lessonProjection);
       return;
     }
     const current = grouped.get(moduleIndex) ?? [];
-    current.push(projected);
+    current.push(lessonProjection);
     grouped.set(moduleIndex, current);
   });
 
@@ -223,10 +287,13 @@ function projectCandidate(
       markdown: nodeMarkdown(parsed, node, nodeIndex),
       lessons: childIndexes.map((childIndex) => {
         const child = parsed.nodes[childIndex];
+        const markdown = child === undefined ? '' : nodeMarkdown(parsed, child, childIndex);
+        const summary = extractOutlineLessonSummary(markdown);
         return {
           key: `lesson-${child?.lineIndex ?? childIndex}-${normalizeOutlineTitle(child?.title ?? '')}`,
           title: child?.title ?? '',
-          markdown: child === undefined ? '' : nodeMarkdown(parsed, child, childIndex),
+          markdown,
+          ...(summary === undefined ? {} : { summary }),
         };
       }),
     });
@@ -239,11 +306,16 @@ function projectCandidate(
       if (node.kind === 'heading') return node.parentHeadingIndex === courseHeadingIndex;
       return node.parentHeadingIndex === undefined;
     })
-    .map(({ node, nodeIndex }) => ({
-      key: `lesson-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
-      title: node.title,
-      markdown: nodeMarkdown(parsed, node, nodeIndex),
-    }));
+    .map(({ node, nodeIndex }) => {
+      const markdown = nodeMarkdown(parsed, node, nodeIndex);
+      const summary = extractOutlineLessonSummary(markdown);
+      return {
+        key: `lesson-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
+        title: node.title,
+        markdown,
+        ...(summary === undefined ? {} : { summary }),
+      };
+    });
 
   return { modules, ungroupedLessons };
 }

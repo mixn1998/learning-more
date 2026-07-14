@@ -9,6 +9,59 @@ import { OutlineView } from './outline-view.js';
 afterEach(cleanup);
 
 describe('OutlineView', () => {
+  it('renders the Markdown lesson summary and falls back to the lesson objective', () => {
+    render(
+      <OutlineView
+        course={{
+          courseId: 'course_summary',
+          title: 'AI 成本',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_summary',
+          lessonIds: ['lesson_summary', 'lesson_fallback'],
+          lessons: [
+            {
+              lessonId: 'lesson_summary',
+              outlineVersionId: 'outline_summary',
+              title: 'Token 怎样进入企业账单？',
+              objective: '目标字段不应覆盖 Markdown 摘要',
+              coreKnowledgePoints: ['输入 token', '输出 token', '模型单价'],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+            {
+              lessonId: 'lesson_fallback',
+              outlineVersionId: 'outline_summary',
+              title: '账单怎样归因？',
+              objective: '建立部门、任务与模型调用之间的归因关系。',
+              coreKnowledgePoints: ['部门归因', '任务归因'],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+          ],
+          outlineMarkdown: `# AI 成本
+
+## 计量与归因
+### Token 怎样进入企业账单？
+
+一句话摘要：理解 token、模型服务与企业账单之间的成本链路。
+
+### 账单怎样归因？
+
+关键词：部门归因、任务归因`,
+          resourceVersion: 1,
+        }}
+        lessonStates={{}}
+        onOpenLesson={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('理解 token、模型服务与企业账单之间的成本链路。')).toBeInTheDocument();
+    expect(screen.getByText('建立部门、任务与模型调用之间的归因关系。')).toBeInTheDocument();
+    expect(screen.queryByText('输入 token、输出 token、模型单价。')).not.toBeInTheDocument();
+    expect(screen.queryByText('部门归因、任务归因。')).not.toBeInTheDocument();
+  });
+
   it('renders the exact uneven module membership from saved Markdown', () => {
     const lesson = (lessonId: string, title: string) => ({
       lessonId,

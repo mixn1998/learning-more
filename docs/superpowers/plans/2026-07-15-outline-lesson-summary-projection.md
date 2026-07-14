@@ -28,7 +28,7 @@
 - Consumes: lesson-section Markdown returned by `nodeMarkdown(...)`.
 - Produces: `extractOutlineLessonSummary(markdown: string): string | undefined` and `OutlineProjectionLesson.summary?: string`.
 
-- [ ] **Step 1: Write failing extraction tests**
+- [x] **Step 1: Write failing extraction tests**
 
 Add these cases:
 
@@ -63,7 +63,7 @@ expect(
 ).toBeUndefined();
 ```
 
-- [ ] **Step 2: Run the projection test and verify red state**
+- [x] **Step 2: Run the projection test and verify red state**
 
 ```powershell
 .\node_modules\.bin\vitest.CMD run --root . apps/web/src/features/course/outline-markdown-projection.test.ts --no-file-parallelism
@@ -71,7 +71,7 @@ expect(
 
 Expected: FAIL because the extractor and `summary` projection do not exist.
 
-- [ ] **Step 3: Implement the extractor and projection field**
+- [x] **Step 3: Implement the extractor and projection field**
 
 Add:
 
@@ -149,7 +149,7 @@ const projected = {
 
 Apply the same derivation to unconfirmed candidate lesson projections.
 
-- [ ] **Step 4: Run the projection tests and verify green state**
+- [x] **Step 4: Run the projection tests and verify green state**
 
 Run the command from Step 2. Expected: all projection tests PASS without changing module or lesson ownership.
 
@@ -168,7 +168,7 @@ Run the command from Step 2. Expected: all projection tests PASS without changin
 - Consumes: `OutlineProjectionLesson.summary?: string`.
 - Produces: directory copy with exact precedence `projected.summary ?? lesson.objective`.
 
-- [ ] **Step 1: Write failing directory tests**
+- [x] **Step 1: Write failing directory tests**
 
 Use Markdown containing the requested sentence and lesson data with visibly different knowledge nodes. Assert the card shows:
 
@@ -179,7 +179,7 @@ expect(screen.queryByText('token 计量、模型调用、企业账单。')).not.
 
 Add another matched lesson with no usable prose and assert its `objective` appears.
 
-- [ ] **Step 2: Run directory tests and verify red state**
+- [x] **Step 2: Run directory tests and verify red state**
 
 ```powershell
 .\node_modules\.bin\vitest.CMD run --root . apps/web/src/features/course/outline-view.test.tsx apps/web/src/features/course/formal-course-view.test.tsx --no-file-parallelism
@@ -187,7 +187,7 @@ Add another matched lesson with no usable prose and assert its `objective` appea
 
 Expected: FAIL because `OutlineView` still joins `coreKnowledgePoints`.
 
-- [ ] **Step 3: Index projections and render summary/objective**
+- [x] **Step 3: Index projections and render summary/objective**
 
 Build an index:
 
@@ -207,7 +207,7 @@ Render:
 
 Remove `toLessonKnowledgeSummary`. Remove `lessonDescriptions` from `OutlineView`, `FormalCourseView`, and the visual fixture so alternate copy cannot override the saved-outline projection.
 
-- [ ] **Step 4: Run focused directory tests and verify green state**
+- [x] **Step 4: Run focused directory tests and verify green state**
 
 Run the command from Step 2. Expected: both files PASS and joined knowledge-node copy is absent.
 
@@ -222,7 +222,7 @@ Run the command from Step 2. Expected: both files PASS and joined knowledge-node
 - Consumes: completed projection and directory behavior.
 - Produces: verified repository state and one implementation commit.
 
-- [ ] **Step 1: Run course and page regressions**
+- [x] **Step 1: Run course and page regressions**
 
 ```powershell
 .\node_modules\.bin\vitest.CMD run --root . apps/web/src/features/course apps/web/src/features/review/course-page.test.tsx --no-file-parallelism
@@ -230,7 +230,7 @@ Run the command from Step 2. Expected: both files PASS and joined knowledge-node
 
 Expected: all selected tests PASS.
 
-- [ ] **Step 2: Run web typecheck and lint**
+- [x] **Step 2: Run web typecheck and lint**
 
 ```powershell
 .\node_modules\.bin\tsc.CMD --noEmit -p apps/web/tsconfig.json
@@ -239,7 +239,7 @@ Expected: all selected tests PASS.
 
 Expected: both commands exit 0.
 
-- [ ] **Step 3: Prove the mechanical fallback is gone**
+- [x] **Step 3: Prove the mechanical fallback is gone**
 
 ```powershell
 rg -n "toLessonKnowledgeSummary|coreKnowledgePoints\.join|lessonDescriptions" apps/web/src/features/course apps/web/src/features/review/course-page.tsx
@@ -247,7 +247,7 @@ rg -n "toLessonKnowledgeSummary|coreKnowledgePoints\.join|lessonDescriptions" ap
 
 Expected: no directory-rendering matches.
 
-- [ ] **Step 4: Run format and diff checks**
+- [x] **Step 4: Run format and diff checks**
 
 ```powershell
 .\node_modules\.bin\prettier.CMD --check apps/web/src/features/course/outline-markdown-projection.ts apps/web/src/features/course/outline-markdown-projection.test.ts apps/web/src/features/course/outline-view.tsx apps/web/src/features/course/outline-view.test.tsx apps/web/src/features/course/formal-course-view.tsx apps/web/src/features/course/formal-course-view.test.tsx apps/web/src/visual/course-fixture.tsx docs/superpowers/plans/2026-07-15-outline-lesson-summary-projection.md
@@ -256,7 +256,7 @@ git diff --check
 
 Expected: both commands exit 0.
 
-- [ ] **Step 5: Commit the implementation slice**
+- [x] **Step 5: Commit the implementation slice**
 
 ```powershell
 git add -- apps/web/src/features/course/outline-markdown-projection.ts apps/web/src/features/course/outline-markdown-projection.test.ts apps/web/src/features/course/outline-view.tsx apps/web/src/features/course/outline-view.test.tsx apps/web/src/features/course/formal-course-view.tsx apps/web/src/features/course/formal-course-view.test.tsx apps/web/src/visual/course-fixture.tsx docs/superpowers/plans/2026-07-15-outline-lesson-summary-projection.md

@@ -9,6 +9,50 @@ import { FormalCourseView } from './formal-course-view.js';
 afterEach(cleanup);
 
 describe('FormalCourseView outline history', () => {
+  it('uses the saved-outline summary for the recommended lesson card', () => {
+    render(
+      <FormalCourseView
+        course={{
+          courseId: 'course_summary',
+          title: 'AI 成本',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_summary',
+          lessonIds: ['lesson_summary'],
+          recommendedLessonId: 'lesson_summary',
+          lessons: [
+            {
+              lessonId: 'lesson_summary',
+              outlineVersionId: 'outline_summary',
+              title: 'Token 怎样进入企业账单？',
+              objective: '建立 AI 调用与企业成本之间的关系。',
+              coreKnowledgePoints: ['输入 token', '输出 token', '模型单价'],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+          ],
+          outlineMarkdown: `# AI 成本
+
+## 计量
+### Token 怎样进入企业账单？
+
+摘要：理解 token、模型服务与企业账单之间的成本链路。`,
+          resourceVersion: 1,
+        }}
+        lessonStates={{}}
+        onCloseCourse={vi.fn()}
+        onDeleteCourse={vi.fn()}
+        onModifyOutline={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenReview={vi.fn()}
+        onSelectVersion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('理解 token、模型服务与企业账单之间的成本链路。')).toHaveLength(2);
+    expect(screen.queryByText('输入 token、输出 token、模型单价。')).not.toBeInTheDocument();
+  });
+
   it('keeps a previous outline version readable as full Markdown after a later version is current', async () => {
     const onSelectVersion = vi.fn().mockResolvedValue({
       courseId: 'course_1',
