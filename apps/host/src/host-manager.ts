@@ -40,8 +40,8 @@ export function createHostManager(options: {
     const before = await status();
     if (!before.matches) {
       await options.scheduler.replace(options.desired);
-      await options.scheduler.start(options.desired.name);
     }
+    await options.scheduler.start(options.desired.name);
     return status();
   };
 

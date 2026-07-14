@@ -45,13 +45,18 @@ describe('Windows Host manager', () => {
     const manager = createHostManager({ scheduler, desired });
 
     await expect(manager.install()).resolves.toMatchObject({ state: 'installed', matches: true });
+    expect(scheduler.replacements).toBe(1);
+    expect(scheduler.starts).toBe(1);
+
     await expect(manager.install()).resolves.toMatchObject({ state: 'installed', matches: true });
     expect(scheduler.replacements).toBe(1);
+    expect(scheduler.starts).toBe(2);
 
     scheduler.definition = { ...desired, restartCount: 0 };
     await expect(manager.status()).resolves.toMatchObject({ state: 'drifted', matches: false });
     await expect(manager.repair()).resolves.toMatchObject({ state: 'installed', matches: true });
     expect(scheduler.replacements).toBe(2);
+    expect(scheduler.starts).toBe(3);
   });
 
   it('removes only the fixed Learning MORE task and never user data', async () => {
