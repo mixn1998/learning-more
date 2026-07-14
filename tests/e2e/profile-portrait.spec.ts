@@ -53,9 +53,12 @@ async function completeLesson(page: Page, lessonId: string) {
   await page.getByRole('button', { name: '开始学习' }).click();
   await page.getByLabel('学习输入').fill(`Complete independent lesson ${lessonId}`);
   await page.getByRole('button', { name: '发送' }).click();
-  await expect(page.getByRole('heading', { name: /Candidate outline/ })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'AI 导师' }).last()).toContainText(
+    '我们从你刚才的问题继续',
+  );
   await expect(page.getByRole('button', { name: '停止生成' })).toBeHidden();
   await page.getByRole('button', { name: '结束本课' }).click();
+  await page.getByRole('button', { name: '完成本课' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
 }
 
@@ -69,13 +72,15 @@ test('generates evidence-backed portraits and keeps old versions auditable after
 
   await page.goto('/profile');
   await expect(page.getByRole('heading', { name: '学习画像' })).toBeVisible();
-  await page.getByRole('button', { name: '刷新学习画像' }).click();
-  await expect(page.getByRole('heading', { name: '当前学习画像' })).toBeVisible();
-  const evidenceButtons = page.getByRole('button', { name: /查看证据链/ });
-  expect(await evidenceButtons.count()).toBeGreaterThan(0);
-  await evidenceButtons.first().click();
-  await expect(page.getByRole('dialog', { name: '复合行为证据链' })).toBeVisible();
-  expect(await page.getByRole('dialog').getByRole('listitem').count()).toBeGreaterThanOrEqual(2);
+  await page.getByRole('button', { name: /刷新(?:学习)?画像/ }).click();
+  await expect(page.locator('.portrait-insight-card').first()).toBeVisible();
+  const evidenceChains = page.locator('.portrait-evidence-chain');
+  expect(await evidenceChains.count()).toBeGreaterThan(0);
+  await evidenceChains.first().getByText('复合行为证据链').click();
+  await expect(evidenceChains.first()).toHaveAttribute('open', '');
+  expect(
+    await evidenceChains.first().locator('.portrait-evidence-node').count(),
+  ).toBeGreaterThanOrEqual(2);
 
   const oldPortrait = await page.evaluate(async () => (await fetch('/api/v1/portrait')).json());
   const oldVersion = oldPortrait as {

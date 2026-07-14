@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { z } from 'zod';
@@ -12,6 +12,7 @@ import type { TransactionContext } from './unit-of-work.js';
 
 export interface SupplementarySessionRepository {
   get(id: string): Promise<SupplementarySession | undefined>;
+  listByLesson(lessonId: string): AsyncIterable<SupplementarySession>;
   save(
     tx: TransactionContext,
     session: SupplementarySession,
@@ -23,6 +24,15 @@ export function createInMemorySupplementarySessionRepository(): SupplementarySes
   const sessions = new Map<string, SupplementarySession>();
   return {
     get: async (id) => structuredClone(sessions.get(id)),
+    async *listByLesson(lessonId) {
+      const matches = [...sessions.values()]
+        .filter((session) => session.lessonId === lessonId)
+        .sort(
+          (left, right) =>
+            left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+        );
+      for (const session of matches) yield structuredClone(session);
+    },
     async save(_tx, session, expectedVersion) {
       const currentVersion = sessions.get(session.id)?.resourceVersion ?? 0;
       if (currentVersion !== expectedVersion || session.resourceVersion !== expectedVersion) {
@@ -63,6 +73,23 @@ export function createLocalFileSupplementarySessionRepository(
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
         throw error;
       }
+    },
+    async *listByLesson(lessonId) {
+      const root = path.join(dataRoot.absolutePath, 'entities', 'lesson-sessions');
+      const matches: SupplementarySession[] = [];
+      for (const shard of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+        if (!shard.isDirectory()) continue;
+        for (const file of await readdir(path.join(root, shard.name), { withFileTypes: true })) {
+          if (!file.isFile() || !file.name.endsWith('.json')) continue;
+          const session = await repository.get(file.name.slice(0, -5));
+          if (session?.lessonId === lessonId) matches.push(session);
+        }
+      }
+      matches.sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+      );
+      yield* matches;
     },
     async save(tx, session, expectedVersion) {
       const currentVersion = (await repository.get(session.id))?.resourceVersion ?? 0;

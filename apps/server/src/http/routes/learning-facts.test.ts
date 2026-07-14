@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
+import { WeeklyResponseSchema } from '@learning-more/contracts';
+
 import { registerLearningFactsRoutes } from './learning-facts.js';
 
 const entries = [
@@ -93,6 +95,34 @@ describe('LearningFacts HTTP routes', () => {
     ]) {
       expect((await app.inject({ method: 'GET', url })).statusCode).toBe(400);
     }
+  });
+
+  it('returns the selected week without leaking the projection collection', async () => {
+    const { app } = fixture({
+      getWeekly: vi.fn().mockResolvedValue({
+        weeks: [
+          {
+            isoWeek: '2026-W29',
+            timezone: 'Asia/Shanghai',
+            actualSeconds: 600,
+            completedLessonCount: 1,
+            activeDayCount: 1,
+          },
+        ],
+        asOfEventId: 'event_f3',
+        projectionVersion: 1,
+        freshness: 'current',
+      }),
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/history/weeks/2026-W29',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = WeeklyResponseSchema.parse(response.json());
+    expect(body.week).toMatchObject({ isoWeek: '2026-W29', completedLessonCount: 1 });
+    expect(response.json()).not.toHaveProperty('weeks');
   });
 
   it('returns stale snapshots with a header and missing snapshots as 503', async () => {

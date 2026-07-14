@@ -31,6 +31,8 @@ test('recovers a failed generation, confirms the second candidate version, and s
 
   await page.getByLabel('补充需求').fill('Include Bayesian inference');
   await page.getByRole('button', { name: '完成评估' }).click();
+  await page.getByLabel('补充需求').fill('I want to apply it to real decisions');
+  await page.getByRole('button', { name: '完成评估' }).click();
   await page.getByRole('button', { name: '生成候选大纲' }).click();
   await expect(page.getByRole('alert')).toContainText('生成中断，草稿已保留');
 

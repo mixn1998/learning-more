@@ -23,9 +23,9 @@ export type ReviewClosureRouteOptions = Readonly<{
       lessonId: string,
       body: {
         sessionId: string;
-        sourceSessionIds: string[];
-        sourceMessageIds: string[];
-        messageRangeChecksum: string;
+        sourceSessionIds?: string[] | undefined;
+        sourceMessageIds?: string[] | undefined;
+        messageRangeChecksum?: string | undefined;
         endIntent: string;
       },
       context: CommandContext,

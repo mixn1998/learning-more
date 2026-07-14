@@ -12,6 +12,7 @@ import {
   CourseArchiveResponseSchema,
   CreateOutlineSessionBodySchema,
   DeleteCourseArchiveResponseSchema,
+  DeleteOutlineSessionResponseSchema,
   GenerationAcceptedResponseSchema,
   LessonPreviewResponseSchema,
   OutlineMessageResponseSchema,
@@ -96,6 +97,17 @@ function document() {
           parameters: [sessionParameter],
           responses: {
             200: response('OutlineSession view', 'OutlineSessionViewResponse'),
+            ...errorResponses(),
+          },
+        },
+        delete: {
+          operationId: 'deleteOutlineSessionDraft',
+          parameters: [sessionParameter],
+          responses: {
+            200: response(
+              'Unconfirmed outline session permanently deleted',
+              'DeleteOutlineSessionResponse',
+            ),
             ...errorResponses(),
           },
         },
@@ -188,6 +200,7 @@ function document() {
         OutlineRevisionResponse: embeddedSchema(OutlineRevisionResponseSchema),
         CourseArchiveResponse: embeddedSchema(CourseArchiveResponseSchema),
         DeleteCourseArchiveResponse: embeddedSchema(DeleteCourseArchiveResponseSchema),
+        DeleteOutlineSessionResponse: embeddedSchema(DeleteOutlineSessionResponseSchema),
         LessonPreviewResponse: embeddedSchema(LessonPreviewResponseSchema),
         ApplicationProblem: embeddedSchema(ApplicationProblemSchema),
       },

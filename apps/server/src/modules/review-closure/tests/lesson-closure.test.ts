@@ -53,9 +53,12 @@ async function fixture(
       lessonId: 'lesson_01',
       messageId: 'message_01',
       contentArtifactRef: 'artifact:user:01',
-      establishesEvidence: true,
     },
     { ...baseContext, commandId: 'message', expectedVersion: 1 },
+  );
+  await sessionModule.execute(
+    { type: 'EstablishEvidenceCheckpoint', lessonId: 'lesson_01' },
+    { ...baseContext, commandId: 'observed', expectedVersion: 2 },
   );
   const closureRepository = createInMemoryLessonClosureRepository();
   let crashed = false;
@@ -63,7 +66,7 @@ async function fixture(
     repository: closureRepository,
     unitOfWork,
     sessionModule,
-    generationRuntime: { submit: async () => ({ taskId: 'task_01' }) },
+    reviewTask: { submit: async () => ({ taskId: 'task_01' }) },
     nextTransactionId: () => 'closure_01',
     nextReviewId: () => 'review_final_01',
     now: () => new Date('2026-07-13T00:01:00.000Z'),
@@ -89,7 +92,7 @@ const snapshot = {
   sourceMessageIds: ['message_01'],
   messageRangeChecksum: 'a'.repeat(64),
   endIntent: 'finish lesson',
-  expectedSessionVersion: 2,
+  expectedSessionVersion: 3,
 };
 const review = {
   artifactRef: 'artifact:final-review',
@@ -201,7 +204,7 @@ describe('lesson closure workflow', () => {
       { ...baseContext, correlationId: 'query' },
     );
     expect(view.learning.session?.finalReviewId).toBe('review_final_01');
-    expect(view.resourceVersion).toBe(3);
+    expect(view.resourceVersion).toBe(4);
   });
 
   it('[EQ-LESSON-12] persists the close snapshot before generation and allows cancellation before commit', async () => {

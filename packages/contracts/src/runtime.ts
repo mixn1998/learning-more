@@ -21,3 +21,36 @@ export const RuntimeReadySchema = z.strictObject({
 });
 
 export type RuntimeReady = Readonly<z.infer<typeof RuntimeReadySchema>>;
+
+export const RuntimeDiagnosticsResponseSchema = z.strictObject({
+  artifactRef: z.string().trim().min(1).max(500),
+});
+
+export type RuntimeDiagnosticsResponse = Readonly<z.infer<typeof RuntimeDiagnosticsResponseSchema>>;
+
+export const LauncherRuntimeStatusSchema = z.strictObject({
+  state: z.enum([
+    'stopped',
+    'starting',
+    'healthy',
+    'degraded',
+    'restarting',
+    'backoff',
+    'blocked_external_port',
+    'blocked_identity_mismatch',
+    'blocked_restart_storm',
+    'blocked_invalid_config',
+    'blocked_store_corrupted',
+    'blocked_migration_failed',
+  ]),
+  crashCount: z.number().int().nonnegative(),
+});
+
+export type LauncherRuntimeStatus = Readonly<z.infer<typeof LauncherRuntimeStatusSchema>>;
+
+export const LauncherControlStatusSchema = LauncherRuntimeStatusSchema.extend({
+  capability: z.string().trim().min(1).max(500),
+  capabilityExpiresAt: z.number().int().positive(),
+});
+
+export type LauncherControlStatus = Readonly<z.infer<typeof LauncherControlStatusSchema>>;

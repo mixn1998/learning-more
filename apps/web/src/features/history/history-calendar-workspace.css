@@ -1,0 +1,248 @@
+.history-calendar-hero {
+  padding: 22px 24px;
+}
+
+.history-calendar-hero h1 {
+  margin: 5px 0 4px;
+  font-size: 27px;
+}
+
+.history-calendar-hero p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-primary-nav {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.history-tab {
+  height: 52px;
+  border: 1px solid #d8c8b5;
+  border-radius: 11px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.history-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.history-tab.active {
+  border-color: var(--accent);
+  background: var(--tint);
+  color: var(--accent-dark);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.history-calendar-card {
+  margin-top: 14px;
+  padding: 24px;
+}
+
+.history-calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+}
+
+.history-month-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.history-month-head h2 {
+  margin: 0;
+  font-size: 25px;
+}
+
+.history-month-head p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-month-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-month-controls b {
+  min-width: 126px;
+  text-align: center;
+  font-size: 18px;
+}
+
+.history-month-controls .lm-btn {
+  width: 42px;
+  padding: 0;
+}
+
+.history-weekdays,
+.history-calendar-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.history-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.history-date {
+  min-width: 0;
+  min-height: 120px;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-date > b {
+  font-size: 15px;
+}
+
+.history-date.active {
+  border-color: var(--accent);
+  background: var(--tint);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.history-date.muted {
+  color: #aaa096;
+  background: #fbf8f3;
+  cursor: default;
+}
+
+.history-date-course {
+  display: block;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 2px 0;
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-date-overflow {
+  display: block;
+  margin-top: 5px;
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.history-day-detail {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper-2);
+}
+
+.history-day-detail h3 {
+  margin: 0 0 10px;
+  font-size: 22px;
+}
+
+.history-record {
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-record b {
+  font-size: 11px;
+}
+
+.history-record small {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.history-empty-detail {
+  margin-top: 12px;
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .history-calendar-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .history-primary-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .history-calendar-card {
+    padding: 12px;
+  }
+
+  .history-month-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .history-weekdays,
+  .history-calendar-month-grid {
+    gap: 4px;
+  }
+
+  .history-weekdays span {
+    font-size: 9px;
+  }
+
+  .history-date {
+    min-height: 68px;
+    padding: 6px;
+  }
+
+  .history-date > b {
+    font-size: 12px;
+  }
+
+  .history-date-course {
+    padding: 1px 0;
+    font-size: 7px;
+    line-height: 1;
+  }
+
+  .history-date-course:nth-of-type(n + 2) {
+    display: none;
+  }
+}

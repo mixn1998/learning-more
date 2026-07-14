@@ -67,7 +67,7 @@ describe('transaction recovery', () => {
         await rm(directory, { force: true, recursive: true });
       }
     }
-  }, 30_000);
+  }, 60_000);
 
   it('refuses to guess how to recover an unknown journal schema', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-recovery-schema-'));

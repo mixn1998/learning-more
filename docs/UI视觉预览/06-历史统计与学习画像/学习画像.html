@@ -1,126 +1,609 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Learning MORE · 学习画像</title><link rel="icon" href="data:,">
-  <link rel="stylesheet" href="../00-设计系统/assets/base.css">
-  <style>
-    .hero{padding:22px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}.hero h1{margin:5px 0 4px;font-size:27px}.hero p{margin:0;color:var(--muted);font-size:11px}
-    .primary-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.history-tab{height:52px;border:1px solid #d8c8b5;border-radius:11px;background:var(--paper);color:var(--muted);font-size:14px;font-weight:800;text-decoration:none;display:flex;align-items:center;justify-content:center;cursor:pointer}.history-tab:hover{border-color:var(--accent);color:var(--accent-dark)}.history-tab.active{border-color:var(--accent);background:var(--tint);color:var(--accent-dark);box-shadow:inset 0 -3px 0 var(--accent)}
-    .portrait-board{margin-top:12px;padding:26px}.portrait-wrap{max-width:1180px;margin:auto}
-    .portrait-summary{position:relative;overflow:hidden;min-height:190px;padding:34px 36px;border:1px solid #d8b69e;border-radius:14px;background:linear-gradient(110deg,#fff8f2 0%,#fffdf9 70%,#f4e8dc 100%)}.portrait-summary h2{max-width:920px;margin:0 0 14px;font-size:29px;line-height:1.35;letter-spacing:-.035em}.portrait-summary p{max-width:920px;margin:0;color:#4f5559;font-family:Georgia,"Noto Serif SC",serif;font-size:13px;line-height:1.95}
-    .portrait-note{display:flex;justify-content:flex-end;margin:11px 2px 15px;color:var(--muted);font-size:9px}
-    .insight-list{display:grid;gap:14px}.insight-card{position:relative;overflow:hidden;display:grid;grid-template-columns:148px minmax(0,1fr);border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 8px 22px rgba(65,47,30,.055);transition:border-color .18s ease,box-shadow .18s ease}.insight-card:hover{border-color:#d2bda8;box-shadow:0 11px 28px rgba(65,47,30,.085)}
-    .insight-index{position:relative;padding:28px 22px;border-right:1px solid var(--line);background:var(--paper-2)}.insight-index:before{content:"";position:absolute;left:0;top:0;width:4px;height:100%;background:var(--accent)}.insight-index span{display:block;color:var(--accent-dark);font-size:10px;font-weight:850;letter-spacing:.08em}.insight-index strong{display:block;margin-top:7px;color:#c49a7e;font-family:Georgia,serif;font-size:34px;line-height:1;font-weight:600}
-    .insight-content{min-width:0}.insight-body{min-height:232px;padding:31px 38px 33px}.insight-body h3{margin:0 0 14px;font-size:21px;line-height:1.4;letter-spacing:-.02em}.insight-body p{max-width:850px;margin:0 0 15px;color:#41494e;font-family:Georgia,"Noto Serif SC",serif;font-size:13px;line-height:1.9}.insight-body ul{max-width:850px;margin:0;padding-left:20px;color:#41494e;font-family:Georgia,"Noto Serif SC",serif;font-size:12px;line-height:1.85}.insight-body li+li{margin-top:4px}.insight-body li::marker{color:var(--accent)}
-    .evidence-chain{border-top:1px solid #eadfd2;background:#fffaf5}.evidence-chain summary{min-height:56px;padding:0 22px;color:var(--accent-dark);font-size:10px;font-weight:850;cursor:pointer;list-style:none;display:flex;align-items:center;gap:11px}.evidence-chain summary::-webkit-details-marker{display:none}.evidence-chain summary:before{content:"";width:24px;height:15px;flex:0 0 auto;background:radial-gradient(circle at 3px 7px,var(--accent) 0 3px,transparent 3.5px),radial-gradient(circle at 12px 7px,#c6987a 0 3px,transparent 3.5px),radial-gradient(circle at 21px 7px,var(--success) 0 3px,transparent 3.5px),linear-gradient(#d1ad94,#d1ad94) center/18px 1px no-repeat}.evidence-chain summary:after{content:"＋";margin-left:auto;width:25px;height:25px;border:1px solid #ddcbbb;border-radius:50%;background:#fff;display:grid;place-items:center;color:var(--muted);font-size:13px}.evidence-chain[open] summary:after{content:"−"}
-    .evidence-flow{padding:2px 22px 23px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.evidence-node{min-height:88px;padding:13px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:9px;line-height:1.65}.evidence-node:before{content:"";display:block;width:20px;height:3px;margin-bottom:9px;border-radius:99px;background:var(--accent)}.evidence-node b{display:block;margin-bottom:4px;font-size:9px}.evidence-node span{display:block;color:var(--muted);font-size:8px}.evidence-node.boundary{border-style:dashed;background:#f6f8f9}.evidence-node.boundary:before{background:#71889a}.chain-synthesis{grid-column:1/-1;padding:12px 13px;border:1px solid #dfc8b6;border-radius:9px;background:#fff7ef;color:#6f4b35;font-size:9px;line-height:1.7}
-    .future-card{min-height:126px;display:grid;grid-template-columns:148px minmax(0,1fr);overflow:hidden;border:1px dashed #cfbdab;border-radius:14px;background:rgba(255,253,249,.58)}.future-index{display:grid;place-items:center;border-right:1px dashed #d8c9ba;background:rgba(250,246,239,.72);color:#b18a6f;font-family:Georgia,serif;font-size:31px}.future-content{padding:27px 36px;display:flex;align-items:center;justify-content:space-between;gap:18px}.future-content h3{margin:0 0 5px;font-size:16px}.future-content p{margin:0;color:var(--muted);font-size:10px}.future-content .lm-pill{white-space:nowrap}
-    @media(max-width:760px){.hero{align-items:flex-start;flex-direction:column}.primary-nav{grid-template-columns:1fr}.portrait-board{padding:15px}.portrait-summary{padding:25px}.portrait-summary h2{font-size:23px}.portrait-note{justify-content:flex-start}.insight-card,.future-card{grid-template-columns:62px minmax(0,1fr)}.insight-index{padding:22px 13px}.insight-index strong{font-size:22px}.insight-body{min-height:0;padding:24px 21px}.insight-body h3{font-size:18px}.evidence-chain summary{padding:0 16px}.evidence-flow{grid-template-columns:1fr;padding:2px 16px 20px}.future-content{padding:22px;align-items:flex-start;flex-direction:column}.future-index{font-size:24px}}
-  </style>
-<script defer src="../00-设计系统/assets/runtime-status.js"></script><script defer src="../00-设计系统/assets/sample-ui.js"></script></head>
-<body>
-  <header class="lm-topbar">
-    <div class="lm-brand"><strong>Learning MORE</strong><span>学习画像</span></div>
-    <div class="lm-actions"><span class="lm-pill">● 接口 · Codex</span><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a></div>
-  </header>
-
-  <main class="lm-page">
-    <section class="lm-card hero">
-      <div><div class="lm-kicker">LEARNING PORTRAIT</div><h1>学习画像</h1></div>
-      <div class="lm-actions"><span class="lm-pill success">最近更新 · 7月12日</span><button class="lm-btn">画像设置</button><button class="lm-btn primary">刷新画像</button></div>
-    </section>
-
-    <nav class="primary-nav">
-      <a class="history-tab" href="../06-历史统计与学习画像/历史统计.html">历史统计</a>
-      <a class="history-tab" href="../06-历史统计与学习画像/学习日历.html">学习日历</a>
-      <a class="history-tab active" href="../06-历史统计与学习画像/学习画像.html">学习画像</a>
-    </nav>
-
-    <section class="lm-card portrait-board">
-      <div class="portrait-wrap">
-        <section class="portrait-summary">
-          <h2>你擅长从结构约束建立判断，也愿意用行为证据修正最初直觉</h2>
-          <p>最近的学习中，你很少停留在结论记忆，而是持续追问“这个结构必须维持什么”以及“用户的下一次行动是否真的改变”。当新的证据与原判断冲突时，你通常能够修正解释；开放问题中的反证搜索仍有进一步加强空间。</p>
-        </section>
-
-        <section class="insight-list">
-          <article class="insight-card">
-            <aside class="insight-index"><span>洞察</span><strong>01</strong></aside>
-            <div class="insight-content">
-              <div class="insight-body">
-                <h3>你会先寻找系统必须维持的性质，再判断操作代价</h3>
-                <p>在数据结构课程中，你能够从连续存储推出随机访问优势，也能从指针连接推出链表的寻址成本。这种推理方式随后被你迁移到游戏反馈：不是先判断反馈“好不好看”，而是先检查它是否改变玩家下一步决策。</p>
-                <ul>
-                  <li>倾向从约束和机制出发，而不是孤立记忆结论；</li>
-                  <li>能把同一种判断方法迁移到不同学科场景；</li>
-                  <li>在证据不足时会主动要求更具体的例子。</li>
-                </ul>
-              </div>
-              <details class="evidence-chain">
-                <summary>复合行为证据链</summary>
-                <div class="evidence-flow">
-                  <div class="evidence-node"><b>数组与链表</b><span>从存储约束解释访问、插入和删除代价。</span></div>
-                  <div class="evidence-node"><b>游戏反馈</b><span>从玩家后续行为判断反馈是否提供了新信息。</span></div>
-                  <div class="evidence-node boundary"><b>适用边界</b><span>遇到不熟悉领域时，仍需要先建立基本概念边界。</span></div>
-                  <div class="chain-synthesis">两门课程中重复出现了“从结构或行为证据推出结论”的稳定路径，且能够跨主题迁移。</div>
-                </div>
-              </details>
-            </div>
-          </article>
-
-          <article class="insight-card">
-            <aside class="insight-index"><span>洞察</span><strong>02</strong></aside>
-            <div class="insight-content">
-              <div class="insight-body">
-                <h3>你能修正直觉，但开放问题中仍容易过早收敛</h3>
-                <p>当具体行为证据出现时，你愿意放弃“内容太少所以重复”这样的初始解释，转向检查反馈是否改变下一次行动。相较之下，在证据尚不完整的开放问题中，你有时会较快接受第一个能自洽的答案。</p>
-                <ul>
-                  <li>看见反例后能快速更新原有解释；</li>
-                  <li>对具体行为证据的敏感度正在提高；</li>
-                  <li>形成结论前可再主动寻找一个替代解释。</li>
-                </ul>
-              </div>
-              <details class="evidence-chain">
-                <summary>复合行为证据链</summary>
-                <div class="evidence-flow">
-                  <div class="evidence-node"><b>初始解释</b><span>把玩家停下归因于素材数量不足。</span></div>
-                  <div class="evidence-node"><b>证据修正</b><span>发现玩家仍在操作，但不再改变路线判断。</span></div>
-                  <div class="evidence-node boundary"><b>反向证据</b><span>在缺少行为记录的问题中，结论更新速度会明显下降。</span></div>
-                  <div class="chain-synthesis">你具备依据证据改写判断的能力；下一步重点不是更快得出结论，而是扩大候选解释。</div>
-                </div>
-              </details>
-            </div>
-          </article>
-
-          <article class="insight-card">
-            <aside class="insight-index"><span>洞察</span><strong>03</strong></aside>
-            <div class="insight-content">
-              <div class="insight-body">
-                <h3>你在对话中更容易通过具体场景暴露真实理解</h3>
-                <p>面对抽象定义时，你的回答往往较短；一旦问题被放入原型、玩家行为或具体数据结构中，你会主动补充条件、提出例外，并清楚区分“相关”与“正在解释当前问题”。</p>
-                <ul>
-                  <li>案例化问题比自我报告更能呈现你的掌握程度；</li>
-                  <li>愿意指出题目中缺少的条件；</li>
-                  <li>在具体任务中更常产生可验证的判断。</li>
-                </ul>
-              </div>
-              <details class="evidence-chain">
-                <summary>复合行为证据链</summary>
-                <div class="evidence-flow">
-                  <div class="evidence-node"><b>抽象提问</b><span>回答集中在定义复述，较少主动展开边界。</span></div>
-                  <div class="evidence-node"><b>案例提问</b><span>能够根据玩家行为拆分行动、反馈和目标推进。</span></div>
-                  <div class="evidence-node boundary"><b>限制</b><span>样本主要来自近期两门课程，尚不代表所有学习情境。</span></div>
-                  <div class="chain-synthesis">具体场景稳定地提高了回答中的条件意识和证据密度，但这一判断仍需更多课程验证。</div>
-                </div>
-              </details>
-            </div>
-          </article>
-
-        </section>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning MORE · 学习画像</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <style>
+      .hero {
+        padding: 22px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+      .hero h1 {
+        margin: 5px 0 4px;
+        font-size: 27px;
+      }
+      .hero p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .primary-nav {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .history-tab {
+        height: 52px;
+        border: 1px solid #d8c8b5;
+        border-radius: 11px;
+        background: var(--paper);
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 800;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .history-tab:hover {
+        border-color: var(--accent);
+        color: var(--accent-dark);
+      }
+      .history-tab.active {
+        border-color: var(--accent);
+        background: var(--tint);
+        color: var(--accent-dark);
+        box-shadow: inset 0 -3px 0 var(--accent);
+      }
+      .portrait-board {
+        margin-top: 12px;
+        padding: 26px;
+      }
+      .portrait-wrap {
+        max-width: 1180px;
+        margin: auto;
+      }
+      .portrait-summary {
+        position: relative;
+        overflow: hidden;
+        min-height: 190px;
+        padding: 34px 36px;
+        border: 1px solid #d8b69e;
+        border-radius: 14px;
+        background: linear-gradient(110deg, #fff8f2 0%, #fffdf9 70%, #f4e8dc 100%);
+      }
+      .portrait-summary h2 {
+        max-width: 920px;
+        margin: 0 0 14px;
+        font-size: 29px;
+        line-height: 1.35;
+        letter-spacing: -0.035em;
+        font-family: SimHei, '黑体', 'Microsoft YaHei', sans-serif;
+      }
+      .portrait-summary p {
+        max-width: 920px;
+        margin: 0;
+        color: #4f5559;
+        font-family: 'Times New Roman', SimSun, '宋体', serif;
+        font-size: 13px;
+        line-height: 1.95;
+      }
+      .portrait-note {
+        display: flex;
+        justify-content: flex-end;
+        margin: 11px 2px 15px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .insight-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .insight-card {
+        position: relative;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 148px minmax(0, 1fr);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 8px 22px rgba(65, 47, 30, 0.055);
+        transition:
+          border-color 0.18s ease,
+          box-shadow 0.18s ease;
+      }
+      .insight-card:hover {
+        border-color: #d2bda8;
+        box-shadow: 0 11px 28px rgba(65, 47, 30, 0.085);
+      }
+      .insight-index {
+        position: relative;
+        padding: 20px 22px 24px;
+        border-right: 1px solid var(--line);
+        background: var(--paper-2);
+      }
+      .insight-index:before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 4px;
+        height: 100%;
+        background: var(--accent);
+      }
+      .insight-index span {
+        display: block;
+        color: var(--accent-dark);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+      }
+      .insight-index strong {
+        display: block;
+        margin-top: 7px;
+        color: #c49a7e;
+        font-family: 'Times New Roman', Georgia, serif;
+        font-size: 34px;
+        line-height: 1;
+        font-weight: 600;
+      }
+      .insight-content {
+        min-width: 0;
+      }
+      .insight-body {
+        padding: 16px 30px 18px;
+      }
+      .insight-body h3 {
+        margin: 0 0 9px;
+        font-size: 21px;
+        line-height: 1.4;
+        letter-spacing: -0.02em;
+        font-family: SimHei, '黑体', 'Microsoft YaHei', sans-serif;
+      }
+      .insight-body p {
+        max-width: 850px;
+        margin: 0 0 10px;
+        color: #41494e;
+        font-family: 'Times New Roman', SimSun, '宋体', serif;
+        font-size: 13px;
+        line-height: 1.75;
+      }
+      .insight-body ul {
+        max-width: 850px;
+        margin: 0;
+        padding-left: 20px;
+        color: #41494e;
+        font-family: 'Times New Roman', SimSun, '宋体', serif;
+        font-size: 12px;
+        line-height: 1.7;
+      }
+      .insight-body li + li {
+        margin-top: 3px;
+      }
+      .insight-body li::marker {
+        color: var(--accent);
+      }
+      .evidence-chain {
+        border-top: 1px solid #eadfd2;
+        background: #fffaf5;
+      }
+      .evidence-chain summary {
+        min-height: 56px;
+        padding: 0 22px;
+        color: var(--accent-dark);
+        font-size: 10px;
+        font-weight: 850;
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+      .evidence-chain summary::-webkit-details-marker {
+        display: none;
+      }
+      .evidence-chain summary:before {
+        content: '';
+        width: 24px;
+        height: 15px;
+        flex: 0 0 auto;
+        background:
+          radial-gradient(circle at 3px 7px, var(--accent) 0 3px, transparent 3.5px),
+          radial-gradient(circle at 12px 7px, #c6987a 0 3px, transparent 3.5px),
+          radial-gradient(circle at 21px 7px, var(--success) 0 3px, transparent 3.5px),
+          linear-gradient(#d1ad94, #d1ad94) center/18px 1px no-repeat;
+      }
+      .evidence-chain summary:after {
+        content: '＋';
+        margin-left: auto;
+        width: 25px;
+        height: 25px;
+        border: 1px solid #ddcbbb;
+        border-radius: 50%;
+        background: #fff;
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .evidence-chain[open] summary:after {
+        content: '−';
+      }
+      .evidence-flow {
+        padding: 2px 22px 23px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 9px;
+      }
+      .evidence-node {
+        min-height: 88px;
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        font-size: 9px;
+        line-height: 1.65;
+      }
+      .evidence-node:before {
+        content: '';
+        display: block;
+        width: 20px;
+        height: 3px;
+        margin-bottom: 9px;
+        border-radius: 99px;
+        background: var(--accent);
+      }
+      .evidence-node b {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 9px;
+      }
+      .evidence-node span {
+        display: block;
+        color: var(--muted);
+        font-family: 'Times New Roman', SimSun, '宋体', serif;
+        font-size: 8px;
+      }
+      .evidence-node.boundary {
+        border-style: dashed;
+        background: #f6f8f9;
+      }
+      .evidence-node.boundary:before {
+        background: #71889a;
+      }
+      .chain-synthesis {
+        grid-column: 1/-1;
+        padding: 12px 13px;
+        border: 1px solid #dfc8b6;
+        border-radius: 9px;
+        background: #fff7ef;
+        color: #6f4b35;
+        font-family: 'Times New Roman', SimSun, '宋体', serif;
+        font-size: 9px;
+        line-height: 1.7;
+      }
+      .future-card {
+        min-height: 126px;
+        display: grid;
+        grid-template-columns: 148px minmax(0, 1fr);
+        overflow: hidden;
+        border: 1px dashed #cfbdab;
+        border-radius: 14px;
+        background: rgba(255, 253, 249, 0.58);
+      }
+      .future-index {
+        display: grid;
+        place-items: center;
+        border-right: 1px dashed #d8c9ba;
+        background: rgba(250, 246, 239, 0.72);
+        color: #b18a6f;
+        font-family: 'Times New Roman', Georgia, serif;
+        font-size: 31px;
+      }
+      .future-content {
+        padding: 27px 36px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+      .future-content h3 {
+        margin: 0 0 5px;
+        font-size: 16px;
+      }
+      .future-content p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .future-content .lm-pill {
+        white-space: nowrap;
+      }
+      .portrait-settings {
+        width: min(560px, calc(100% - 28px));
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--paper);
+        color: var(--ink);
+      }
+      .portrait-settings::backdrop {
+        background: rgba(44, 38, 32, 0.42);
+      }
+      .portrait-settings header,
+      .portrait-settings .settings-body,
+      .portrait-settings footer {
+        padding: 20px 22px;
+      }
+      .portrait-settings header {
+        border-bottom: 1px solid var(--line);
+      }
+      .portrait-settings h2 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .settings-body {
+        display: grid;
+        gap: 14px;
+      }
+      .setting-row {
+        display: grid;
+        gap: 7px;
+      }
+      .setting-check {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .portrait-settings footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 9px;
+        border-top: 1px solid var(--line);
+        background: var(--paper-2);
+      }
+      @media (max-width: 760px) {
+        .hero {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .primary-nav {
+          grid-template-columns: 1fr;
+        }
+        .portrait-board {
+          padding: 15px;
+        }
+        .portrait-summary {
+          padding: 25px;
+        }
+        .portrait-summary h2 {
+          font-size: 23px;
+        }
+        .portrait-note {
+          justify-content: flex-start;
+        }
+        .insight-card,
+        .future-card {
+          grid-template-columns: 62px minmax(0, 1fr);
+        }
+        .insight-index {
+          padding: 18px 13px 20px;
+        }
+        .insight-index strong {
+          font-size: 22px;
+        }
+        .insight-body {
+          padding: 18px 21px 22px;
+        }
+        .insight-body h3 {
+          font-size: 18px;
+        }
+        .evidence-chain summary {
+          padding: 0 16px;
+        }
+        .evidence-flow {
+          grid-template-columns: 1fr;
+          padding: 2px 16px 20px;
+        }
+        .future-content {
+          padding: 22px;
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .future-index {
+          font-size: 24px;
+        }
+      }
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar">
+      <div class="lm-brand"><strong>Learning MORE</strong><span>学习画像</span></div>
+      <div class="lm-actions">
+        <span class="lm-pill">● 接口 · Codex</span
+        ><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a>
       </div>
-    </section>
-  </main>
-</body>
+    </header>
+
+    <main class="lm-page">
+      <section class="lm-card hero">
+        <div>
+          <div class="lm-kicker">LEARNING PORTRAIT</div>
+          <h1>学习画像</h1>
+        </div>
+        <div class="lm-actions">
+          <span class="lm-pill success" id="portraitUpdated">最近更新 · 7月12日</span
+          ><button class="lm-btn" id="openPortraitSettings">画像设置</button
+          ><button class="lm-btn primary" id="refreshPortrait">刷新画像</button>
+        </div>
+      </section>
+
+      <nav class="primary-nav">
+        <a class="history-tab" href="../06-历史统计与学习画像/历史统计.html">历史统计</a>
+        <a class="history-tab" href="../06-历史统计与学习画像/学习日历.html">学习日历</a>
+        <a class="history-tab active" href="../06-历史统计与学习画像/学习画像.html">学习画像</a>
+      </nav>
+
+      <section class="lm-card portrait-board">
+        <div class="portrait-wrap">
+          <section class="portrait-summary">
+            <h2>你擅长从结构约束建立判断，也愿意用行为证据修正最初直觉</h2>
+            <p>
+              最近的学习中，你很少停留在结论记忆，而是持续追问“这个结构必须维持什么”以及“用户的下一次行动是否真的改变”。当新的证据与原判断冲突时，你通常能够修正解释；开放问题中的反证搜索仍有进一步加强空间。
+            </p>
+          </section>
+
+          <section class="insight-list">
+            <article class="insight-card">
+              <aside class="insight-index"><span>洞察</span><strong>01</strong></aside>
+              <div class="insight-content">
+                <div class="insight-body">
+                  <h3>你会先寻找系统必须维持的性质，再判断操作代价</h3>
+                  <p>
+                    在数据结构课程中，你能够从连续存储推出随机访问优势，也能从指针连接推出链表的寻址成本。这种推理方式随后被你迁移到游戏反馈：不是先判断反馈“好不好看”，而是先检查它是否改变玩家下一步决策。
+                  </p>
+                  <ul>
+                    <li>倾向从约束和机制出发，而不是孤立记忆结论；</li>
+                    <li>能把同一种判断方法迁移到不同学科场景；</li>
+                    <li>在证据不足时会主动要求更具体的例子。</li>
+                  </ul>
+                </div>
+                <details class="evidence-chain">
+                  <summary>复合行为证据链</summary>
+                  <div class="evidence-flow">
+                    <div class="evidence-node">
+                      <b>数组与链表</b><span>从存储约束解释访问、插入和删除代价。</span>
+                    </div>
+                    <div class="evidence-node">
+                      <b>游戏反馈</b><span>从玩家后续行为判断反馈是否提供了新信息。</span>
+                    </div>
+                    <div class="evidence-node boundary">
+                      <b>适用边界</b><span>遇到不熟悉领域时，仍需要先建立基本概念边界。</span>
+                    </div>
+                    <div class="chain-synthesis">
+                      两门课程中重复出现了“从结构或行为证据推出结论”的稳定路径，且能够跨主题迁移。
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+
+            <article class="insight-card">
+              <aside class="insight-index"><span>洞察</span><strong>02</strong></aside>
+              <div class="insight-content">
+                <div class="insight-body">
+                  <h3>你能修正直觉，但开放问题中仍容易过早收敛</h3>
+                  <p>
+                    当具体行为证据出现时，你愿意放弃“内容太少所以重复”这样的初始解释，转向检查反馈是否改变下一次行动。相较之下，在证据尚不完整的开放问题中，你有时会较快接受第一个能自洽的答案。
+                  </p>
+                  <ul>
+                    <li>看见反例后能快速更新原有解释；</li>
+                    <li>对具体行为证据的敏感度正在提高；</li>
+                    <li>形成结论前可再主动寻找一个替代解释。</li>
+                  </ul>
+                </div>
+                <details class="evidence-chain">
+                  <summary>复合行为证据链</summary>
+                  <div class="evidence-flow">
+                    <div class="evidence-node">
+                      <b>初始解释</b><span>把玩家停下归因于素材数量不足。</span>
+                    </div>
+                    <div class="evidence-node">
+                      <b>证据修正</b><span>发现玩家仍在操作，但不再改变路线判断。</span>
+                    </div>
+                    <div class="evidence-node boundary">
+                      <b>反向证据</b><span>在缺少行为记录的问题中，结论更新速度会明显下降。</span>
+                    </div>
+                    <div class="chain-synthesis">
+                      你具备依据证据改写判断的能力；下一步重点不是更快得出结论，而是扩大候选解释。
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+
+            <article class="insight-card">
+              <aside class="insight-index"><span>洞察</span><strong>03</strong></aside>
+              <div class="insight-content">
+                <div class="insight-body">
+                  <h3>你在对话中更容易通过具体场景暴露真实理解</h3>
+                  <p>
+                    面对抽象定义时，你的回答往往较短；一旦问题被放入原型、玩家行为或具体数据结构中，你会主动补充条件、提出例外，并清楚区分“相关”与“正在解释当前问题”。
+                  </p>
+                  <ul>
+                    <li>案例化问题比自我报告更能呈现你的掌握程度；</li>
+                    <li>愿意指出题目中缺少的条件；</li>
+                    <li>在具体任务中更常产生可验证的判断。</li>
+                  </ul>
+                </div>
+                <details class="evidence-chain">
+                  <summary>复合行为证据链</summary>
+                  <div class="evidence-flow">
+                    <div class="evidence-node">
+                      <b>抽象提问</b><span>回答集中在定义复述，较少主动展开边界。</span>
+                    </div>
+                    <div class="evidence-node">
+                      <b>案例提问</b><span>能够根据玩家行为拆分行动、反馈和目标推进。</span>
+                    </div>
+                    <div class="evidence-node boundary">
+                      <b>限制</b><span>样本主要来自近期两门课程，尚不代表所有学习情境。</span>
+                    </div>
+                    <div class="chain-synthesis">
+                      具体场景稳定地提高了回答中的条件意识和证据密度，但这一判断仍需更多课程验证。
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+          </section>
+        </div>
+      </section>
+    </main>
+    <dialog class="portrait-settings" id="portraitSettings">
+      <header><h2>画像设置</h2></header>
+      <div class="settings-body">
+        <label class="setting-row"
+          ><span>证据时间范围</span
+          ><select class="lm-control" id="portraitWindow">
+            <option>全部学习记录</option>
+            <option>最近 12 个月</option>
+            <option>最近 90 天</option>
+          </select></label
+        >
+        <label class="setting-check"><input type="checkbox" checked />课节与课程 Review</label>
+        <label class="setting-check"
+          ><input type="checkbox" checked />学习对话中的有效行为证据</label
+        >
+      </div>
+      <footer>
+        <button class="lm-btn" id="cancelPortraitSettings">取消</button
+        ><button class="lm-btn primary" id="savePortraitSettings">保存设置</button>
+      </footer>
+    </dialog>
+    <script>
+      const portraitSettings = document.getElementById('portraitSettings');
+      const openPortraitSettings = document.getElementById('openPortraitSettings');
+      const refreshPortrait = document.getElementById('refreshPortrait');
+      openPortraitSettings.addEventListener('click', () =>
+        SampleUI.openDialog(portraitSettings, openPortraitSettings),
+      );
+      document
+        .getElementById('cancelPortraitSettings')
+        .addEventListener('click', () => SampleUI.closeDialog(portraitSettings));
+      document.getElementById('savePortraitSettings').addEventListener('click', () => {
+        SampleUI.closeDialog(portraitSettings);
+        SampleUI.showToast('画像设置已保存', 'success');
+      });
+      refreshPortrait.addEventListener('click', async () => {
+        await SampleUI.runSimulation({
+          button: refreshPortrait,
+          busyText: '正在刷新…',
+          successText: '学习画像已刷新',
+          delay: 750,
+        });
+        document.getElementById('portraitUpdated').textContent = '最近更新 · 刚刚';
+      });
+    </script>
+  </body>
 </html>

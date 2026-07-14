@@ -344,7 +344,7 @@ Set `LEARNING_MORE_CODEX_CLI_EXECUTABLE` to the discovered current-user executab
 
 - [ ] **Step 3: Compare UI and CLI catalogs**
 
-Run `codex debug models`, extract visible model IDs/efforts, open `/runtime`, and assert exact equality with the option values and reasoning choices. Expected on the current machine: `gpt-5.6-sol` with `low`, `medium`, `high`, `xhigh`, `max`, `ultra`; no Luna entries.
+Run `codex debug models`, extract visible model IDs/efforts, open `/runtime`, and assert exact equality with the option values and reasoning choices. Do not assert a permanent model list: the final live run returned seven visible models, and the UI matched that changing catalog exactly.
 
 - [ ] **Step 4: Execute a real Codex CLI smoke**
 

@@ -139,6 +139,7 @@ Learning MORE 从 HTML UI 样稿阶段正式转入 React 产品界面建设。�
   --lm-font-ai-serif: "Times New Roman", SimSun, "宋体", serif;
   --lm-ai-prose-size: 16px;
   --lm-ai-prose-line-height: 1.8;
+  --lm-ai-prose-weight: 700;
   --lm-ai-block-gap: 0.75em;
   --lm-ai-section-gap: 1.5em;
 }
@@ -147,6 +148,7 @@ Learning MORE 从 HTML UI 样稿阶段正式转入 React 产品界面建设。�
   font-family: var(--lm-font-ai-serif);
   font-size: var(--lm-ai-prose-size);
   line-height: var(--lm-ai-prose-line-height);
+  font-weight: var(--lm-ai-prose-weight);
   font-kerning: normal;
   letter-spacing: normal;
   overflow-wrap: anywhere;
@@ -177,7 +179,7 @@ Learning MORE 从 HTML UI 样稿阶段正式转入 React 产品界面建设。�
 - 服务端错误、诊断信息和内部运行状态；
 - Markdown 中的 `code`、`pre`、`kbd`、`samp` 与代码编辑区，这些内容继续使用项目统一等宽字体。
 
-AI Markdown 标题统一使用黑体，层级固定为：`h1 28px/1.35`、`h2 22px/1.4`、`h3 18px/1.45`；正文、列表、引用和表格正文统一 `16px/1.8`。段落、列表、引用、表格和代码块之间使用 `--lm-ai-block-gap`，标题与前一内容区使用 `--lm-ai-section-gap`；首尾多余外边距归零，列表缩进、表格单元格内边距与窄屏换行由 `AiContent` 集中定义。切片 1 依据三视口样稿和 0.3% 门禁统一微调这些 token，不在单个 Feature 内覆盖字体、字号、行高或间距。
+AI Markdown 标题统一使用黑体并加粗，层级固定为：`h1 28px/1.35`、`h2 22px/1.4`、`h3 18px/1.45`；正文、列表、引用和表格正文统一 `16px/1.8/700`。段落、列表、引用、表格和代码块之间使用 `--lm-ai-block-gap`，标题与前一内容区使用 `--lm-ai-section-gap`；首尾多余外边距归零，列表缩进、表格单元格内边距与窄屏换行由 `AiContent` 集中定义。代码块保持常规字重。切片 1 依据三视口样稿和 0.3% 门禁统一微调这些 token，不在单个 Feature 内覆盖字体、字号、行高或间距。
 
 ## 6. 数据流与写入规则
 
@@ -299,7 +301,7 @@ React 只展示服务端权威删除结果和后续重建状态，不自行从�
 - 对应全页截图差异不超过 0.3%；
 - 对应关键组件截图差异不超过 0.1%；
 - 无横向溢出、文字裁切、死按钮、未处理 Promise 或控制台错误；
-- 所有 AI 生成内容均由 `AiContent` 渲染，标题计算字体为 SimHei、英文正文为 Times New Roman、中文正文为 SimSun，代码计算字体为统一等宽字体；
+- 所有 AI 生成内容均由 `AiContent` 渲染，标题计算字体为 SimHei 且加粗，英文正文为 Times New Roman、中文正文为 SimSun，正文计算字重为 700，代码计算字体为统一等宽字体且保持常规字重；
 - 键盘路径、Dialog 焦点陷阱和关闭后焦点恢复通过；
 - `pnpm verify` 保持绿色；
 - 上一切片已验收 UI 不回退；

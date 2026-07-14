@@ -5,11 +5,15 @@ import { verifyChecksumManifest } from './checksums.js';
 
 const required = [
   'START.cmd',
+  'INSTALL-AUTOSTART.cmd',
+  'REPAIR-AUTOSTART.cmd',
+  'UNINSTALL-AUTOSTART.cmd',
   'README.txt',
   'runtime/node.exe',
   'app/server',
   'app/web/index.html',
   'app/launcher',
+  'app/host',
   'schemas',
   'prompts',
   'migrations',

@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 describe('local CourseAuthoring application', () => {
-  it('[EQ-COURSE-06] runs course confirmation and permanent archive deletion through HTTP → Module → LocalFile', async () => {
+  it('[EQ-COURSE-03..06] runs confirmation, revision, closure, review, and permanent deletion through HTTP → Module → LocalFile', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-'));
     roots.push(dataRoot);
     const local = await createLocalApplication({ dataRoot, csrfToken: 'test-csrf' });
@@ -37,24 +37,46 @@ describe('local CourseAuthoring application', () => {
       headers: { ...baseHeaders, 'idempotency-key': 'create_01' },
       payload: { topic: 'Probability', courseMode: 'standard' },
     });
-    expect(created.statusCode).toBe(201);
-    const sessionId = created.json<{ outlineSessionId: string }>().outlineSessionId;
+    expect(created.statusCode, created.body).toBe(201);
+    const createdSession = created.json<{ outlineSessionId: string; resourceVersion: number }>();
+    const sessionId = createdSession.outlineSessionId;
 
     const assessed = await app.inject({
       method: 'POST',
       url: `/api/v1/outline-sessions/${sessionId}/messages`,
-      headers: { ...baseHeaders, 'idempotency-key': 'assess_01', 'if-match': '"1"' },
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'assess_01',
+        'if-match': `"${createdSession.resourceVersion}"`,
+      },
       payload: { content: 'Include Bayes' },
     });
     expect(assessed.statusCode).toBe(200);
+    const assessedVersion = assessed.json<{ resourceVersion: number }>().resourceVersion;
+    const baselineCompleted = await app.inject({
+      method: 'POST',
+      url: `/api/v1/outline-sessions/${sessionId}/messages`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'assess_02',
+        'if-match': `"${assessedVersion}"`,
+      },
+      payload: { content: 'I want to apply it to real decisions' },
+    });
+    expect(baselineCompleted.statusCode).toBe(200);
+    const baselineVersion = baselineCompleted.json<{ resourceVersion: number }>().resourceVersion;
 
     const generated = await app.inject({
       method: 'POST',
       url: `/api/v1/outline-sessions/${sessionId}/candidate-generations`,
-      headers: { ...baseHeaders, 'idempotency-key': 'generate_01', 'if-match': '"2"' },
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'generate_01',
+        'if-match': `"${baselineVersion}"`,
+      },
       payload: {},
     });
-    expect(generated.statusCode).toBe(202);
+    expect(generated.statusCode, generated.body).toBe(202);
     const generation = generated.json<{ taskId: string; resourceVersion: number }>();
     const view = await app.inject({
       method: 'GET',
@@ -76,7 +98,7 @@ describe('local CourseAuthoring application', () => {
     });
     expect(confirmed.statusCode).toBe(201);
     const confirmation = confirmed.json<{ courseId: string; outlineVersionId: string }>();
-    const course = await local.courseRepositories.courses.get(confirmation.courseId);
+    let course = await local.courseRepositories.courses.get(confirmation.courseId);
     expect(course).toMatchObject({ outlineVersionId: confirmation.outlineVersionId });
     const lessons = await Promise.all(
       (course?.lessonIds ?? []).map((lessonId) => local.courseRepositories.lessons.get(lessonId)),
@@ -85,6 +107,82 @@ describe('local CourseAuthoring application', () => {
       'probability-space',
       'random-variable',
     ]);
+
+    const revisionCreated = await app.inject({
+      method: 'POST',
+      url: '/api/v1/outline-sessions',
+      headers: { ...baseHeaders, 'idempotency-key': 'revision_create_01' },
+      payload: { topic: 'Probability with stronger evidence', courseMode: 'standard' },
+    });
+    expect(revisionCreated.statusCode).toBe(201);
+    const createdRevisionSession = revisionCreated.json<{
+      outlineSessionId: string;
+      resourceVersion: number;
+    }>();
+    const revisionSessionId = createdRevisionSession.outlineSessionId;
+    const revisionAssessed = await app.inject({
+      method: 'POST',
+      url: `/api/v1/outline-sessions/${revisionSessionId}/messages`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'revision_assess_01',
+        'if-match': `"${createdRevisionSession.resourceVersion}"`,
+      },
+      payload: { content: 'Strengthen the observable evidence loop' },
+    });
+    expect(revisionAssessed.statusCode).toBe(200);
+    const revisionAssessedVersion = revisionAssessed.json<{ resourceVersion: number }>()
+      .resourceVersion;
+    const revisionBaselineCompleted = await app.inject({
+      method: 'POST',
+      url: `/api/v1/outline-sessions/${revisionSessionId}/messages`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'revision_assess_02',
+        'if-match': `"${revisionAssessedVersion}"`,
+      },
+      payload: { content: 'Keep the course focused on evidence-backed decisions' },
+    });
+    expect(revisionBaselineCompleted.statusCode).toBe(200);
+    const revisionBaselineVersion = revisionBaselineCompleted.json<{ resourceVersion: number }>()
+      .resourceVersion;
+    const revisionGenerated = await app.inject({
+      method: 'POST',
+      url: `/api/v1/outline-sessions/${revisionSessionId}/candidate-generations`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'revision_generate_01',
+        'if-match': `"${revisionBaselineVersion}"`,
+      },
+      payload: {},
+    });
+    expect(revisionGenerated.statusCode).toBe(202);
+    const revisionView = await app.inject({
+      method: 'GET',
+      url: `/api/v1/outline-sessions/${revisionSessionId}`,
+      headers: { host: baseHeaders.host, origin: baseHeaders.origin },
+    });
+    const revisionCandidate = revisionView.json<{
+      candidateVersionId: string;
+      resourceVersion: number;
+    }>();
+    const revised = await app.inject({
+      method: 'POST',
+      url: `/api/v1/courses/${confirmation.courseId}/outline-revisions`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'revision_publish_01',
+        'if-match': `"${course!.resourceVersion}"`,
+      },
+      payload: { sourceCandidateVersionId: revisionCandidate.candidateVersionId },
+    });
+    expect(revised.statusCode, revised.body).toBe(201);
+    const revision = revised.json<{ outlineVersionId: string; resourceVersion: number }>();
+    course = await local.courseRepositories.courses.get(confirmation.courseId);
+    expect(course).toMatchObject({
+      outlineVersionId: revision.outlineVersionId,
+      resourceVersion: revision.resourceVersion,
+    });
     await expect(local.frameLog.readAfter(generation.taskId, 0)).resolves.toMatchObject({
       frames: expect.arrayContaining([expect.objectContaining({ type: 'artifact.ready' })]),
     });
@@ -132,10 +230,62 @@ describe('local CourseAuthoring application', () => {
     expect(portrait.statusCode).toBe(201);
     expect(portrait.json()).toMatchObject({
       state: 'completed',
-      title: '学习画像证据不足',
-      claims: [],
+      title: '当前学习画像',
+      claims: [
+        {
+          claimId: 'claim_1',
+          counterEvidenceChecked: true,
+        },
+      ],
     });
     expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
+
+    for (const [index, lessonId] of course!.lessonIds.entries()) {
+      const started = await app.inject({
+        method: 'POST',
+        url: `/api/v1/lessons/${lessonId}/sessions`,
+        headers: { ...baseHeaders, 'idempotency-key': `start_lesson_${index}` },
+        payload: {},
+      });
+      expect(started.statusCode, started.body).toBe(201);
+      const learning = started.json<{ resourceVersion: number }>();
+      const abandoned = await app.inject({
+        method: 'POST',
+        url: `/api/v1/lessons/${lessonId}/abandonments`,
+        headers: {
+          ...baseHeaders,
+          'idempotency-key': `abandon_lesson_${index}`,
+          'if-match': `"${learning.resourceVersion}"`,
+        },
+        payload: { sourceSnapshotHash: (index % 2 === 0 ? 'a' : 'b').repeat(64) },
+      });
+      expect(abandoned.statusCode, abandoned.body).toBe(202);
+      expect(abandoned.json()).toMatchObject({ progress: 'abandoned' });
+    }
+
+    course = await local.courseRepositories.courses.get(confirmation.courseId);
+    expect(course).toBeDefined();
+    const closed = await app.inject({
+      method: 'POST',
+      url: `/api/v1/courses/${confirmation.courseId}/closures`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'close_course_01',
+        'if-match': `"${course!.resourceVersion}"`,
+      },
+      payload: { confirmAbandoned: true },
+    });
+    expect(closed.statusCode, closed.body).toBe(202);
+    expect(closed.json()).toMatchObject({ state: 'review-finalized' });
+    expect(closed.json<{ markdown: string }>().markdown).toContain('课程结构与已冻结的课时 Review');
+    const courseReview = await app.inject({
+      method: 'GET',
+      url: `/api/v1/courses/${confirmation.courseId}/review`,
+    });
+    expect(courseReview.statusCode, courseReview.body).toBe(200);
+    expect(courseReview.json()).toMatchObject({ state: 'review-finalized' });
+    course = await local.courseRepositories.courses.get(confirmation.courseId);
+    expect(course).toMatchObject({ status: 'closed' });
 
     const deleted = await app.inject({
       method: 'DELETE',
@@ -164,7 +314,7 @@ describe('local CourseAuthoring application', () => {
     expect(afterDeleteHistory.json<{ entries: unknown[] }>().entries).toEqual([]);
     expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
     await app.close();
-  }, 30_000);
+  }, 60_000);
 
   it('recovers a persisted committing lesson closure when the local service restarts', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-recovery-'));
@@ -225,9 +375,12 @@ describe('local CourseAuthoring application', () => {
         lessonId: 'lesson_recovery',
         messageId: 'message_01',
         contentArtifactRef: 'artifact_user_01',
-        establishesEvidence: true,
       },
       { ...context, commandId: 'message', expectedVersion: 1 },
+    );
+    await module.execute(
+      { type: 'EstablishEvidenceCheckpoint', lessonId: 'lesson_recovery' },
+      { ...context, commandId: 'observed', expectedVersion: 2 },
     );
 
     const learning = await module.query(

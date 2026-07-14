@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp } from 'node:fs/promises';
+import { access, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -13,6 +13,7 @@ import { createLocalFileCourseCreationRepositories } from './course-creation-rep
 import {
   courseDeletionBarrierExists,
   createLocalFileCourseArchiveStore,
+  createLocalFileOutlineSessionDraftStore,
 } from './course-archive-store.js';
 import { createLocalFileFactRepository } from './learning-facts-repositories.js';
 import { createStorePaths, initializeStoreLayout } from './paths.js';
@@ -26,6 +27,106 @@ import { recoverTransactions } from './recover-transactions.js';
 import { createUnitOfWork } from './unit-of-work.js';
 
 const timestamp = '2026-07-13T08:00:00.000Z';
+
+describe('LocalFile OutlineSessionDraftStore adapter', () => {
+  it('deletes one unconfirmed session and its owned drafts while preserving unrelated data', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'learning-more-outline-draft-delete-'));
+    const dataRoot = DataRoot.create(root);
+    const paths = createStorePaths(dataRoot);
+    await initializeStoreLayout(paths);
+    const unitOfWork = createUnitOfWork({ dataRoot });
+    const relative = (absolute: string) =>
+      path.relative(dataRoot.absolutePath, absolute).replaceAll('\\', '/');
+    const document = (entityType: string, entityId: string, data: Record<string, unknown>) => ({
+      schema: `learning-more/${entityType}`,
+      schemaVersion: 1,
+      entityType,
+      entityId,
+      resourceVersion: Number(data.resourceVersion ?? 1),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      contentSha256: checksumJson(data),
+      data,
+    });
+    const draftRef = 'draft_session_delete';
+    const draftPath = `work/artifacts/${createHash('sha256').update(draftRef).digest('hex')}/draft.md`;
+
+    await unitOfWork.execute({ transactionId: 'tx_seed_outline_draft' }, async (tx) => {
+      const session = {
+        session: {
+          outlineSessionId: 'session_delete',
+          state: 'candidate-ready',
+          candidateVersionIds: ['candidate_delete'],
+        },
+        resourceVersion: 3,
+      };
+      const candidate = {
+        id: 'candidate_delete',
+        outlineSessionId: 'session_delete',
+        generationTaskId: 'task_delete',
+        draftArtifactRef: draftRef,
+        resourceVersion: 1,
+      };
+      const material = {
+        artifactRef: 'material_delete',
+        outlineSessionId: 'session_delete',
+        resourceVersion: 1,
+      };
+      const task = {
+        id: 'task_delete',
+        ownerRef: 'session_delete',
+        resultRef: draftRef,
+        resourceVersion: 1,
+      };
+      const keepTask = {
+        id: 'task_keep',
+        ownerRef: 'session_keep',
+        resourceVersion: 1,
+      };
+      for (const [entityType, entityId, data] of [
+        ['outline-sessions', 'session_delete', session],
+        ['outline-candidates', 'candidate_delete', candidate],
+        ['materials', 'material_delete', material],
+        ['tasks', 'task_delete', task],
+        ['tasks', 'task_keep', keepTask],
+      ] as const) {
+        await tx.stageJson(
+          relative(paths.aggregate(entityType, entityId)),
+          document(entityType, entityId, data),
+        );
+      }
+      await tx.stageText(draftPath, '# incomplete candidate');
+    });
+
+    const store = createLocalFileOutlineSessionDraftStore(dataRoot);
+    const manifest = await unitOfWork.execute({ transactionId: 'tx_delete_outline_draft' }, (tx) =>
+      store.stageDelete(tx, 'session_delete'),
+    );
+
+    expect(manifest).toMatchObject({
+      outlineSessionId: 'session_delete',
+      deletedCounts: {
+        outlineSessions: 1,
+        candidateVersions: 1,
+        materials: 1,
+        generationTasks: 1,
+        artifacts: 2,
+      },
+    });
+    for (const [entityType, entityId] of [
+      ['outline-sessions', 'session_delete'],
+      ['outline-candidates', 'candidate_delete'],
+      ['materials', 'material_delete'],
+      ['tasks', 'task_delete'],
+    ] as const) {
+      await expect(access(paths.aggregate(entityType, entityId))).rejects.toThrow();
+    }
+    await expect(
+      access(path.join(dataRoot.absolutePath, ...draftPath.split('/'))),
+    ).rejects.toThrow();
+    await expect(access(paths.aggregate('tasks', 'task_keep'))).resolves.toBeUndefined();
+  });
+});
 
 describe('LocalFile CourseArchiveStore adapter', () => {
   it('completes an interrupted cascade on restart without exposing a stable partial deletion', async () => {
@@ -236,6 +337,30 @@ describe('LocalFile CourseArchiveStore adapter', () => {
         },
         resourceVersion: 1,
       });
+      await stageEntity(tx, 'teaching-ledgers', 'session_delete', {
+        courseId: 'course_delete',
+        lessonId: 'lesson_delete',
+        sessionId: 'session_delete',
+        resourceVersion: 1,
+      });
+      await stageEntity(tx, 'reasoning-behavior-episodes', 'reasoning_delete', {
+        episodeId: 'reasoning_delete',
+        courseId: 'course_delete',
+        lessonId: 'lesson_delete',
+        sessionId: 'session_delete',
+        resourceVersion: 1,
+      });
+      await stageEntity(tx, 'reasoning-behavior-episodes', 'reasoning_keep', {
+        episodeId: 'reasoning_keep',
+        courseId: 'course_keep',
+        lessonId: 'lesson_keep',
+        sessionId: 'session_keep',
+        resourceVersion: 1,
+      });
+      await stageEntity(tx, 'reasoning-behavior-analyses', 'reasoning_analysis_global', {
+        snapshot: { snapshotId: 'reasoning_analysis_global' },
+        resourceVersion: 1,
+      });
       await stageEntity(tx, 'schedules', 'schedule_delete', {
         id: 'schedule_delete',
         courseId: 'course_delete',
@@ -359,6 +484,7 @@ describe('LocalFile CourseArchiveStore adapter', () => {
         role: 'user',
         createdAt: timestamp,
         contentArtifactRef: 'artifact_message_delete',
+        completionStatus: 'complete',
       });
       await tx.stageJson('outbox/pending/old-course-event.json', {
         schemaVersion: 1,
@@ -389,6 +515,9 @@ describe('LocalFile CourseArchiveStore adapter', () => {
       schedules: 1,
       facts: 1,
       evidence: 1,
+      teachingLedgers: 1,
+      reasoningBehaviorEpisodes: 1,
+      reasoningBehaviorAnalyses: 1,
     });
     expect(await courses.courses.get('course_delete')).toBeUndefined();
     expect(await courses.courses.get('course_keep')).toMatchObject({ id: 'course_keep' });
@@ -398,6 +527,16 @@ describe('LocalFile CourseArchiveStore adapter', () => {
     expect(await schedules.get('schedule_keep')).toMatchObject({ id: 'schedule_keep' });
     expect(await messages.list('session_delete')).toEqual([]);
     expect(await portraits.getCurrent()).toBeUndefined();
+    await expect(access(paths.aggregate('teaching-ledgers', 'session_delete'))).rejects.toThrow();
+    await expect(
+      access(paths.aggregate('reasoning-behavior-episodes', 'reasoning_delete')),
+    ).rejects.toThrow();
+    await expect(
+      access(paths.aggregate('reasoning-behavior-episodes', 'reasoning_keep')),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(paths.aggregate('reasoning-behavior-analyses', 'reasoning_analysis_global')),
+    ).rejects.toThrow();
     expect(await courseDeletionBarrierExists(dataRoot, 'course_delete')).toBe(true);
 
     const remainingFacts = [];

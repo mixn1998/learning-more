@@ -17,15 +17,27 @@ function fixture() {
   });
   const requestPreview = vi.fn().mockResolvedValue({ id: 'plan_flow_01', resourceVersion: 1 });
   const confirm = vi.fn().mockResolvedValue({ id: 'plan_flow_01', resourceVersion: 3 });
+  const get = vi.fn().mockResolvedValue({
+    id: 'plan_flow_01',
+    state: 'confirmed',
+    lifecycleState: 'active',
+    resourceVersion: 3,
+  });
+  const manage = vi.fn().mockResolvedValue({
+    id: 'plan_flow_01',
+    state: 'confirmed',
+    lifecycleState: 'paused',
+    resourceVersion: 4,
+  });
   const app = Fastify();
   void registerPlanningRoutes(app, {
     planning: { execute, list: vi.fn().mockResolvedValue([]) },
-    planFlows: { requestPreview, confirm },
+    planFlows: { requestPreview, confirm, get, manage },
     nextCommandId: () => 'command_01',
     nextCorrelationId: () => 'correlation_01',
     now: () => new Date('2026-07-13T00:00:00.000Z'),
   });
-  return { app, execute, requestPreview, confirm };
+  return { app, execute, requestPreview, confirm, get, manage };
 }
 
 describe('Planning HTTP routes', () => {
@@ -92,6 +104,72 @@ describe('Planning HTTP routes', () => {
     expect(confirm).toHaveBeenCalledWith(
       'plan_flow_01',
       expect.objectContaining({ expectedVersion: 2 }),
+    );
+  });
+
+  it('moves, locks, and removes schedule assignments with If-Match protection', async () => {
+    const { app, execute } = fixture();
+    const moved = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/schedule-assignments/schedule_01',
+      headers: { ...headers, 'if-match': '"1"' },
+      payload: {
+        action: 'move',
+        startAt: '2026-07-14T01:00:00.000Z',
+        endAt: '2026-07-14T02:00:00.000Z',
+      },
+    });
+    expect(moved.statusCode, moved.body).toBe(200);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'MoveScheduleItem', scheduleItemId: 'schedule_01' }),
+      expect.objectContaining({ expectedVersion: 1 }),
+    );
+
+    const locked = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/schedule-assignments/schedule_01',
+      headers: { ...headers, 'if-match': '"1"' },
+      payload: { action: 'set-lock', locked: true },
+    });
+    expect(locked.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SetScheduleLock', locked: true }),
+      expect.any(Object),
+    );
+
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/schedule-assignments/schedule_01',
+      headers: { ...headers, 'if-match': '"1"' },
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'RemoveScheduleItem' }),
+      expect.any(Object),
+    );
+  });
+
+  it('reads and manages a confirmed plan flow', async () => {
+    const { app, get, manage } = fixture();
+    const read = await app.inject({
+      method: 'GET',
+      url: '/api/v1/plan-flows/plan_flow_01',
+      headers: { host: headers.host },
+    });
+    expect(read.statusCode).toBe(200);
+    expect(get).toHaveBeenCalledWith('plan_flow_01');
+
+    const action = await app.inject({
+      method: 'POST',
+      url: '/api/v1/plan-flows/plan_flow_01/actions',
+      headers: { ...headers, 'if-match': '"3"' },
+      payload: { action: 'pause' },
+    });
+    expect(action.statusCode, action.body).toBe(200);
+    expect(manage).toHaveBeenCalledWith(
+      'plan_flow_01',
+      'pause',
+      expect.objectContaining({ expectedVersion: 3 }),
     );
   });
 });

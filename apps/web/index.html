@@ -7,6 +7,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if (window.location.protocol === 'file:') {
+        window.location.replace('http://127.0.0.1:43119/');
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

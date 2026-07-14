@@ -3,7 +3,17 @@ import type { TransactionContext } from '../../../persistence/unit-of-work.js';
 
 export type WeeklyFactSnapshotEntry = Readonly<{
   factId: string;
+  sourceRef?: string;
+  kind?:
+    | 'learning-session'
+    | 'teaching-ledger'
+    | 'review'
+    | 'plan-change'
+    | 'reasoning-evidence'
+    | 'fact';
   occurredAt: string;
+  summary?: string;
+  payload?: Readonly<Record<string, unknown>>;
   courseId?: string;
   lessonId?: string;
   actualSeconds: number;
@@ -19,6 +29,8 @@ export type WeeklyReportRecord = Readonly<{
   state: 'generating' | 'failed' | 'finalized';
   factSnapshot: readonly WeeklyFactSnapshotEntry[];
   factSnapshotHash: string;
+  sourceRefs?: readonly string[];
+  snapshotExclusions?: readonly string[];
   projectionCursor?: string;
   metricDefinitionVersion: number;
   generationTaskId: string;

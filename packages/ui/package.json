@@ -7,10 +7,13 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./styles.css": "./styles.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/styles",
+    "styles.css"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -18,7 +21,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "react": "19.2.7"
+    "react": "19.2.7",
+    "react-markdown": "10.1.0",
+    "rehype-sanitize": "6.0.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.9.1",

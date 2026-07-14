@@ -1,4 +1,5 @@
 import type { HistoryEntry } from '../../client/history-client.js';
+import { Button, ContentState, Panel, SectionHeader } from '@learning-more/ui';
 
 function historyEntryLabel(entry: HistoryEntry): string {
   const labels: Readonly<Record<string, string>> = {
@@ -14,14 +15,15 @@ export function HistoryTimeline(props: {
   readonly entries: readonly HistoryEntry[];
   readonly nextCursor?: string;
   readonly onLoadMore: () => void;
+  readonly onOpenCourseSummary?: (courseId: string) => void;
 }) {
   return (
-    <section className="authoring-panel">
-      <h2>学习时间线</h2>
+    <Panel className="history-timeline">
+      <SectionHeader title="学习时间线" />
       {props.entries.length === 0 ? (
-        <p>该日无完成课节</p>
+        <ContentState title="该日无完成课节" />
       ) : (
-        <ol>
+        <ol className="history-timeline-list">
           {props.entries.map((entry) => (
             <li key={entry.factId}>
               <time>{entry.occurredAt}</time> · {historyEntryLabel(entry)} ·{' '}
@@ -40,15 +42,26 @@ export function HistoryTimeline(props: {
                   </a>
                 </span>
               )}
+              {entry.subjectRefs.courseId === undefined ||
+              props.onOpenCourseSummary === undefined ? null : (
+                <Button
+                  className="history-summary-button"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => props.onOpenCourseSummary?.(entry.subjectRefs.courseId!)}
+                >
+                  课程摘要
+                </Button>
+              )}
             </li>
           ))}
         </ol>
       )}
       {props.nextCursor === undefined ? null : (
-        <button type="button" onClick={props.onLoadMore}>
+        <Button type="button" onClick={props.onLoadMore}>
           加载更多
-        </button>
+        </Button>
       )}
-    </section>
+    </Panel>
   );
 }

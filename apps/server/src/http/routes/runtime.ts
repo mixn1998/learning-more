@@ -1,4 +1,6 @@
 import {
+  CodexLoginStartResponseSchema,
+  ProviderCatalogSchema,
   ProviderSwitchRequestSchema,
   ProviderSwitchResponseSchema,
   ProviderRuntimeStatusSchema,
@@ -12,6 +14,9 @@ import { mapApplicationError } from '../error-mapper.js';
 export type RuntimeRouteOptions = Readonly<{
   switchProvider(input: ProviderSwitchRequest): Promise<unknown>;
   getProviderStatus?(): Promise<unknown>;
+  reconnectProvider?(): Promise<unknown>;
+  getProviderCatalog?(options: Readonly<{ refresh: boolean }>): Promise<unknown>;
+  startProviderAuthentication?(providerId: string): Promise<unknown>;
   createDiagnostics?(): Promise<Readonly<{ artifactRef: string }>>;
   nextCorrelationId?: () => string;
 }>;
@@ -26,6 +31,53 @@ export async function registerRuntimeRoutes(
   app: FastifyInstance,
   options: RuntimeRouteOptions,
 ): Promise<void> {
+  if (options.getProviderCatalog !== undefined) {
+    app.get('/api/v1/ai-runtime/providers', async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const query = request.query as Readonly<{ refresh?: unknown }>;
+        if (query.refresh !== undefined && query.refresh !== 'true' && query.refresh !== 'false') {
+          throw new HttpContractError('request_invalid', 400);
+        }
+        return reply
+          .code(200)
+          .send(
+            ProviderCatalogSchema.parse(
+              await options.getProviderCatalog!({ refresh: query.refresh === 'true' }),
+            ),
+          );
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    });
+  }
+  if (options.startProviderAuthentication !== undefined) {
+    app.post('/api/v1/ai-runtime/providers/codex-cli/login', async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        if (
+          request.body !== undefined &&
+          (typeof request.body !== 'object' ||
+            request.body === null ||
+            Array.isArray(request.body) ||
+            Object.keys(request.body).length !== 0)
+        ) {
+          throw new HttpContractError('request_invalid', 400);
+        }
+        return reply
+          .code(202)
+          .send(
+            CodexLoginStartResponseSchema.parse(
+              await options.startProviderAuthentication!('codex-cli'),
+            ),
+          );
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    });
+  }
   if (options.getProviderStatus !== undefined) {
     app.get('/api/v1/ai-runtime/status', async (request, reply) => {
       const correlation = correlationId(request, options);
@@ -33,6 +85,19 @@ export async function registerRuntimeRoutes(
         return reply
           .code(200)
           .send(ProviderRuntimeStatusSchema.parse(await options.getProviderStatus!()));
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    });
+  }
+  if (options.reconnectProvider !== undefined) {
+    app.post('/api/v1/ai-runtime/reconnect', async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        return reply
+          .code(200)
+          .send(ProviderRuntimeStatusSchema.parse(await options.reconnectProvider!()));
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);

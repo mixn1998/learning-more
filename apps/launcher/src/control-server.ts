@@ -12,7 +12,7 @@ import path from 'node:path';
 
 export type ControlServerOptions = Readonly<{
   allowedOrigin: string;
-  capability: Readonly<{ value: string; expiresAt: number }>;
+  getCapability(): Readonly<{ value: string; expiresAt: number }>;
   getStatus(): Promise<unknown>;
   reconnect(): Promise<unknown>;
   syncFrontend(): Promise<unknown>;
@@ -49,6 +49,17 @@ function header(headers: IncomingHttpHeaders | Readonly<Record<string, string>>,
 
 function isLoopback(address: string): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+function isAllowedBrowserOrigin(
+  headers: IncomingHttpHeaders | Readonly<Record<string, string>>,
+  allowedOrigin: string,
+): boolean {
+  const origin = header(headers, 'origin');
+  if (origin !== undefined) return origin === allowedOrigin;
+  if (header(headers, 'sec-fetch-site') === 'same-origin') return true;
+  const referrer = header(headers, 'referer');
+  return referrer === allowedOrigin || referrer?.startsWith(`${allowedOrigin}/`) === true;
 }
 
 function response(
@@ -179,7 +190,7 @@ export async function buildControlServer(options: ControlServerOptions): Promise
     if (
       !isLoopback(remoteAddress) ||
       header(headers, 'host') !== '127.0.0.1:43119' ||
-      header(headers, 'origin') !== options.allowedOrigin
+      !isAllowedBrowserOrigin(headers, options.allowedOrigin)
     ) {
       return response(403, { code: 'control_forbidden' });
     }
@@ -191,28 +202,33 @@ export async function buildControlServer(options: ControlServerOptions): Promise
     } as const;
     if (method === 'OPTIONS') return response(204, undefined, corsHeaders);
     if (method !== 'GET') {
+      const capability = options.getCapability();
       if (
-        Date.now() >= options.capability.expiresAt ||
-        header(headers, 'x-learning-more-capability') !== options.capability.value
+        Date.now() >= capability.expiresAt ||
+        header(headers, 'x-learning-more-capability') !== capability.value
       ) {
         return response(403, { code: 'control_capability_invalid' }, corsHeaders);
       }
     }
 
-    if (method === 'GET' && request.url === '/control/v1/status') {
-      return response(200, await options.getStatus(), corsHeaders);
+    try {
+      if (method === 'GET' && request.url === '/control/v1/status') {
+        return response(200, await options.getStatus(), corsHeaders);
+      }
+      if (method !== 'POST') return response(404, { code: 'control_route_not_found' }, corsHeaders);
+      if (!isEmptyBody(request.payload))
+        return response(400, { code: 'control_body_invalid' }, corsHeaders);
+      if (request.url === '/control/v1/reconnect')
+        return response(200, await options.reconnect(), corsHeaders);
+      if (request.url === '/control/v1/sync-frontend') {
+        return response(200, await options.syncFrontend(), corsHeaders);
+      }
+      if (request.url === '/control/v1/diagnose')
+        return response(200, await options.diagnose(), corsHeaders);
+      return response(404, { code: 'control_route_not_found' }, corsHeaders);
+    } catch {
+      return response(503, { code: 'control_action_failed' }, corsHeaders);
     }
-    if (method !== 'POST') return response(404, { code: 'control_route_not_found' }, corsHeaders);
-    if (!isEmptyBody(request.payload))
-      return response(400, { code: 'control_body_invalid' }, corsHeaders);
-    if (request.url === '/control/v1/reconnect')
-      return response(200, await options.reconnect(), corsHeaders);
-    if (request.url === '/control/v1/sync-frontend') {
-      return response(200, await options.syncFrontend(), corsHeaders);
-    }
-    if (request.url === '/control/v1/diagnose')
-      return response(200, await options.diagnose(), corsHeaders);
-    return response(404, { code: 'control_route_not_found' }, corsHeaders);
   }
 
   let server: Server | undefined;

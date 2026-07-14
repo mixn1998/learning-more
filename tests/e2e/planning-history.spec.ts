@@ -96,19 +96,27 @@ test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identica
   expect(plannedLessonId).toBeDefined();
 
   await page.goto('/planning');
-  await page.getByLabel('课程 ID', { exact: true }).fill(course.id);
-  await page.getByLabel('课节 ID', { exact: true }).fill(manualLessonId!);
-  await page.getByLabel('开始时间').fill('2026-07-16T19:00');
-  await page.getByLabel('结束时间').fill('2026-07-16T20:00');
-  await page.getByRole('button', { name: '创建手工排期' }).click();
-  await expect(page.getByRole('cell', { name: manualLessonId! })).toBeVisible();
+  await page.getByLabel('排期状态').selectOption('待规划');
+  const manualLesson = page.locator(`[data-lesson-id="${manualLessonId}"]`);
+  await manualLesson.getByRole('button', { name: '点击安排学习日期' }).click();
+  await page.getByLabel('学习日期').fill('2026-07-16');
+  await page.getByRole('button', { name: '保存日期' }).click();
+  await expect(page.locator(`[data-lesson-id="${manualLessonId}"]`)).toContainText('2026-07-16');
 
-  await page.getByLabel('计划课程 ID').fill(course.id);
-  await page.getByLabel('计划课节 ID').fill(plannedLessonId!);
+  await page.getByRole('button', { name: '生成计划流' }).click();
+  await page.getByRole('button', { name: '下一步' }).click();
+  await expect(page.locator(`[data-course-id="${course.id}"]`)).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: '下一步' }).click();
+  await page.getByRole('button', { name: '下一步' }).click();
   await page.getByRole('button', { name: '生成计划预览' }).click();
   await expect(page.getByText('预览不会修改正式排期')).toBeVisible();
   await page.getByRole('button', { name: '确认计划流' }).click();
-  await expect(page.getByRole('cell', { name: plannedLessonId! })).toBeVisible();
+  await page.getByRole('button', { name: '取消' }).click();
+  await page.getByLabel('排期状态').selectOption('已安排');
+  await expect(page.locator(`[data-lesson-id="${plannedLessonId}"]`)).toBeVisible();
 
   await page.goto(`/lessons/${manualLessonId}`);
   await page.getByRole('button', { name: '开始学习' }).click();
@@ -117,16 +125,34 @@ test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identica
   await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
   await expect(page.getByRole('button', { name: '停止生成' })).toBeHidden();
   await page.getByRole('button', { name: '结束本课' }).click();
+  await page.getByRole('button', { name: '完成本课' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
 
   await page.goto('/history');
-  await expect(page.getByRole('heading', { name: '学习历史' })).toBeVisible();
-  await expect(
-    page.getByRole('listitem').filter({ hasText: '完成课节' }).filter({ hasText: manualLessonId! }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '历史统计' })).toBeVisible();
+  const courseRow = page.getByRole('row').filter({ hasText: 'Planning history course' });
+  await expect(courseRow).toContainText('1 / 2 完成');
   const before = await page.evaluate(async () =>
     (await fetch('/api/v1/history?pageSize=100')).json(),
   );
+  const calendar = await page.evaluate(async () =>
+    (await fetch('/api/v1/history/calendar?from=2026-01-01&to=2026-12-31')).json(),
+  );
+  const completedDay = (
+    calendar as {
+      days: Array<{ localDate: string; completedLessonIds: string[] }>;
+    }
+  ).days.find((day) => day.completedLessonIds.includes(manualLessonId!));
+  expect(completedDay).toBeDefined();
+  await page.getByRole('tab', { name: '学习日历' }).click();
+  const completedDate = page.getByRole('button', {
+    name: new RegExp(`^${completedDay!.localDate}，\\d+ 节已完成$`),
+  });
+  await expect(completedDate).toBeVisible();
+  await completedDate.click();
+  await expect(
+    page.locator(`a[href="/courses/${course.id}/lessons/${manualLessonId}/record?tab=review"]`),
+  ).toBeAttached();
   const weekly = await page.evaluate(async () =>
     (await fetch('/api/v1/history/weeks/2026-W29')).json(),
   );
@@ -155,7 +181,20 @@ test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identica
   expect(finalizedReport.factSnapshot).toEqual(
     expect.arrayContaining([expect.objectContaining({ lessonId: manualLessonId })]),
   );
+  await page.goto('/history?tab=weekly');
+  await expect(page.getByRole('heading', { name: '上周学习回顾' })).toBeVisible();
+  const reportToggle = page.getByRole('button', { name: /上周学习报告/ });
+  await expect(reportToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(
+    page.locator(`.weekly-report-lesson[data-lesson-id="${manualLessonId}"]`),
+  ).toContainText('点击查看课节记录');
+  await reportToggle.click();
+  await expect(page.locator('[data-ai-content="true"]').first()).toBeVisible();
   await page.goto('/history');
-  await expect(page.getByText('周报已冻结')).toBeVisible();
-  await expect(page.getByText(/本周完成 \d+ 个课节/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: '历史统计' })).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'Planning history course' })).toContainText(
+    '1 / 2 完成',
+  );
+  await page.getByRole('tab', { name: '学习日历' }).click();
+  await expect(completedDate).toBeVisible();
 });

@@ -85,9 +85,6 @@ describe('ReviewClosure HTTP contract', () => {
       headers,
       payload: {
         sessionId: 'session_01',
-        sourceSessionIds: ['session_01'],
-        sourceMessageIds: ['message_01'],
-        messageRangeChecksum: 'a'.repeat(64),
         endIntent: 'finish lesson',
       },
     });

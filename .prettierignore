@@ -3,6 +3,9 @@
 .pnpm-home/
 .npm-cache/
 .playwright-browsers/
+.learning-more-data/
+.learning-more-runtime/
+.learning-more-runtime-debug/
 .superpowers/
 coverage/
 artifacts/

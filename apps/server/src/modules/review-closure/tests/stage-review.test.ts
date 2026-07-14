@@ -23,7 +23,7 @@ describe('stage Review workflow', () => {
     const workflow = createStageReviewWorkflow({
       repository,
       unitOfWork,
-      generationRuntime: { submit },
+      reviewTask: { submit },
       now: () => new Date('2026-07-13T00:00:00.000Z'),
     });
     const input = {
@@ -57,7 +57,7 @@ describe('stage Review workflow', () => {
     const workflow = createStageReviewWorkflow({
       repository,
       unitOfWork,
-      generationRuntime: { submit: async () => ({ taskId: `task_${++task}` }) },
+      reviewTask: { submit: async () => ({ taskId: `task_${++task}` }) },
       commitToLearningSession,
       now: () => new Date('2026-07-13T00:00:00.000Z'),
     });

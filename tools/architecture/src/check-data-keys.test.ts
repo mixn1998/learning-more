@@ -24,6 +24,6 @@ describe('dataKey registry checks', () => {
   });
 
   it('accepts the complete published registry', () => {
-    expect(checkDataKeys(DATA_KEYS, 191)).toEqual([]);
+    expect(checkDataKeys(DATA_KEYS, 273)).toEqual([]);
   });
 });

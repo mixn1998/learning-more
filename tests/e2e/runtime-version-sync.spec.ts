@@ -34,8 +34,11 @@ test('[EQ-SELF-02] blocks stale Web writes and rejects an invalid Launcher capab
       )) as { generation?: number };
       return readiness.generation ?? 0;
     });
+    await page.getByRole('tab', { name: /本地服务/ }).click();
     await page.getByRole('button', { name: '安全重连' }).click();
-    await expect(page.getByText('刷新 AI：完成')).toBeVisible();
+    await expect(page.getByRole('listitem').filter({ hasText: '4. 刷新 AI' })).toContainText(
+      '完成',
+    );
     await expect
       .poll(async () => {
         const readiness = await fetch('http://127.0.0.1:43120/api/v1/runtime/ready').then(

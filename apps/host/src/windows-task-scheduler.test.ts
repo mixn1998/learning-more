@@ -1,0 +1,48 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import type { HostTaskDefinition } from './task-scheduler.js';
+import { createWindowsTaskScheduler } from './windows-task-scheduler.js';
+
+const definition: HostTaskDefinition = {
+  name: 'Learning MORE',
+  executable: 'C:\\Program Files\\nodejs\\node.exe',
+  arguments: ['C:\\Learning MORE\\host\\main.js', 'run', '--project-root', 'D:\\Growth OS'],
+  userId: 'DOGGY\\14627',
+  trigger: 'logon',
+  startWhenAvailable: true,
+  multipleInstances: 'ignore-new',
+  restartIntervalMinutes: 1,
+  restartCount: 999,
+  executionTimeLimit: 'PT0S',
+};
+
+describe('Windows Task Scheduler adapter', () => {
+  it('uses encoded PowerShell with the exact logon, restart, and single-instance contract', async () => {
+    const scripts: string[] = [];
+    const run = vi.fn(async (_executable: string, arguments_: readonly string[]) => {
+      const encoded = arguments_[arguments_.indexOf('-EncodedCommand') + 1]!;
+      const script = Buffer.from(encoded, 'base64').toString('utf16le');
+      scripts.push(script);
+      if (script.includes('Get-ScheduledTask')) {
+        return { exitCode: 3, stdout: '__LEARNING_MORE_TASK_MISSING__', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const scheduler = createWindowsTaskScheduler({ run, systemRoot: 'C:\\Windows' });
+
+    await expect(scheduler.read('Learning MORE')).resolves.toBeUndefined();
+    await scheduler.replace(definition);
+
+    expect(run).toHaveBeenCalledWith(
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      expect.arrayContaining(['-NoProfile', '-NonInteractive', '-EncodedCommand']),
+    );
+    const registration = scripts.find((script) => script.includes('Register-ScheduledTask'))!;
+    expect(registration).toContain('New-ScheduledTaskTrigger -AtLogOn');
+    expect(registration).toContain('MultipleInstances IgnoreNew');
+    expect(registration).toContain('RestartInterval (New-TimeSpan -Minutes 1)');
+    expect(registration).toContain('ExecutionTimeLimit ([TimeSpan]::Zero)');
+    expect(registration).not.toContain(definition.executable);
+    expect(registration).not.toContain(definition.userId);
+  });
+});

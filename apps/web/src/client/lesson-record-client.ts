@@ -1,17 +1,11 @@
-export type LessonRecord = Readonly<{
-  lessonId: string;
-  original: Readonly<{
-    sessionId: string;
-    label: string;
-    messages: readonly string[];
-  }>;
-  supplementary: readonly Readonly<{
-    sessionId: string;
-    label: string;
-    messages: readonly string[];
-  }>[];
-  finalReviewMarkdown: string;
-}>;
+import {
+  LessonRecordResponseSchema,
+  type LessonRecordView as LessonRecord,
+} from '@learning-more/contracts';
+
+import { apiRequest } from './api-client.js';
+
+export type { LessonRecord };
 
 export interface LessonRecordClient {
   getLessonRecord(lessonId: string): Promise<LessonRecord>;
@@ -19,9 +13,10 @@ export interface LessonRecordClient {
 
 export const lessonRecordClient: LessonRecordClient = {
   async getLessonRecord(lessonId) {
-    const response = await fetch(`/api/v1/lessons/${encodeURIComponent(lessonId)}/record`);
-    const body = (await response.json()) as LessonRecord;
-    if (!response.ok) throw body;
-    return body;
+    return (
+      await apiRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/record`, {
+        schema: LessonRecordResponseSchema,
+      })
+    ).data;
   },
 };

@@ -143,7 +143,9 @@ export function createPlanningModule(options: {
           ? { startAt: command.startAt, endAt: command.endAt }
           : command.type === 'ResizeScheduleItem'
             ? { endAt: command.endAt }
-            : { status: 'removed' as const, cancelReason: 'user_removed' as const }),
+            : command.type === 'SetScheduleLock'
+              ? { locked: command.locked }
+              : { status: 'removed' as const, cancelReason: 'user_removed' as const }),
         ...((command.type === 'MoveScheduleItem' || command.type === 'ResizeScheduleItem') &&
         current.source === 'plan-flow'
           ? { locked: true }

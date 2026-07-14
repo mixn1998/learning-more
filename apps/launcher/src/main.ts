@@ -51,36 +51,54 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
     async start() {
       state = 'starting';
       await dependencies.acquireLease();
-      const decision = decideStartupRecovery(await dependencies.observeStartup());
-      state = decision.state;
-      if (decision.action === 'manual') return;
-      if (decision.action === 'reuse') {
-        await dependencies.openApplication();
-        return;
-      }
-      if (decision.action === 'quarantine_and_start') {
-        await dependencies.quarantineManifest();
-      }
-      if (decision.action === 'restart_verified') {
-        const terminated = await dependencies.terminateVerifiedServer();
-        if (!terminated) {
-          state = 'blocked_identity_mismatch';
+      let applicationOpened = false;
+      try {
+        const decision = decideStartupRecovery(await dependencies.observeStartup());
+        state = decision.state;
+        if (decision.action === 'manual') return;
+        if (decision.action === 'reuse') {
+          await dependencies.openApplication();
+          applicationOpened = true;
           return;
         }
+        if (decision.action === 'quarantine_and_start') {
+          await dependencies.quarantineManifest();
+        }
+        if (decision.action === 'restart_verified') {
+          const terminated = await dependencies.terminateVerifiedServer();
+          if (!terminated) {
+            state = 'blocked_identity_mismatch';
+            return;
+          }
+        }
+        await startNewServer();
+        await dependencies.openApplication();
+        applicationOpened = true;
+      } catch {
+        // The control server and static product UI must stay available so the
+        // operator can diagnose and retry a failed internal server startup.
+        state = 'degraded';
+      } finally {
+        if (!applicationOpened) {
+          await dependencies.openApplication().catch(() => undefined);
+        }
       }
-      await startNewServer();
-      await dependencies.openApplication();
     },
     async reconnect() {
       state = 'restarting';
-      const drained = await dependencies.drainServer(10_000);
-      if (!drained && !(await dependencies.terminateVerifiedServer())) {
-        state = 'blocked_identity_mismatch';
-        return;
+      try {
+        const drained = await dependencies.drainServer(10_000);
+        if (!drained && !(await dependencies.terminateVerifiedServer())) {
+          state = 'blocked_identity_mismatch';
+          return;
+        }
+        await dependencies.startServer();
+        await dependencies.waitForVerifiedReady();
+        state = 'healthy';
+      } catch (error) {
+        state = 'degraded';
+        throw error;
       }
-      await dependencies.startServer();
-      await dependencies.waitForVerifiedReady();
-      state = 'healthy';
     },
     async syncFrontend() {
       await dependencies.syncFrontend();
@@ -99,9 +117,13 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
       state = recovery.state;
       await dependencies.wait(recovery.delayMs);
       state = 'restarting';
-      await dependencies.startServer();
-      await dependencies.waitForVerifiedReady();
-      state = 'healthy';
+      try {
+        await dependencies.startServer();
+        await dependencies.waitForVerifiedReady();
+        state = 'healthy';
+      } catch {
+        state = 'degraded';
+      }
     },
     status() {
       return { state, crashCount: crashTimestamps.length };
@@ -126,8 +148,8 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
         path.join(projectRoot, 'apps', 'server', 'dist', 'bootstrap', 'main.js'),
     ),
     serverPort: 43_120,
-    webUrl: process.env.LEARNING_MORE_WEB_URL ?? 'http://127.0.0.1:5173',
-    allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
+    webUrl: process.env.LEARNING_MORE_WEB_URL ?? 'http://127.0.0.1:43119',
+    allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:43119',
     openBrowser: process.env.LEARNING_MORE_NO_OPEN !== '1',
     onUnexpectedExit: () => {
       void runtimeReference.current?.serverExitedUnexpectedly();
@@ -136,8 +158,8 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
   const activeRuntime = createLauncherRuntime(adapters.dependencies);
   runtimeReference.current = activeRuntime;
   const control = await buildControlServer({
-    allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
-    capability: adapters.capability,
+    allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:43119',
+    getCapability: adapters.refreshCapability,
     getStatus: async () => {
       const capability = adapters.refreshCapability();
       return {

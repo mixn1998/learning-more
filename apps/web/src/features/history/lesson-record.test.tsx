@@ -21,6 +21,26 @@ function renderRecord() {
 }
 
 describe('lesson history record', () => {
+  it('renders the immutable Review through the shared Markdown boundary', () => {
+    render(
+      <LessonRecordView
+        original={{ sessionId: 'original', label: 'Original', messages: [] }}
+        supplementary={[]}
+        finalReviewMarkdown={
+          '## Review evidence\n\n**Observed**\n\n- one decision\n- one revision\n\n> This is evidence, not a fixed trait.'
+        }
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('tab')[1]!);
+    expect(screen.getByRole('heading', { name: 'Review evidence' })).toBeVisible();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByText('Observed').tagName).toBe('STRONG');
+    expect(document.querySelector('.lesson-record-review blockquote')).toHaveTextContent(
+      'This is evidence, not a fixed trait.',
+    );
+  });
+
   it('keeps the original conversation readonly and exposes no supplementary-learning creation control', () => {
     renderRecord();
     expect(screen.getByLabelText('只读学习对话')).toHaveTextContent('原始内容不可修改');

@@ -1,35 +1,938 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Learning MORE · 主页</title><link rel="icon" href="data:,"><link rel="stylesheet" href="../00-设计系统/assets/base.css"><style>
-.home-hero{padding:22px 24px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:start}.home-hero h1{font-size:28px;margin:7px 0 5px}.home-hero p{margin:0;color:var(--muted);font-size:12px}.home-prompt{margin-top:16px;max-width:900px}.prompt-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}.prompt-head strong{font-size:10px}.prompt-row{display:grid;grid-template-columns:1fr auto;gap:8px;padding:7px;border:1px solid var(--accent);border-radius:12px;background:#fff;box-shadow:0 8px 20px color-mix(in srgb,var(--accent) 12%,transparent)}.prompt-row input{height:43px;padding:0 10px;border:0;outline:0;font-size:11px}.prompt-help{display:block;margin-top:6px;color:var(--muted);font-size:9px}.upload{display:none;margin-top:9px;padding:11px 12px;border:1px dashed var(--accent);border-radius:10px;background:var(--tint);justify-content:space-between;align-items:center}.upload.visible{display:flex}.home-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;margin-top:14px;align-items:stretch}.mode-rail{padding:15px;display:grid;grid-template-rows:auto repeat(9,minmax(64px,1fr));gap:8px;min-height:720px;position:sticky;top:92px;align-self:start}.mode-rail header{padding:3px 4px 10px;border-bottom:1px solid var(--line)}.mode-rail header strong{font-size:14px}.mode-rail header span{display:block;margin-top:4px;font-size:9px;color:var(--muted)}.mode-card{--card-accent:#af6942;--card-tint:#f7ece5;width:100%;display:grid;grid-template-columns:42px 1fr;gap:11px;align-items:center;padding:10px 12px;border:1px solid transparent;border-radius:13px;background:transparent;text-align:left;cursor:pointer}.mode-card:hover{background:var(--card-tint)}.mode-card[aria-pressed=true]{border-color:var(--card-accent);background:var(--card-tint);box-shadow:0 0 0 3px color-mix(in srgb,var(--card-accent) 11%,transparent)}.mode-card i{width:42px;height:42px;border-radius:12px;background:var(--card-tint);color:var(--card-accent);display:grid;place-items:center;font-style:normal;font-weight:900;font-size:15px}.mode-card b{display:block;font-size:12px}.mode-card span{font-size:9px;color:var(--muted)}.schedule{padding:17px;min-width:0;max-height:850px;overflow-y:auto;scrollbar-gutter:stable}.schedule-head{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:13px 14px;background:var(--paper-2);border-radius:11px}.schedule-head h2{font-size:18px;margin:0 0 4px}.schedule-head p{margin:0;color:var(--muted);font-size:10px}.week{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:12px}.day{min-height:250px;padding:10px;border:1px solid var(--line);border-radius:11px;background:#fff}.day.today{border-color:var(--accent);background:color-mix(in srgb,var(--tint) 65%,#fff)}.day small{display:block;color:var(--muted);font-size:9px}.day strong{display:block;margin:4px 0 9px;font-size:13px}.day-empty{padding-top:9px;border-top:1px solid #eee5da;color:#aaa096;font-size:9px}.mini{display:block;margin-top:6px;padding:7px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:10px;font-weight:800}.agenda{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:11px;background:var(--paper-2)}.agenda h3{font-size:14px;margin:0}.agenda>p{font-size:10px;color:var(--muted)}.agenda-list{display:grid;gap:7px}.agenda-item{display:flex;justify-content:space-between;gap:14px;padding:12px;border:1px solid var(--line);border-radius:9px;background:#fff;text-align:left;cursor:pointer}.agenda-item b{font-size:11px}.agenda-item span{font-size:9px;color:var(--muted)}dialog{width:min(680px,calc(100% - 28px));padding:0;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 28px 70px rgba(57,42,29,.24)}dialog::backdrop{background:rgba(44,38,32,.38)}.dialog-head,.dialog-body,.dialog-foot{padding:18px 21px}.dialog-head{border-bottom:1px solid var(--line)}.dialog-head h2{font-size:23px;margin:7px 0 4px}.dialog-head p{font-size:10px;color:var(--muted)}.points{display:grid;gap:8px}.point{padding:11px;border:1px solid var(--line);border-radius:10px}.point b{font-size:11px}.point span{display:block;margin-top:4px;font-size:9px;color:var(--muted)}.dialog-foot{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);background:var(--paper-2)}
-.week-tools{justify-content:flex-end;flex-wrap:wrap}.week-range{min-width:128px;text-align:center;font-size:12px;white-space:nowrap}.week-step{width:42px;padding:0}.week-tools .lm-btn{white-space:nowrap}
-.day{width:100%;color:var(--ink);font:inherit;text-align:left;cursor:pointer}.day:hover{border-color:var(--accent);transform:translateY(-1px)}.day.today{box-shadow:inset 0 3px 0 color-mix(in srgb,var(--accent) 38%,transparent)}.day.selected{border-color:var(--accent);background:var(--tint);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 11%,transparent)}
-@media(max-width:1050px){.home-layout{grid-template-columns:220px 1fr}.week{grid-template-columns:repeat(4,1fr)}.schedule-head{align-items:flex-start;flex-direction:column}.week-tools{justify-content:flex-start;width:100%}}@media(max-width:720px){.home-hero{grid-template-columns:1fr}.home-layout{grid-template-columns:1fr}.mode-rail{position:static;min-height:auto;grid-template-columns:1fr 1fr;grid-template-rows:auto}.mode-rail header{grid-column:1/-1}.week{grid-template-columns:1fr 1fr}.schedule{max-height:none}.prompt-row{grid-template-columns:1fr}.prompt-row .lm-btn{height:42px}.week-range{order:-1;flex-basis:100%;text-align:left}.week-tools .lm-btn{flex:0 0 auto}}
-</style><script defer src="../00-设计系统/assets/runtime-status.js"></script><script defer src="../00-设计系统/assets/sample-ui.js"></script></head><body><header class="lm-topbar"><div class="lm-brand"><strong>Learning MORE</strong><span>学习即生活｜用 AI 重塑学习方式</span></div><div class="lm-runtime"><span class="lm-pill">● 接口 · Codex</span><span class="lm-pill success">● 服务准备就绪</span></div></header><main class="lm-page"><section class="lm-card home-hero"><div><div class="lm-kicker">Personal learning workspace</div><h1>开始定制你的私人学习计划</h1><form class="home-prompt" id="prompt"><div class="prompt-head"><strong id="promptLabel">标准模式 · 你想学什么？</strong><span class="lm-mode-badge" id="modeBadge">● 标准模式</span></div><div class="prompt-row"><input id="topic" placeholder="例如：我想系统提升游戏设计能力，学会设计有持续吸引力的核心循环"><button class="lm-btn primary" id="startBtn">开始学习起点评估 →</button></div><div class="upload" id="upload"><div><b id="materialName">上传阅读材料</b><br><small>支持 PDF、TXT、Markdown 等可解析文本</small></div><button type="button" class="lm-btn" id="selectMaterial">选择文件</button><input id="materialInput" type="file" accept=".pdf,.txt,.md,.markdown,text/plain,application/pdf,text/markdown" hidden></div></form></div><div class="lm-actions"><a class="lm-btn" href="../06-历史统计与学习画像/历史统计.html">历史统计</a><a class="lm-btn primary" href="../02-课程创建与大纲/正式课程大纲.html">继续学习</a></div></section><div class="home-layout"><aside class="lm-card mode-rail" id="modeRail"><header><strong>选择模式</strong></header></aside><section class="lm-card schedule"><div class="schedule-head"><div><h2>本周课程表</h2><p>今日待学 5 节，逾期 0 节，待规划 3 节</p></div><div class="lm-actions week-tools"><button class="lm-btn" id="returnWeek">返回当周</button><button class="lm-btn week-step" id="prevWeek" aria-label="上一周">‹</button><b class="week-range" id="weekRange">07/06 — 07/12</b><button class="lm-btn week-step" id="nextWeek" aria-label="下一周">›</button><a class="lm-btn" href="../03-课程规划与排期/课程规划.html">进行课程规划</a><a class="lm-btn" href="../05-Review与学习档案/上周学习回顾.html">上周学习回顾</a></div></div><div class="week" id="week"></div><section class="agenda"><h3 id="agendaTitle">2026-07-12 · 今日学习</h3><div class="agenda-list" id="agenda"></div></section></section></div></main><dialog id="lessonDialog"><div class="dialog-head"><h2 id="dialogTitle"></h2></div><div class="dialog-body"><div class="points" id="dialogPoints"></div></div><div class="dialog-foot"><button class="lm-btn" id="closeDialog">关闭</button><a class="lm-btn primary" href="../04-课节学习/正式课程学习会话.html">开始学习</a></div></dialog><script src="../00-设计系统/assets/mode-themes.js"></script><script>
-const order=['standard','brainstorm','argument_clash','case_study','business_insight','process_decomposition','decision_analysis','cross_explore','reading_seminar'];const rail=document.getElementById('modeRail');const cards={};order.forEach(mode=>{const t=CourseModeThemeRegistry[mode],b=document.createElement('button');b.type='button';b.className='mode-card';b.dataset.mode=mode;b.style.setProperty('--card-accent',t.accent);b.style.setProperty('--card-tint',t.tint);b.setAttribute('aria-pressed',mode==='standard');b.innerHTML=`<i>${t.icon}</i><div><b>${t.label}</b><span>${t.subtitle}</span></div>`;b.onclick=()=>selectMode(mode);rail.appendChild(b);cards[mode]=b});function selectMode(mode){const t=applyCourseModeTheme(mode);Object.entries(cards).forEach(([id,b])=>b.setAttribute('aria-pressed',String(id===mode)));document.getElementById('promptLabel').textContent=t.label+' · '+t.promptTitle;document.getElementById('modeBadge').textContent=t.icon+' '+t.label;document.getElementById('startBtn').textContent=t.cta+' →';document.getElementById('topic').placeholder=t.placeholder;document.getElementById('upload').classList.toggle('visible',mode==='reading_seminar');document.getElementById('topic').focus()}selectMode('standard');document.getElementById('prompt').onsubmit=e=>{e.preventDefault();if(!document.getElementById('topic').value.trim()){document.getElementById('topic').focus();document.getElementById('topic').placeholder='请先输入你想学习的内容';return}const mode=document.documentElement.dataset.courseMode;if(mode==='reading_seminar'&&!materialInput.files.length){window.SampleUI.showToast('请先选择阅读材料','warning');selectMaterial.focus();return}const target=mode==='standard'?'../02-课程创建与大纲/标准模式建档.html':`../02-课程创建与大纲/八大玩法建档/${CourseModeThemeRegistry[mode].label}.html`;location.href=target};
-const materialInput=document.getElementById('materialInput');const selectMaterial=document.getElementById('selectMaterial');const materialName=document.getElementById('materialName');selectMaterial.onclick=()=>materialInput.click();materialInput.onchange=()=>{const file=materialInput.files[0];if(!file)return;const allowed=/\.(pdf|txt|md|markdown)$/i.test(file.name);if(!allowed){materialInput.value='';window.SampleUI.showToast('请选择 PDF、TXT 或 Markdown 文件','warning');return}materialName.textContent=file.name;selectMaterial.textContent='更换文件';window.SampleUI.showToast('材料已选择，提交后将模拟解析','success')};
-const lessons=[
-['反馈是游戏设计的脊椎','游戏设计 · 24 分钟',[
-['反馈的三个层级','区分状态、能力与目标反馈，判断它们分别改变了玩家对什么的理解。'],
-['玩家如何读懂变化','从可观察行为识别玩家是否知道发生了什么、为什么发生，以及下一步能做什么。'],
-['反馈如何连接行动','检验一次反馈是否真正改变下一次选择，而不只停留在视觉或数值响应。']]],
-['数组与链表的结构取舍','计算机科学 · 31 分钟',[
-['连续存储','理解连续地址如何换来随机访问优势，同时产生移动元素与扩容成本。'],
-['分散节点','观察指针连接如何放宽存储位置约束，并把访问代价转移到逐步寻址。'],
-['操作代价','根据访问、插入和删除需求，从结构约束推导合适的数据组织方式。']]],
-['核心循环与玩家动机','游戏设计 · 20 分钟',[
-['玩家行动','识别循环中由玩家主动做出的关键选择，而不是把所有操作都视为等价输入。'],
-['系统反馈','判断系统响应是否提供足够的新信息，让玩家修正理解或策略。'],
-['下一步欲望','分析目标推进如何让一次行动自然产生继续尝试的理由。']]],
-['栈与队列如何约束操作顺序','计算机科学 · 26 分钟',[
-['后进先出','从只允许在同一端进出的约束理解栈为何适合撤销、调用与深度探索。'],
-['先进先出','从进入顺序被保留的机制理解队列如何表达等待、公平与逐步处理。'],
-['场景匹配','先找业务必须维持的顺序性质，再判断应选择栈、队列还是其他结构。']]],
-['建立可验证的成功标准','产品设计 · 18 分钟',[
-['判断标准','把宽泛的“体验更好”改写为可以观察、比较并据此决策的条件。'],
-['行为证据','优先使用用户实际行动检验假设，避免把口头偏好直接等同于真实选择。'],
-['迭代决策','提前约定不同结果对应的继续、调整或停止动作，让测试真正推动下一步。']]]];
-let weekOffset=0;let selectedDayIndex=6;const baseMonday=new Date(2026,6,6);const dayNames=['周一','周二','周三','周四','周五','周六','周日'];const two=n=>String(n).padStart(2,'0');const formatDate=d=>`${two(d.getMonth()+1)}/${two(d.getDate())}`;const isoDate=d=>`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`;const lessonsForDay=index=>weekOffset===0&&index===6?lessons:[];
-function bindAgenda(){document.querySelectorAll('.agenda-item').forEach(button=>button.onclick=()=>{const lesson=lessons[+button.dataset.i];document.getElementById('dialogTitle').textContent=lesson[0];document.getElementById('dialogPoints').innerHTML=lesson[2].map(([point,summary],index)=>`<div class="point"><b>${String(index+1).padStart(2,'0')} · ${point}</b><span>${summary}</span></div>`).join('');lessonDialog.showModal()})}
-function renderSelectedDay(monday){document.querySelectorAll('.day').forEach((day,index)=>day.classList.toggle('selected',index===selectedDayIndex));const date=new Date(monday);date.setDate(date.getDate()+selectedDayIndex);const scheduled=lessonsForDay(selectedDayIndex);agendaTitle.textContent=`${isoDate(date)} · ${weekOffset===0&&selectedDayIndex===6?'今日学习':'学习安排'}`;agenda.innerHTML=scheduled.length?scheduled.map((lesson,index)=>`<button class="agenda-item" data-i="${index}"><b>${lesson[0]}</b><span>${lesson[1]} →</span></button>`).join(''):'<div class="lm-empty">当天暂无学习安排</div>';bindAgenda()}
-function renderWeek(){const monday=new Date(baseMonday);monday.setDate(monday.getDate()+weekOffset*7);const sunday=new Date(monday);sunday.setDate(sunday.getDate()+6);selectedDayIndex=weekOffset===0?6:0;weekRange.textContent=`${formatDate(monday)} — ${formatDate(sunday)}`;week.innerHTML=dayNames.map((name,index)=>{const date=new Date(monday);date.setDate(date.getDate()+index);const isToday=weekOffset===0&&index===6;const scheduled=lessonsForDay(index);return`<button type="button" class="day ${isToday?'today':''}" data-day-index="${index}"><small>${name}${isToday?' · 今天':''}</small><strong>${formatDate(date)}</strong>${scheduled.length?scheduled.map(item=>`<span class="mini">${item[0]}</span>`).join(''):'<span class="day-empty">暂无安排</span>'}</button>`}).join('');document.querySelectorAll('.day').forEach(day=>day.onclick=()=>{selectedDayIndex=Number(day.dataset.dayIndex);renderSelectedDay(monday)});renderSelectedDay(monday)}
-prevWeek.onclick=()=>{weekOffset-=1;renderWeek()};nextWeek.onclick=()=>{weekOffset+=1;renderWeek()};returnWeek.onclick=()=>{weekOffset=0;renderWeek()};closeDialog.onclick=()=>lessonDialog.close();renderWeek();
-</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning MORE · 主页</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <style>
+      .home-hero {
+        padding: 22px 24px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 22px;
+        align-items: start;
+      }
+      .home-hero h1 {
+        font-size: 28px;
+        margin: 7px 0 5px;
+      }
+      .home-hero p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .home-prompt {
+        margin-top: 16px;
+        max-width: 900px;
+      }
+      .prompt-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 7px;
+      }
+      .prompt-head strong {
+        font-size: 12px;
+      }
+      .prompt-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        padding: 7px;
+        border: 1px solid var(--accent);
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 12%, transparent);
+      }
+      .prompt-row input {
+        height: 43px;
+        padding: 0 10px;
+        border: 0;
+        outline: 0;
+        font-size: 13px;
+      }
+      .prompt-help {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .upload {
+        display: none;
+        margin-top: 9px;
+        padding: 11px 12px;
+        border: 1px dashed var(--accent);
+        border-radius: 10px;
+        background: var(--tint);
+        justify-content: space-between;
+        align-items: center;
+      }
+      .upload.visible {
+        display: flex;
+      }
+      .home-layout {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 14px;
+        margin-top: 14px;
+        align-items: stretch;
+      }
+      .mode-rail {
+        padding: 15px;
+        display: grid;
+        grid-template-rows: auto repeat(9, minmax(64px, 1fr));
+        gap: 8px;
+        min-height: 720px;
+        position: sticky;
+        top: 92px;
+        align-self: start;
+      }
+      .mode-rail header {
+        padding: 3px 4px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .mode-rail header strong {
+        font-size: 14px;
+      }
+      .mode-rail header span {
+        display: block;
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .mode-card {
+        --card-accent: #af6942;
+        --card-tint: #f7ece5;
+        width: 100%;
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        gap: 11px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid transparent;
+        border-radius: 13px;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+      }
+      .mode-card:hover {
+        background: var(--card-tint);
+      }
+      .mode-card[aria-pressed='true'] {
+        border-color: var(--card-accent);
+        background: var(--card-tint);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-accent) 11%, transparent);
+      }
+      .mode-card i {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: var(--card-tint);
+        color: var(--card-accent);
+        display: grid;
+        place-items: center;
+        font-style: normal;
+        font-weight: 900;
+        font-size: 15px;
+      }
+      .mode-card b {
+        display: block;
+        font-size: 13px;
+      }
+      .mode-card span {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .schedule {
+        padding: 17px;
+        min-width: 0;
+        max-height: 850px;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
+      }
+      .schedule-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        padding: 13px 14px;
+        background: var(--paper-2);
+        border-radius: 11px;
+      }
+      .schedule-head h2 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      .schedule-head p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .week {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .day {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        height: 250px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: #fff;
+        overflow: hidden;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+      .day.today {
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--tint) 65%, #fff);
+      }
+      .day small {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .day strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 14px;
+      }
+      .day-meta {
+        display: block;
+        margin-bottom: 8px;
+      }
+      .day-meta small {
+        display: block;
+      }
+      .day-empty {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        padding-top: 9px;
+        border-top: 1px solid #eee5da;
+        color: #aaa096;
+        font-size: 11px;
+        text-align: center;
+      }
+      .day:has(.day-empty) {
+        justify-content: center;
+      }
+      .day:has(.day-empty) .day-empty {
+        flex: 0 0 auto;
+      }
+      .mini {
+        display: block;
+        margin-top: 6px;
+        padding: 6px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        font-size: 9px;
+        line-height: 1;
+        font-weight: 800;
+      }
+      .agenda {
+        margin-top: 12px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: var(--paper-2);
+      }
+      .agenda h3 {
+        font-size: 15px;
+        margin: 0;
+      }
+      .agenda > p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .agenda-list {
+        display: grid;
+        gap: 7px;
+      }
+      .agenda-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        text-align: left;
+        cursor: pointer;
+      }
+      .agenda-item b {
+        font-size: 12px;
+      }
+      .agenda-item span {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      dialog {
+        width: min(680px, calc(100% - 28px));
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 17px;
+        background: var(--paper);
+        box-shadow: 0 28px 70px rgba(57, 42, 29, 0.24);
+      }
+      dialog::backdrop {
+        background: rgba(44, 38, 32, 0.38);
+      }
+      .dialog-head,
+      .dialog-body,
+      .dialog-foot {
+        padding: 18px 21px;
+      }
+      .dialog-head {
+        border-bottom: 1px solid var(--line);
+      }
+      .dialog-head h2 {
+        font-size: 23px;
+        margin: 7px 0 4px;
+      }
+      .dialog-head p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .points {
+        display: grid;
+        gap: 8px;
+      }
+      .point {
+        padding: 11px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      .point b {
+        font-size: 12px;
+      }
+      .point span {
+        display: block;
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .dialog-foot {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        border-top: 1px solid var(--line);
+        background: var(--paper-2);
+      }
+      .week-tools {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+      .week-range {
+        min-width: 128px;
+        text-align: center;
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .week-step {
+        width: 42px;
+        padding: 0;
+      }
+      .week-tools .lm-btn {
+        white-space: nowrap;
+      }
+      .week .mini {
+        flex: 0 0 auto;
+        margin-top: 2px;
+        padding: 6px;
+        border: 0;
+        background: transparent;
+        font-size: 9px;
+        line-height: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .week .mini[hidden] {
+        display: none;
+      }
+      .week .overflow-count {
+        flex: 0 0 auto;
+        display: block;
+        margin-top: 3px;
+        padding: 6px;
+        color: var(--accent-dark);
+        font-size: 9px;
+        line-height: 1;
+        font-weight: 800;
+      }
+      .course-chooser {
+        width: min(720px, calc(100% - 28px));
+      }
+      .course-chooser-list {
+        display: grid;
+        gap: 9px;
+      }
+      .course-filters {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .course-filters .lm-control {
+        min-width: 0;
+      }
+      .course-choice {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        width: 100%;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: #fff;
+        color: var(--ink);
+        text-align: left;
+        cursor: pointer;
+      }
+      .course-choice:hover,
+      .course-choice.in-progress {
+        border-color: var(--accent);
+        background: var(--tint);
+      }
+      .course-choice b,
+      .course-choice span {
+        display: block;
+      }
+      .course-choice b {
+        font-size: 14px;
+      }
+      .course-choice span {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .course-choice em {
+        align-self: start;
+        padding: 4px 7px;
+        border-radius: 999px;
+        background: #fff;
+        color: var(--accent-dark);
+        font-style: normal;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+      .agenda h3 {
+        margin: 0 0 10px;
+        line-height: 1.35;
+      }
+      .day {
+        width: 100%;
+        color: var(--ink);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .day:hover {
+        border-color: var(--accent);
+        transform: translateY(-1px);
+      }
+      .day.today {
+        box-shadow: inset 0 3px 0 color-mix(in srgb, var(--accent) 38%, transparent);
+      }
+      .day.selected {
+        border-color: var(--accent);
+        background: var(--tint);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 11%, transparent);
+      }
+      @media (max-width: 1050px) {
+        .home-layout {
+          grid-template-columns: 220px 1fr;
+        }
+        .week {
+          grid-template-columns: repeat(4, 1fr);
+        }
+        .schedule-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .week-tools {
+          justify-content: flex-start;
+          width: 100%;
+        }
+      }
+      @media (max-width: 720px) {
+        .home-hero {
+          grid-template-columns: 1fr;
+        }
+        .home-layout {
+          grid-template-columns: 1fr;
+        }
+        .mode-rail {
+          position: static;
+          min-height: auto;
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: auto;
+        }
+        .mode-rail header {
+          grid-column: 1/-1;
+        }
+        .week {
+          grid-template-columns: 1fr 1fr;
+        }
+        .schedule {
+          max-height: none;
+        }
+        .prompt-row {
+          grid-template-columns: 1fr;
+        }
+        .prompt-row .lm-btn {
+          height: 42px;
+        }
+        .week-range {
+          order: -1;
+          flex-basis: 100%;
+          text-align: left;
+        }
+        .week-tools .lm-btn {
+          flex: 0 0 auto;
+        }
+      }
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar">
+      <div class="lm-brand">
+        <strong>Learning MORE</strong><span>学习即生活｜用 AI 重塑学习方式</span>
+      </div>
+      <div class="lm-runtime">
+        <span class="lm-pill">● 接口 · Codex</span
+        ><span class="lm-pill success">● 服务准备就绪</span>
+      </div>
+    </header>
+    <main class="lm-page">
+      <section class="lm-card home-hero">
+        <div>
+          <div class="lm-kicker">Personal learning workspace</div>
+          <h1>开始定制你的私人学习计划</h1>
+          <form class="home-prompt" id="prompt">
+            <div class="prompt-head">
+              <strong id="promptLabel">标准模式 · 你想学什么？</strong
+              ><span class="lm-mode-badge" id="modeBadge">● 标准模式</span>
+            </div>
+            <div class="prompt-row">
+              <input
+                id="topic"
+                placeholder="例如：我想系统提升游戏设计能力，学会设计有持续吸引力的核心循环"
+              /><button class="lm-btn primary" id="startBtn">开始学习起点评估 →</button>
+            </div>
+            <div class="upload" id="upload">
+              <div>
+                <b id="materialName">上传阅读材料</b><br /><small
+                  >支持 PDF、TXT、Markdown 等可解析文本</small
+                >
+              </div>
+              <button type="button" class="lm-btn" id="selectMaterial">选择文件</button
+              ><input
+                id="materialInput"
+                type="file"
+                accept=".pdf,.txt,.md,.markdown,text/plain,application/pdf,text/markdown"
+                hidden
+              />
+            </div>
+          </form>
+        </div>
+        <div class="lm-actions">
+          <a class="lm-btn" href="../06-历史统计与学习画像/历史统计.html">历史统计</a
+          ><button class="lm-btn primary" id="continueLearning" type="button">继续学习</button>
+        </div>
+      </section>
+      <div class="home-layout">
+        <aside class="lm-card mode-rail" id="modeRail">
+          <header><strong>选择模式</strong></header>
+        </aside>
+        <section class="lm-card schedule">
+          <div class="schedule-head">
+            <div>
+              <h2>本周课程表</h2>
+              <p>今日待学 5 节，逾期 0 节，待规划 3 节</p>
+            </div>
+            <div class="lm-actions week-tools">
+              <button class="lm-btn" id="returnWeek">返回当周</button
+              ><button class="lm-btn week-step" id="prevWeek" aria-label="上一周">‹</button
+              ><b class="week-range" id="weekRange">07/06 — 07/12</b
+              ><button class="lm-btn week-step" id="nextWeek" aria-label="下一周">›</button
+              ><a class="lm-btn" href="../03-课程规划与排期/课程规划.html">进行课程规划</a
+              ><a class="lm-btn" href="../05-Review与学习档案/上周学习回顾.html">上周学习回顾</a>
+            </div>
+          </div>
+          <div class="week" id="week"></div>
+          <section class="agenda">
+            <h3 id="agendaTitle">2026-07-12 · 今日学习</h3>
+            <div class="agenda-list" id="agenda"></div>
+          </section>
+        </section>
+      </div>
+    </main>
+    <dialog id="lessonDialog">
+      <div class="dialog-head"><h2 id="dialogTitle"></h2></div>
+      <div class="dialog-body"><div class="points" id="dialogPoints"></div></div>
+      <div class="dialog-foot">
+        <button class="lm-btn" id="closeDialog">关闭</button
+        ><a class="lm-btn primary" href="../04-课节学习/正式课程学习会话.html">开始学习</a>
+      </div>
+    </dialog>
+    <dialog class="course-chooser" id="courseChooser" aria-labelledby="courseChooserTitle">
+      <div class="dialog-head">
+        <div class="lm-kicker">CONTINUE LEARNING</div>
+        <h2 id="courseChooserTitle">选择课程</h2>
+      </div>
+      <div class="dialog-body">
+        <div class="course-filters">
+          <select class="lm-control" id="courseDisciplineFilter">
+            <option value="">全部学科 / 领域</option>
+            <option>艺术与设计</option>
+            <option>计算机科学</option>
+            <option>产品设计</option></select
+          ><select class="lm-control" id="courseModeFilter">
+            <option value="">全部玩法模式</option>
+            <option>标准模式</option>
+            <option>阅读研讨</option>
+            <option>案例研习</option>
+          </select>
+        </div>
+        <div class="course-chooser-list" id="courseChooserList"></div>
+      </div>
+      <div class="dialog-foot"><button class="lm-btn" id="closeCourseChooser">关闭</button></div>
+    </dialog>
+    <script src="../00-设计系统/assets/mode-themes.js"></script>
+    <script>
+      const order = [
+        'standard',
+        'brainstorm',
+        'argument_clash',
+        'case_study',
+        'business_insight',
+        'process_decomposition',
+        'decision_analysis',
+        'cross_explore',
+        'reading_seminar',
+      ];
+      const rail = document.getElementById('modeRail');
+      const cards = {};
+      order.forEach((mode) => {
+        const t = CourseModeThemeRegistry[mode],
+          b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-card';
+        b.dataset.mode = mode;
+        b.style.setProperty('--card-accent', t.accent);
+        b.style.setProperty('--card-tint', t.tint);
+        b.setAttribute('aria-pressed', mode === 'standard');
+        b.innerHTML = `<i>${t.icon}</i><div><b>${t.label}</b><span>${t.subtitle}</span></div>`;
+        b.onclick = () => selectMode(mode);
+        rail.appendChild(b);
+        cards[mode] = b;
+      });
+      function selectMode(mode) {
+        const t = applyCourseModeTheme(mode);
+        Object.entries(cards).forEach(([id, b]) =>
+          b.setAttribute('aria-pressed', String(id === mode)),
+        );
+        document.getElementById('promptLabel').textContent = t.label + ' · ' + t.promptTitle;
+        document.getElementById('modeBadge').textContent = t.icon + ' ' + t.label;
+        document.getElementById('startBtn').textContent = t.cta + ' →';
+        document.getElementById('topic').placeholder = t.placeholder;
+        document.getElementById('upload').classList.toggle('visible', mode === 'reading_seminar');
+        document.getElementById('topic').focus();
+      }
+      selectMode('standard');
+      document.getElementById('prompt').onsubmit = (e) => {
+        e.preventDefault();
+        if (!document.getElementById('topic').value.trim()) {
+          document.getElementById('topic').focus();
+          document.getElementById('topic').placeholder = '请先输入你想学习的内容';
+          return;
+        }
+        const mode = document.documentElement.dataset.courseMode;
+        if (mode === 'reading_seminar' && !materialInput.files.length) {
+          window.SampleUI.showToast('请先选择阅读材料', 'warning');
+          selectMaterial.focus();
+          return;
+        }
+        const target =
+          mode === 'standard'
+            ? '../02-课程创建与大纲/标准模式建档.html'
+            : `../02-课程创建与大纲/八大玩法建档/${CourseModeThemeRegistry[mode].label}.html`;
+        location.href = target;
+      };
+      const materialInput = document.getElementById('materialInput');
+      const selectMaterial = document.getElementById('selectMaterial');
+      const materialName = document.getElementById('materialName');
+      selectMaterial.onclick = () => materialInput.click();
+      materialInput.onchange = () => {
+        const file = materialInput.files[0];
+        if (!file) return;
+        const allowed = /\.(pdf|txt|md|markdown)$/i.test(file.name);
+        if (!allowed) {
+          materialInput.value = '';
+          window.SampleUI.showToast('请选择 PDF、TXT 或 Markdown 文件', 'warning');
+          return;
+        }
+        materialName.textContent = file.name;
+        selectMaterial.textContent = '更换文件';
+        window.SampleUI.showToast('材料已选择，提交后将模拟解析', 'success');
+      };
+      const lessons = [
+        [
+          '反馈是游戏设计的脊椎',
+          '游戏设计 · 24 分钟',
+          [
+            ['反馈的三个层级', '区分状态、能力与目标反馈，判断它们分别改变了玩家对什么的理解。'],
+            [
+              '玩家如何读懂变化',
+              '从可观察行为识别玩家是否知道发生了什么、为什么发生，以及下一步能做什么。',
+            ],
+            [
+              '反馈如何连接行动',
+              '检验一次反馈是否真正改变下一次选择，而不只停留在视觉或数值响应。',
+            ],
+          ],
+        ],
+        [
+          '数组与链表的结构取舍',
+          '计算机科学 · 31 分钟',
+          [
+            ['连续存储', '理解连续地址如何换来随机访问优势，同时产生移动元素与扩容成本。'],
+            ['分散节点', '观察指针连接如何放宽存储位置约束，并把访问代价转移到逐步寻址。'],
+            ['操作代价', '根据访问、插入和删除需求，从结构约束推导合适的数据组织方式。'],
+          ],
+        ],
+        [
+          '核心循环与玩家动机',
+          '游戏设计 · 20 分钟',
+          [
+            ['玩家行动', '识别循环中由玩家主动做出的关键选择，而不是把所有操作都视为等价输入。'],
+            ['系统反馈', '判断系统响应是否提供足够的新信息，让玩家修正理解或策略。'],
+            ['下一步欲望', '分析目标推进如何让一次行动自然产生继续尝试的理由。'],
+          ],
+        ],
+        [
+          '栈与队列如何约束操作顺序',
+          '计算机科学 · 26 分钟',
+          [
+            ['后进先出', '从只允许在同一端进出的约束理解栈为何适合撤销、调用与深度探索。'],
+            ['先进先出', '从进入顺序被保留的机制理解队列如何表达等待、公平与逐步处理。'],
+            ['场景匹配', '先找业务必须维持的顺序性质，再判断应选择栈、队列还是其他结构。'],
+          ],
+        ],
+        [
+          '建立可验证的成功标准',
+          '产品设计 · 18 分钟',
+          [
+            ['判断标准', '把宽泛的“体验更好”改写为可以观察、比较并据此决策的条件。'],
+            ['行为证据', '优先使用用户实际行动检验假设，避免把口头偏好直接等同于真实选择。'],
+            ['迭代决策', '提前约定不同结果对应的继续、调整或停止动作，让测试真正推动下一步。'],
+          ],
+        ],
+      ];
+      const allOpenCourses = [
+        {
+          id: 'game-loop',
+          title: '从反馈到核心循环：游戏设计能力进阶',
+          meta: '标准模式 · 1 节学习中 · 最近学习 07/12',
+          discipline: '艺术与设计',
+          mode: '标准模式',
+          updatedAt: '2026-07-12T10:42:00+08:00',
+          hasInProgress: true,
+          href: '../02-课程创建与大纲/正式课程大纲.html?course=game-loop',
+        },
+        {
+          id: 'data-structures',
+          title: '数据结构：从约束理解操作代价',
+          meta: '阅读研讨 · 4 节待完成 · 最近学习 07/10',
+          discipline: '计算机科学',
+          mode: '阅读研讨',
+          updatedAt: '2026-07-10T20:15:00+08:00',
+          hasInProgress: false,
+          href: '../02-课程创建与大纲/正式课程大纲.html?course=data-structures',
+        },
+        {
+          id: 'product-experiment',
+          title: '用行为证据设计产品实验',
+          meta: '案例研习 · 尚未开始 · 创建于 07/09',
+          discipline: '产品设计',
+          mode: '案例研习',
+          updatedAt: '2026-07-09T14:30:00+08:00',
+          hasInProgress: false,
+          href: '../02-课程创建与大纲/正式课程大纲.html?course=product-experiment',
+        },
+      ].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+      const openCourses =
+        new URLSearchParams(location.search).get('courses') === 'one'
+          ? allOpenCourses.slice(0, 1)
+          : allOpenCourses;
+      function renderCourseChooser() {
+        const courses = openCourses.filter(
+          (course) =>
+            (!courseDisciplineFilter.value || course.discipline === courseDisciplineFilter.value) &&
+            (!courseModeFilter.value || course.mode === courseModeFilter.value),
+        );
+        courseChooserList.innerHTML = courses.length
+          ? courses
+              .map(
+                (course) =>
+                  `<button type="button" class="course-choice${course.hasInProgress ? ' in-progress' : ''}" data-course-href="${course.href}" data-updated-at="${course.updatedAt}" data-has-in-progress="${course.hasInProgress}"><div><b>${course.title}</b><span>${course.meta}</span></div>${course.hasInProgress ? '<em>学习中</em>' : ''}</button>`,
+              )
+              .join('')
+          : '<div class="lm-empty">没有符合筛选条件的未关闭课程</div>';
+        courseChooserList.querySelectorAll('[data-course-href]').forEach((card) =>
+          card.addEventListener('click', () => {
+            location.href = card.dataset.courseHref;
+          }),
+        );
+      }
+      function openCourseChooser() {
+        if (openCourses.length === 1) {
+          location.href = openCourses[0].href;
+          return;
+        }
+        renderCourseChooser();
+        if (!courseChooser.open) SampleUI.openDialog(courseChooser, continueLearning);
+      }
+      let weekOffset = 0;
+      let selectedDayIndex = 6;
+      const baseMonday = new Date(2026, 6, 6);
+      const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      const two = (n) => String(n).padStart(2, '0');
+      const formatDate = (d) => `${two(d.getMonth() + 1)}/${two(d.getDate())}`;
+      const isoDate = (d) => `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+      const lessonsForDay = (index) => (weekOffset === 0 && index === 6 ? lessons : []);
+      function bindAgenda() {
+        document.querySelectorAll('.agenda-item').forEach(
+          (button) =>
+            (button.onclick = () => {
+              const lesson = lessons[+button.dataset.i];
+              document.getElementById('dialogTitle').textContent = lesson[0];
+              document.getElementById('dialogPoints').innerHTML = lesson[2]
+                .map(
+                  ([point, summary], index) =>
+                    `<div class="point"><b>${String(index + 1).padStart(2, '0')} · ${point}</b><span>${summary}</span></div>`,
+                )
+                .join('');
+              lessonDialog.showModal();
+            }),
+        );
+      }
+      function renderSelectedDay(monday) {
+        document
+          .querySelectorAll('.day')
+          .forEach((day, index) => day.classList.toggle('selected', index === selectedDayIndex));
+        const date = new Date(monday);
+        date.setDate(date.getDate() + selectedDayIndex);
+        const scheduled = lessonsForDay(selectedDayIndex);
+        agendaTitle.textContent = `${isoDate(date)} · ${weekOffset === 0 && selectedDayIndex === 6 ? '今日学习' : '学习安排'}`;
+        agenda.innerHTML = scheduled.length
+          ? scheduled
+              .map(
+                (lesson, index) =>
+                  `<button class="agenda-item" data-i="${index}"><b>${lesson[0]}</b><span>${lesson[1]} →</span></button>`,
+              )
+              .join('')
+          : '<div class="lm-empty">当天暂无学习安排</div>';
+        bindAgenda();
+      }
+      function fitWeekLessonCapacity() {
+        document.querySelectorAll('.week .day').forEach((day) => {
+          const lessons = [...day.querySelectorAll('.mini')];
+          const previousOverflow = day.querySelector('.overflow-count');
+          previousOverflow?.remove();
+          lessons.forEach((lesson) => (lesson.hidden = false));
+          if (!lessons.length) return;
+
+          const meta = day.querySelector('.day-meta');
+          const firstLesson = lessons[0];
+          const lessonStyle = getComputedStyle(firstLesson);
+          const lessonHeight =
+            firstLesson.getBoundingClientRect().height + (parseFloat(lessonStyle.marginTop) || 0);
+          const availableHeight = day.clientHeight - meta.getBoundingClientRect().height - 12;
+          const capacity = Math.max(1, Math.floor(availableHeight / lessonHeight));
+          const visibleCount = lessons.length > capacity ? Math.max(1, capacity - 1) : lessons.length;
+
+          lessons.forEach((lesson, index) => (lesson.hidden = index >= visibleCount));
+          if (visibleCount < lessons.length) {
+            const overflow = document.createElement('span');
+            overflow.className = 'overflow-count';
+            overflow.textContent = `另有 ${lessons.length - visibleCount} 节`;
+            day.append(overflow);
+          }
+        });
+      }
+      function renderWeek() {
+        const monday = new Date(baseMonday);
+        monday.setDate(monday.getDate() + weekOffset * 7);
+        const sunday = new Date(monday);
+        sunday.setDate(sunday.getDate() + 6);
+        selectedDayIndex = weekOffset === 0 ? 6 : 0;
+        weekRange.textContent = `${formatDate(monday)} — ${formatDate(sunday)}`;
+        week.innerHTML = dayNames
+          .map((name, index) => {
+            const date = new Date(monday);
+            date.setDate(date.getDate() + index);
+            const isToday = weekOffset === 0 && index === 6;
+            const scheduled = lessonsForDay(index);
+            return `<button type="button" class="day ${isToday ? 'today' : ''}" data-day-index="${index}"><span class="day-meta"><small>${name}${isToday ? ' · 今天' : ''}</small><strong>${formatDate(date)}</strong></span>${scheduled.length ? scheduled.map((item) => `<span class="mini" title="${item[0]}">${item[0]}</span>`).join('') : '<span class="day-empty">暂无安排</span>'}</button>`;
+          })
+          .join('');
+        document.querySelectorAll('.day').forEach(
+          (day) =>
+            (day.onclick = () => {
+              selectedDayIndex = Number(day.dataset.dayIndex);
+              renderSelectedDay(monday);
+            }),
+        );
+        renderSelectedDay(monday);
+        requestAnimationFrame(fitWeekLessonCapacity);
+      }
+      prevWeek.onclick = () => {
+        weekOffset -= 1;
+        renderWeek();
+      };
+      nextWeek.onclick = () => {
+        weekOffset += 1;
+        renderWeek();
+      };
+      returnWeek.onclick = () => {
+        weekOffset = 0;
+        renderWeek();
+      };
+      let weekCapacityFrame;
+      window.addEventListener('resize', () => {
+        cancelAnimationFrame(weekCapacityFrame);
+        weekCapacityFrame = requestAnimationFrame(fitWeekLessonCapacity);
+      });
+      closeDialog.onclick = () => lessonDialog.close();
+      continueLearning.onclick = openCourseChooser;
+      closeCourseChooser.onclick = () => SampleUI.closeDialog(courseChooser);
+      courseDisciplineFilter.onchange = renderCourseChooser;
+      courseModeFilter.onchange = renderCourseChooser;
+      renderWeek();
+      const deletedCourse = new URLSearchParams(location.search).get('simDeletedCourse');
+      if (deletedCourse) {
+        window.addEventListener(
+          'DOMContentLoaded',
+          () => window.SampleUI?.showToast('课程及其关联学习记录已永久删除（模拟）', 'success'),
+          { once: true },
+        );
+      }
+    </script>
+  </body>
+</html>

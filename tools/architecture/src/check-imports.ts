@@ -40,6 +40,7 @@ export function checkImport(sourcePath: string, targetPath: string): ImportIssue
       target.startsWith('apps/web/') ||
       target.startsWith('packages/contracts/') ||
       target.startsWith('packages/ui/') ||
+      target === '@learning-more/ui/styles.css' ||
       isApprovedWebFrameworkImport(target);
     if (!allowed) {
       return {

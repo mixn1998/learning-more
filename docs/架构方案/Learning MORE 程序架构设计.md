@@ -94,14 +94,15 @@ flowchart TD
 
     NODE --> CA["CourseAuthoring"]
     NODE --> LS["LearningSession"]
+    NODE --> IT["InteractiveTeaching"]
     NODE --> RC["ReviewClosure"]
     NODE --> PL["Planning"]
     NODE --> LF["LearningFacts"]
-    NODE --> PE["ProfileEvidence"]
+    NODE --> GUP["GlobalUserProfile"]
     NODE --> LP["LearningPortrait"]
     NODE --> GR["GenerationRuntime"]
 
-    CA & LS & RC & PL & LF & PE & LP & GR --> RP["Repository Interface"]
+    CA & LS & IT & RC & PL & LF & GUP & LP & GR --> RP["Repository Interface"]
     GR --> AP["AI Provider Interface"]
 
     RP --> FILE["LocalFile Adapter"]
@@ -151,7 +152,7 @@ Learning MORE/
 ### 4.2 后端 Module 目录
 
 ```text
-modules/learning-session/
+modules/interactive-teaching/
 ├─ interface.ts
 ├─ model/
 ├─ implementation/
@@ -289,6 +290,16 @@ CommitFinalReview 必须在一个事务内写入最终 Review、完成课节、�
 
 补充学习始终创建独立 SupplementarySession，只追加自身消息。它不得修改原始会话、最终课时 Review、CompletionFact 或课程总 Review，也不得成为其他课节默认继承上下文。
 
+### 5.3A InteractiveTeaching
+
+拥有教学回合编排、上下文装配、教学智能体 Port、逐回合 TeachingObserver、观察校验、TeachingStateLedger、观察队列和不可变 TeachingCheckpoint。`LearningSession` 仍拥有原始消息和生命周期；InteractiveTeaching 只能通过公开 Interface 追加/提交消息，不能直接操作其 Repository。
+
+公开能力：`advanceTurn`、`stopTurn`、`getTeachingState`、`freezeCheckpoint`，以及应用启动时调用的内部 `recoverSession`。
+
+教学回复是自由 Markdown。固定部分只有真实课程/课节责任、来源、当前账本、消息完成状态和输出权限；`courseMode` 是身份事实，非标准模式的 `playIntent` 是无权重机会偏置。Observer 的结构合同跨标准与八种玩法完全一致，玩法不得成为观察过滤器。
+
+完整回复提交后异步观察；观察和账本效果同一 UnitOfWork 保存。`evidenceCheckpoint` 只由有效观察产生。账本先提交、LearningSession evidence 投影或 ReasoningBehaviorEpisode 投影后失败时，以同一 observation/snapshot 身份向前补写；不回滚已展示回复。相同原因与来源集合的检查点幂等复用。
+
 ### 5.4 ReviewClosure
 
 ReviewClosure 是持久化工作流 Module，不是第二个 Lesson 或 Course 聚合所有者。
@@ -366,9 +377,9 @@ ReviewClosure 是持久化工作流 Module，不是第二个 Lesson 或 Course �
 
 历史统计、日历和全局学习档案必须复用同一事实公式。
 
-### 5.7 ProfileEvidence
+### 5.7 GlobalUserProfile
 
-拥有证据检查点、PortraitEvidence、sourceGroup、去重、supersede、安全状态、evidence backlog 和 Evidence Packer 临时工作区。
+全局用户档案是后台长期数据域，学习画像是独立消费功能。GlobalUserProfile 拥有统计快照索引、证据检查点、UserProfileEvidence、sourceGroup、去重、supersede、安全状态、evidence backlog、ReasoningBehaviorEpisode、动态维度/多标签分类/确定性分析快照、PersonalizationView 和 Evidence Packer 临时工作区。
 
 内部命令：
 
@@ -378,14 +389,28 @@ ReviewClosure 是持久化工作流 Module，不是第二个 Lesson 或 Course �
 - SupersedeEvidence
 - RevalidateEvidenceSafety
 - PackPortraitEvidence
+- CaptureReasoningBehaviorEpisode
+- RefreshReasoningBehaviorAnalysis
+- RetractCourseSources
 
 查询：
 
 - GetEvidenceBacklog
 - GetEvidenceCompleteness
 - GetPortraitEvidenceManifest
+- ListReasoningBehaviorEpisodes
+- GetReasoningBehaviorAnalysis
+- GetPersonalizationView
 
-检查点允许产生零条候选。来源独立性和派生产物去重由程序校验，不只依赖 Prompt。
+检查点允许产生零条候选。来源独立性和派生产物去重由程序校验，不只依赖 Prompt。现存 `profile-evidence` 目录视为 GlobalUserProfile 深模块的候选证据子系统/兼容实现，不得再成为教学或画像直接依赖的并列业务入口。
+
+当前受控检查点链为：课程创建模块在基础评估第 3 轮完成和候选大纲确认时提交已物化来源；互动教学在冻结关闭检查点时提交消息来源；补充学习在归档时提交本会话来源；Review 模块在阶段、课时最终和课程总 Review 最终化后提交产物来源。组合根只负责把这些来源包排入后台 `profile-evidence-extraction` 任务，不读取业务语义，也不让提炼阻塞课程创建或教学可见回复。普通用户消息、页面访问、短暂断线和生成遥测不会触发该链。
+
+`AiProfileEvidenceExtractor` 只能返回严格的 candidate draft；它看不到 Repository 写端口，也没有 `promotionState` 字段。`ProfileEvidenceAggregator` 是候选层唯一提交者，强制写入 `candidate_only`，校验检查点来源、语义去重、观察次数、反证、到期、用户纠正/来源删除和分析器替代版本。低质量、blocked、过期或已撤回候选不能进入 `PersonalizationView` 或 `PortraitInputManifest`。架构检查器禁止 UI、Provider Adapter 和 generation adapter 调用候选 Repository 写端口或写入 confirmed/promoted 状态。
+
+教学个性化只读取用途限定的 `PersonalizationView`：用户显式候选可在通过来源与置信门槛后进入，AI 观察候选还必须至少出现于两个去重检查点；所有信号携带限制且仍是可撤回候选。学习画像读取冻结的候选证据清单；画像 Markdown 永不反写教学上下文或全局用户档案。
+
+思维行为链不预设“逻辑、关联、发散、结构、隐喻”等列：Observer 仅产生开放语义局部条目；Episode 确定性投影；AI 针对证据窗口归纳版本化维度并多标签分类；后端校验后复算计数。过滤分析供后台查询，默认个性化和画像只读取最新无过滤、usable 且目标维度至少两个独立来源组的快照。
 
 ### 5.8 LearningPortrait
 
@@ -770,6 +795,9 @@ data-root/
 │  ├─ courses/
 │  ├─ lesson-progress/
 │  ├─ lesson-sessions/
+│  ├─ teaching-ledgers/
+│  ├─ reasoning-behavior-episodes/
+│  ├─ reasoning-behavior-analyses/
 │  ├─ reviews/
 │  ├─ course-reviews/
 │  ├─ schedules/
@@ -929,7 +957,7 @@ type IndexManifest = {
 
 ### 9.0 课程永久删除事务
 
-`DeleteCourse` 是独立于 `CloseCourse` 的幂等领域命令。它在事务开始时撤销该课程全部会话写入租约并关闭计时区间，随后在同一可恢复事务中删除课程聚合、会话、Review、排期、计划流、材料引用和课程索引；同时使关联学习事实、画像候选证据与来源组失效。事务提交后，统计/日历投影从剩余事实重建，并提交学习画像重算任务。画像任务失败不回滚已删除课程，但旧画像版本必须标记失效，读模型不得继续输出包含被删课程来源的洞察。文件 adapter 通过删除清单、临时目录和原子 rename 实现；数据库 adapter 以同一合同保证无稳定的部分删除状态。
+`DeleteCourse` 是独立于 `CloseCourse` 的幂等领域命令。它在事务开始时撤销该课程全部会话写入租约并关闭计时区间，随后在同一可恢复事务中删除课程聚合、会话、TeachingObservation/TeachingStateLedger/Checkpoint、Review、排期、计划流、材料引用和课程索引；同时使关联学习事实、画像候选证据、ReasoningBehaviorEpisode 与来源组失效。任何 reasoning 分析快照都可能跨课程聚合，因此删除时全部先失效，再从剩余 active Episode 重建无过滤全局快照和按需过滤快照。事务提交后，统计/日历投影与学习画像重算。重算失败不回滚已删除课程，但旧个性化/画像版本必须标记失效，不得继续输出包含被删来源的内容。文件 adapter 通过删除清单、临时目录和原子 rename 实现；数据库 adapter 以同一合同保证无稳定的部分删除状态。
 
 ### 9.1 Outbox
 
@@ -1000,15 +1028,20 @@ type ProjectionCheckpoint = {
 
 ```ts
 type GenerationTaskKind =
-  | 'outline_reply'
-  | 'outline_candidate'
-  | 'lesson_reply'
-  | 'stage_review'
-  | 'final_review'
-  | 'course_review'
-  | 'evidence_extract'
-  | 'portrait'
-  | 'weekly_report';
+  | 'course-authoring-conversation'
+  | 'outline-candidate'
+  | 'outline-candidate-alignment'
+  | 'interactive-teaching'
+  | 'interactive-teaching-observation'
+  | 'stage-review'
+  | 'final-review'
+  | 'course-review'
+  | 'plan-flow-preview'
+  | 'weekly-report'
+  | 'learning-portrait'
+  | 'next-lesson-recommendation'
+  | 'reasoning-behavior-analysis'
+  | 'profile-evidence-extraction';
 
 type GenerationAttempt = {
   attemptNumber: number;
@@ -1058,6 +1091,18 @@ weekly-report:{localWeekKey}:{factSnapshotHash}
 ```
 
 相同任务键和输入 join；已成功返回原结果；显式重试在同一逻辑任务追加 attempt。相同幂等键配不同快照返回冲突。
+
+### 10.1A GenerationExecution 控制面
+
+所有生产 AI 场景通过统一执行控制面提交并等待真实终态：
+
+- `submit` 只创建或加入任务，不代表业务完成；
+- `awaitTerminal` 持续调度直到 `completed/failed/cancelled/timeout`，调度停滞和等待耗尽均显式失败；
+- `stream` 只读取已记录帧；
+- `cancel` 保留中断状态与已有部分输出，不能转写为完成产物；
+- `recover` 先回收过期租约，再继续同一任务。
+
+课程创建对话、候选生成与对齐、正式教学与观察、Review、计划流、周报、学习画像、思维行为分析和下一课推荐都消费同一终态语义。任何业务适配器不得在任务未完成时写入固定占位结果或自行伪造成功。
 
 ### 10.2 并发
 
@@ -1116,7 +1161,7 @@ interface AiProvider {
 
 ### 10.5 Prompt 隔离
 
-Prompt Registry 使用 promptId + promptVersion + safetyRuleVersion。具体 Prompt、模型参数和厂商协议不得进入领域对象、HTTP 业务 DTO、学习事件、全局学习档案或前端。
+业务层使用版本化 capability contract、结构 schema、事实包与来源权限，不维护按学科/课节/玩法拼接的 Prompt 模板。GenerationRuntime 现有 `prompt` 字段只是 Provider 文本运输边界；具体传输文本、模型参数和厂商协议不得进入领域对象、HTTP 业务 DTO、学习事件、全局用户档案或前端。教学、Review 与画像的表达自由度不由模板快照验收，Observer/分析器只固定机器可校验的输出结构。
 
 ## 11. 全局学习档案与画像证据
 
@@ -1129,8 +1174,12 @@ flowchart TD
     SAN --> EX["候选证据提炼"]
     EX --> V["来源校验、来源组、去重、安全"]
     V --> CE["候选证据层"]
+    O["有效 learner_reasoning_behavior 观察"] --> EP["ReasoningBehaviorEpisode"]
+    EP --> DA["AI 动态维度 + 多标签分类"]
+    DA --> DS["确定性计数与限制"]
     M --> PM["PortraitInputManifest"]
     CE --> PM
+    DS --> PM
     PM --> PACK["Evidence Packer"]
     PACK --> AI["画像生成"]
     AI --> CHECK["复合证据链校验"]
@@ -1161,6 +1210,7 @@ flowchart TD
 - 近期、中期、长期窗口；
 - 事实投影游标；
 - 有效候选证据；
+- 最新无过滤 usable 思维行为快照、动态维度定义、确定性计数、局限和来源 Episode；
 - sourceGroup 依赖；
 - Artifact 引用；
 - 完整性、样本量和排除项；
@@ -1170,6 +1220,12 @@ flowchart TD
 - 临时原文引用和净化版本。
 
 冻结后新数据留给下一次画像刷新。
+
+### 11.2A 思维行为分析存储与 API
+
+LocalFile Adapter 分别保存 `reasoning-behavior-episodes` 和 `reasoning-behavior-analyses` 聚合文档。Episode ID 由 observationId + entryId + extractorVersion 派生；分析 snapshot ID 由规范化过滤器、Episode ID/来源哈希/状态和 dimensionSetVersion 派生。维度与分类随分析记录保存，避免不同版本交叉拼接。
+
+公开查询支持 Episode 列表、按时间/课程/课节/玩法/elicitation 创建分析、按 snapshotId 读取结果。创建相同分析是幂等的。`local-application` 组合根负责把 `ReasoningBehaviorSink`、LocalFile Repository、Generation analyzer、Profile/Portrait HTTP 消费和删除重建接到同一实例；任何只声明接口而未进入组合根的实现均不算纵向切片完成。
 
 ### 11.3 Evidence Packer
 

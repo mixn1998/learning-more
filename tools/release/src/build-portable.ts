@@ -9,10 +9,11 @@ import { writeChecksumManifest } from './checksums.js';
 import { writeDeterministicZip } from './deterministic-zip.js';
 import { PINNED_NODE_VERSION, resolvePinnedNodeRuntime } from './fetch-node-runtime.js';
 import { createCycloneDxSbom, createThirdPartyNotices, scanInstalledPackages } from './sbom.js';
-
-function commandOutput(command: string, arguments_: readonly string[], cwd: string): string {
-  return execFileSync(command, [...arguments_], { cwd, encoding: 'utf8' }).trim();
-}
+import {
+  assertWorkspaceUnchanged,
+  readSourceIdentity,
+  writeWorkspaceBuildManifest,
+} from './source-identity.js';
 
 function pnpmCli(projectRoot: string): string {
   if (process.env.npm_execpath !== undefined) return process.env.npm_execpath;
@@ -155,7 +156,19 @@ function startCommand(buildId: string): string {
     'set "LEARNING_MORE_WEB_URL=http://127.0.0.1:43119"',
     'set "LEARNING_MORE_ALLOWED_ORIGIN=http://127.0.0.1:43119"',
     `set "LEARNING_MORE_BUILD_ID=${buildId}"`,
-    '"%ROOT%runtime\\node.exe" "%ROOT%app\\launcher\\dist\\main.js"',
+    '"%ROOT%runtime\\node.exe" "%ROOT%app\\host\\dist\\main.js" run --project-root "%ROOT%"',
+    'set "EXIT_CODE=%ERRORLEVEL%"',
+    'endlocal & exit /b %EXIT_CODE%',
+    '',
+  ].join('\r\n');
+}
+
+function hostManagementCommand(command: 'install' | 'repair' | 'uninstall'): string {
+  return [
+    '@echo off',
+    'setlocal',
+    'set "ROOT=%~dp0"',
+    `"%ROOT%runtime\\node.exe" "%ROOT%app\\host\\dist\\main.js" ${command} --project-root "%ROOT%"`,
     'set "EXIT_CODE=%ERRORLEVEL%"',
     'endlocal & exit /b %EXIT_CODE%',
     '',
@@ -184,9 +197,8 @@ export async function buildPortableRelease(
     version: string;
     packageManager: string;
   };
-  const buildId =
-    process.env.LEARNING_MORE_BUILD_ID ??
-    commandOutput('git', ['rev-parse', '--short=12', 'HEAD'], projectRoot);
+  const sourceIdentity = await readSourceIdentity(projectRoot);
+  const buildId = process.env.LEARNING_MORE_BUILD_ID ?? sourceIdentity.buildId;
   const outputRoot = path.join(projectRoot, 'release', 'dist');
   const workRoot = path.join(projectRoot, 'release', '.work');
   const expandedRoot = path.join(outputRoot, 'portable', 'Learning MORE');
@@ -235,6 +247,14 @@ export async function buildPortableRelease(
     path.join(expandedRoot, 'app', 'launcher', 'package.json'),
   );
   await copyRuntimeTree(
+    path.join(projectRoot, 'apps', 'host', 'dist'),
+    path.join(expandedRoot, 'app', 'host', 'dist'),
+  );
+  await cp(
+    path.join(projectRoot, 'apps', 'host', 'package.json'),
+    path.join(expandedRoot, 'app', 'host', 'package.json'),
+  );
+  await copyRuntimeTree(
     path.join(projectRoot, 'apps', 'web', 'dist'),
     path.join(expandedRoot, 'app', 'web'),
   );
@@ -262,12 +282,9 @@ export async function buildPortableRelease(
     path.join(expandedRoot, 'prompts', 'registry.json'),
     `${JSON.stringify({
       schemaVersion: 1,
-      mode: 'embedded-json-templates',
+      mode: 'capability-contracts',
       templates: [
         'course-outline@v1',
-        'lesson-chat@v1',
-        'stage-review@v1',
-        'final-review@v1',
         'course-review@v1',
         'planning@v1',
         'weekly-report@v1',
@@ -284,6 +301,21 @@ export async function buildPortableRelease(
   );
   await cp(path.join(projectRoot, 'release', 'README.txt'), path.join(expandedRoot, 'README.txt'));
   await writeFile(path.join(expandedRoot, 'START.cmd'), startCommand(buildId), 'utf8');
+  await writeFile(
+    path.join(expandedRoot, 'INSTALL-AUTOSTART.cmd'),
+    hostManagementCommand('install'),
+    'utf8',
+  );
+  await writeFile(
+    path.join(expandedRoot, 'REPAIR-AUTOSTART.cmd'),
+    hostManagementCommand('repair'),
+    'utf8',
+  );
+  await writeFile(
+    path.join(expandedRoot, 'UNINSTALL-AUTOSTART.cmd'),
+    hostManagementCommand('uninstall'),
+    'utf8',
+  );
 
   const components = await scanInstalledPackages(path.join(serverRoot, 'node_modules'));
   await writeFile(
@@ -304,6 +336,8 @@ export async function buildPortableRelease(
     `${JSON.stringify({
       version: rootManifest.version,
       buildId,
+      sourceRevision: sourceIdentity.sourceRevision,
+      sourceFingerprint: sourceIdentity.sourceFingerprint,
       platform: 'win32-x64',
       protocolVersion: 1,
       storeSchemaVersion: 1,
@@ -330,6 +364,17 @@ export async function buildPortableRelease(
     zipSha256: await fileSha256(zipPath),
     buildId,
   };
+  const finalSourceIdentity = await readSourceIdentity(projectRoot);
+  try {
+    assertWorkspaceUnchanged(
+      sourceIdentity.sourceFingerprint,
+      finalSourceIdentity.sourceFingerprint,
+    );
+  } catch (error) {
+    await rm(outputRoot, { recursive: true, force: true });
+    throw error;
+  }
+  await writeWorkspaceBuildManifest(projectRoot, sourceIdentity, buildId);
   process.stdout.write(`${JSON.stringify(result)}\n`);
   await rm(workRoot, { recursive: true, force: true });
   return result;

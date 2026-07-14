@@ -1,0 +1,187 @@
+.lesson-review-overlay {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--ink);
+}
+body:has(.lesson-review-overlay) [data-visual-ready='true'] {
+  min-width: 1px;
+  min-height: 100vh;
+}
+body:has([data-visual-ready='true']) .lesson-review-overlay {
+  position: relative;
+  inset: auto;
+}
+.lesson-review-stage {
+  display: grid;
+  min-height: calc(100vh - 72px);
+  padding: 24px;
+  background: rgba(44, 38, 32, 0.36);
+  place-items: center;
+}
+.lesson-review-dialog {
+  display: grid;
+  width: min(1080px, calc(100vw - 48px));
+  height: min(82vh, 860px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-top: 4px solid var(--accent);
+}
+.lesson-review-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 23px;
+  border-bottom: 1px solid var(--line);
+}
+.lesson-review-dialog-head h1 {
+  margin: 6px 0 4px;
+  font-size: 25px;
+  line-height: 1.65;
+}
+.lesson-review-dialog-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.lesson-review-scroll {
+  overflow-y: auto;
+  padding: 24px;
+}
+.lesson-review-dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 23px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.lesson-review-dialog-foot .lm-actions {
+  margin-left: auto;
+}
+.lesson-review-dialog-foot > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.lesson-review-dialog .review-markdown {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.lesson-review-dialog .review-markdown h2 {
+  margin: 0 0 14px;
+  font-size: 24px;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+.lesson-review-dialog .review-markdown h2:not(:first-child) {
+  margin-top: 30px;
+}
+.lesson-review-dialog .review-markdown h3 {
+  margin: 28px 0 10px;
+  font-size: 17px;
+  line-height: 1.8;
+}
+.lesson-review-dialog .review-markdown h4 {
+  margin: 20px 0 7px;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.lesson-review-dialog .review-markdown p {
+  margin: 1em 0;
+}
+.lesson-review-dialog .review-markdown pre {
+  margin: 1em 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8f4ee;
+  white-space: pre-wrap;
+  font:
+    11px/1.6 Consolas,
+    monospace;
+}
+.lesson-review-dialog .review-markdown blockquote,
+.lesson-review-dialog .review-markdown .review-callout {
+  margin: 0;
+  padding: 16px 18px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: var(--tint);
+  color: var(--ink);
+}
+.lesson-review-dialog .review-markdown .review-callout p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.lesson-review-dialog .lm-btn.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.lesson-closure-status {
+  position: fixed;
+  z-index: 1250;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+.lesson-supplementary-controls {
+  position: fixed;
+  z-index: 1250;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 36px));
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+.lesson-supplementary-controls p,
+.lesson-supplementary-controls label {
+  margin: 0;
+  font-size: 12px;
+}
+
+@media (max-width: 620px) {
+  .lesson-review-stage {
+    padding: 8px;
+  }
+  .lesson-review-dialog {
+    width: 100%;
+    height: calc(100vh - 16px);
+  }
+  .lesson-review-dialog-head,
+  .lesson-review-dialog-foot {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .lesson-review-dialog-foot .lm-actions {
+    width: 100%;
+  }
+  .lesson-review-scroll {
+    padding: 15px;
+  }
+}
+
+@media (max-width: 800px) {
+  .lesson-review-dialog .review-markdown h2 {
+    font-size: 21px;
+  }
+}

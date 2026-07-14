@@ -50,6 +50,10 @@ describe('import boundary checks', () => {
     expect(checkImport('apps/web/src/app.tsx', target)).toBeUndefined();
   });
 
+  it('allows the public design-system stylesheet export', () => {
+    expect(checkImport('apps/web/src/main.tsx', '@learning-more/ui/styles.css')).toBeUndefined();
+  });
+
   it('finds static, dynamic, and re-export module specifiers', () => {
     const source = [
       "import { a } from './a.js';",

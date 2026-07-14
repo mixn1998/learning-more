@@ -21,11 +21,15 @@ export type PlanFlow = Readonly<{
   timeWindowRefs: readonly string[];
   existingScheduleSnapshotRef: string;
   baseScheduleVersion: number;
+  inputSnapshotHash?: string;
+  warnings?: readonly string[];
   generationTaskId: string;
   suggestions: readonly PlanSuggestion[];
   conflicts: readonly string[];
   confirmationReceipts: Readonly<Record<string, readonly string[]>>;
   confirmedScheduleItemIds: readonly string[];
+  lifecycleState?: 'active' | 'paused' | 'deleted';
+  processedCommandIds?: readonly string[];
   source: ScheduleSource;
   errorCode?: string;
   draftArtifactRef?: string;

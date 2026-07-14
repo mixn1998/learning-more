@@ -36,7 +36,11 @@ export interface ProviderRuntimeControl {
   ): Promise<ProviderValidation>;
   checkProviderHealth(providerId: string): Promise<ProviderHealth>;
   describeProvider(providerId: string): ProviderCapabilities;
-  switchProvider(providerId: string): Promise<void>;
+  switchProvider(
+    providerId: string,
+    config?: ProviderPublicConfig,
+    secrets?: SecretResolver,
+  ): Promise<void>;
   getProviderStatus(): Promise<{
     currentProviderId: string;
     providers: readonly string[];
@@ -58,6 +62,8 @@ export type ProviderSwitchResult = Readonly<{
 export type ProviderRuntimeStatus = Readonly<{
   providerId: string;
   model?: string;
+  reasoningEffort?: string;
+  configurationState: 'applied' | 'connecting' | 'failed';
   capabilities: ProviderCapabilities;
   health: ProviderHealth;
 }>;
@@ -172,6 +178,7 @@ export function createProviderConfigService(options: {
   switchProvider(input: ProviderSwitchInput): Promise<ProviderSwitchResult>;
   getConfiguration(): Promise<ProviderConfiguration | undefined>;
   getStatus(): Promise<ProviderRuntimeStatus>;
+  reconnect(): Promise<ProviderRuntimeStatus>;
 }> {
   const now = options.now ?? (() => new Date());
   let barrier: Promise<void> = Promise.resolve();
@@ -197,8 +204,10 @@ export function createProviderConfigService(options: {
       resolveSecret,
     );
     if (!validation.valid) throw providerError('provider_config_invalid');
-    const health = await options.runtime.checkProviderHealth(input.providerId);
-    if (health.status !== 'healthy') throw providerError('provider_unhealthy', 'ai_unavailable');
+    const preflightHealth = await options.runtime.checkProviderHealth(input.providerId);
+    if (preflightHealth.status !== 'healthy') {
+      throw providerError('provider_unhealthy', 'ai_unavailable');
+    }
     const capabilities = options.runtime.describeProvider(input.providerId);
     const configFingerprint = createHash('sha256')
       .update(
@@ -218,18 +227,81 @@ export function createProviderConfigService(options: {
       configFingerprint,
       updatedAt: now().toISOString(),
     };
-    await options.repository.replace(next, previous?.configFingerprint);
+    const restorePrevious = async () => {
+      if (previous === undefined) return;
+      const previousResolveSecret: SecretResolver = async (name) => {
+        const handle = previous.secretHandles[name];
+        if (handle === undefined) return undefined;
+        return new TextDecoder('utf-8', { fatal: true }).decode(await options.secrets.get(handle));
+      };
+      await options.runtime.switchProvider(
+        previous.providerId,
+        previous.publicConfig,
+        previousResolveSecret,
+      );
+    };
+    let persisted = false;
     try {
-      await options.runtime.switchProvider(input.providerId);
+      await options.runtime.switchProvider(input.providerId, input.publicConfig, resolveSecret);
+      const health = await options.runtime.checkProviderHealth(input.providerId);
+      if (health.status !== 'healthy') {
+        await restorePrevious();
+        throw providerError('provider_unhealthy', 'ai_unavailable');
+      }
+      await options.repository.replace(next, previous?.configFingerprint);
+      persisted = true;
+      return { providerId: input.providerId, capabilities, health };
     } catch {
       try {
-        await options.repository.replace(previous, next.configFingerprint);
+        await restorePrevious();
       } catch {
         throw providerError('provider_switch_rollback_failed');
       }
+      if (persisted) {
+        try {
+          await options.repository.replace(previous, next.configFingerprint);
+        } catch {
+          throw providerError('provider_switch_rollback_failed');
+        }
+      }
       throw providerError('provider_switch_failed');
     }
-    return { providerId: input.providerId, capabilities, health };
+  }
+
+  async function getStatus(): Promise<ProviderRuntimeStatus> {
+    const runtimeStatus = await options.runtime.getProviderStatus();
+    const providerId = runtimeStatus.currentProviderId;
+    if (providerId === '' || !runtimeStatus.providers.includes(providerId)) {
+      throw providerError('provider_runtime_inconsistent', 'ai_unavailable');
+    }
+    const configuration = await options.repository.get();
+    const configuredModel =
+      configuration?.providerId === providerId &&
+      typeof configuration.publicConfig.model === 'string' &&
+      configuration.publicConfig.model.trim() !== ''
+        ? configuration.publicConfig.model
+        : undefined;
+    const configuredReasoningEffort =
+      configuration?.providerId === providerId &&
+      typeof configuration.publicConfig.reasoningEffort === 'string' &&
+      configuration.publicConfig.reasoningEffort.trim() !== ''
+        ? configuration.publicConfig.reasoningEffort
+        : undefined;
+    const health = await options.runtime.checkProviderHealth(providerId);
+    return {
+      providerId,
+      ...(configuredModel === undefined ? {} : { model: configuredModel }),
+      ...(configuredReasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: configuredReasoningEffort }),
+      configurationState:
+        health.status === 'healthy' &&
+        (configuration === undefined || configuration.providerId === providerId)
+          ? 'applied'
+          : 'failed',
+      capabilities: options.runtime.describeProvider(providerId),
+      health,
+    };
   }
 
   return {
@@ -245,25 +317,17 @@ export function createProviderConfigService(options: {
       return operation;
     },
     getConfiguration: () => options.repository.get(),
-    async getStatus() {
-      const runtimeStatus = await options.runtime.getProviderStatus();
-      const providerId = runtimeStatus.currentProviderId;
-      if (providerId === '' || !runtimeStatus.providers.includes(providerId)) {
-        throw providerError('provider_runtime_inconsistent', 'ai_unavailable');
-      }
+    async reconnect() {
       const configuration = await options.repository.get();
-      const configuredModel =
-        configuration?.providerId === providerId &&
-        typeof configuration.publicConfig.model === 'string' &&
-        configuration.publicConfig.model.trim() !== ''
-          ? configuration.publicConfig.model
-          : undefined;
-      return {
-        providerId,
-        ...(configuredModel === undefined ? {} : { model: configuredModel }),
-        capabilities: options.runtime.describeProvider(providerId),
-        health: await options.runtime.checkProviderHealth(providerId),
-      };
+      if (configuration !== undefined) {
+        await switchProvider({
+          providerId: configuration.providerId,
+          publicConfig: configuration.publicConfig,
+          secretHandles: configuration.secretHandles,
+        });
+      }
+      return getStatus();
     },
+    getStatus,
   };
 }

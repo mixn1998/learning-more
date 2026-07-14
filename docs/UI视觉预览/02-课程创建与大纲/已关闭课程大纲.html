@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning MORE · 已关闭课程</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <style>
+      .hero { display:flex; justify-content:space-between; gap:24px; padding:24px 26px; }
+      .hero h1 { margin:7px 0 6px; font-size:28px; letter-spacing:-.025em; }
+      .hero p { margin:0; color:var(--muted); font-size:12px; line-height:1.6; }
+      .hero-actions { display:grid; justify-items:end; align-content:start; gap:12px; flex:none; }
+      .danger-row { width:100%; padding-top:12px; border-top:1px solid var(--line); text-align:right; }
+      .course-layout { display:grid; grid-template-columns:minmax(0,1fr) 292px; gap:16px; margin-top:16px; align-items:start; }
+      .outline { padding:20px; }
+      .outline-header { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:16px; }
+      .outline-header h2 { margin:0; font-size:21px; }
+      .module + .module { margin-top:19px; }
+      .module-title { display:flex; align-items:center; gap:10px; padding-bottom:10px; border-bottom:1px solid var(--line); }
+      .module-title span { display:grid; width:32px; height:32px; place-items:center; border-radius:10px; background:var(--tint); color:var(--accent-dark); font-size:13px; font-weight:850; }
+      .module-title b { font-size:15px; }
+      .lessons { display:grid; gap:8px; margin-top:10px; }
+      .lesson { display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:12px; align-items:center; width:100%; padding:13px; border:1px solid var(--line); border-radius:12px; background:#fff; color:inherit; text-align:left; text-decoration:none; }
+      .lesson:hover { border-color:var(--accent); box-shadow:0 8px 18px rgba(65,47,30,.06); }
+      .lesson-index { display:grid; width:34px; height:34px; place-items:center; border-radius:10px; background:var(--success-bg); color:var(--success); font-size:14px; font-weight:850; }
+      .lesson b { display:block; font-size:14px; line-height:1.4; }
+      .lesson p { margin:4px 0 0; color:var(--muted); font-size:11px; line-height:1.5; }
+      .lesson-state { padding:6px 9px; border-radius:999px; background:var(--success-bg); color:var(--success); font-size:11px; white-space:nowrap; }
+      .side { position:sticky; top:92px; overflow:hidden; }
+      .progress { padding:18px; }
+      .progress-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+      .progress-head h3 { margin:0; font-size:16px; }
+      .progress-head strong { color:var(--success); font-size:14px; }
+      .progress-track { height:7px; margin-top:13px; overflow:hidden; border-radius:999px; background:#e8e1d8; }
+      .progress-track i { display:block; width:100%; height:100%; background:var(--success); }
+      .closed-note { margin:0 14px 14px; padding:16px; border:1px solid #cfe4d9; border-radius:12px; background:var(--success-bg); }
+      .closed-note .lm-kicker { color:var(--success); }
+      .closed-note h3 { margin:7px 0 5px; font-size:16px; }
+      .closed-note p { margin:0 0 14px; color:#557565; font-size:12px; line-height:1.6; }
+      .closed-note .lm-btn { width:100%; }
+      .side-links { display:grid; padding:4px 14px; border-top:1px solid var(--line); }
+      .side-links a { display:flex; justify-content:space-between; align-items:center; min-height:46px; border-bottom:1px solid var(--line); color:inherit; text-decoration:none; font-size:12px; }
+      .side-links a:last-child { border-bottom:0; }
+      .side-links a::after { content:'›'; color:var(--muted); font-size:20px; }
+      dialog { width:min(600px,calc(100% - 28px)); padding:0; border:1px solid var(--line); border-radius:16px; background:var(--paper); color:var(--ink); box-shadow:0 28px 70px rgba(57,42,29,.24); }
+      dialog::backdrop { background:rgba(44,38,32,.44); }
+      dialog header,dialog .dialog-body,dialog footer { padding:20px 22px; }
+      dialog header { border-bottom:1px solid var(--line); }
+      dialog h2 { margin:5px 0 0; font-size:22px; }
+      dialog p { margin:0; color:var(--muted); font-size:13px; line-height:1.65; }
+      dialog footer { display:flex; justify-content:flex-end; gap:9px; border-top:1px solid var(--line); background:var(--paper-2); }
+      .course-list { display:grid; gap:9px; }
+      .course-list button { width:100%; padding:13px; border:1px solid var(--line); border-radius:11px; background:#fff; text-align:left; cursor:pointer; }
+      .course-list button:hover { border-color:var(--accent); background:var(--tint); }
+      .course-list b,.course-list span { display:block; }
+      .course-list b { font-size:14px; }
+      .course-list span { margin-top:4px; color:var(--muted); font-size:11px; }
+      .danger-dialog { border-color:#e5c4be; }
+      .danger-dialog .dialog-body { display:grid; gap:10px; }
+      .danger-dialog strong { padding:11px 12px; border:1px solid #eccbc6; border-radius:10px; background:var(--danger-bg); color:var(--danger); font-size:12px; line-height:1.6; }
+      @media (max-width:900px){.course-layout{grid-template-columns:1fr}.side{position:static}}
+      @media (max-width:620px){.hero{flex-direction:column;padding:20px}.hero-actions,.hero-actions .lm-actions,.hero-actions .lm-btn{width:100%}.hero-actions{justify-items:stretch}.lesson{grid-template-columns:32px minmax(0,1fr)}.lesson-state{grid-column:2;justify-self:start}}
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar"><div class="lm-brand"><strong>Learning MORE</strong><span>正式课程学习档案</span></div><div class="lm-runtime"><span class="lm-pill success">● 课程已关闭</span></div></header>
+    <main class="lm-page">
+      <section class="lm-card hero">
+        <div><div class="lm-kicker">STANDARD · 已关闭课程</div><h1>从反馈到核心循环：游戏设计能力进阶</h1><p>艺术与设计 · 游戏设计、核心循环 · 确认大纲 v1</p><div class="lm-chips" style="margin-top:12px"><span class="lm-mode-badge">● 标准模式</span><span class="lm-pill success">5 个课节已完成</span></div></div>
+        <div class="hero-actions"><div class="lm-actions"><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a><button class="lm-btn" id="switchCourse" type="button">切换课程</button></div><div class="danger-row"><button class="lm-btn danger" id="deleteCourse" type="button">删除课程</button></div></div>
+      </section>
+      <div class="course-layout">
+        <section class="lm-card outline">
+          <div class="outline-header"><h2>课程单元</h2><span class="lm-pill success">已完成 5 / 5</span></div>
+          <section class="module"><div class="module-title"><span>01</span><b>看见游戏为何失去吸引力</b></div><div class="lessons"><a class="lesson" href="../05-Review与学习档案/课节记录.html"><span class="lesson-index">1</span><div><b>玩家为什么会停下来</b><p>体验断点、行为证据、重复感来源。</p></div><span class="lesson-state">查看课节记录</span></a><a class="lesson" href="../05-Review与学习档案/课节记录.html"><span class="lesson-index">2</span><div><b>反馈不是奖励动画</b><p>状态反馈、能力反馈、目标反馈。</p></div><span class="lesson-state">查看课节记录</span></a></div></section>
+          <section class="module"><div class="module-title"><span>02</span><b>建立可持续的核心循环</b></div><div class="lessons"><a class="lesson" href="../05-Review与学习档案/课节记录.html"><span class="lesson-index">3</span><div><b>行为如何形成循环</b><p>玩家行动、系统响应、下一步欲望。</p></div><span class="lesson-state">查看课节记录</span></a><a class="lesson" href="../05-Review与学习档案/课节记录.html"><span class="lesson-index">4</span><div><b>难度与掌握感如何推进</b><p>挑战强度、可解释反馈、推进节奏。</p></div><span class="lesson-state">查看课节记录</span></a></div></section>
+          <section class="module"><div class="module-title"><span>03</span><b>用原型验证设计判断</b></div><div class="lessons"><a class="lesson" href="../05-Review与学习档案/课节记录.html"><span class="lesson-index">5</span><div><b>为原型建立成功标准</b><p>行为信号、判断标准、证据边界。</p></div><span class="lesson-state">查看课节记录</span></a></div></section>
+        </section>
+        <aside class="lm-card side"><section class="progress"><div class="progress-head"><h3>课程进度</h3><strong>5 / 5</strong></div><div class="progress-track" aria-label="课程进度 100%"><i></i></div></section><section class="closed-note"><div class="lm-kicker">COURSE REVIEW</div><h3>课程已关闭</h3><p>本课程的课节 Review 已汇总为主题总 Review。</p><a class="lm-btn primary" href="../05-Review与学习档案/课程主题总Review.html">查看主题总结</a></section><nav class="side-links" aria-label="课程辅助入口"><a href="正式课程大纲.html">查看大纲版本记录</a></nav></aside>
+      </div>
+    </main>
+    <dialog id="courseChooser" aria-labelledby="courseChooserTitle"><header><div class="lm-kicker">FORMAL COURSES</div><h2 id="courseChooserTitle">切换课程</h2></header><div class="dialog-body course-list"><button type="button" data-course-target="正式课程大纲.html"><b>数据结构：从约束理解操作代价</b><span>阅读研讨 · 最近学习 07/10</span></button><button type="button" data-course-target="正式课程大纲.html"><b>用行为证据设计产品实验</b><span>案例研习 · 最近学习 07/09</span></button></div><footer><button class="lm-btn" id="closeCourseChooser" type="button">关闭</button></footer></dialog>
+    <dialog class="danger-dialog" id="deleteCourseDialog" aria-labelledby="deleteCourseTitle"><header><div class="lm-kicker">RISK ACTION</div><h2 id="deleteCourseTitle">永久删除课程？</h2></header><div class="dialog-body"><p>将永久删除此课程档案、全部学习会话、课节 Review、排期和关联记录。</p><strong>删除后无法恢复；历史统计将扣除本课程事实，学习画像会重新计算。</strong></div><footer><button class="lm-btn" id="cancelDeletion" type="button">取消</button><button class="lm-btn danger" id="confirmDeletion" type="button">永久删除</button></footer></dialog>
+    <script src="../00-设计系统/assets/mode-themes.js"></script>
+    <script>
+      applyCourseModeTheme('standard');
+      const chooser=document.getElementById('courseChooser'), deleteDialog=document.getElementById('deleteCourseDialog');
+      document.getElementById('switchCourse').onclick=()=>SampleUI.openDialog(chooser,document.getElementById('switchCourse'));
+      document.getElementById('closeCourseChooser').onclick=()=>SampleUI.closeDialog(chooser);
+      document.querySelectorAll('[data-course-target]').forEach((button)=>button.addEventListener('click',()=>{location.href=button.dataset.courseTarget;}));
+      document.getElementById('deleteCourse').onclick=()=>SampleUI.openDialog(deleteDialog,document.getElementById('deleteCourse'));
+      document.getElementById('cancelDeletion').onclick=()=>SampleUI.closeDialog(deleteDialog);
+      document.getElementById('confirmDeletion').onclick=()=>SampleUI.runSimulation({button:document.getElementById('confirmDeletion'),busyText:'正在删除…',successText:'课程及关联学习记录已永久删除（模拟）',task:()=>new Promise((resolve)=>setTimeout(resolve,450))}).then(()=>setTimeout(()=>{location.href='../01-主页与全局导航/主页.html?simDeletedCourse=closed_course';},360));
+    </script>
+  </body>
+</html>

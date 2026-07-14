@@ -6,6 +6,11 @@ node_modules/
 .npm-cache/
 .playwright-browsers/
 .release-cache/
+.learning-more-data/
+.learning-more-local/
+.learning-more-runtime/
+.learning-more-runtime-debug/
+.learning-more-build.json
 dist/
 coverage/
 artifacts/

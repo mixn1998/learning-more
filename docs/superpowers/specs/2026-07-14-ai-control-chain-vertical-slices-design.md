@@ -63,7 +63,7 @@
 ### 4.1 领域术语
 
 - **课程创建消息（OutlineMessage）**：课程创建会话中的不可变用户或 assistant 消息。
-- **完整评估回合（AssessmentRound）**：一条用户消息和随后一条 `complete` assistant 回复。固定开场白、残缺回复、失败回复和仅用户消息都不计数。
+- **完整评估回合（AssessmentRound）**：一条用户消息和随后一条 `complete` assistant 回复。主页提交的初始课程方向物化为第一条用户消息，AI 对它的完整回复构成第 1 回合；固定开场白、残缺回复、失败回复和仅用户消息都不计数。
 - **基础评估完成（BaselineAssessmentCompleted）**：完整评估回合数达到 3。它只表示用户取得生成权，不表示信息客观充分或课程已经创建。
 - **候选对齐回合（CandidateAlignmentRound）**：存在候选后，为澄清、解释或调整该候选发生的用户消息与 assistant 回复。
 - **整版重生（full_regeneration）**：基于完整上下文和当前候选生成一个新的完整候选版本。
@@ -92,7 +92,8 @@ assessing
 
 ### 4.3 三轮门槛与用户选择权
 
-- 新会话创建后，系统提交第一条真实 assistant 评估回复；不再使用前端固定文案冒充 AI。
+- 主页提交初始课程方向时，创建 OutlineSession 和第一条不可变 `user` OutlineMessage，两者在同一业务命令中落库；进入课程创建页后直接显示该消息，不要求用户再次提交。
+- 新会话创建后，系统以这条初始用户消息为当前轮输入，提交第一条真实 assistant 评估回复；不再使用前端固定文案冒充 AI。该回复完整提交后计为第 1 个评估回合。
 - 每次 assistant 完整回复提交后，由程序重新计算完整评估回合数。
 - 第 1、2 个完整回合结束后，页面只提供继续输入，不显示“跳过评估”或生成候选入口。
 - 第 3 个完整回合结束后，状态进入 `assessment-ready`，必须显示“生成候选大纲”；输入框继续可用，用户可以自愿进行任意更多回合。
@@ -172,9 +173,17 @@ type CandidateOutlineMetadata = {
 
 每个新候选保存 `supersedesCandidateVersionId`、`changeKind`、`targetModuleIds`、输入快照哈希和完整 Markdown。旧候选永久保留，只有最新候选可确认。
 
+候选生成使用独立的最小机器输出协议，不让模型从业务上下文猜测 metadata 字段：
+
+- Provider 上下文先在本地投影为“已知学习背景、原始对话、材料与当前调整”，不暴露 `outlineSessionId`、回合数、messageId 或状态键。
+- metadata 只允许 `courseGoals`、`disciplineTag`、`topicTags`、`modules` 和 `lessons`；协议只约束机器接口，不约束后续 Markdown 的教学结构、表达、案例或创造性。
+- 同一次生成同时返回严格 metadata 和自由 Markdown，不增加观察调用或二次生成。
+- `candidate_invalid`、`generation_timeout` 与 `generation_interrupted` 分开传播和显示；三者均保留草稿与生成权。
+- 真实 Provider 错误输出必须作为固定回放 fixture 进入测试，不能只用预制正确 JSON 的 Mock 证明兼容性。
+
 ### 4.8 前端行为
 
-- 左侧渲染真实消息列表和流式 assistant 回复，不再渲染固定 `ai/user/follow` 三段。
+- 左侧渲染真实消息列表和流式 assistant 回复，不再渲染固定 `ai/user/follow` 三段；主页初始课程方向是列表中的第一条用户消息，不再另设重复的“来自主页的初始主题”内容卡或预填待发送文本。
 - 前两轮不出现生成按钮；第三轮 assistant 完整结束后出现“生成候选大纲”和继续输入。
 - 候选生成后，左侧仍保持可输入。AI 可以先澄清；只有后置规划结果为整版重生或模块微调时，右侧进入更新状态。
 - 更新时旧候选保持可读，确认按钮禁用；成功后切换到新版本并标记“整版重生”或“微调：模块名”。
@@ -302,6 +311,7 @@ interface GenerationExecution {
 ### 14.1 课程创建
 
 - 模糊主题提交后 AI 实际追问，状态保持评估中。
+- 主页初始课程方向自动成为第一条用户消息；进入创建页不需要再次发送，AI 首次完整回复后回合数为 1。
 - 前两个完整回合不存在任何生成/跳过入口。
 - 第三个完整回合提交后生成入口必定出现，继续对话仍可用。
 - 刷新后消息、回合数和生成权不变。

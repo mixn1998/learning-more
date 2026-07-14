@@ -36,6 +36,45 @@ function fixture() {
     scheduleRepository: schedules,
     unitOfWork,
     generationRuntime: { submit },
+    async assemblePreviewContext() {
+      return {
+        courses: [{ courseId: 'course_01', title: 'Probability' }],
+        lessons: [
+          {
+            lessonId: 'lesson_01',
+            courseId: 'course_01',
+            title: 'Foundations',
+            objective: 'Build foundations',
+            prerequisiteLessonIds: [],
+            estimatedMinutes: 60,
+            progress: 'not_started' as const,
+          },
+          {
+            lessonId: 'lesson_02',
+            courseId: 'course_01',
+            title: 'Applications',
+            objective: 'Apply foundations',
+            prerequisiteLessonIds: ['lesson_01'],
+            estimatedMinutes: 60,
+            progress: 'not_started' as const,
+          },
+        ],
+        timezone: 'Asia/Shanghai',
+        availability: {
+          startLocalDate: '2026-07-14',
+          dailyTargetMinutes: 60,
+          learningDays: ['周二', '周三'],
+        },
+        userPreferences: {
+          preserveExistingDates: true,
+          rescheduleOverdue: false,
+          strategy: 'balanced',
+        },
+        constraintsMarkdown: 'Keep the existing evening commitments.',
+        existingSchedule: [],
+        fixedCommitments: [],
+      };
+    },
     getScheduleVersion: async () => scheduleVersion,
     lessonIsPlannable: async (lessonId) =>
       lessonsAvailable && ['lesson_01', 'lesson_02'].includes(lessonId),
@@ -61,7 +100,7 @@ const previewInput = {
   constraintsArtifactRef: 'artifact_constraints_01',
   courseRefs: ['course_01'],
   lessonRefs: ['lesson_01', 'lesson_02'],
-  timeWindowRefs: ['window_weekday_evenings'],
+  timeWindowRefs: ['start:2026-07-14', 'daily:60', 'days:周二,周三'],
   existingScheduleSnapshotRef: 'schedule_snapshot_0',
 };
 
@@ -109,11 +148,20 @@ describe('PlanFlowService', () => {
       constraintsArtifactRef: 'artifact_constraints_01',
     });
     expect(submit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        inputSnapshotHash: expect.any(String),
-        prompt: expect.stringContaining('schedule_snapshot_0'),
-      }),
+      expect.objectContaining({ inputSnapshotHash: expect.any(String) }),
     );
+    const prompt = submit.mock.calls[0]?.[0]?.prompt as string;
+    expect(prompt).toContain('【机器输出契约】');
+    expect(prompt).toContain('【课程与待规划课节】');
+    expect(prompt).toContain('课节标识：lesson_01');
+    expect(prompt).toContain('Keep the existing evening commitments.');
+    expect(prompt).not.toContain('constraintsArtifactRef');
+    expect(prompt).not.toContain('existingScheduleSnapshotRef');
+    expect(prompt).not.toContain('baseScheduleVersion');
+    expect(prompt).not.toContain('materializedContext');
+    expect(prompt).not.toContain('schedule_snapshot_0');
+    const contractLine = prompt.split('\n').find((line) => line.startsWith('{"suggestions"'));
+    expect(() => JSON.parse(contractLine ?? '')).not.toThrow();
     expect(JSON.stringify(submit.mock.calls)).not.toContain('rawConversation');
     const currentItems = [];
     for await (const item of schedules.list()) currentItems.push(item);
@@ -135,6 +183,31 @@ describe('PlanFlowService', () => {
     ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
     await expect(
       service.markPreviewReady(requested.id, [suggestions[0]!, suggestions[0]!]),
+    ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
+    await expect(service.markPreviewReady(requested.id, [suggestions[0]!])).rejects.toMatchObject({
+      code: 'plan_preview_invalid',
+    });
+    await expect(
+      service.markPreviewReady(requested.id, [
+        suggestions[0]!,
+        {
+          ...suggestions[1]!,
+          startAt: suggestions[0]!.startAt,
+          endAt: suggestions[0]!.endAt,
+        },
+      ]),
+    ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
+    await expect(
+      service.markPreviewReady(requested.id, [
+        { ...suggestions[0]!, startAt: '2026-07-13T11:00:00.000Z' },
+        suggestions[1]!,
+      ]),
+    ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
+    await expect(
+      service.markPreviewReady(requested.id, [
+        { ...suggestions[0]!, endAt: '2026-07-14T12:01:00.000Z' },
+        suggestions[1]!,
+      ]),
     ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
   });
 

@@ -33,4 +33,25 @@ describe('typed API client', () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it('sends CSRF protection for unsafe non-command endpoints', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal('fetch', fetcher);
+
+    await apiRequest('/api/v1/ai-runtime/reconnect', {
+      method: 'POST',
+      body: {},
+      schema: { parse: (value) => value },
+    });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/v1/ai-runtime/reconnect',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-csrf-token': 'development-csrf' }),
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
 });

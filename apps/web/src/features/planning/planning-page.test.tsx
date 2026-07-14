@@ -30,23 +30,60 @@ describe('PlanningPage', () => {
     const confirmPlanFlow = vi.fn().mockRejectedValue({ code: 'version_conflict' });
     const api: PlanningClient = {
       getSchedule: vi.fn().mockResolvedValue({ items: [], resourceVersion: 0 }),
+      getPlanningContext: vi.fn().mockResolvedValue({
+        courses: [
+          {
+            courseId: 'course_01',
+            title: '计划测试课程',
+            status: 'active',
+            courseMode: 'standard',
+            outlineVersionId: 'outline_01',
+            resourceVersion: 1,
+          },
+        ],
+        lessons: [
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_01',
+            title: '计划测试课节',
+            progress: 'not_started',
+            recommended: true,
+          },
+        ],
+      }),
       createSchedule,
+      moveSchedule: vi.fn(),
+      resizeSchedule: vi.fn(),
+      setScheduleLock: vi.fn(),
+      removeSchedule: vi.fn(),
       requestPreview,
       confirmPlanFlow,
+      getPlanFlow: vi.fn(),
+      managePlanFlow: vi.fn(),
     };
     render(<PlanningPage client={api} />);
-    const courses = await screen.findByLabelText('计划课程 ID');
-    const lessons = screen.getByLabelText('计划课节 ID');
-    fireEvent.change(courses, { target: { value: 'course_01' } });
-    fireEvent.change(lessons, { target: { value: 'lesson_01' } });
+    await screen.findByRole('heading', { name: '安排课节学习日期' });
+    fireEvent.click(screen.getByRole('button', { name: '生成计划流' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    expect(screen.getByRole('button', { name: /计划测试课程/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
     fireEvent.click(screen.getByRole('button', { name: '生成计划预览' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('schedule_existing');
+    expect(requestPreview).toHaveBeenCalledWith(
+      expect.objectContaining({ courseRefs: ['course_01'], lessonRefs: ['lesson_01'] }),
+      expect.any(Object),
+    );
     expect(createSchedule).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '确认计划流' }));
-    await waitFor(() => expect(confirmPlanFlow).toHaveBeenCalledWith('plan_flow_01', 2));
-    expect(await screen.findByText('排期版本已变化，请重新预览')).toBeInTheDocument();
-    expect(courses).toHaveValue('course_01');
-    expect(lessons).toHaveValue('lesson_01');
+    await waitFor(() =>
+      expect(confirmPlanFlow).toHaveBeenCalledWith('plan_flow_01', 2, expect.any(Object)),
+    );
+    expect(await screen.findByText('排期版本已变化，请重新预览。')).toBeInTheDocument();
+    expect(screen.getByText('计划测试课节')).toBeInTheDocument();
   });
 });

@@ -55,4 +55,23 @@ describe('MarkdownArtifactStore', () => {
     await expect(store.readDraft('artifact_failed')).resolves.toBe('# 已接收 delta');
     await expect(store.read('artifact_failed')).resolves.toBeUndefined();
   });
+
+  it('maps logical artifact references with path delimiters to safe storage paths', async () => {
+    const store = await fixture();
+    const artifactId = 'assistant-message:message_01';
+    await store.saveDraft(artifactId, '# AI 回复');
+
+    await expect(store.readDraft(artifactId)).resolves.toBe('# AI 回复');
+    await store.finalize({
+      artifactId,
+      kind: 'assistant-message',
+      content: '# AI 回复',
+      immutable: true,
+    });
+    await expect(store.read(artifactId)).resolves.toMatchObject({
+      artifactId,
+      kind: 'assistant-message',
+      content: '# AI 回复',
+    });
+  });
 });

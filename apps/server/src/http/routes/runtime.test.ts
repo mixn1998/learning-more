@@ -1,4 +1,8 @@
-import { ProviderSwitchResponseSchema } from '@learning-more/contracts';
+import {
+  CodexLoginStartResponseSchema,
+  ProviderCatalogSchema,
+  ProviderSwitchResponseSchema,
+} from '@learning-more/contracts';
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,6 +30,29 @@ describe('AI runtime routes', () => {
       health: { status: 'healthy' },
     });
     const createDiagnostics = vi.fn().mockResolvedValue({ artifactRef: 'diagnostics_01' });
+    const getProviderCatalog = vi.fn().mockResolvedValue({
+      providers: [
+        {
+          providerId: 'codex-cli',
+          capabilities: {
+            id: 'codex-cli',
+            kind: 'cli',
+            maxConcurrency: 2,
+            supportsStreaming: true,
+          },
+          health: { status: 'healthy' },
+          models: [
+            {
+              id: 'gpt-5.6-sol',
+              displayName: 'GPT-5.6-Sol',
+              defaultReasoningEffort: 'low',
+              supportedReasoningEfforts: ['low', 'ultra'],
+            },
+          ],
+        },
+      ],
+    });
+    const startProviderAuthentication = vi.fn().mockResolvedValue({ state: 'started' });
     await registerLocalSecurity(app, {
       allowedOrigin: 'http://127.0.0.1:5173',
       csrfToken: 'csrf',
@@ -33,9 +60,13 @@ describe('AI runtime routes', () => {
     await registerRuntimeRoutes(app, {
       switchProvider,
       createDiagnostics,
+      getProviderCatalog,
+      startProviderAuthentication,
       getProviderStatus: vi.fn().mockResolvedValue({
         providerId: 'api',
         model: 'model-01',
+        reasoningEffort: 'high',
+        configurationState: 'applied',
         capabilities: {
           id: 'api',
           kind: 'api',
@@ -54,8 +85,31 @@ describe('AI runtime routes', () => {
     expect(status.json()).toMatchObject({
       providerId: 'api',
       model: 'model-01',
+      reasoningEffort: 'high',
+      configurationState: 'applied',
       health: { status: 'healthy' },
     });
+    const catalog = await app.inject({
+      method: 'GET',
+      url: '/api/v1/ai-runtime/providers?refresh=true',
+      headers: { host: '127.0.0.1:43120', origin: 'http://127.0.0.1:5173' },
+    });
+    expect(catalog.statusCode).toBe(200);
+    expect(ProviderCatalogSchema.parse(catalog.json())).toEqual(catalog.json());
+    expect(getProviderCatalog).toHaveBeenCalledWith({ refresh: true });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/ai-runtime/providers/codex-cli/login',
+      headers: {
+        host: '127.0.0.1:43120',
+        origin: 'http://127.0.0.1:5173',
+        'x-csrf-token': 'csrf',
+      },
+      payload: {},
+    });
+    expect(login.statusCode).toBe(202);
+    expect(CodexLoginStartResponseSchema.parse(login.json())).toEqual({ state: 'started' });
+    expect(startProviderAuthentication).toHaveBeenCalledWith('codex-cli');
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/ai-runtime/provider-switches',

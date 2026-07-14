@@ -12,6 +12,7 @@ export default defineConfig(
     '.npm-cache/**',
     '.playwright-browsers/**',
     '.superpowers/**',
+    'artifacts/**',
     '**/coverage/**',
     '**/dist/**',
     'docs/**',

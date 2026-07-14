@@ -99,7 +99,9 @@ async function completeLesson(page: Page, lessonId: string, exerciseLifecycle: b
   await expect(input).toBeEnabled();
   await input.fill(`Explain ${lessonId}`);
   await page.getByRole('button', { name: '发送' }).click();
-  await expect(page.getByRole('heading', { name: /Candidate outline/ })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'AI 导师' }).last()).toContainText(
+    '我们从你刚才的问题继续',
+  );
   await expect(page.getByRole('button', { name: '停止生成' })).toBeHidden();
 
   if (exerciseLifecycle) {
@@ -107,17 +109,16 @@ async function completeLesson(page: Page, lessonId: string, exerciseLifecycle: b
     await expect(input).toBeDisabled();
     await page.getByRole('button', { name: '继续学习' }).click();
     await expect(input).toBeEnabled();
-    await page.getByRole('button', { name: '放弃课节' }).click();
+    await page.getByRole('button', { name: '结束本课' }).click();
+    await page.getByRole('button', { name: '确认放弃课节' }).click();
     await expect(page.getByRole('button', { name: '恢复学习' })).toBeVisible();
     await page.getByRole('button', { name: '恢复学习' }).click();
     await expect(input).toBeEnabled();
   }
 
   await page.getByRole('button', { name: '结束本课' }).click();
-  await expect(page.getByRole('dialog')).toContainText('Learning completed.');
-  await page.reload();
-  await page.getByRole('button', { name: '开始学习' }).click();
-  await expect(page.getByRole('dialog')).toContainText('Learning completed.');
+  await page.getByRole('button', { name: '完成本课' }).click();
+  await expect(page.getByRole('dialog')).toContainText('学习 Review');
   await expect(input).toBeDisabled();
 }
 
@@ -128,7 +129,9 @@ async function leaveLessonReadyToCommitAfterRestart(page: Page, lessonId: string
   await expect(input).toBeEnabled();
   await input.fill(`Explain ${lessonId}`);
   await page.getByRole('button', { name: '发送' }).click();
-  await expect(page.getByRole('heading', { name: /Candidate outline/ })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'AI 导师' }).last()).toContainText(
+    '我们从你刚才的问题继续',
+  );
   await expect(page.getByRole('button', { name: '停止生成' })).toBeHidden();
 
   const progressDocuments = await aggregateDocuments('lesson-progress');
@@ -186,27 +189,56 @@ async function leaveLessonReadyToCommitAfterRestart(page: Page, lessonId: string
 test('[EQ-LESSON-03] completes learning lifecycle, immutable lesson Reviews, and course closure', async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   const { courseId, lessonIds } = await createCourse(page);
   expect(lessonIds).toHaveLength(2);
   await completeLesson(page, lessonIds[0]!, true);
+  await expect(page.getByRole('dialog')).toContainText('学习 Review');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
   await page.getByRole('button', { name: '开始补充学习' }).click();
-  await page.getByLabel('补充学习输入').fill('Explore a related example');
+  const supplementaryInput = page.getByLabel('补充学习输入');
+  await supplementaryInput.fill('Explore a related example');
   await page.getByRole('button', { name: '发送补充消息' }).click();
+  await expect(supplementaryInput).toHaveValue('');
   await expect(page.getByText('补充学习会话已独立创建')).toBeVisible();
-  await expect(page.getByRole('dialog')).toContainText('Learning completed.');
+  const record = await page.evaluate(async (lessonId) => {
+    const response = await fetch(`/api/v1/lessons/${lessonId}/record`);
+    if (!response.ok) throw new Error(`record request failed: ${response.status}`);
+    return response.json() as Promise<{
+      courseId: string;
+      title: string;
+      courseTitle: string;
+      completedAt: string;
+      actualSeconds: number;
+      supplementary: Array<{ label: string; messages: string[] }>;
+    }>;
+  }, lessonIds[0]!);
+  expect(record).toMatchObject({
+    courseId,
+    supplementary: [{ label: '补充学习 1', messages: ['你：Explore a related example'] }],
+  });
+  expect(record.title).not.toBe('');
+  expect(record.courseTitle).not.toBe('');
+  expect(Number.isNaN(Date.parse(record.completedAt))).toBe(false);
+  expect(record.actualSeconds).toBeGreaterThanOrEqual(0);
+  await page.goto(`/courses/${courseId}/lessons/${lessonIds[0]!}/record`);
+  await expect(page.getByRole('heading', { name: record.title })).toBeVisible();
+  await page.getByRole('button', { name: '补充学习 1' }).click();
+  await expect(page.getByLabel('只读学习对话')).toContainText('Explore a related example');
   const pending = await leaveLessonReadyToCommitAfterRestart(page, lessonIds[1]!);
   await restartServer();
   await page.reload();
-  await page.getByRole('button', { name: '开始学习' }).click();
-  await expect(page.getByRole('dialog')).toContainText('Recovered exactly once.');
+  await page.getByRole('button', { name: '查看课节记录' }).click();
+  await page.getByRole('tab', { name: '课时 Review' }).click();
+  await expect(page.getByLabel('权威课时 Review')).toContainText('Recovered exactly once.');
 
   await page.goto(`/courses/${courseId}`);
+  await page.getByRole('button', { name: '关闭课程并生成总结' }).click();
   await page.getByRole('button', { name: '确认关闭课程' }).click();
-  await page.getByRole('button', { name: '查看主题总结' }).click();
-  await expect(page.getByRole('heading', { name: '主题总结' })).toBeVisible();
-  await expect(page.getByText(/核心知识线索/)).toBeVisible();
-  await expect(page.getByText(/总体学习表现/)).toBeVisible();
-  await expect(page.getByText(/推荐扩展课程/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: '主题核心知识线索' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '总体学习表现' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '推荐扩展课程' })).toBeVisible();
 
   const lessonProgress = await aggregateDocuments('lesson-progress');
   const completed = lessonProgress.filter((document) =>

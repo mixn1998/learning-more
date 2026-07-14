@@ -3,7 +3,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   ConfirmPlanFlowBodySchema,
   CreateScheduleAssignmentBodySchema,
+  PlanFlowActionBodySchema,
   RequestPlanFlowPreviewBodySchema,
+  UpdateScheduleAssignmentBodySchema,
 } from '@learning-more/contracts';
 
 import type { PlanningModule } from '../../modules/planning/interface.js';
@@ -13,7 +15,10 @@ import { mapApplicationError } from '../error-mapper.js';
 
 export type PlanningRouteOptions = Readonly<{
   planning: PlanningModule;
-  planFlows: Pick<ReturnType<typeof createPlanFlowService>, 'requestPreview' | 'confirm'>;
+  planFlows: Pick<
+    ReturnType<typeof createPlanFlowService>,
+    'requestPreview' | 'confirm' | 'get' | 'manage'
+  >;
   nextCommandId(): string;
   nextCorrelationId(): string;
   now(): Date;
@@ -105,4 +110,112 @@ export async function registerPlanningRoutes(
     const version = items.reduce((maximum, item) => Math.max(maximum, item.resourceVersion), 0);
     return reply.header('etag', `"${version}"`).code(200).send({ items, resourceVersion: version });
   });
+
+  app.patch<{ Params: { scheduleItemId: string } }>(
+    '/api/v1/schedule-assignments/:scheduleItemId',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const body = UpdateScheduleAssignmentBodySchema.parse(request.body);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const scheduleItemId = request.params.scheduleItemId;
+        const command =
+          body.action === 'move'
+            ? {
+                type: 'MoveScheduleItem' as const,
+                scheduleItemId,
+                startAt: body.startAt,
+                endAt: body.endAt,
+              }
+            : body.action === 'resize'
+              ? { type: 'ResizeScheduleItem' as const, scheduleItemId, endAt: body.endAt }
+              : { type: 'SetScheduleLock' as const, scheduleItemId, locked: body.locked };
+        const result = await options.planning.execute(command, context);
+        return reply
+          .header('etag', `"${result.scheduleItem.resourceVersion}"`)
+          .code(200)
+          .send(result);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.delete<{ Params: { scheduleItemId: string } }>(
+    '/api/v1/schedule-assignments/:scheduleItemId',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const result = await options.planning.execute(
+          { type: 'RemoveScheduleItem', scheduleItemId: request.params.scheduleItemId },
+          context,
+        );
+        return reply
+          .header('etag', `"${result.scheduleItem.resourceVersion}"`)
+          .code(200)
+          .send(result);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.get<{ Params: { planFlowId: string } }>(
+    '/api/v1/plan-flows/:planFlowId',
+    async (request, reply) => {
+      const flow = await options.planFlows.get(request.params.planFlowId);
+      if (flow === undefined) {
+        return reply.code(404).send({
+          type: 'https://learning-more.local/problems/plan-flow-not-found',
+          status: 404,
+          code: 'plan_flow_not_found',
+          messageKey: 'errors.planFlowNotFound',
+          retryable: false,
+          correlationId: correlationId(request, options),
+        });
+      }
+      return reply.header('etag', `"${flow.resourceVersion}"`).code(200).send(flow);
+    },
+  );
+
+  app.post<{ Params: { planFlowId: string } }>(
+    '/api/v1/plan-flows/:planFlowId/actions',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const body = PlanFlowActionBodySchema.parse(request.body);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const flow = await options.planFlows.manage(
+          request.params.planFlowId,
+          body.action,
+          context,
+        );
+        return reply.header('etag', `"${flow.resourceVersion}"`).code(200).send(flow);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
 }

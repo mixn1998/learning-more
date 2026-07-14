@@ -5,7 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter, matchRoutes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AppRoutes, appRouteDefinitions } from './router.js';
+import { AppRoutes, DeferredRoute, appRouteDefinitions } from './router.js';
 
 const paths = [
   '/',
@@ -22,6 +22,7 @@ const paths = [
 describe('application router', () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -55,5 +56,51 @@ describe('application router', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole('link', { name: '返回首页' })).toHaveAttribute('href', '/');
+  });
+
+  it('loads and renders a deferred business route instead of leaving an empty outlet', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: 'ready',
+            instanceId: 'instance_01',
+            buildId: 'development',
+            protocolVersion: '1',
+            storeStatus: 'ready',
+            projectionStatus: 'ready',
+            providerStatus: 'ready',
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    render(
+      <MemoryRouter initialEntries={['/courses/new']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByLabelText('学习主题')).toBeInTheDocument();
+  });
+
+  it('offers a recoverable screen when a route chunk cannot load', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    function BrokenRoute(): never {
+      throw new Error('route chunk failed');
+    }
+
+    render(
+      <MemoryRouter>
+        <DeferredRoute>
+          <BrokenRoute />
+        </DeferredRoute>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('当前数据没有被修改');
+    expect(screen.getByRole('button', { name: '重新加载页面' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '返回主页' })).toHaveAttribute('href', '/');
   });
 });

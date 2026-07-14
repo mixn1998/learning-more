@@ -4,13 +4,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require=createRequire(import.meta.url);
-const { chromium }=require('playwright');
+const { chromium }=require('@playwright/test');
 const testsDir=path.dirname(fileURLToPath(import.meta.url));
 const uiRoot=path.resolve(testsDir,'..','..');
 const base='http://127.0.0.1:61586';
 const viewports=[['desktop',{width:1440,height:1000}],['tablet',{width:1024,height:768}],['mobile',{width:390,height:844}]];
 function walkHtml(directory){return fs.readdirSync(directory,{withFileTypes:true}).flatMap((entry)=>{const target=path.join(directory,entry.name);if(entry.isDirectory())return walkHtml(target);return entry.isFile()&&entry.name.endsWith('.html')?[target]:[]})}
-const files=fs.readdirSync(uiRoot,{withFileTypes:true}).filter((entry)=>entry.isDirectory()&&/^0[1-7]-/.test(entry.name)).flatMap((entry)=>walkHtml(path.join(uiRoot,entry.name)));
+const files=fs.readdirSync(uiRoot,{withFileTypes:true}).filter((entry)=>entry.isDirectory()&&/^0[0-7]-/.test(entry.name)).flatMap((entry)=>walkHtml(path.join(uiRoot,entry.name)));
 const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
 const failures=[];
 
@@ -27,7 +27,7 @@ for(const file of files){
       const textSelector='h1,h2,h3,h4,p,small,label,button,a,.lm-pill,.lm-kicker,.lm-tab,input,textarea,select,li';
       document.querySelectorAll(textSelector).forEach((node)=>{
         if(!visible(node))return;
-        const text=(ownText(node)||(['INPUT','TEXTAREA','SELECT'].includes(node.tagName)?node.value||node.placeholder:'')).replace(/\s+/g,' ').trim();
+        const text=(ownText(node)||(['INPUT','TEXTAREA','SELECT'].includes(node.tagName)?node.value||node.placeholder||'':'')||'').replace(/\s+/g,' ').trim();
         if(!text&&!['INPUT','TEXTAREA','SELECT'].includes(node.tagName))return;
         const style=getComputedStyle(node),size=parseFloat(style.fontSize),line=parseFloat(style.lineHeight);
         const minimum=node.matches('h1')?24:node.matches('h2')?18:node.matches('h3')?14:node.matches('small')?10:node.matches('.lm-btn,.lm-tab,.lm-control,.pf-btn,.rc-btn,.history-tab,button')?11:10;

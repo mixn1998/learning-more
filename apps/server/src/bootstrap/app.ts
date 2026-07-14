@@ -9,6 +9,7 @@ import {
 } from '../http/routes/course-authoring.js';
 import { registerGenerationRoutes } from '../http/routes/generation.js';
 import { registerHealthRoutes } from '../http/routes/health.js';
+import { registerHomeRoutes, type HomeRouteOptions } from '../http/routes/home.js';
 import {
   registerLearningSessionRoutes,
   type LearningSessionRouteOptions,
@@ -29,6 +30,7 @@ import { registerRuntimeRoutes, type RuntimeRouteOptions } from '../http/routes/
 export interface ServerDependencies {
   getRuntimeReadiness(): Promise<RuntimeReady | unknown>;
   readonly courseAuthoring?: CourseAuthoringRouteOptions;
+  readonly home?: HomeRouteOptions;
   readonly generationFrameLog?: GenerationFrameLog;
   readonly localSecurity?: Readonly<{ allowedOrigin: string; csrfToken: string }>;
   readonly learningSession?: LearningSessionRouteOptions;
@@ -62,6 +64,9 @@ export async function buildApp(
     await registerLocalSecurity(app, dependencies.localSecurity);
   }
   await registerHealthRoutes(app, dependencies);
+  if (dependencies.home !== undefined) {
+    await registerHomeRoutes(app, dependencies.home);
+  }
   if (dependencies.courseAuthoring !== undefined) {
     await registerCourseAuthoringRoutes(app, dependencies.courseAuthoring);
   }

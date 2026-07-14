@@ -94,7 +94,7 @@ export function createConfigRestartDebouncer(
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = undefined;
-        void restart();
+        void restart().catch(() => undefined);
       }, 750);
     },
     close() {

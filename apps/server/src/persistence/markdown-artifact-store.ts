@@ -19,14 +19,22 @@ function hash(value: string): string {
 }
 
 export function createMarkdownArtifactStore(dataRoot: DataRoot, unitOfWork: UnitOfWork) {
+  function storageSegment(id: string): string {
+    if (id.length === 0) throw new Error('ARTIFACT_ID_REQUIRED');
+    try {
+      assertSafePathSegment(id);
+      return id;
+    } catch {
+      return `artifact_${hash(id)}`;
+    }
+  }
   function draftPath(id: string): string {
-    assertSafePathSegment(id);
+    if (id.length === 0) throw new Error('ARTIFACT_ID_REQUIRED');
     return `work/artifacts/${hash(id)}/draft.md`;
   }
   function basePath(id: string): string {
-    assertSafePathSegment(id);
     const digest = hash(id);
-    return `entities/artifacts/${digest.slice(0, 2)}/${id}`;
+    return `entities/artifacts/${digest.slice(0, 2)}/${storageSegment(id)}`;
   }
   async function readOptional(relativePath: string): Promise<string | undefined> {
     try {

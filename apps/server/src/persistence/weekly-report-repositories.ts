@@ -16,7 +16,20 @@ const checksum = z.string().regex(/^[a-f0-9]{64}$/);
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const SnapshotEntrySchema = z.strictObject({
   factId: z.string().min(1),
+  sourceRef: z.string().min(1).optional(),
+  kind: z
+    .enum([
+      'learning-session',
+      'teaching-ledger',
+      'review',
+      'plan-change',
+      'reasoning-evidence',
+      'fact',
+    ])
+    .optional(),
   occurredAt: z.iso.datetime({ offset: true }),
+  summary: z.string().optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
   courseId: z.string().min(1).optional(),
   lessonId: z.string().min(1).optional(),
   actualSeconds: z.number().nonnegative(),
@@ -31,6 +44,8 @@ const WeeklyReportSchema = z.strictObject({
   state: z.enum(['generating', 'failed', 'finalized']),
   factSnapshot: z.array(SnapshotEntrySchema),
   factSnapshotHash: checksum,
+  sourceRefs: z.array(z.string()).optional(),
+  snapshotExclusions: z.array(z.string()).optional(),
   projectionCursor: z.string().min(1).optional(),
   metricDefinitionVersion: z.number().int().positive(),
   generationTaskId: z.string().min(1),

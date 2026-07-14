@@ -24,6 +24,8 @@ Learning MORE 的首个本地优先 MVP 发布版本。
 
 ### 已知限制
 
+- 真实 API-compatible Provider 使用环境变量或运行中心配置；Codex CLI 模型与推理强度改为从当前 CLI/账号实时读取，不再维护静态型号清单。Provider 切换、一键重连和首个有效 delta 前的自动 fallback 已接入 GenerationRuntime。
+
 - 单用户、本地优先、无云同步、无多用户登录体系。
 - 通用附件、网页与外部资料抓取不在本版本范围内。
 - 生产 Prompt、具体模型与 Provider 连接参数由运行环境配置；发布包不携带用户密钥。

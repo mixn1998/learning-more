@@ -1,0 +1,194 @@
+.course-delete-preview-fixture {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.course-delete-preview-fixture > .lm-topbar {
+  position: static;
+}
+
+.delete-preview-page {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: calc(100vh - 72px);
+  padding: 28px;
+  overflow: hidden;
+}
+
+.delete-course-preview {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 28px;
+  filter: blur(1px);
+}
+
+.delete-preview-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 230px;
+  padding: 26px;
+}
+
+.delete-preview-hero h1 {
+  margin: 7px 0;
+  font-size: clamp(28px, 3vw, 42px);
+  line-height: 1.24;
+}
+
+.delete-preview-hero p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.delete-preview-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.delete-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  gap: 14px;
+}
+
+.delete-preview-panel {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 360px;
+  padding: 22px;
+}
+
+.delete-preview-lines {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.delete-preview-lines > div {
+  height: 68px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.delete-preview-shade {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(43 38 33 / 44%);
+}
+
+.delete-preview-dialog {
+  width: min(560px, 100%);
+  overflow: hidden;
+  border: 1px solid #e4c1bb;
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 28px 70px rgb(34 24 19 / 32%);
+}
+
+.delete-preview-dialog header,
+.delete-preview-body,
+.delete-preview-dialog footer {
+  padding: 22px 24px;
+}
+
+.delete-preview-dialog header {
+  border-bottom: 1px solid var(--line);
+}
+
+.delete-preview-dialog h1 {
+  margin: 5px 0 0;
+  font-size: 26px;
+  line-height: 1.3;
+}
+
+.delete-preview-body {
+  display: grid;
+  gap: 12px;
+}
+
+.delete-preview-body p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.delete-preview-body strong {
+  color: var(--ink);
+}
+
+.delete-preview-body .delete-preview-note {
+  padding: 12px 13px;
+  border: 1px solid #eccbc6;
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.delete-preview-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.course-delete-preview-fixture .lm-btn.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+@media (max-width: 760px) {
+  .delete-preview-page {
+    padding: 12px;
+  }
+
+  .delete-course-preview {
+    padding: 0;
+  }
+
+  .delete-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .delete-preview-hero {
+    flex-direction: column;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 190px;
+    overflow: hidden;
+  }
+
+  .delete-preview-hero > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .delete-preview-actions,
+  .delete-preview-dialog footer {
+    flex-wrap: wrap;
+  }
+
+  .delete-preview-dialog {
+    max-width: 100%;
+  }
+
+  .delete-preview-dialog header,
+  .delete-preview-body,
+  .delete-preview-dialog footer {
+    padding: 18px;
+  }
+}

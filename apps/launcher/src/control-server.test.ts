@@ -7,13 +7,46 @@ import path from 'node:path';
 import { buildControlServer } from './control-server.js';
 
 describe('Launcher control server', () => {
+  it('validates a write against the same current capability published by status', async () => {
+    let currentCapability = {
+      value: 'capability_01',
+      expiresAt: Date.now() + 60_000,
+    };
+    const app = await buildControlServer({
+      allowedOrigin: 'http://127.0.0.1:43119',
+      getCapability: () => currentCapability,
+      getStatus: async () => ({
+        state: 'healthy',
+        capability: currentCapability.value,
+        capabilityExpiresAt: currentCapability.expiresAt,
+      }),
+      reconnect: async () => ({ state: 'healthy' }),
+      syncFrontend: async () => ({ state: 'healthy' }),
+      diagnose: async () => ({ artifactRef: 'diagnostics_01' }),
+    });
+    currentCapability = { value: 'capability_02', expiresAt: Date.now() + 60_000 };
+
+    const result = await app.inject({
+      method: 'POST',
+      url: '/control/v1/reconnect',
+      headers: {
+        host: '127.0.0.1:43119',
+        origin: 'http://127.0.0.1:43119',
+        'x-learning-more-capability': 'capability_02',
+      },
+      payload: {},
+    });
+
+    expect(result.statusCode).toBe(200);
+  });
+
   it('allows status but requires exact loopback origin and short-lived capability for writes', async () => {
     const reconnect = vi.fn().mockResolvedValue({ state: 'healthy' });
     const syncFrontend = vi.fn().mockResolvedValue({ state: 'healthy' });
     const diagnose = vi.fn().mockResolvedValue({ artifactRef: 'diagnostics_01' });
     const app = await buildControlServer({
       allowedOrigin: 'http://127.0.0.1:5173',
-      capability: { value: 'capability_01', expiresAt: Date.now() + 60_000 },
+      getCapability: () => ({ value: 'capability_01', expiresAt: Date.now() + 60_000 }),
       getStatus: async () => ({ state: 'healthy' }),
       reconnect,
       syncFrontend,
@@ -22,6 +55,15 @@ describe('Launcher control server', () => {
     const common = { host: '127.0.0.1:43119', origin: 'http://127.0.0.1:5173' };
     expect(
       (await app.inject({ method: 'GET', url: '/control/v1/status', headers: common })).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/control/v1/status',
+          headers: { host: '127.0.0.1:43119', 'sec-fetch-site': 'same-origin' },
+        })
+      ).statusCode,
     ).toBe(200);
     const preflight = await app.inject({
       method: 'OPTIONS',
@@ -92,10 +134,44 @@ describe('Launcher control server', () => {
     await app.close();
   });
 
+  it('returns a recoverable service error when an operator action fails', async () => {
+    const app = await buildControlServer({
+      allowedOrigin: 'http://127.0.0.1:43119',
+      getCapability: () => ({ value: 'capability_01', expiresAt: Date.now() + 60_000 }),
+      getStatus: async () => ({ state: 'degraded' }),
+      reconnect: async () => {
+        throw new Error('server_ready_timeout');
+      },
+      syncFrontend: async () => ({ state: 'healthy' }),
+      diagnose: async () => ({ artifactRef: 'diagnostics_01' }),
+    });
+
+    const result = await app.inject({
+      method: 'POST',
+      url: '/control/v1/reconnect',
+      headers: {
+        host: '127.0.0.1:43119',
+        origin: 'http://127.0.0.1:43119',
+        'x-learning-more-capability': 'capability_01',
+      },
+      payload: {},
+    });
+
+    expect(result.statusCode).toBe(503);
+    expect(result.json()).toEqual({ code: 'control_action_failed' });
+    await expect(
+      app.inject({
+        method: 'GET',
+        url: '/control/v1/status',
+        headers: { host: '127.0.0.1:43119', origin: 'http://127.0.0.1:43119' },
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+  });
+
   it('binds only to loopback and applies the same policy to real HTTP requests', async () => {
     const app = await buildControlServer({
       allowedOrigin: 'http://127.0.0.1:5173',
-      capability: { value: 'capability_01', expiresAt: Date.now() + 60_000 },
+      getCapability: () => ({ value: 'capability_01', expiresAt: Date.now() + 60_000 }),
       getStatus: async () => ({ state: 'healthy' }),
       reconnect: async () => ({ state: 'healthy' }),
       syncFrontend: async () => ({ state: 'healthy' }),
@@ -150,7 +226,7 @@ describe('Launcher control server', () => {
       throw new Error('test_api_address_invalid');
     const app = await buildControlServer({
       allowedOrigin: 'http://127.0.0.1:43119',
-      capability: { value: 'capability_01', expiresAt: Date.now() + 60_000 },
+      getCapability: () => ({ value: 'capability_01', expiresAt: Date.now() + 60_000 }),
       getStatus: async () => ({ state: 'healthy' }),
       reconnect: async () => ({ state: 'healthy' }),
       syncFrontend: async () => ({ state: 'healthy' }),

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import {
   lessonRecordClient,
@@ -8,8 +8,20 @@ import {
 } from '../client/lesson-record-client.js';
 import { LessonRecordView } from '../features/history/lesson-record-view.js';
 
+function archivedDateLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Asia/Shanghai',
+  }).format(date);
+}
+
 export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) {
   const lessonId = useParams().lessonId;
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [record, setRecord] = useState<LessonRecord>();
   const [failed, setFailed] = useState(false);
@@ -27,9 +39,18 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
   return (
     <LessonRecordView
       original={record.original}
-      supplementary={record.supplementary}
+      supplementary={record.supplementary.map((session) => ({
+        ...session,
+        meta: `${archivedDateLabel(session.createdAt)} · 独立补充学习`,
+      }))}
       finalReviewMarkdown={record.finalReviewMarkdown}
       initialTab={searchParams.get('tab') === 'review' ? 'review' : 'conversation'}
+      title={record.title}
+      courseTitle={record.courseTitle}
+      completedAt={archivedDateLabel(record.completedAt)}
+      actualSeconds={record.actualSeconds}
+      onBackHome={() => navigate('/')}
+      onBackToOutline={() => navigate(`/courses/${record.courseId}`)}
     />
   );
 }

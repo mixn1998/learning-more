@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import type { LearningEventEnvelope } from '@learning-more/contracts';
 
@@ -37,16 +37,11 @@ export function createInMemoryCourseReviewRepository(): CourseReviewRepository {
 export function createCourseReviewWorkflow(options: {
   repository: CourseReviewRepository;
   unitOfWork: UnitOfWork;
-  generationRuntime: {
-    submit(request: {
-      taskKey: string;
-      inputSnapshotHash: string;
-      taskKind: string;
-      taskGroup: 'background';
-      ownerRef: string;
-      providerId: string;
-      priority: number;
-      prompt: string;
+  reviewTask: {
+    submit(input: {
+      courseId: string;
+      inputManifest: CourseReviewInputManifest;
+      commandId: string;
     }): Promise<{ taskId: string }>;
   };
   now: () => Date;
@@ -69,21 +64,10 @@ export function createCourseReviewWorkflow(options: {
     inputManifest: CourseReviewInputManifest,
     commandId: string,
   ) => {
-    const inputSnapshotHash = createHash('sha256')
-      .update(JSON.stringify(inputManifest), 'utf8')
-      .digest('hex');
-    const task = await options.generationRuntime.submit({
-      taskKey: `course-review:${courseId}:${commandId}`,
-      inputSnapshotHash,
-      taskKind: 'course-review',
-      taskGroup: 'background',
-      ownerRef: courseId,
-      providerId: 'current',
-      priority: 40,
-      prompt: JSON.stringify({
-        templateRef: 'course-review@v1',
-        inputArtifactRef: `course-closure:${inputSnapshotHash}`,
-      }),
+    const task = await options.reviewTask.submit({
+      courseId,
+      inputManifest,
+      commandId,
     });
     return task.taskId;
   };

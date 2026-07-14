@@ -80,7 +80,7 @@ describe('Launcher runtime orchestration', () => {
     const launcher = createLauncherRuntime(adapters);
     await launcher.start();
     expect(launcher.status().state).toBe('blocked_external_port');
-    expect(adapters.calls).toEqual(['lease']);
+    expect(adapters.calls).toEqual(['lease', 'open']);
   });
 
   it('uses graceful draining and only asks the verified terminator after timeout', async () => {
@@ -91,6 +91,36 @@ describe('Launcher runtime orchestration', () => {
     await launcher.reconnect();
     expect(adapters.calls).toEqual(['terminate', 'start', 'ready']);
     expect(launcher.status().state).toBe('healthy');
+  });
+
+  it('keeps the launcher available in degraded state when the internal server cannot start', async () => {
+    const waitForVerifiedReady = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('server_ready_timeout'))
+      .mockResolvedValueOnce(undefined);
+    const adapters = dependencies({ waitForVerifiedReady });
+    const launcher = createLauncherRuntime(adapters);
+
+    await expect(launcher.start()).resolves.toBeUndefined();
+    expect(launcher.status()).toEqual({ state: 'degraded', crashCount: 0 });
+    expect(adapters.calls).toContain('open');
+
+    await expect(launcher.reconnect()).resolves.toBeUndefined();
+    expect(launcher.status()).toEqual({ state: 'healthy', crashCount: 0 });
+  });
+
+  it('returns to degraded without an unhandled rejection when crash recovery fails', async () => {
+    const adapters = dependencies({
+      waitForVerifiedReady: vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('server_ready_timeout')),
+    });
+    const launcher = createLauncherRuntime(adapters);
+    await launcher.start();
+
+    await expect(launcher.serverExitedUnexpectedly()).resolves.toBeUndefined();
+    expect(launcher.status().state).toBe('degraded');
   });
 
   it('applies bounded crash backoff and blocks the sixth crash in ten minutes', async () => {

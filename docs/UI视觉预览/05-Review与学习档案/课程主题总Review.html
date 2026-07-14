@@ -1,1 +1,100 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Learning MORE · 课程主题总 Review</title><link rel="icon" href="data:,"><link rel="stylesheet" href="../00-设计系统/assets/base.css"><link rel="stylesheet" href="../00-设计系统/assets/workspace.css"><style>.hero{padding:22px 24px;border-top:3px solid var(--accent);display:flex;justify-content:space-between;gap:18px}.hero h1{font-size:27px;margin:7px 0 5px}.hero p{font-size:10px;color:var(--muted)}.layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;margin-top:14px}.toc{padding:16px;align-self:start;position:sticky;top:92px}.toc a{display:block;padding:9px;border-radius:8px;text-decoration:none;color:inherit;font-size:10px}.toc a:hover{background:var(--tint)}.content{padding:25px}.path{display:grid;gap:9px}.path article{padding:13px;border:1px solid var(--line);border-radius:10px}.path small{color:var(--muted)}.performance{display:grid;grid-template-columns:1fr 1fr;gap:10px}.performance article{padding:14px;border-left:3px solid var(--accent);background:var(--tint);border-radius:0 10px 10px 0}.extensions{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.extensions article{padding:14px;border:1px solid var(--line);border-radius:10px}@media(max-width:800px){.layout{grid-template-columns:1fr}.toc{position:static}.performance,.extensions{grid-template-columns:1fr}}</style><script defer src="../00-设计系统/assets/runtime-status.js"></script><script defer src="../00-设计系统/assets/sample-ui.js"></script></head><body><header class="lm-topbar"><div class="lm-brand"><strong>Learning MORE</strong><span>课程主题总 Review</span></div><span class="lm-pill readonly">● 永久只读</span></header><main class="lm-page"><section class="lm-card hero"><div><div class="lm-chips"><span class="lm-pill success">课程已关闭</span><span class="lm-mode-badge">● 标准模式</span></div><div class="lm-kicker" style="margin-top:12px">COURSE REVIEW</div><h1>从反馈到核心循环：游戏设计能力进阶</h1><p>基于最终确认版大纲、完成课节最终 Review 和放弃课节现存阶段 Review 生成。</p></div><div class="lm-actions"><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a><a class="lm-btn primary" href="../02-课程创建与大纲/正式课程大纲.html">返回课程档案</a></div></section><div class="layout"><aside class="lm-card toc"><b>主题总结</b><a href="#knowledge">核心知识线索</a><a href="#performance">总体学习表现</a><a href="#boundaries">未学习边界</a><a href="#extensions">推荐扩展课程</a></aside><article class="lm-card content review-markdown"><h2 id="knowledge">主题核心知识线索</h2><div class="path"><article><b>1. 从体验表象转向行为证据</b><br><small>不把重复感停留在内容数量判断，而是检查行动、反馈与目标是否仍在推进。</small></article><article><b>2. 从反馈存在转向反馈层级</b><br><small>区分状态、能力和目标反馈，并判断它们是否改变下一步行动。</small></article><article><b>3. 从设计判断转向原型验证</b><br><small>把“应该好玩”改写为可观察的玩家行为与迭代条件。</small></article></div><h2 id="performance">总体学习表现</h2><div class="performance"><article><b>稳定优势</b><p>你能从具体行为证据推导机制，并主动把判断迁移到自己的原型。</p></article><article><b>需要继续发展</b><p>面对开放问题时仍可能过早收敛，需要主动寻找反例和替代解释。</p></article></div><h2 id="boundaries">已放弃课节形成的知识边界</h2><div class="review-callout"><b>难度与掌握感如何推进</b><p>已理解挑战必须与可解释反馈连接，但尚未完成推进节奏与玩家行为证据的闭环验证。</p></div><h2 id="extensions">推荐扩展课程</h2><div class="extensions"><article><b>游戏经济系统中的反馈回路</b><p>扩展反馈与长期动机之间的关系。</p></article><article><b>行为实验与原型测试</b><p>深入学习如何把设计判断转为可验证实验。</p></article><article><b>系统思考与循环结构</b><p>把核心循环连接到更广泛的系统行为。</p></article></div></article></div></main><script src="../00-设计系统/assets/mode-themes.js"></script><script>applyCourseModeTheme('standard')</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning MORE · 课程主题总 Review</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <link rel="stylesheet" href="../00-设计系统/assets/workspace.css" />
+    <style>
+      .review-hero { display:flex; justify-content:space-between; gap:24px; padding:24px 28px; border-top:3px solid var(--success); }
+      .review-hero h1 { margin:7px 0 6px; font-size:28px; letter-spacing:-.025em; }
+      .review-hero p { margin:0; color:var(--muted); font-size:12px; line-height:1.6; }
+      .review-layout { display:grid; grid-template-columns:236px minmax(0,1fr); gap:20px; margin-top:16px; align-items:start; }
+      .review-toc { position:sticky; top:92px; padding:18px; }
+      .review-toc > b { display:block; padding:0 4px 11px; border-bottom:1px solid var(--line); font-size:15px; }
+      .review-toc > span { display:block; margin:10px 4px 8px; color:var(--muted); font-size:11px; line-height:1.55; }
+      .review-toc a { position:relative; display:block; padding:12px 10px 12px 13px; border-bottom:1px solid var(--line); color:var(--ink); font-size:12px; font-weight:700; line-height:1.35; text-decoration:none; }
+      .review-toc a::before { position:absolute; top:10px; bottom:10px; left:0; width:3px; border-radius:999px; background:transparent; content:""; }
+      .review-toc a:hover,.review-toc a:focus-visible,.review-toc a.active { background:var(--tint); color:var(--accent-dark); outline:0; }
+      .review-toc a.active::before { background:var(--accent); }
+      .review-content { padding:30px 34px 38px; }
+      body .review-content.review-markdown { max-width:none; margin:0; padding:30px 34px 38px; }
+      .review-section + .review-section { margin-top:34px; }
+      .section-title { margin:0 0 14px; font-size:23px; letter-spacing:-.02em; line-height:1.3; }
+      .knowledge-list { border-top:1px solid var(--line); }
+      .knowledge-item { position:relative; padding:17px 12px 17px 22px; border-bottom:1px solid var(--line); }
+      .knowledge-item::before { position:absolute; top:23px; left:0; width:5px; height:5px; border-radius:50%; background:var(--accent); content:""; }
+      .knowledge-item b { display:block; font-size:15px; line-height:1.42; }
+      .knowledge-item p { margin:7px 0 0; color:var(--muted); font-size:13px; line-height:1.7; }
+      .performance-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+      .performance-card { min-height:0; padding:17px 19px; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:0 12px 12px 0; background:var(--tint); }
+      .performance-card b { display:block; font-size:14px; }
+      .performance-card p { margin:8px 0 0; font-size:13px; line-height:1.7; }
+      .boundary { padding:18px 20px; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:0 12px 12px 0; background:#fff; }
+      .boundary b { display:block; font-size:15px; }
+      .boundary p { margin:8px 0 0; color:var(--muted); font-size:13px; line-height:1.7; }
+      .extension-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+      .extension-grid article { padding:16px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+      .extension-grid b { display:block; font-size:14px; line-height:1.45; }
+      .extension-grid p { margin:7px 0 0; color:var(--muted); font-size:12px; line-height:1.65; }
+      @media (max-width:900px) { .review-layout { grid-template-columns:1fr; } .review-toc { position:static; } }
+      @media (max-width:680px) { .review-hero { flex-direction:column; padding:20px; } .review-hero .lm-actions,.review-hero .lm-btn { width:100%; } body .review-content.review-markdown { padding:22px 18px 28px; } .performance-grid,.extension-grid { grid-template-columns:1fr; } .section-title { font-size:21px; } }
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar"><div class="lm-brand"><strong>Learning MORE</strong><span>课程主题总 Review</span></div><span class="lm-pill readonly">● 永久只读</span></header>
+    <main class="lm-page">
+      <section class="lm-card review-hero">
+        <div>
+          <div class="lm-chips"><span class="lm-pill success">课程已关闭</span><span class="lm-mode-badge">● 标准模式</span></div>
+          <div class="lm-kicker" style="margin-top:12px">COURSE REVIEW</div>
+          <h1>从反馈到核心循环：游戏设计能力进阶</h1>
+          <p>基于确认版大纲与 5 个最终课时 Review 汇总生成。</p>
+        </div>
+        <div class="lm-actions"><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a><a class="lm-btn" href="../02-课程创建与大纲/已关闭课程大纲.html">返回课程大纲</a></div>
+      </section>
+
+      <div class="review-layout">
+        <aside class="lm-card review-toc" aria-label="主题总结导航">
+          <b>主题总结</b><span>5 个课节已完成</span>
+          <a class="active" href="#knowledge">核心知识线索</a>
+          <a href="#performance">总体学习表现</a>
+          <a href="#boundaries">可继续探索</a>
+          <a href="#extensions">推荐扩展课程</a>
+        </aside>
+        <article class="lm-card review-content review-markdown lm-ai-content" data-ai-content="true">
+          <section class="review-section" id="knowledge">
+            <h2 class="section-title">主题核心知识线索</h2>
+            <div class="knowledge-list">
+              <article class="knowledge-item"><b>从体验表象转向行为证据</b><p>不把重复感停留在内容数量判断，而是检查行动、反馈与目标是否仍在推进。</p></article>
+              <article class="knowledge-item"><b>从反馈存在转向反馈层级</b><p>区分状态、能力和目标反馈，并判断它们是否真正改变下一步行动。</p></article>
+              <article class="knowledge-item"><b>从设计判断转向原型验证</b><p>把“应该好玩”改写为可观察的玩家行为与迭代条件。</p></article>
+            </div>
+          </section>
+          <section class="review-section" id="performance">
+            <h2 class="section-title">总体学习表现</h2>
+            <div class="performance-grid"><article class="performance-card"><b>稳定优势</b><p>你能从具体行为证据推导机制，并主动把判断迁移到自己的原型。</p></article><article class="performance-card"><b>需要继续发展</b><p>面对开放问题时仍可能过早收敛，下一阶段可主动寻找反例和替代解释。</p></article></div>
+          </section>
+          <section class="review-section" id="boundaries">
+            <h2 class="section-title">可继续探索的知识边界</h2>
+            <article class="boundary"><b>推进节奏与玩家行为证据的闭环</b><p>你已能够把挑战强度连接到可解释反馈；下一步可在不同玩家情境中验证推进节奏是否仍成立。</p></article>
+          </section>
+          <section class="review-section" id="extensions">
+            <h2 class="section-title">推荐扩展课程</h2>
+            <div class="extension-grid"><article><b>游戏经济系统中的反馈回路</b><p>扩展反馈与长期动机之间的关系。</p></article><article><b>行为实验与原型测试</b><p>把设计判断转化为可验证实验。</p></article><article><b>系统思考与循环结构</b><p>把核心循环连接到更广泛的系统行为。</p></article></div>
+          </section>
+        </article>
+      </div>
+    </main>
+    <script src="../00-设计系统/assets/mode-themes.js"></script>
+    <script>
+      applyCourseModeTheme('standard');
+      const links = [...document.querySelectorAll('.review-toc a')];
+      links.forEach((link) => link.addEventListener('click', () => { links.forEach((item) => item.classList.toggle('active', item === link)); }));
+    </script>
+  </body>
+</html>

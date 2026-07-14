@@ -30,13 +30,17 @@ function fixture(overrides: Partial<Parameters<typeof registerLearningSessionRou
   };
   const options = {
     module,
-    generation: {
-      request: vi.fn().mockResolvedValue({ taskId: 'task_01', resourceVersion: 2 }),
-      stop: vi.fn().mockResolvedValue({
+    teaching: {
+      advanceTurn: vi.fn().mockResolvedValue({ taskId: 'task_01', resourceVersion: 2 }),
+      stopTurn: vi.fn().mockResolvedValue({
         taskId: 'task_01',
         draftArtifactRef: 'draft_task_01',
+        assistantMessageId: 'message_assistant_01',
+        completionStatus: 'interrupted' as const,
         resourceVersion: 2,
       }),
+      getTeachingState: vi.fn(),
+      freezeCheckpoint: vi.fn(),
     },
     resolveSession: vi.fn().mockResolvedValue({
       lessonId: 'lesson_01',
@@ -91,7 +95,16 @@ describe('LearningSession HTTP contract', () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual({ taskId: 'task_01', resourceVersion: 2 });
     expect(options.saveUserMessage).toHaveBeenCalledWith('message_01', 'What is probability?');
-    expect(options.generation.request).toHaveBeenCalledTimes(1);
+    expect(options.teaching.advanceTurn).toHaveBeenCalledWith(
+      {
+        courseId: 'course_01',
+        lessonId: 'lesson_01',
+        sessionId: 'session_01',
+        userMessageId: 'message_01',
+        userContentArtifactRef: 'artifact:user:01',
+      },
+      expect.objectContaining({ expectedVersion: 1 }),
+    );
   });
 
   it('resumes the same original session through an explicit command endpoint', async () => {
@@ -141,5 +154,52 @@ describe('LearningSession HTTP contract', () => {
       draftArtifactRef: 'draft_task_01',
       resourceVersion: 2,
     });
+  });
+
+  it('hydrates committed messages and server-authoritative closure preparation', async () => {
+    const module: LearningSessionModule = {
+      execute: vi.fn(),
+      query: vi.fn().mockResolvedValue({
+        learning: {
+          lessonId: 'lesson_01',
+          progress: 'in_progress',
+          processedCommandIds: [],
+          session: {
+            id: 'session_01',
+            state: 'active',
+            messageIds: ['message_01'],
+            evidenceCheckpoint: true,
+          },
+        },
+        resourceVersion: 3,
+        actualSeconds: 120,
+      }),
+    };
+    const { app } = fixture({
+      module,
+      listSessionMessages: vi.fn().mockResolvedValue([
+        {
+          id: 'message_01',
+          role: 'user',
+          createdAt: '2026-07-13T00:00:00.000Z',
+          contentArtifactRef: 'artifact_01',
+        },
+      ]),
+      loadArtifactMarkdown: vi.fn().mockResolvedValue('Why?'),
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/lesson-sessions/session_01',
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      messages: [{ id: 'message_01', markdown: 'Why?' }],
+      closurePreparation: {
+        sessionId: 'session_01',
+        sourceMessageIds: ['message_01'],
+      },
+    });
+    expect(response.json().sessionSnapshotHash).toMatch(/^[a-f0-9]{64}$/);
   });
 });

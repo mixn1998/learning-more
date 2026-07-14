@@ -31,16 +31,13 @@ export function createInMemoryReviewStateRepository(): ReviewStateRepository {
 export function createStageReviewWorkflow(options: {
   readonly repository: ReviewStateRepository;
   readonly unitOfWork: UnitOfWork;
-  readonly generationRuntime: {
-    submit(request: {
-      taskKey: string;
-      inputSnapshotHash: string;
-      taskKind: string;
-      taskGroup: 'background';
-      ownerRef: string;
-      providerId: string;
-      priority: number;
-      prompt: string;
+  readonly reviewTask: {
+    submit(input: {
+      kind: 'stage';
+      lessonId: string;
+      sessionId: string;
+      sourceSnapshotHash: string;
+      commandId: string;
     }): Promise<{ taskId: string }>;
   };
   readonly now: () => Date;
@@ -55,18 +52,12 @@ export function createStageReviewWorkflow(options: {
       const receipt = current?.requestReceipts[input.commandId];
       if (receipt !== undefined) return { reviewId, taskId: receipt };
       if (current?.status === 'generating') return { reviewId, taskId: current.taskId };
-      const task = await options.generationRuntime.submit({
-        taskKey: `stage-review:${reviewId}:${input.commandId}`,
-        inputSnapshotHash: input.sourceSnapshotHash,
-        taskKind: 'stage-review',
-        taskGroup: 'background',
-        ownerRef: reviewId,
-        providerId: options.providerId ?? 'current',
-        priority: 50,
-        prompt: JSON.stringify({
-          templateRef: 'stage-review@v1',
-          inputArtifactRef: `session-snapshot:${input.sourceSnapshotHash}`,
-        }),
+      const task = await options.reviewTask.submit({
+        kind: 'stage',
+        lessonId: input.lessonId,
+        sessionId: input.sourceSessionId,
+        sourceSnapshotHash: input.sourceSnapshotHash,
+        commandId: input.commandId,
       });
       const resourceVersion = current?.resourceVersion ?? 0;
       await options.unitOfWork.execute(

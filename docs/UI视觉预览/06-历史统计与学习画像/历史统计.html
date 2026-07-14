@@ -1,55 +1,705 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Learning MORE · 历史统计</title><link rel="icon" href="data:,">
-  <link rel="stylesheet" href="../00-设计系统/assets/base.css">
-  <style>
-    .hero{padding:22px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}.hero h1{margin:5px 0 4px;font-size:27px}.hero p{margin:0;color:var(--muted);font-size:11px}
-    .primary-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.history-tab{height:52px;border:1px solid #d8c8b5;border-radius:11px;background:var(--paper);color:var(--muted);font-size:14px;font-weight:800;text-decoration:none;display:flex;align-items:center;justify-content:center;cursor:pointer}.history-tab:hover{border-color:var(--accent);color:var(--accent-dark)}.history-tab.active{border-color:var(--accent);background:var(--tint);color:var(--accent-dark);box-shadow:inset 0 -3px 0 var(--accent)}
-    .view{display:none;padding:24px}.view.active{display:block}.toolbar,.panel-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}.toolbar{margin-bottom:18px}.toolbar h2,.panel-head h3{margin:0}.toolbar h2{font-size:25px}.panel-head h3{font-size:16px}.toolbar p,.panel-head p{margin:5px 0 0;color:var(--muted);font-size:12px}.filters,.course-tools{display:flex;gap:8px;flex-wrap:wrap}.filter{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:11px;cursor:pointer}.filter.active{border-color:var(--accent);background:var(--tint);color:var(--accent-dark);font-weight:800}
-    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.metric,.panel{padding:18px;border:1px solid var(--line);border-radius:12px;background:#fff}.metric.primary{border-color:#d6ad92;background:#fff8f2}.metric span{font-size:12px;color:var(--muted)}.metric b{display:block;margin:7px 0 3px;font-size:28px}.metric small{color:var(--muted);font-size:10px}.grid-2{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,.8fr);gap:14px;margin-top:14px}.stack{display:grid;gap:14px}
-    .chart{height:210px;display:flex;align-items:flex-end;gap:7px;padding:16px 7px 24px;border-left:1px solid var(--line);border-bottom:1px solid var(--line)}.bar-day{height:100%;flex:1;display:flex;align-items:flex-end;justify-content:center;position:relative}.bar-day i{width:min(28px,72%);height:var(--h);border-radius:5px 5px 1px 1px;background:var(--accent)}.bar-day:nth-child(even) i{opacity:.62}.bar-day span{position:absolute;bottom:-18px;color:var(--muted);font-size:9px}.rank-list{display:grid;gap:12px;margin-top:15px}.rank{display:grid;grid-template-columns:96px 1fr 44px;gap:9px;align-items:center;font-size:11px}.track{height:8px;border-radius:99px;background:#eee6dc;overflow:hidden}.track i{display:block;width:var(--w);height:100%;border-radius:99px;background:var(--accent)}.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.fact{padding:11px;border-radius:8px;background:var(--paper-2)}.fact b{display:block;font-size:18px}.fact span{font-size:10px;color:var(--muted)}
-    .course-panel{margin-top:14px}.course-tools label{display:grid;gap:4px}.course-tools span{font-size:9px;color:var(--muted);font-weight:800}.course-tools select{min-height:38px;padding:0 28px 0 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-size:11px}.course-table{width:100%;margin-top:14px;border-collapse:collapse}.course-table th,.course-table td{padding:12px 9px;border-bottom:1px solid #eee5da;text-align:left;font-size:10px}.course-table th{color:var(--muted)}.course-table tr:last-child td{border:0}.course-name b{display:block;font-size:12px}.course-name span{color:var(--muted)}.badge{display:inline-flex;padding:5px 8px;border-radius:999px;background:#f2e8dc;color:#775845}.badge.closed{background:var(--success-bg);color:var(--success)}
-    @media(max-width:1000px){.grid-2{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}.course-table{display:block;overflow:auto}.toolbar,.panel-head{align-items:flex-start;flex-direction:column}}@media(max-width:620px){.hero{align-items:flex-start;flex-direction:column}.metrics{grid-template-columns:1fr}.primary-nav{grid-template-columns:1fr}.view{padding:15px}}
-  </style>
-<script defer src="../00-设计系统/assets/runtime-status.js"></script><script defer src="../00-设计系统/assets/sample-ui.js"></script></head>
-<body>
-  <header class="lm-topbar"><div class="lm-brand"><strong>Learning MORE</strong><span>历史统计</span></div><div class="lm-actions"><span class="lm-pill">● 接口 · Codex</span><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a></div></header>
-  <main class="lm-page">
-    <section class="lm-card hero"><div><div class="lm-kicker">LEARNING ARCHIVE</div><h1>历史统计</h1></div></section>
-    <nav class="primary-nav"><a class="history-tab active" href="历史统计.html">历史统计</a><a class="history-tab" href="学习日历.html">学习日历</a><a class="history-tab" href="学习画像.html">学习画像</a></nav>
-    <section class="lm-card" style="margin-top:12px">
-      <section class="view active" id="statistics">
-        <div class="toolbar"><div><h2>学习统计</h2><p>当前范围内只统计最终完成课节；已放弃和未完成不计入。</p></div><div class="filters"><button class="filter">近 30 天</button><button class="filter active">本年</button><button class="filter">全部</button><button class="filter">自定义日期</button></div></div>
-        <div class="metrics">
-          <article class="metric primary"><span>累计实际学习时长</span><b>28.6 小时</b><small>来自 67 节最终完成课节</small></article>
-          <article class="metric"><span>已完成课节</span><b>67</b><small>分布在 12 门正式课程</small></article>
-          <article class="metric"><span>已关闭课程</span><b>8</b><small>其中 2 门含已放弃课节</small></article>
-          <article class="metric"><span>活跃学习日</span><b>31 天</b><small>当前连续 4 天 · 最长 11 天</small></article>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning MORE · 历史统计</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <style>
+      .hero {
+        padding: 22px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+      .hero h1 {
+        margin: 5px 0 4px;
+        font-size: 27px;
+      }
+      .hero p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .primary-nav {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .history-tab {
+        height: 52px;
+        border: 1px solid #d8c8b5;
+        border-radius: 11px;
+        background: var(--paper);
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 800;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .history-tab:hover {
+        border-color: var(--accent);
+        color: var(--accent-dark);
+      }
+      .history-tab.active {
+        border-color: var(--accent);
+        background: var(--tint);
+        color: var(--accent-dark);
+        box-shadow: inset 0 -3px 0 var(--accent);
+      }
+      .view {
+        display: none;
+        padding: 24px;
+      }
+      .view.active {
+        display: block;
+      }
+      .toolbar,
+      .panel-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 14px;
+      }
+      .toolbar {
+        margin-bottom: 18px;
+      }
+      .toolbar h2,
+      .panel-head h3 {
+        margin: 0;
+      }
+      .toolbar h2 {
+        font-size: 25px;
+      }
+      .panel-head h3 {
+        font-size: 16px;
+      }
+      .toolbar p,
+      .panel-head p {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .filters,
+      .course-tools {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .filter {
+        min-height: 42px;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .filter.active {
+        border-color: var(--accent);
+        background: var(--tint);
+        color: var(--accent-dark);
+        font-weight: 800;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      .metric,
+      .panel {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+      }
+      .metric span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .metric b {
+        display: block;
+        margin: 7px 0 3px;
+        font-size: 28px;
+      }
+      .metric small {
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.8fr);
+        gap: 14px;
+        margin-top: 14px;
+      }
+      .stack {
+        display: grid;
+        gap: 14px;
+      }
+      .chart {
+        height: 210px;
+        display: flex;
+        align-items: flex-end;
+        gap: 7px;
+        padding: 16px 7px 24px;
+        border-left: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .bar-day {
+        height: 100%;
+        flex: 1;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        position: relative;
+      }
+      .bar-day i {
+        width: min(28px, 72%);
+        height: var(--h);
+        border-radius: 5px 5px 1px 1px;
+        background: var(--accent);
+      }
+      .bar-day:nth-child(even) i {
+        opacity: 0.62;
+      }
+      .bar-day span {
+        position: absolute;
+        bottom: -18px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .rank-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 15px;
+      }
+      .rank {
+        display: grid;
+        grid-template-columns: 96px 1fr 44px;
+        gap: 9px;
+        align-items: center;
+        font-size: 11px;
+      }
+      .track {
+        height: 8px;
+        border-radius: 99px;
+        background: #eee6dc;
+        overflow: hidden;
+      }
+      .track i {
+        display: block;
+        width: var(--w);
+        height: 100%;
+        border-radius: 99px;
+        background: var(--accent);
+      }
+      .facts {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .fact {
+        padding: 11px;
+        border-radius: 8px;
+        background: var(--paper-2);
+      }
+      .fact b {
+        display: block;
+        font-size: 18px;
+      }
+      .fact span {
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .course-panel {
+        margin-top: 14px;
+      }
+      .course-tools label {
+        display: grid;
+        gap: 4px;
+      }
+      .course-tools span {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+      .course-tools select {
+        min-height: 42px;
+        padding: 0 32px 0 11px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--ink);
+        font-size: 12px;
+      }
+      .course-table {
+        width: 100%;
+        margin-top: 14px;
+        border-collapse: collapse;
+      }
+      .course-table th,
+      .course-table td {
+        padding: 12px 9px;
+        border-bottom: 1px solid #eee5da;
+        text-align: left;
+        font-size: 11px;
+      }
+      .course-table th {
+        color: var(--muted);
+      }
+      .course-table tr:last-child td {
+        border: 0;
+      }
+      .course-name b {
+        display: block;
+        font-size: 13px;
+      }
+      .course-name span {
+        color: var(--muted);
+      }
+      .badge {
+        display: inline-flex;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: #f2e8dc;
+        color: #775845;
+      }
+      .badge.closed {
+        background: var(--success-bg);
+        color: var(--success);
+      }
+      .range-dialog {
+        width: min(520px, calc(100% - 28px));
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--paper);
+        color: var(--ink);
+      }
+      .range-dialog::backdrop {
+        background: rgba(44, 38, 32, 0.4);
+      }
+      .range-dialog header,
+      .range-dialog .range-body,
+      .range-dialog footer {
+        padding: 19px 22px;
+      }
+      .range-dialog header {
+        border-bottom: 1px solid var(--line);
+      }
+      .range-dialog h2 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .range-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .range-dialog footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 9px;
+        border-top: 1px solid var(--line);
+        background: var(--paper-2);
+      }
+      @media (max-width: 1000px) {
+        .grid-2 {
+          grid-template-columns: 1fr;
+        }
+        .metrics {
+          grid-template-columns: 1fr 1fr;
+        }
+        .course-table {
+          display: block;
+          overflow: auto;
+        }
+        .toolbar,
+        .panel-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+      @media (max-width: 620px) {
+        .hero {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+        .primary-nav {
+          grid-template-columns: 1fr;
+        }
+        .view {
+          padding: 15px;
+        }
+      }
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar">
+      <div class="lm-brand"><strong>Learning MORE</strong><span>历史统计</span></div>
+      <div class="lm-actions">
+        <span class="lm-pill">● 接口 · Codex</span
+        ><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a>
+      </div>
+    </header>
+    <main class="lm-page">
+      <section class="lm-card hero">
+        <div>
+          <div class="lm-kicker">LEARNING ARCHIVE</div>
+          <h1>历史统计</h1>
         </div>
-        <div class="grid-2">
-          <article class="panel"><div class="panel-head"><div><h3>实际学习时长趋势</h3><p>按周汇总 · 单位：分钟</p></div><small>过去 12 周</small></div><div class="chart" id="trendChart"></div></article>
-          <div class="stack">
-            <article class="panel"><div class="panel-head"><div><h3>学科投入</h3><p>按实际学习时长排序</p></div></div><div class="rank-list"><div class="rank"><b>计算机科学</b><div class="track"><i style="--w:86%"></i></div><span>8.4h</span></div><div class="rank"><b>产品设计</b><div class="track"><i style="--w:68%"></i></div><span>6.7h</span></div><div class="rank"><b>游戏设计</b><div class="track"><i style="--w:57%"></i></div><span>5.6h</span></div><div class="rank"><b>商业管理</b><div class="track"><i style="--w:39%"></i></div><span>3.8h</span></div></div></article>
-            <article class="panel"><div class="panel-head"><div><h3>学习参与事实</h3><p>只展示结构化关键互动事件</p></div></div><div class="facts"><div class="fact"><b>184</b><span>互动回应</span></div><div class="fact"><b>92%</b><span>关键互动回应率</span></div><div class="fact"><b>11</b><span>跳过互动</span></div></div></article>
-          </div>
-        </div>
-        <article class="panel course-panel">
-          <div class="panel-head"><div><h3>历史课程</h3><p>课程级学习档案；筛选变化后即时刷新结果。</p></div><div class="course-tools"><label><span>课程状态</span><select><option>全部状态</option><option>学习中</option><option>已关闭</option></select></label><label><span>学科 / 领域</span><select><option>全部领域</option><option>计算机科学</option><option>游戏设计</option><option>产品设计</option></select></label><label><span>来源模式</span><select><option>全部模式</option><option>标准模式</option><option>案例研习</option><option>决策分析</option></select></label><label><span>排序</span><select><option>最近完成</option><option>最早完成</option><option>完成时长最多</option></select></label></div></div>
-          <table class="course-table"><thead><tr><th>课程</th><th>状态</th><th>来源模式</th><th>课节处置</th><th>学习时长</th><th>最近完成</th><th></th></tr></thead><tbody>
-            <tr><td class="course-name"><b>数据结构入门</b><span>计算机科学 · 数组 / 链表 / 树</span></td><td><span class="badge closed">已关闭</span></td><td>标准模式</td><td>8 / 8 完成</td><td>4h 36m</td><td>07-10</td><td><a class="lm-btn" href="../05-Review与学习档案/课程主题总Review.html">查看主题总结</a></td></tr>
-            <tr><td class="course-name"><b>游戏系统设计基础</b><span>游戏设计 · 核心循环 / 反馈</span></td><td><span class="badge">学习中</span></td><td>案例研习</td><td>5 / 7 完成</td><td>3h 18m</td><td>07-08</td><td><a class="lm-btn" href="../02-课程创建与大纲/正式课程大纲.html">查看课程档案</a></td></tr>
-            <tr><td class="course-name"><b>产品实验与验证</b><span>产品设计 · 原型 / 成功标准</span></td><td><span class="badge closed">已关闭</span></td><td>决策分析</td><td>5 完成 · 1 放弃</td><td>2h 54m</td><td>07-03</td><td><a class="lm-btn" href="../05-Review与学习档案/课程主题总Review.html">查看主题总结</a></td></tr>
-          </tbody></table>
-        </article>
       </section>
-    </section>
-  </main>
-  <script>
-    document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{button.parentElement.querySelectorAll('.filter').forEach(item=>item.classList.toggle('active',item===button))}));
-    trendChart.innerHTML=[32,52,42,67,58,76,45,83,71,91,64,78].map((height,index)=>`<div class="bar-day" style="--h:${height}%"><i></i><span>${index+1}周</span></div>`).join('');
-  </script>
-</body>
+      <nav class="primary-nav">
+        <a class="history-tab active" href="历史统计.html">历史统计</a
+        ><a class="history-tab" href="学习日历.html">学习日历</a
+        ><a class="history-tab" href="学习画像.html">学习画像</a>
+      </nav>
+      <section class="lm-card" style="margin-top: 12px">
+        <section class="view active" id="statistics">
+          <div class="toolbar">
+            <div>
+              <h2>学习统计</h2>
+              <p>当前范围内只统计最终完成课节；已放弃和未完成不计入。</p>
+            </div>
+            <div class="filters">
+              <button class="filter" data-range="30d">近 30 天</button
+              ><button class="filter active" data-range="year">本年</button
+              ><button class="filter" data-range="all">全部</button
+              ><button class="filter" data-range="custom">自定义日期</button>
+            </div>
+          </div>
+          <div class="metrics">
+            <article class="metric">
+              <span>累计实际学习时长</span><b id="metricHours">28.6 小时</b
+              ><small id="metricHoursNote">来自 67 节最终完成课节</small>
+            </article>
+            <article class="metric">
+              <span>已完成课节</span><b id="metricLessons">67</b
+              ><small id="metricLessonsNote">分布在 12 门正式课程</small>
+            </article>
+            <article class="metric">
+              <span>已关闭课程</span><b id="metricCourses">8</b
+              ><small id="metricCoursesNote">其中 2 门含已放弃课节</small>
+            </article>
+            <article class="metric">
+              <span>活跃学习日</span><b id="metricDays">31 天</b
+              ><small id="metricDaysNote">当前连续 4 天 · 最长 11 天</small>
+            </article>
+          </div>
+          <div class="grid-2">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3>实际学习时长趋势</h3>
+                  <p>按周汇总 · 单位：分钟</p>
+                </div>
+                <small>过去 12 周</small>
+              </div>
+              <div class="chart" id="trendChart"></div>
+            </article>
+            <div class="stack">
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h3>学科投入</h3>
+                    <p>按实际学习时长排序</p>
+                  </div>
+                </div>
+                <div class="rank-list">
+                  <div class="rank">
+                    <b>计算机科学</b>
+                    <div class="track"><i style="--w: 86%"></i></div>
+                    <span>8.4h</span>
+                  </div>
+                  <div class="rank">
+                    <b>产品设计</b>
+                    <div class="track"><i style="--w: 68%"></i></div>
+                    <span>6.7h</span>
+                  </div>
+                  <div class="rank">
+                    <b>游戏设计</b>
+                    <div class="track"><i style="--w: 57%"></i></div>
+                    <span>5.6h</span>
+                  </div>
+                  <div class="rank">
+                    <b>商业管理</b>
+                    <div class="track"><i style="--w: 39%"></i></div>
+                    <span>3.8h</span>
+                  </div>
+                </div>
+              </article>
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h3>学习参与事实</h3>
+                    <p>只展示结构化关键互动事件</p>
+                  </div>
+                </div>
+                <div class="facts">
+                  <div class="fact"><b>184</b><span>互动回应</span></div>
+                  <div class="fact"><b>92%</b><span>关键互动回应率</span></div>
+                  <div class="fact"><b>11</b><span>跳过互动</span></div>
+                </div>
+              </article>
+            </div>
+          </div>
+          <article class="panel course-panel">
+            <div class="panel-head">
+              <div>
+                <h3>历史课程</h3>
+                <p><span id="courseCount">3 门课程</span></p>
+              </div>
+              <div class="course-tools">
+                <label
+                  ><span>课程状态</span
+                  ><select id="courseStatus">
+                    <option value="">全部状态</option>
+                    <option>学习中</option>
+                    <option>已关闭</option>
+                  </select></label
+                ><label
+                  ><span>学科 / 领域</span
+                  ><select id="courseDomain">
+                    <option value="">全部领域</option>
+                    <option>计算机科学</option>
+                    <option>游戏设计</option>
+                    <option>产品设计</option>
+                  </select></label
+                ><label
+                  ><span>来源模式</span
+                  ><select id="courseMode">
+                    <option value="">全部模式</option>
+                    <option>标准模式</option>
+                    <option>案例研习</option>
+                    <option>决策分析</option>
+                  </select></label
+                ><label
+                  ><span>排序</span
+                  ><select id="courseSort">
+                    <option value="recent">最近完成</option>
+                    <option value="oldest">最早完成</option>
+                    <option value="duration">完成时长最多</option>
+                  </select></label
+                >
+              </div>
+            </div>
+            <table class="course-table">
+              <thead>
+                <tr>
+                  <th>课程</th>
+                  <th>状态</th>
+                  <th>来源模式</th>
+                  <th>课节处置</th>
+                  <th>学习时长</th>
+                  <th>最近完成</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="courseRows">
+                <tr
+                  data-state="已关闭"
+                  data-domain="计算机科学"
+                  data-mode="标准模式"
+                  data-date="0710"
+                  data-duration="276"
+                >
+                  <td class="course-name">
+                    <b>数据结构入门</b><span>计算机科学 · 数组 / 链表 / 树</span>
+                  </td>
+                  <td><span class="badge closed">已关闭</span></td>
+                  <td>标准模式</td>
+                  <td>8 / 8 完成</td>
+                  <td>4h 36m</td>
+                  <td>07-10</td>
+                  <td>
+                    <a class="lm-btn" href="../05-Review与学习档案/课程主题总Review.html"
+                      >查看主题总结</a
+                    >
+                  </td>
+                </tr>
+                <tr
+                  data-state="学习中"
+                  data-domain="游戏设计"
+                  data-mode="案例研习"
+                  data-date="0708"
+                  data-duration="198"
+                >
+                  <td class="course-name">
+                    <b>游戏系统设计基础</b><span>游戏设计 · 核心循环 / 反馈</span>
+                  </td>
+                  <td><span class="badge">学习中</span></td>
+                  <td>案例研习</td>
+                  <td>5 / 7 完成</td>
+                  <td>3h 18m</td>
+                  <td>07-08</td>
+                  <td>
+                    <a class="lm-btn" href="../02-课程创建与大纲/正式课程大纲.html">查看课程档案</a>
+                  </td>
+                </tr>
+                <tr
+                  data-state="已关闭"
+                  data-domain="产品设计"
+                  data-mode="决策分析"
+                  data-date="0703"
+                  data-duration="174"
+                >
+                  <td class="course-name">
+                    <b>产品实验与验证</b><span>产品设计 · 原型 / 成功标准</span>
+                  </td>
+                  <td><span class="badge closed">已关闭</span></td>
+                  <td>决策分析</td>
+                  <td>5 完成 · 1 放弃</td>
+                  <td>2h 54m</td>
+                  <td>07-03</td>
+                  <td>
+                    <a class="lm-btn" href="../05-Review与学习档案/课程主题总Review.html"
+                      >查看主题总结</a
+                    >
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+        </section>
+      </section>
+      <dialog class="range-dialog" id="rangeDialog">
+        <header><h2>选择统计日期</h2></header>
+        <div class="range-body">
+          <label class="lm-field"
+            ><span>开始日期</span
+            ><input class="lm-control" id="rangeStart" type="date" value="2026-06-01" /></label
+          ><label class="lm-field"
+            ><span>结束日期</span
+            ><input class="lm-control" id="rangeEnd" type="date" value="2026-07-12"
+          /></label>
+        </div>
+        <footer>
+          <button class="lm-btn" id="cancelRange">取消</button
+          ><button class="lm-btn primary" id="applyRange">应用日期</button>
+        </footer>
+      </dialog>
+    </main>
+    <script>
+      const rangeData = {
+        '30d': {
+          hours: '12.4 小时',
+          lessons: '28',
+          courses: '2',
+          days: '16 天',
+          courseNote: '分布在 5 门正式课程',
+          closedNote: '无已放弃课节',
+          dayNote: '当前连续 4 天 · 最长 7 天',
+          bars: [22, 38, 31, 48, 42, 61, 53, 72, 64, 81, 58, 69],
+        },
+        year: {
+          hours: '28.6 小时',
+          lessons: '67',
+          courses: '8',
+          days: '31 天',
+          courseNote: '分布在 12 门正式课程',
+          closedNote: '其中 2 门含已放弃课节',
+          dayNote: '当前连续 4 天 · 最长 11 天',
+          bars: [32, 52, 42, 67, 58, 76, 45, 83, 71, 91, 64, 78],
+        },
+        all: {
+          hours: '54.8 小时',
+          lessons: '132',
+          courses: '18',
+          days: '74 天',
+          courseNote: '分布在 24 门正式课程',
+          closedNote: '其中 4 门含已放弃课节',
+          dayNote: '累计记录 74 个活跃日',
+          bars: [49, 58, 64, 55, 72, 68, 81, 76, 88, 83, 94, 89],
+        },
+        custom: {
+          hours: '7.6 小时',
+          lessons: '19',
+          courses: '1',
+          days: '12 天',
+          courseNote: '分布在 4 门正式课程',
+          closedNote: '无已放弃课节',
+          dayNote: '所选日期内共 12 个活跃日',
+          bars: [18, 24, 36, 31, 43, 57, 48, 62, 55, 69, 61, 73],
+        },
+      };
+      function setRange(range) {
+        const data = rangeData[range];
+        document
+          .querySelectorAll('.filter')
+          .forEach((item) => item.classList.toggle('active', item.dataset.range === range));
+        metricHours.textContent = data.hours;
+        metricHoursNote.textContent = `来自 ${data.lessons} 节最终完成课节`;
+        metricLessons.textContent = data.lessons;
+        metricLessonsNote.textContent = data.courseNote;
+        metricCourses.textContent = data.courses;
+        metricCoursesNote.textContent = data.closedNote;
+        metricDays.textContent = data.days;
+        metricDaysNote.textContent = data.dayNote;
+        trendChart.innerHTML = data.bars
+          .map(
+            (height, index) =>
+              `<div class="bar-day" style="--h:${height}%"><i></i><span>${index + 1}周</span></div>`,
+          )
+          .join('');
+      }
+      document
+        .querySelectorAll('.filter')
+        .forEach((button) =>
+          button.addEventListener('click', () =>
+            button.dataset.range === 'custom'
+              ? rangeDialog.showModal()
+              : setRange(button.dataset.range),
+          ),
+        );
+      cancelRange.addEventListener('click', () => rangeDialog.close());
+      document.getElementById('applyRange').addEventListener('click', () => {
+        if (!rangeStart.value || !rangeEnd.value || rangeStart.value > rangeEnd.value) {
+          SampleUI.showToast('请选择有效的日期范围', 'warning');
+          return;
+        }
+        rangeDialog.close();
+        setRange('custom');
+        SampleUI.showToast('统计范围已更新', 'success');
+      });
+      const courseRowsList = [...courseRows.querySelectorAll('tr')];
+      function updateCourses() {
+        const status = courseStatus.value,
+          domain = courseDomain.value,
+          mode = courseMode.value;
+        const visible = courseRowsList.filter(
+          (row) =>
+            (!status || row.dataset.state === status) &&
+            (!domain || row.dataset.domain === domain) &&
+            (!mode || row.dataset.mode === mode),
+        );
+        visible.sort((a, b) =>
+          courseSort.value === 'duration'
+            ? Number(b.dataset.duration) - Number(a.dataset.duration)
+            : courseSort.value === 'oldest'
+              ? Number(a.dataset.date) - Number(b.dataset.date)
+              : Number(b.dataset.date) - Number(a.dataset.date),
+        );
+        courseRowsList.forEach((row) => (row.hidden = !visible.includes(row)));
+        visible.forEach((row) => courseRows.appendChild(row));
+        courseCount.textContent = `${visible.length} 门课程`;
+      }
+      [courseStatus, courseDomain, courseMode, courseSort].forEach((control) =>
+        control.addEventListener('change', updateCourses),
+      );
+      setRange('year');
+      updateCourses();
+    </script>
+  </body>
 </html>

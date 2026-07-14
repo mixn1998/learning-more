@@ -1,0 +1,57 @@
+.course-revision-page .course-revision-hero {
+  margin-bottom: 0;
+}
+
+.course-revision-page .course-revision-hero::after {
+  right: 72px;
+}
+
+.course-revision-page .ow-workbench {
+  margin-top: 12px;
+}
+
+.course-revision-page .ow-ai > :first-child,
+.course-revision-page .ow-ai > :last-child {
+  margin-block: 0;
+}
+
+.course-revision-page .course-revision-busy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.course-revision-page .course-revision-empty {
+  display: grid;
+  align-content: center;
+  min-height: 550px;
+  text-align: center;
+}
+
+.course-revision-page .course-revision-empty h2 {
+  margin: 8px 0;
+}
+
+.course-revision-page .course-revision-empty p {
+  max-width: 520px;
+  margin: 0 auto;
+  color: var(--muted);
+}
+
+.course-revision-page .course-revision-impact {
+  margin-top: 14px;
+}
+
+@media (max-width: 680px) {
+  .course-revision-page .course-revision-hero {
+    flex-direction: row;
+  }
+
+  .course-revision-page .course-revision-hero .lm-actions {
+    width: 100%;
+  }
+
+  .course-revision-page .course-revision-hero .lm-btn {
+    width: auto;
+  }
+}

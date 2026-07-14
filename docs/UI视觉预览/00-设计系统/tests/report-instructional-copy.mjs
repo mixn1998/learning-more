@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require('@playwright/test');
 const testsDir = path.dirname(fileURLToPath(import.meta.url));
 const uiRoot = path.resolve(testsDir, '..', '..');
 const base = 'http://127.0.0.1:61586';

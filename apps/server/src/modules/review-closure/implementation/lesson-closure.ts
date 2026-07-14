@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import type { CommandContext } from '@learning-more/contracts';
 
@@ -42,16 +42,11 @@ export function createLessonClosureWorkflow(options: {
   readonly repository: LessonClosureRepository;
   readonly unitOfWork: UnitOfWork;
   readonly sessionModule: LearningSessionModule;
-  readonly generationRuntime: {
-    submit(request: {
-      taskKey: string;
-      inputSnapshotHash: string;
-      taskKind: string;
-      taskGroup: 'background';
-      ownerRef: string;
-      providerId: string;
-      priority: number;
-      prompt: string;
+  readonly reviewTask: {
+    submit(input: {
+      kind: 'final';
+      record: LessonClosureRecord;
+      commandId: string;
     }): Promise<{ taskId: string }>;
   };
   readonly nextTransactionId: () => string;
@@ -74,27 +69,10 @@ export function createLessonClosureWorkflow(options: {
   }
 
   async function submit(record: LessonClosureRecord, commandId: string) {
-    const task = await options.generationRuntime.submit({
-      taskKey: `final-review:${record.transactionId}:${commandId}`,
-      inputSnapshotHash: createHash('sha256')
-        .update(
-          JSON.stringify({
-            sourceSessionIds: record.sourceSessionIds,
-            sourceMessageIds: record.sourceMessageIds,
-            messageRangeChecksum: record.messageRangeChecksum,
-            endIntent: record.endIntent,
-          }),
-        )
-        .digest('hex'),
-      taskKind: 'final-review',
-      taskGroup: 'background',
-      ownerRef: record.transactionId,
-      providerId: 'current',
-      priority: 80,
-      prompt: JSON.stringify({
-        templateRef: 'final-review@v1',
-        inputArtifactRef: `lesson-closure:${record.transactionId}`,
-      }),
+    const task = await options.reviewTask.submit({
+      kind: 'final',
+      record,
+      commandId,
     });
     return task.taskId;
   }

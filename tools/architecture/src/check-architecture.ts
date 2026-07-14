@@ -84,15 +84,59 @@ async function checkRepositoryImports(root: string): Promise<ImportIssue[]> {
   return issues;
 }
 
+type ProfileGovernanceIssue = Readonly<{
+  code: 'AI_OR_UI_MUTATES_CONFIRMED_PROFILE';
+  source: string;
+  pattern: string;
+}>;
+
+async function checkProfileGovernance(root: string): Promise<ProfileGovernanceIssue[]> {
+  const files = (
+    await Promise.all(
+      ['apps/server/src', 'apps/web/src'].map((directory) =>
+        collectSourceFiles(path.join(root, directory)),
+      ),
+    )
+  ).flat();
+  const issues: ProfileGovernanceIssue[] = [];
+  for (const source of files) {
+    const repositorySource = repositoryPath(root, source);
+    const text = await readFile(source, 'utf8');
+    const isAiOrUiBoundary =
+      repositorySource.startsWith('apps/web/src/') ||
+      repositorySource.includes('/ai-providers/') ||
+      /\/generation-[^/]+\.ts$/u.test(repositorySource);
+    const patterns = [
+      /promotionState\s*:\s*['"](?:confirmed|promoted)['"]/u,
+      /saveConfirmed(?:Global)?Profile\s*\(/u,
+      ...(isAiOrUiBoundary ? [/\.evidence\.save\s*\(/u] : []),
+    ];
+    for (const pattern of patterns) {
+      if (pattern.test(text)) {
+        issues.push({
+          code: 'AI_OR_UI_MUTATES_CONFIRMED_PROFILE',
+          source: repositorySource,
+          pattern: pattern.source,
+        });
+      }
+    }
+  }
+  return issues;
+}
+
 const currentFile = fileURLToPath(import.meta.url);
 const repositoryRoot = path.resolve(path.dirname(currentFile), '../../..');
-const dataKeyIssues = checkDataKeys(DATA_KEYS, 191);
+const dataKeyIssues = checkDataKeys(DATA_KEYS, 273);
 const importIssues = await checkRepositoryImports(repositoryRoot);
+const profileGovernanceIssues = await checkProfileGovernance(repositoryRoot);
 
-if (dataKeyIssues.length > 0 || importIssues.length > 0) {
-  process.stderr.write(`${JSON.stringify({ dataKeyIssues, importIssues }, null, 2)}\n`);
+if (dataKeyIssues.length > 0 || importIssues.length > 0 || profileGovernanceIssues.length > 0) {
+  process.stderr.write(
+    `${JSON.stringify({ dataKeyIssues, importIssues, profileGovernanceIssues }, null, 2)}\n`,
+  );
   process.exitCode = 1;
 } else {
   process.stdout.write(`${DATA_KEYS.length} dataKeys verified\n`);
   process.stdout.write('0 forbidden imports\n');
+  process.stdout.write('0 forbidden AI/UI profile mutations\n');
 }

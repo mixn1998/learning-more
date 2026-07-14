@@ -23,6 +23,7 @@ export type PlanningCommand =
       scheduleItemId: string;
       endAt: string;
     }>
+  | Readonly<{ type: 'SetScheduleLock'; scheduleItemId: string; locked: boolean }>
   | Readonly<{ type: 'RemoveScheduleItem'; scheduleItemId: string }>;
 
 export type PlanningResult = Readonly<{ scheduleItem: ScheduleItem }>;

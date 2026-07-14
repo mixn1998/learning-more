@@ -19,6 +19,9 @@ async function fixture() {
   roots.push(root);
   const files: Record<string, string> = {
     'START.cmd': '@echo off\r\n',
+    'INSTALL-AUTOSTART.cmd': '@echo off\r\n',
+    'REPAIR-AUTOSTART.cmd': '@echo off\r\n',
+    'UNINSTALL-AUTOSTART.cmd': '@echo off\r\n',
     'README.txt': 'Learning MORE portable\r\n',
     'runtime/node.exe': 'runtime',
     'app/server/dist/bootstrap/main.js': 'server',
@@ -26,6 +29,8 @@ async function fixture() {
     'app/web/index.html': '<!doctype html>',
     'app/launcher/dist/main.js': 'launcher',
     'app/launcher/package.json': '{}\n',
+    'app/host/dist/main.js': 'host',
+    'app/host/package.json': '{}\n',
     'schemas/course-authoring.openapi.json': '{}\n',
     'prompts/README.txt': 'Prompt assets are versioned by the application.\r\n',
     'migrations/README.txt': 'Store schema 1 has no predecessor migration.\r\n',

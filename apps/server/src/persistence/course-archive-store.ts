@@ -7,6 +7,7 @@ import type {
   CourseArchiveDeletionReceipt,
   CourseArchiveStore,
 } from '../modules/course-authoring/ports/course-archive-store.js';
+import type { OutlineSessionDraftStore } from '../modules/course-authoring/ports/outline-session-draft-store.js';
 import { assertSafePathSegment, DataRoot } from './data-root.js';
 import { checksumJson, StorageDocumentError } from './json-codec.js';
 import { createStorePaths } from './paths.js';
@@ -36,6 +37,9 @@ const entityTypes = [
   'materials',
   'tasks',
   'weekly-reports',
+  'teaching-ledgers',
+  'reasoning-behavior-episodes',
+  'reasoning-behavior-analyses',
 ] as const;
 
 function digest(value: string): string {
@@ -202,6 +206,90 @@ export async function courseDeletionBarrierExists(
   return (await readJson(dataRoot, deletionBarrierRelativePath(courseId))) !== undefined;
 }
 
+export function createLocalFileOutlineSessionDraftStore(
+  dataRoot: DataRoot,
+): OutlineSessionDraftStore {
+  return {
+    async stageDelete(tx, outlineSessionId) {
+      const byType = new Map<string, StoredDocument[]>();
+      for (const type of [
+        'outline-sessions',
+        'outline-candidates',
+        'materials',
+        'tasks',
+      ] as const) {
+        byType.set(type, await storedDocuments(dataRoot, `entities/${type}`));
+      }
+
+      const session = (byType.get('outline-sessions') ?? []).find(
+        (item) => entityId(item) === outlineSessionId,
+      );
+      if (session === undefined) {
+        throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+      }
+      const sessionState = asObject(session.data.session);
+      if (
+        sessionState?.state === 'confirmed' ||
+        typeof sessionState?.confirmedCourseId === 'string'
+      ) {
+        throw Object.assign(new Error('outline_session_already_confirmed'), {
+          code: 'outline_session_already_confirmed',
+        });
+      }
+
+      const candidates = (byType.get('outline-candidates') ?? []).filter(
+        (item) => item.data.outlineSessionId === outlineSessionId,
+      );
+      const candidateIds = new Set(candidates.map(entityId));
+      const materials = (byType.get('materials') ?? []).filter(
+        (item) => item.data.outlineSessionId === outlineSessionId,
+      );
+      const taskIds = new Set(
+        candidates
+          .map((item) => item.data.generationTaskId)
+          .filter((value): value is string => typeof value === 'string'),
+      );
+      const ownerRefs = new Set([outlineSessionId, ...candidateIds]);
+      const tasks = (byType.get('tasks') ?? []).filter(
+        (item) => taskIds.has(entityId(item)) || referencesAny(item.data, ownerRefs),
+      );
+
+      const artifactIds = new Set<string>();
+      for (const item of [...candidates, ...materials, ...tasks]) {
+        for (const key of ['artifactRef', 'draftArtifactRef', 'resultRef'] as const) {
+          const value = item.data[key];
+          if (typeof value === 'string') artifactIds.add(value);
+        }
+      }
+
+      const counts: Record<string, number> = {};
+      const deletions = new Set<string>();
+      const add = (items: readonly StoredDocument[], key: string) => {
+        for (const item of items) deletions.add(item.relativePath);
+        count(counts, key, items.length);
+      };
+      add([session], 'outlineSessions');
+      add(candidates, 'candidateVersions');
+      add(materials, 'materials');
+      add(tasks, 'generationTasks');
+
+      const remainingDocuments = [...byType.values()]
+        .flat()
+        .filter((item) => !deletions.has(item.relativePath));
+      for (const artifactId of artifactIds) {
+        if (remainingDocuments.some((item) => referencesAny(item.data, new Set([artifactId])))) {
+          continue;
+        }
+        for (const artifactPath of artifactPaths(artifactId)) deletions.add(artifactPath);
+        count(counts, 'artifacts');
+      }
+
+      for (const relativePath of [...deletions].sort()) await tx.deleteOnCommit(relativePath);
+      return { outlineSessionId, deletedCounts: counts };
+    },
+  };
+}
+
 export function createLocalFileCourseArchiveStore(dataRoot: DataRoot): CourseArchiveStore {
   const paths = createStorePaths(dataRoot);
 
@@ -292,6 +380,13 @@ export function createLocalFileCourseArchiveStore(dataRoot: DataRoot): CourseArc
           typeof item.data.outlineSessionId === 'string' &&
           outlineSessionIds.has(item.data.outlineSessionId),
       );
+      const teachingLedgers = (byType.get('teaching-ledgers') ?? []).filter(
+        (item) => item.data.courseId === courseId,
+      );
+      const reasoningEpisodes = (byType.get('reasoning-behavior-episodes') ?? []).filter(
+        (item) => item.data.courseId === courseId,
+      );
+      const reasoningAnalyses = byType.get('reasoning-behavior-analyses') ?? [];
 
       const learningRecords = (byType.get('lesson-progress') ?? []).filter((item) =>
         lessonIds.has(String(item.data.lessonId)),
@@ -511,6 +606,9 @@ export function createLocalFileCourseArchiveStore(dataRoot: DataRoot): CourseArc
       add(courseRejections, 'evidenceRejections');
       add(checkpoints, 'evidenceCheckpoints');
       add(weeklyReports, 'weeklyReports');
+      add(teachingLedgers, 'teachingLedgers');
+      add(reasoningEpisodes, 'reasoningBehaviorEpisodes');
+      add(reasoningAnalyses, 'reasoningBehaviorAnalyses');
       for (const sessionId of sessionIds) deletions.add(messageLogRelativePath(sessionId));
       count(counts, 'messageLogs', sessionIds.size);
       for (const relativePath of portraitFiles) deletions.add(relativePath);

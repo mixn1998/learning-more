@@ -13,8 +13,20 @@ describe('lesson record route', () => {
   it('opens the immutable Review tab from a calendar deep-link', async () => {
     const getLessonRecord = vi.fn().mockResolvedValue({
       lessonId: 'lesson_01',
+      courseId: 'course_01',
+      title: '真实课节标题',
+      courseTitle: '真实课程标题',
+      completedAt: '2026-07-13T01:02:03.000Z',
+      actualSeconds: 1260,
       original: { sessionId: 'session_01', label: '原始学习', messages: ['原始对话'] },
-      supplementary: [],
+      supplementary: [
+        {
+          sessionId: 'supplementary_01',
+          label: '补充学习 1',
+          createdAt: '2026-07-14T01:02:03.000Z',
+          messages: ['你：补充内容'],
+        },
+      ],
       finalReviewMarkdown: '权威最终 Review',
     });
     render(
@@ -29,6 +41,8 @@ describe('lesson record route', () => {
     );
 
     expect(await screen.findByLabelText('权威课时 Review')).toHaveTextContent('权威最终 Review');
+    expect(screen.getByRole('heading', { name: '真实课节标题' })).toBeInTheDocument();
+    expect(screen.getByText(/《真实课程标题》/u)).toHaveTextContent('21 分钟');
     expect(getLessonRecord).toHaveBeenCalledWith('lesson_01');
   });
 });

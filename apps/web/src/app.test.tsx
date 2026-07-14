@@ -2,9 +2,11 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './app.js';
+import { RuntimeStatusCards } from './layouts/app-shell.js';
 
 const degradedReadiness = {
   status: 'degraded',
@@ -47,5 +49,21 @@ describe('App runtime readiness', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('无法连接本地服务');
     expect(screen.getByRole('button', { name: '重试连接' })).toBeEnabled();
+  });
+
+  it('shows controlled recovery as reconnecting instead of needing attention', () => {
+    render(
+      <MemoryRouter>
+        <RuntimeStatusCards
+          providerLabel="Codex CLI"
+          providerReady
+          recovering
+          status="rebuilding"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: /本地服务/ })).toHaveTextContent('本地服务 · 重连中');
+    expect(screen.getByRole('link', { name: /本地服务/ })).not.toHaveTextContent('需要处理');
   });
 });

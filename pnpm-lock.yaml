@@ -42,6 +42,8 @@ importers:
         specifier: 4.1.9
         version: 4.1.9(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.0)(yaml@2.9.0))
 
+  apps/host: {}
+
   apps/launcher: {}
 
   apps/server:
@@ -129,6 +131,12 @@ importers:
       react:
         specifier: 19.2.7
         version: 19.2.7
+      react-markdown:
+        specifier: 10.1.0
+        version: 10.1.0(@types/react@19.2.17)(react@19.2.7)
+      rehype-sanitize:
+        specifier: 6.0.0
+        version: 6.0.0
     devDependencies:
       '@testing-library/jest-dom':
         specifier: 6.9.1

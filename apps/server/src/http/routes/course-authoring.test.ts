@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApplicationProblemSchema } from '@learning-more/contracts';
 
 import type { CourseAuthoring } from '../../modules/course-authoring/interface.js';
-import { registerCourseAuthoringRoutes } from './course-authoring.js';
+import {
+  registerCourseAuthoringRoutes,
+  type CourseAuthoringRouteOptions,
+} from './course-authoring.js';
 
 function appWith(
   execute: CourseAuthoring['execute'],
@@ -12,6 +15,7 @@ function appWith(
     throw new Error('unexpected_query');
   },
   getCourse?: NonNullable<CourseAuthoring['getCourse']>,
+  ingestMaterial?: NonNullable<CourseAuthoringRouteOptions['ingestMaterial']>,
 ) {
   const app = Fastify();
   const module: CourseAuthoring = {
@@ -21,6 +25,7 @@ function appWith(
   };
   void registerCourseAuthoringRoutes(app, {
     module,
+    ...(ingestMaterial === undefined ? {} : { ingestMaterial }),
     nextCommandId: () => 'command_01',
     nextCorrelationId: () => 'correlation_01',
     now: () => new Date('2026-07-13T00:00:00.000Z'),
@@ -38,7 +43,33 @@ describe('CourseAuthoring HTTP contract', () => {
       resourceVersion: 1,
       value: { kind: 'outline-session', outlineSessionId: 'session_01', state: 'assessing' },
     });
-    const response = await appWith(execute).inject({
+    const response = await appWith(execute, async () => ({
+      outlineSessionId: 'session_01',
+      resourceVersion: 1,
+      state: 'assessing',
+      topic: 'probability theory',
+      courseMode: 'standard',
+      candidateVersionIds: [],
+      completedAssessmentRounds: 1,
+      canGenerateCandidate: false,
+      messages: [
+        {
+          messageId: 'message_user_01',
+          role: 'user',
+          content: 'probability theory',
+          status: 'complete',
+          createdAt: '2026-07-13T00:00:00.000Z',
+        },
+        {
+          messageId: 'message_assistant_01',
+          role: 'assistant',
+          content: 'What do you want to understand or do with probability theory?',
+          status: 'complete',
+          createdAt: '2026-07-13T00:00:01.000Z',
+          inReplyToMessageId: 'message_user_01',
+        },
+      ],
+    })).inject({
       method: 'POST',
       url: '/api/v1/outline-sessions',
       headers,
@@ -146,6 +177,9 @@ describe('CourseAuthoring HTTP contract', () => {
       candidateVersionIds: ['candidate_01'],
       candidateVersionId: 'candidate_01',
       candidateMarkdown: '# Candidate',
+      completedAssessmentRounds: 3,
+      canGenerateCandidate: true,
+      messages: [],
     });
     const response = await appWith(vi.fn(), query).inject({
       method: 'GET',
@@ -216,6 +250,34 @@ describe('CourseAuthoring HTTP contract', () => {
     );
   });
 
+  it('permanently deletes an unconfirmed outline session through a conditional command', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      commandId: 'command_01',
+      outcome: 'completed',
+      resourceVersion: 3,
+      value: {
+        kind: 'outline-session-deleted',
+        outlineSessionId: 'session_01',
+        deletedAt: '2026-07-13T08:01:00.000Z',
+      },
+    });
+    const response = await appWith(execute).inject({
+      method: 'DELETE',
+      url: '/api/v1/outline-sessions/session_01',
+      headers: { ...headers, 'if-match': '"3"' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      outlineSessionId: 'session_01',
+      deletedAt: '2026-07-13T08:01:00.000Z',
+    });
+    expect(execute).toHaveBeenCalledWith(
+      { type: 'DeleteOutlineSessionDraft', outlineSessionId: 'session_01' },
+      expect.objectContaining({ idempotencyKey: 'idem_01', expectedVersion: 3 }),
+    );
+  });
+
   it('queries the formal course archive version before destructive commands', async () => {
     const getCourse = vi.fn().mockResolvedValue({
       courseId: 'course_01',
@@ -234,5 +296,40 @@ describe('CourseAuthoring HTTP contract', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers.etag).toBe('"4"');
     expect(response.json()).toMatchObject({ courseId: 'course_01', resourceVersion: 4 });
+  });
+
+  it('ingests a selected reading material with version and page-instance protection', async () => {
+    const ingestMaterial = vi.fn().mockResolvedValue({
+      outlineSessionId: 'session_01',
+      artifactRef: 'material:session_01:hash',
+      originalFileName: 'notes.txt',
+      format: 'text',
+      sha256: 'a'.repeat(64),
+      importedAt: '2026-07-13T00:00:00.000Z',
+      sections: [{ title: 'notes', level: 1 }],
+      warnings: [],
+      resourceVersion: 2,
+    });
+    const response = await appWith(vi.fn(), undefined, undefined, ingestMaterial).inject({
+      method: 'POST',
+      url: '/api/v1/outline-sessions/session_01/materials',
+      headers: {
+        ...headers,
+        'x-page-instance-id': 'page_01',
+        'if-match': '"2"',
+      },
+      payload: {
+        fileName: 'notes.txt',
+        mediaType: 'text/plain',
+        contentBase64: Buffer.from('hello', 'utf8').toString('base64'),
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    expect(ingestMaterial).toHaveBeenCalledWith(
+      'session_01',
+      expect.objectContaining({ fileName: 'notes.txt', mediaType: 'text/plain' }),
+      expect.objectContaining({ expectedVersion: 2, pageInstanceId: 'page_01' }),
+    );
   });
 });

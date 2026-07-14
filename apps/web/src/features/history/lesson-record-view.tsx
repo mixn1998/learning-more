@@ -1,16 +1,53 @@
 import { useState } from 'react';
 
+import type { AiSurfaceContent } from '@learning-more/ui';
+import { AiContent, AiSurface, tabId, tabPanelId, Tabs } from '@learning-more/ui';
+
+import './lesson-record-view.css';
+
 type SessionRecord = Readonly<{
   sessionId: string;
   label: string;
   messages: readonly string[];
+  meta?: string;
 }>;
+
+const lessonRecordTabs = [
+  { id: 'conversation', label: '学习对话' },
+  { id: 'review', label: '课时 Review' },
+] as const;
+
+const lessonRecordTabsIdPrefix = 'lesson-record-content';
+
+function ReadonlyMessage({ value }: { readonly value: string }) {
+  const assistant = value.startsWith('导师：');
+  const markdown = assistant ? value.slice('导师：'.length) : value.replace(/^你：/u, '');
+  return assistant ? (
+    <div className="learn-ai">
+      <AiContent markdown={markdown} />
+    </div>
+  ) : (
+    <div className="learn-user">{markdown}</div>
+  );
+}
+
+function durationLabel(seconds: number | undefined) {
+  if (seconds === undefined) return '时长已归档';
+  return `${Math.max(1, Math.round(seconds / 60))} 分钟`;
+}
 
 export function LessonRecordView(props: {
   readonly original: SessionRecord;
   readonly supplementary: readonly SessionRecord[];
   readonly finalReviewMarkdown: string;
   readonly initialTab?: 'conversation' | 'review';
+  readonly title?: string;
+  readonly courseTitle?: string;
+  readonly completedAt?: string;
+  readonly actualSeconds?: number;
+  readonly reviewContent?: AiSurfaceContent;
+  readonly onBackHome?: () => void;
+  readonly onBackToOutline?: () => void;
 }) {
   const [topTab, setTopTab] = useState<'conversation' | 'review'>(
     props.initialTab ?? 'conversation',
@@ -18,48 +55,122 @@ export function LessonRecordView(props: {
   const [sessionId, setSessionId] = useState(props.original.sessionId);
   const sessions = [props.original, ...props.supplementary];
   const selected = sessions.find((session) => session.sessionId === sessionId) ?? props.original;
+  const date = props.completedAt ?? '完成时间已归档';
+  const duration = durationLabel(props.actualSeconds);
   return (
-    <section aria-label="课节记录">
-      <nav role="tablist" aria-label="课节记录类型">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={topTab === 'conversation'}
-          onClick={() => setTopTab('conversation')}
-        >
-          学习对话
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={topTab === 'review'}
-          onClick={() => setTopTab('review')}
-        >
-          课时 Review
-        </button>
-      </nav>
-      {topTab === 'review' ? (
-        <article aria-label="权威课时 Review">{props.finalReviewMarkdown}</article>
-      ) : (
-        <section aria-label="学习会话">
-          <nav aria-label="会话时间线">
-            {sessions.map((session) => (
-              <button
-                key={session.sessionId}
-                type="button"
-                onClick={() => setSessionId(session.sessionId)}
-              >
-                {session.label}
-              </button>
-            ))}
-          </nav>
-          <article aria-label="只读学习对话">
-            {selected.messages.map((message, index) => (
-              <p key={`${selected.sessionId}:${index}`}>{message}</p>
-            ))}
-          </article>
+    <div className="lesson-record-workspace">
+      <header className="lm-topbar lesson-record-topbar">
+        <div className="lm-brand">
+          <strong>Learning MORE</strong>
+          <span>只读课节记录</span>
+        </div>
+        <div className="lm-topbar-tools">
+          <div className="lm-global-runtime">
+            <a className="lm-runtime-button ok" href="/runtime?tab=ai">
+              <span aria-hidden="true" className="lm-runtime-dot" />
+              <span>
+                <b>AI 接口 · Codex</b>
+                <small>连接正常</small>
+              </span>
+            </a>
+            <a className="lm-runtime-button ok" href="/runtime?tab=service">
+              <span aria-hidden="true" className="lm-runtime-dot" />
+              <span>
+                <b>本地服务 · 准备就绪</b>
+                <small>实例与版本已核验</small>
+              </span>
+            </a>
+          </div>
+          <span className="lm-pill readonly">● 归档完整</span>
+        </div>
+      </header>
+      <main className="lm-page lesson-record-page" aria-label="课节记录">
+        <section className="lm-card lesson-hero">
+          <div>
+            <div className="lm-mode-badge">● 标准模式</div>
+            <div className="lm-kicker lesson-record-kicker">已完成 · 课节记录</div>
+            <h1>{props.title ?? '已完成课节'}</h1>
+            <p>
+              《{props.courseTitle ?? '当前课程'}》· {date} · {duration}
+            </p>
+          </div>
+          <div className="lm-actions">
+            <button className="lm-btn" type="button" onClick={props.onBackHome}>
+              返回主页
+            </button>
+            <button className="lm-btn" type="button" onClick={props.onBackToOutline}>
+              返回课程大纲
+            </button>
+          </div>
         </section>
-      )}
-    </section>
+        <section className="lm-card lesson-record-card">
+          <Tabs
+            active={topTab}
+            as="nav"
+            className="lesson-record-tabs"
+            idPrefix={lessonRecordTabsIdPrefix}
+            label="课节记录内容"
+            onChange={setTopTab}
+            options={lessonRecordTabs}
+            renderInactivePanels
+            tabClassName={(_option, active) => `lm-tab ${active ? 'active' : ''}`}
+          >
+            <span className="lm-pill readonly">永久只读</span>
+          </Tabs>
+          {topTab === 'review' ? (
+            <section
+              aria-labelledby={tabId(lessonRecordTabsIdPrefix, 'review')}
+              className="lesson-record-panel active"
+              id={tabPanelId(lessonRecordTabsIdPrefix, 'review')}
+              role="tabpanel"
+              tabIndex={0}
+            >
+              <article aria-label="权威课时 Review" className="lesson-record-review">
+                {props.reviewContent === undefined ? (
+                  <AiContent className="review-content" markdown={props.finalReviewMarkdown} />
+                ) : (
+                  <AiSurface className="review-content">{props.reviewContent}</AiSurface>
+                )}
+              </article>
+            </section>
+          ) : (
+            <section
+              aria-labelledby={tabId(lessonRecordTabsIdPrefix, 'conversation')}
+              className="lesson-record-panel active"
+              id={tabPanelId(lessonRecordTabsIdPrefix, 'conversation')}
+              role="tabpanel"
+              tabIndex={0}
+            >
+              <div className="lesson-record-chat-layout">
+                <aside className="lesson-record-sessions" aria-label="会话时间线">
+                  <h3>学习会话</h3>
+                  <p>原始学习与补充学习分别归档；补充学习不会改变最终 Review。</p>
+                  {sessions.map((session, index) => (
+                    <button
+                      aria-label={session.label}
+                      className={`lesson-record-session ${session.sessionId === selected.sessionId ? 'active' : ''}`}
+                      key={session.sessionId}
+                      type="button"
+                      onClick={() => setSessionId(session.sessionId)}
+                    >
+                      <b>{session.label}</b>
+                      <span>
+                        {session.meta ??
+                          (index === 0 ? `${date} · ${duration}` : '独立补充学习归档')}
+                      </span>
+                    </button>
+                  ))}
+                </aside>
+                <main aria-label="只读学习对话" className="lesson-record-chat">
+                  {selected.messages.map((message, index) => (
+                    <ReadonlyMessage key={`${selected.sessionId}:${index}`} value={message} />
+                  ))}
+                </main>
+              </div>
+            </section>
+          )}
+        </section>
+      </main>
+    </div>
   );
 }

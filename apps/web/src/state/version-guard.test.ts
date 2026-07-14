@@ -24,4 +24,28 @@ describe('runtime version guard', () => {
       evaluateRuntimeVersion(readiness, { buildId: 'build_01', protocolVersion: '1' }),
     ).toEqual({ kind: 'compatible', writesAllowed: true });
   });
+
+  it('releases only the verified recovered build when the protocol still matches', () => {
+    expect(
+      evaluateRuntimeVersion(
+        readiness,
+        { buildId: 'build_old', protocolVersion: '1' },
+        { recoveredBuildId: 'build_01' },
+      ),
+    ).toEqual({ kind: 'compatible', writesAllowed: true });
+    expect(
+      evaluateRuntimeVersion(
+        readiness,
+        { buildId: 'build_old', protocolVersion: '1' },
+        { recoveredBuildId: 'another_build' },
+      ),
+    ).toEqual({ kind: 'build-mismatch', writesAllowed: false });
+    expect(
+      evaluateRuntimeVersion(
+        readiness,
+        { buildId: 'build_old', protocolVersion: '2' },
+        { recoveredBuildId: 'build_01' },
+      ),
+    ).toEqual({ kind: 'protocol-mismatch', writesAllowed: false });
+  });
 });

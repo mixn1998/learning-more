@@ -7,6 +7,44 @@ import {
 } from './provider-config-service.js';
 
 describe('ProviderConfigService', () => {
+  it('reports the applied persisted Codex model and reasoning effort after reconnect', async () => {
+    const secrets = createMemorySecretStore();
+    const repository = createMemoryProviderConfigRepository();
+    let currentProviderId = 'mock';
+    const runtime = {
+      validateProvider: vi.fn().mockResolvedValue({ valid: true }),
+      checkProviderHealth: vi.fn().mockResolvedValue({ status: 'healthy' as const }),
+      describeProvider: vi.fn((providerId: string) => ({
+        id: providerId,
+        kind: providerId === 'codex-cli' ? ('cli' as const) : ('mock' as const),
+        maxConcurrency: 1,
+        supportsStreaming: true as const,
+      })),
+      async switchProvider(providerId: string) {
+        currentProviderId = providerId;
+      },
+      async getProviderStatus() {
+        return { currentProviderId, providers: ['mock', 'codex-cli'] };
+      },
+    };
+    const service = createProviderConfigService({ runtime, secrets, repository });
+
+    await service.switchProvider({
+      providerId: 'codex-cli',
+      publicConfig: { model: 'gpt-5.6-sol', reasoningEffort: 'high' },
+      secretHandles: {},
+    });
+    await service.reconnect();
+
+    await expect(service.getStatus()).resolves.toMatchObject({
+      providerId: 'codex-cli',
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'high',
+      configurationState: 'applied',
+      health: { status: 'healthy' },
+    });
+  });
+
   it('validates config, secret presence, and health before atomically switching', async () => {
     const secrets = createMemorySecretStore();
     await secrets.put('provider/api-key', new TextEncoder().encode('private-key'));
@@ -51,7 +89,7 @@ describe('ProviderConfigService', () => {
       health: { status: 'healthy' },
     });
     expect(JSON.stringify(result)).not.toContain('private-key');
-    expect(switchProvider).toHaveBeenCalledWith('api');
+    expect(switchProvider).toHaveBeenCalledWith('api', expect.anything(), expect.anything());
     await expect(repository.get()).resolves.toMatchObject({
       providerId: 'api',
       publicConfig: { model: 'model-01' },
@@ -61,6 +99,7 @@ describe('ProviderConfigService', () => {
     await expect(service.getStatus()).resolves.toEqual({
       providerId: 'api',
       model: 'model-01',
+      configurationState: 'applied',
       health: { status: 'healthy' },
       capabilities: runtime.describeProvider(),
     });
@@ -98,6 +137,7 @@ describe('ProviderConfigService', () => {
     await expect(service.getStatus()).resolves.toEqual({
       providerId: 'api',
       model: 'model-01',
+      configurationState: 'applied',
       health: { status: 'healthy' },
       capabilities: {
         id: 'api',

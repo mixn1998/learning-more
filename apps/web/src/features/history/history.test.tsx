@@ -3,14 +3,59 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import type { HistoryClient } from '../../client/history-client.js';
 import { HistoryPage } from './history-page.js';
 
 afterEach(cleanup);
 
+function renderHistory(api: HistoryClient, initialEntry = '/') {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <HistoryPage client={api} />
+    </MemoryRouter>,
+  );
+}
+
 function client(): HistoryClient {
   return {
+    getDashboard: vi.fn().mockResolvedValue({
+      generatedAt: '2026-07-14T00:00:00.000Z',
+      draftSessions: [],
+      courses: [
+        {
+          courseId: 'course_01',
+          title: '测试课程',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_01',
+          resourceVersion: 1,
+        },
+      ],
+      lessons: [
+        {
+          courseId: 'course_01',
+          lessonId: 'lesson_01',
+          title: 'lesson_01',
+          progress: 'completed',
+          recommended: false,
+        },
+        {
+          courseId: 'course_01',
+          lessonId: 'lesson_03',
+          title: 'lesson_03',
+          progress: 'completed',
+          recommended: false,
+        },
+      ],
+      schedule: [],
+    }),
+    getCourseSummary: vi.fn().mockResolvedValue({
+      courses: [],
+      projectionVersion: 1,
+      freshness: 'current',
+    }),
     getHistory: vi.fn().mockImplementation(async (cursor?: string) =>
       cursor === undefined
         ? {
@@ -24,7 +69,7 @@ function client(): HistoryClient {
                   lessonId: 'lesson_01',
                   reviewId: 'review_01',
                 },
-                payload: {},
+                payload: { actualSeconds: 600 },
               },
               {
                 factId: 'f2',
@@ -46,7 +91,7 @@ function client(): HistoryClient {
                 factType: 'LessonCompletedFact',
                 occurredAt: '2026-07-04T16:30:00.000Z',
                 subjectRefs: { lessonId: 'lesson_03' },
-                payload: {},
+                payload: { actualSeconds: 120 },
               },
             ],
             asOfEventId: 'event_f3',
@@ -56,9 +101,14 @@ function client(): HistoryClient {
     ),
     getStatistics: vi.fn().mockResolvedValue({
       totalActualSeconds: 600,
+      validSessionCount: 1,
       lessonCompletedCount: 1,
+      lessonAbandonedCount: 0,
+      lessonRestoredCount: 0,
+      courseClosedCount: 1,
       activeDayCount: 1,
       currentStreakDays: 1,
+      longestStreakDays: 1,
       definitions: { totalActualSeconds: 'metric.learning.actual_seconds' },
       asOfEventId: 'event_f2',
       projectionVersion: 1,
@@ -83,8 +133,20 @@ function client(): HistoryClient {
 }
 
 describe('HistoryPage', () => {
+  it('keeps the statistics workspace when the course catalog is unavailable', async () => {
+    const api = client();
+    vi.mocked(api.getDashboard).mockRejectedValue(new Error('catalog_unavailable'));
+
+    renderHistory(api);
+
+    expect(await screen.findByRole('heading', { level: 1, name: '历史统计' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '本年' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('课程目录暂不可用');
+    expect(screen.queryByRole('heading', { name: '学习时间线' })).not.toBeInTheDocument();
+  });
+
   it('[EQ-HIS-01] exposes statistics, calendar, and portrait as three peer tabs without a course-aggregate history entry', async () => {
-    render(<HistoryPage client={client()} />);
+    renderHistory(client());
     await screen.findByText('数据截至：event_f2');
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       '历史统计',
@@ -95,23 +157,23 @@ describe('HistoryPage', () => {
   });
 
   it('[EQ-HIS-05] shows stale/asOf context and switches dates without retaining old results', async () => {
-    render(<HistoryPage client={client()} />);
+    renderHistory(client());
     expect(screen.getByText('正在加载历史')).toBeInTheDocument();
     expect(await screen.findByRole('status')).toHaveTextContent('stale');
     expect(screen.getByText('数据截至：event_f2')).toBeInTheDocument();
-    expect(screen.getByText('600')).toBeInTheDocument();
+    expect(screen.getByText('0.2 小时')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: '学习日历' }));
     fireEvent.click(screen.getByRole('button', { name: /2026-07-03/ }));
-    expect(screen.getByText(/lesson_01/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /lesson_01/ })).toBeInTheDocument();
     expect(screen.queryByText(/course_01/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /2026-07-05/ }));
-    expect(screen.getByText('该日无完成课节')).toBeInTheDocument();
-    expect(screen.queryByText(/lesson_01/)).not.toBeInTheDocument();
+    expect(screen.getByText('当天暂无已归档课节')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /lesson_01/ })).not.toBeInTheDocument();
   });
 
   it('[EQ-CAL-02] opens the course and authoritative Review from a completed calendar entry', async () => {
-    render(<HistoryPage client={client()} />);
+    renderHistory(client());
     await screen.findByText('数据截至：event_f2');
     fireEvent.click(screen.getByRole('tab', { name: '学习日历' }));
     fireEvent.click(screen.getByRole('button', { name: /2026-07-03/ }));
@@ -126,12 +188,69 @@ describe('HistoryPage', () => {
     );
   });
 
-  it('appends cursor pages without replacing prior facts', async () => {
+  it('loads every cursor page into the real analytics model', async () => {
     const api = client();
-    render(<HistoryPage client={api} />);
-    fireEvent.click(await screen.findByRole('button', { name: '加载更多' }));
+    renderHistory(api);
+    await screen.findByText('历史课程');
     await waitFor(() => expect(api.getHistory).toHaveBeenCalledWith('cursor_1'));
-    expect(screen.getByText(/lesson_01/)).toBeInTheDocument();
-    expect(screen.getByText(/lesson_03/)).toBeInTheDocument();
+    expect(screen.getByText(/lesson_01 \/ lesson_03/)).toBeInTheDocument();
+    expect(screen.getByText('12m')).toBeInTheDocument();
+  });
+
+  it('renders the finalized weekly report from frozen facts and keeps AI prose collapsed by default', async () => {
+    const api = client();
+    api.getWeekly = vi.fn().mockResolvedValue({
+      week: {
+        isoWeek: '2026-W27',
+        timezone: 'Asia/Shanghai',
+        actualSeconds: 600,
+        completedLessonCount: 1,
+        activeDayCount: 1,
+      },
+      projectionVersion: 1,
+      freshness: 'current',
+    });
+    api.getWeeklyReport = vi.fn().mockResolvedValue({
+      localWeekKey: '2026-W27',
+      timezone: 'Asia/Shanghai',
+      startLocalDate: '2026-06-29',
+      endLocalDate: '2026-07-05',
+      state: 'finalized',
+      factSnapshot: [
+        {
+          factId: 'weekly_fact_1',
+          occurredAt: '2026-07-02T08:00:00.000Z',
+          courseId: 'course_01',
+          lessonId: 'lesson_01',
+          actualSeconds: 600,
+          disciplineTag: '产品设计',
+          topicTags: ['反馈'],
+        },
+      ],
+      factSnapshotHash: 'snapshot_hash',
+      metricDefinitionVersion: 1,
+      generationTaskId: 'weekly_task_1',
+      artifactRef: 'weekly_report_2026-W27',
+      contentSha256: 'content_hash',
+      markdown: '# AI 总结\n已建立可追溯的判断标准。\n\n## 下周建议\n继续验证反馈是否改变行动。',
+      createdAt: '2026-07-06T00:00:00.000Z',
+      updatedAt: '2026-07-06T00:01:00.000Z',
+      resourceVersion: 1,
+    });
+
+    renderHistory(api, '/history?tab=weekly');
+
+    expect(await screen.findByRole('heading', { name: '上周学习回顾' })).toBeVisible();
+    expect(screen.getByText(/2026\/06\/29 — 07\/05/)).toBeVisible();
+    const toggle = screen.getByRole('button', { name: /上周学习报告/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('已建立可追溯的判断标准。')).not.toBeVisible();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('冻结证据 1 条 · 本周窗口内来源已核验')).toBeVisible();
+    expect(screen.getByText('已建立可追溯的判断标准。')).toBeVisible();
+    expect(screen.getByText('继续验证反馈是否改变行动。')).toBeVisible();
+    expect(screen.getByRole('button', { name: /lesson_01 产品设计/ })).toBeVisible();
   });
 });

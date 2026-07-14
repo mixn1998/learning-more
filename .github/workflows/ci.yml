@@ -97,3 +97,37 @@ jobs:
           path: |
             playwright-report/
             test-results/
+
+  visual-acceptance:
+    name: HTML, React visual and accessibility acceptance
+    needs: quality
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Frozen dependency graph
+        run: pnpm install --frozen-lockfile
+      - name: Install browser runtime
+        run: pnpm exec playwright install chromium
+      - name: Audit all 29 HTML samples
+        run: pnpm ui-samples:verify
+      - name: Compare HTML and React baselines and run accessibility gate
+        run: pnpm visual:test
+      - name: Upload visual differences and retained traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-acceptance-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            artifacts/visual/
+            playwright-report/
+            test-results/

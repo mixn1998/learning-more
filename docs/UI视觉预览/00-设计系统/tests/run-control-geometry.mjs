@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require('@playwright/test');
 const testsDir = path.dirname(fileURLToPath(import.meta.url));
 const uiRoot = path.resolve(testsDir, '..', '..');
 const base = 'http://127.0.0.1:61586';
@@ -23,7 +23,7 @@ function walkHtml(directory) {
 }
 
 const files = fs.readdirSync(uiRoot, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && /^0[1-7]-/.test(entry.name))
+  .filter((entry) => entry.isDirectory() && /^0[0-7]-/.test(entry.name))
   .flatMap((entry) => walkHtml(path.join(uiRoot, entry.name)));
 const browser = await chromium.launch({ headless: true, executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' });
 const failures = [];

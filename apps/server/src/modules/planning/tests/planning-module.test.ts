@@ -185,16 +185,22 @@ describe('PlanningModule', () => {
       { ...baseContext, commandId: 'resize', expectedVersion: 2 },
     );
     expect(resized.scheduleItem.timezoneAtCreation).toBe('America/New_York');
+    const locked = await module.execute(
+      { type: 'SetScheduleLock', scheduleItemId: created.scheduleItem.id, locked: true },
+      { ...baseContext, commandId: 'lock', expectedVersion: 3 },
+    );
+    expect(locked.scheduleItem.locked).toBe(true);
     await module.execute(
       { type: 'RemoveScheduleItem', scheduleItemId: created.scheduleItem.id },
-      { ...baseContext, commandId: 'remove', expectedVersion: 3 },
+      { ...baseContext, commandId: 'remove', expectedVersion: 4 },
     );
     await expect(repository.get(created.scheduleItem.id)).resolves.toMatchObject({
       status: 'removed',
-      resourceVersion: 4,
+      resourceVersion: 5,
     });
     expect(events).toEqual([
       'SchedulePlanned',
+      'ScheduleChanged',
       'ScheduleChanged',
       'ScheduleChanged',
       'ScheduleCancelled',

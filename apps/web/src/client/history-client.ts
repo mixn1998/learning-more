@@ -1,59 +1,76 @@
-export type HistoryEntry = Readonly<{
-  factId: string;
-  factType: string;
-  occurredAt: string;
-  subjectRefs: Readonly<Record<string, string>>;
-  payload: Readonly<Record<string, unknown>>;
-}>;
+import {
+  CalendarResponseSchema,
+  CourseSummaryResponseSchema,
+  HistoryPageResponseSchema,
+  HomeDashboardResponseSchema,
+  StatisticsResponseSchema,
+  WeeklyReportResponseSchema,
+  WeeklyResponseSchema,
+  type CalendarResponse,
+  type CourseSummaryResponse,
+  type HistoryPageResponse,
+  type HomeDashboardView,
+  type StatisticsResponse,
+  type WeeklyReportResponse,
+  type WeeklyResponse,
+} from '@learning-more/contracts';
 
-export type ProjectionStatus = Readonly<{
-  asOfEventId?: string;
-  projectionVersion: number;
-  freshness: 'current' | 'stale' | 'rebuilding';
-}>;
+import { apiRequest, apiRequestOptional } from './api-client.js';
+
+export type { HistoryEntry } from '@learning-more/contracts';
 
 export interface HistoryClient {
-  getHistory(cursor?: string): Promise<
-    ProjectionStatus & {
-      entries: readonly HistoryEntry[];
-      nextCursor?: string;
-    }
-  >;
-  getStatistics(): Promise<ProjectionStatus & Record<string, unknown>>;
-  getCalendar(
-    from: string,
-    to: string,
-  ): Promise<
-    ProjectionStatus & {
-      days: readonly Readonly<{
-        localDate: string;
-        actualSeconds: number;
-        completedLessonIds: readonly string[];
-      }>[];
-    }
-  >;
-  getWeekly(isoWeek: string): Promise<ProjectionStatus & { week?: Record<string, unknown> }>;
-  getWeeklyReport(localWeekKey: string): Promise<Record<string, unknown> | undefined>;
-}
-
-async function request<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (response.status === 404 || response.status === 503) return undefined as T;
-  const body = (await response.json()) as T;
-  if (!response.ok) throw body;
-  return body;
+  getDashboard(): Promise<HomeDashboardView>;
+  getHistory(cursor?: string): Promise<HistoryPageResponse>;
+  getStatistics(): Promise<StatisticsResponse>;
+  getCalendar(from: string, to: string): Promise<CalendarResponse>;
+  getCourseSummary(courseId: string): Promise<CourseSummaryResponse>;
+  getWeekly(isoWeek: string): Promise<WeeklyResponse>;
+  getWeeklyReport(localWeekKey: string): Promise<WeeklyReportResponse | undefined>;
 }
 
 export const historyClient: HistoryClient = {
-  getHistory: (cursor) =>
-    request(
-      `/api/v1/history?pageSize=50${cursor === undefined ? '' : `&cursor=${encodeURIComponent(cursor)}`}`,
-    ),
-  getStatistics: () => request('/api/v1/history/stats'),
-  getCalendar: (from, to) =>
-    request(
-      `/api/v1/history/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-    ),
-  getWeekly: (isoWeek) => request(`/api/v1/history/weeks/${encodeURIComponent(isoWeek)}`),
-  getWeeklyReport: (key) => request(`/api/v1/weekly-reports/${encodeURIComponent(key)}`),
+  async getDashboard() {
+    return (await apiRequest('/api/v1/home', { schema: HomeDashboardResponseSchema })).data;
+  },
+  async getHistory(cursor) {
+    const suffix = cursor === undefined ? '' : `&cursor=${encodeURIComponent(cursor)}`;
+    return (
+      await apiRequest(`/api/v1/history?pageSize=50${suffix}`, {
+        schema: HistoryPageResponseSchema,
+      })
+    ).data;
+  },
+  async getStatistics() {
+    return (await apiRequest('/api/v1/history/stats', { schema: StatisticsResponseSchema })).data;
+  },
+  async getCalendar(from, to) {
+    return (
+      await apiRequest(
+        `/api/v1/history/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        { schema: CalendarResponseSchema },
+      )
+    ).data;
+  },
+  async getCourseSummary(courseId) {
+    return (
+      await apiRequest(`/api/v1/courses/${encodeURIComponent(courseId)}/summary`, {
+        schema: CourseSummaryResponseSchema,
+      })
+    ).data;
+  },
+  async getWeekly(isoWeek) {
+    return (
+      await apiRequest(`/api/v1/history/weeks/${encodeURIComponent(isoWeek)}`, {
+        schema: WeeklyResponseSchema,
+      })
+    ).data;
+  },
+  async getWeeklyReport(localWeekKey) {
+    return (
+      await apiRequestOptional(`/api/v1/weekly-reports/${encodeURIComponent(localWeekKey)}`, {
+        schema: WeeklyReportResponseSchema,
+      })
+    ).data;
+  },
 };

@@ -1,0 +1,12 @@
+{
+  "name": "@learning-more/host",
+  "version": "0.0.0-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js run",
+    "test": "vitest run --root ../.. apps/host",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

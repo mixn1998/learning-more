@@ -33,6 +33,10 @@ function projectionError(): Error & { code: string } {
   return Object.assign(new Error('projection_incomplete'), { code: 'projection_incomplete' });
 }
 
+function notFound(): Error & { code: string } {
+  return Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+}
+
 function requireSnapshot<T>(view: T | undefined): T {
   if (view === undefined) throw projectionError();
   return view;
@@ -139,9 +143,10 @@ export async function registerLearningFactsRoutes(
     try {
       const isoWeek = IsoWeekSchema.parse((request.params as { isoWeek: string }).isoWeek);
       const view = requireSnapshot(await options.queries.getWeekly());
+      const { weeks, ...projection } = view;
       return sendProjection(reply, {
-        ...view,
-        week: view.weeks.find((item) => item.isoWeek === isoWeek),
+        ...projection,
+        week: weeks.find((item) => item.isoWeek === isoWeek),
       });
     } catch (error) {
       const problem = mapApplicationError(error, 'weekly_query');
@@ -153,7 +158,7 @@ export async function registerLearningFactsRoutes(
     try {
       const key = IsoWeekSchema.parse((request.params as { localWeekKey: string }).localWeekKey);
       const report = await options.queries.getWeeklyReport(key);
-      if (report === undefined) throw projectionError();
+      if (report === undefined) throw notFound();
       return reply.header('etag', `"${report.resourceVersion}"`).code(200).send(report);
     } catch (error) {
       const problem = mapApplicationError(error, 'weekly_report_query');

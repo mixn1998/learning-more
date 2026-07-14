@@ -1,7 +1,7 @@
 # Learning MORE 正式前端完整版设计规格
 
-> 日期：2026-07-13
-> 状态：以当前工程与 29 个现行 HTML 样稿为施工基准
+> 日期：2026-07-13，2026-07-14 完成验收更新
+> 状态：正式前端与后端闭环已实现，29 个 HTML 样稿保留为视觉基准
 > 适用范围：`apps/web`、`packages/ui`、前端共享合同、前端所需 HTTP 接口、视觉与端到端测试
 
 ## 1. 设计目标
@@ -12,7 +12,7 @@
 - `packages/ui` 是唯一视觉 token、布局原语、通用组件和 AI 内容排版来源；
 - 当前 29 个 HTML 样稿是冻结的视觉与交互参照，不承担生产业务；
 - React 页面使用真实 API、SSE、服务端权威状态、幂等键和版本保护；
-- 29 个样稿在桌面、平板、移动端形成 87 张权威迁移基线；
+- 29 个样稿在桌面、平板、移动端形成 87 张权威迁移基线；九模式主页交互另形成 24 张非默认模式派生基线，共 111 张视觉参照；
 - React 全页视觉差异不超过 0.3%，关键组件差异不超过 0.1%；
 - 视觉风格、界面版式、字体、间距、九模式身份和响应式与现行样稿保持一致；
 - 全部 AI 生成内容统一为“标题黑体、中文正文宋体、英文正文 Times New Roman、代码等宽”。
@@ -24,7 +24,7 @@
 3. **共享基础 + 纵向切片**：共享视觉基础先稳定，每个业务切片随后交付可运行闭环；
 4. **视觉单源**：样稿 token 迁入 `packages/ui` 后，Feature 不再维护独立颜色、字体、间距或弹窗样式；
 5. **状态显式**：loading、empty、error、degraded、rebuilding、conflict、readonly 和完成态都必须有确定 UI；
-6. **测试先保护存量**：视觉改造不能降低现有 461 个测试、9 条浏览器闭环和 75 条等价断言；
+6. **测试先保护存量**：视觉改造不能降低现有 560 个测试、9 条浏览器闭环和 75 条等价断言；
 7. **跨层缺口真实补齐**：需要新接口的操作在合同和服务端实现后再接前端，不用本地假状态绕过。
 
 ## 3. 权威输入
@@ -74,6 +74,17 @@ apps/server HTTP/SSE
 
 不引入新的全局状态库。可由 URL 或服务端重建的状态不进入全局内存 Store。
 
+### 4.3 单地址运行与自愈边界
+
+- 用户只访问 `http://127.0.0.1:43119/`；
+- Launcher 在 43119 常驻托管生产 React 静态文件、控制面和 `/api` 反向代理；
+- 43120 是内部后端端口，不作为用户地址，也不要求用户手工启动或切换；
+- 后端首次启动失败、异常退出或重启期间，Launcher 与静态网站继续可用，运行状态进入 `degraded/restarting`；
+- 运行中心通过同源控制面完成状态查看、诊断、重连和前端同步；控制动作失败返回可恢复的 503，不终止 Launcher；
+- 内部后端异常退出采用有界退避自动重启，第六次短周期崩溃进入 restart-storm 阻断，避免无限重启；
+- `file://.../apps/web/index.html` 不是产品运行方式；误打开时自动跳转到唯一站点地址；
+- 5173 只用于开发热更新，不出现在用户试用、发布或运维流程中。
+
 ## 5. `packages/ui` 正式设计系统
 
 ### 5.1 Token
@@ -118,7 +129,9 @@ apps/server HTTP/SSE
 
 `standard`、`brainstorm`、`argument_clash`、`case_study`、`business_insight`、`process_decomposition`、`decision_analysis`、`cross_explore`、`reading_seminar`。
 
-模式 ID 和业务状态沿用当前 React 注册表；label、prompt、颜色、图标和 motif 与样稿 `mode-themes.js` 对齐。模式色只表达课程来源身份，不覆盖成功、警告、错误、已放弃、只读和重建等全局语义状态。
+模式 ID 和业务状态沿用当前 React 注册表；label、prompt、颜色、图标和 motif 与样稿 `mode-themes.js` 对齐。用户点击任一玩法时，React 必须在同一交互回合把 `accent`、`accent-dark`、`tint` 同步到文档根节点及正式 `--lm-*` token，使提示徽标、输入边框与阴影、主按钮、选中态和后续建档工作台整体换色。模式色只表达课程来源身份，不覆盖成功、警告、错误、已放弃、只读和重建等全局语义状态。
+
+除默认 standard 的三视口主页基线外，其余八种模式必须逐一点击，并在 1440、1024、390 三视口验证根 token、计算色值、动态文案、焦点回到主题输入框和全页截图，共 24 个派生状态。不得只验证默认模式或仅验证模式卡自身。
 
 ## 6. 字体与 AI 内容排版
 
@@ -128,7 +141,7 @@ apps/server HTTP/SSE
 | --- | --- |
 | 产品导航、按钮、表单、标签、用户消息、统计数字、系统状态 | `Inter, "PingFang SC", "Microsoft YaHei", sans-serif` |
 | AI 标题 `h1`–`h6` | `SimHei, "黑体", "Microsoft YaHei", sans-serif` |
-| AI 正文、列表、引用、表格正文 | `"Times New Roman", SimSun, "宋体", serif` |
+| AI 正文、列表、引用、表格正文 | `"Times New Roman", SimSun, "宋体", serif`，统一 700 字重 |
 | Markdown 代码、诊断代码、快捷键 | 项目统一等宽字体 |
 
 正文栈把 Times New Roman 放在最前，使英文、拉丁数字和常用西文标点优先使用 Times New Roman；缺失的中文字符回退到 SimSun/宋体。
@@ -143,6 +156,9 @@ apps/server HTTP/SSE
   --lm-font-code: "Cascadia Mono", Consolas, monospace;
   --lm-ai-prose-size: 16px;
   --lm-ai-prose-line-height: 1.8;
+  --lm-ai-prose-weight: 700;
+  --lm-ai-dialogue-size: 14px;
+  --lm-ai-dialogue-line-height: 1.9;
   --lm-ai-block-gap: 0.75em;
   --lm-ai-section-gap: 1.5em;
 }
@@ -151,6 +167,7 @@ apps/server HTTP/SSE
   font-family: var(--lm-font-ai-serif);
   font-size: var(--lm-ai-prose-size);
   line-height: var(--lm-ai-prose-line-height);
+  font-weight: var(--lm-ai-prose-weight);
   font-kerning: normal;
   letter-spacing: normal;
   overflow-wrap: anywhere;
@@ -166,7 +183,7 @@ apps/server HTTP/SSE
 }
 ```
 
-标题层级固定为 `h1 28px/1.35`、`h2 22px/1.4`、`h3 18px/1.45`；`h4`–`h6` 保持清晰递减。段落、列表、引用、表格和代码块之间使用共享 block gap；标题与上一内容使用 section gap；首尾多余 margin 归零。
+标题层级固定为 `h1 28px/1.35`、`h2 22px/1.4`、`h3 18px/1.45`；`h4`–`h6` 保持清晰递减。长篇 AI 内容使用 `16px/1.8`，对话密度变体使用 `14px/1.9`，两者均来自共享 token。段落、列表、引用、表格和代码块之间使用共享 block gap；标题与上一内容使用 section gap；首尾多余 margin 归零。
 
 ### 6.3 必须应用 `AiContent` 的内容
 
@@ -413,7 +430,7 @@ apps/server HTTP/SSE
 
 ### 12.1 基线集合
 
-29 个 HTML 样稿分别在三个固定视口截图，共 **87 张 HTML 权威迁移基线**。每个状态记录：
+29 个 HTML 样稿分别在三个固定视口截图，共 **87 张 HTML 权威迁移基线**。主页其余八种玩法分别在三个固定视口执行真实点击后截图，增加 **24 张模式交互派生基线**，全页视觉参照合计 **111 张**。关键组件另建裁切基线，不计入 111 张全页集合；首批覆盖运行状态、语义状态组和模式身份卡三个组件的三视口，共 9 张。每个状态记录：
 
 - HTML 文件；
 - React 路由或 visual Fixture；
@@ -422,7 +439,7 @@ apps/server HTTP/SSE
 - 页面稳定标记；
 - 关键组件截图区域。
 
-React 页面通过迁移后，保留对应 React 长期基线。HTML 基线证明迁移忠实度，React 基线保护后续产品回归。
+React 页面通过迁移后，保留对应 React 长期基线。HTML 基线证明迁移忠实度，React 基线保护后续产品回归。模式派生基线同时校验全局 token 计算值，不能用仅局部换色的截图代替。
 
 ### 12.2 确定性环境
 
@@ -452,7 +469,7 @@ React 页面通过迁移后，保留对应 React 长期基线。HTML 基线证�
 | 合同 | 前后端 Schema、OpenAPI、ETag 和 Problem union |
 | 业务 E2E | 真实 Web/Server、临时数据根、Mock Provider、成功与恢复路径 |
 | Runtime E2E | Launcher、Provider、端口、身份、自愈和版本阻断 |
-| Visual | 87 张 HTML 对照、React 长期截图、关键组件差异 |
+| Visual | 87 张 HTML 对照、24 张模式交互派生对照、React 长期截图、首批 9 张及后续关键组件裁切差异 |
 | 静态审计 | 死链接、死按钮、溢出、字体映射、禁止 Feature 覆盖 token |
 | 全仓门禁 | format、lint、typecheck、schema、architecture、equivalence、test、build |
 
@@ -466,7 +483,7 @@ AI 排版测试必须覆盖中文、英文、中英混排、Markdown 标题、�
 - 所有页面通过真实 API/SSE，不使用样稿模拟逻辑；
 - 当前可复用业务闭环保持通过；
 - 规划等跨层增量完成合同、服务端、Client、Feature 和 E2E；
-- 87 张 HTML 迁移基线与全部 React 长期基线通过阈值；
+- 87 张 HTML 迁移基线、24 张模式交互派生基线与全部 React 长期基线通过阈值；
 - 全页差异 ≤0.3%，关键组件差异 ≤0.1%；
 - 所有 AI 内容通过 `AiContent`，计算字体和垂直节奏符合本规格；
 - 三视口无溢出、裁切、遮挡和不可用控件；

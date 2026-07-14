@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "dev": "vite",
+    "dev:visual": "vite --mode visual",
     "test": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm --filter @learning-more/ui build && vitest run --root ../.. apps/web",
     "typecheck": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm --filter @learning-more/ui build && tsc -p tsconfig.json --noEmit"
   },
