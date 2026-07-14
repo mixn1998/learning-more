@@ -3,7 +3,9 @@
 .pnpm-home/
 .npm-cache/
 .playwright-browsers/
+.learning-more-build.json
 .learning-more-data/
+.learning-more-local/
 .learning-more-runtime/
 .learning-more-runtime-debug/
 .superpowers/
