@@ -16,6 +16,7 @@ export function StatusBanner({ status, message }: StatusBannerProps) {
   return (
     <div
       aria-live={isAlert ? 'assertive' : 'polite'}
+      className="lm-status-banner"
       data-status={status}
       role={isAlert ? 'alert' : 'status'}
     >
