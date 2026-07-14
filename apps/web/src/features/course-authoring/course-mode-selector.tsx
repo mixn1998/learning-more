@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 import type { CourseMode } from '@learning-more/contracts';
 
 import { COURSE_MODE_REGISTRY } from '../../course-mode-registry.js';
@@ -6,7 +8,41 @@ export function CourseModeSelector(props: {
   readonly value: CourseMode;
   readonly onChange: (mode: CourseMode) => void;
   readonly onMaterialSelected?: (file: File) => void;
+  readonly variant?: 'grid' | 'rail';
 }) {
+  if (props.variant === 'rail') {
+    return (
+      <div aria-label="课程模式" className="mode-rail lm-card" role="radiogroup">
+        <header>
+          <strong>选择模式</strong>
+        </header>
+        {COURSE_MODE_REGISTRY.map((mode) => (
+          <button
+            key={mode.id}
+            aria-checked={props.value === mode.id}
+            className="mode-card"
+            data-mode={mode.id}
+            role="radio"
+            style={
+              {
+                '--card-accent': mode.accent,
+                '--card-tint': mode.tint,
+              } as CSSProperties
+            }
+            type="button"
+            onClick={() => props.onChange(mode.id)}
+          >
+            <i aria-hidden="true">{mode.icon}</i>
+            <div>
+              <b>{mode.label}</b>
+              <span>{mode.subtitle}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <fieldset className="course-mode-grid">
       <legend>课程模式</legend>

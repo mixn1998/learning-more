@@ -20,6 +20,54 @@ const unitOfWork = {
 };
 
 describe('durable generation scheduler [EQ-GEN-01]', () => {
+  it('publishes each Provider health and live model catalog through one runtime seam', async () => {
+    const repositories = createInMemoryRepositories();
+    const listModels = vi.fn(async () => [
+      {
+        id: 'gpt-5.6-sol',
+        displayName: 'GPT-5.6-Sol',
+        defaultReasoningEffort: 'low',
+        supportedReasoningEfforts: ['low', 'ultra'],
+      },
+    ]);
+    const startAuthentication = vi.fn(async () => 'started' as const);
+    const provider = Object.assign(
+      createMockProvider({ id: 'codex-cli', script: [{ type: 'text', text: 'answer' }] }),
+      { listModels, startAuthentication },
+    );
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [provider],
+    });
+
+    await expect(runtime.getProviderCatalog({ refresh: true })).resolves.toEqual({
+      providers: [
+        {
+          providerId: 'codex-cli',
+          capabilities: {
+            id: 'codex-cli',
+            kind: 'mock',
+            maxConcurrency: 8,
+            supportsStreaming: true,
+          },
+          health: { status: 'healthy' },
+          models: [
+            {
+              id: 'gpt-5.6-sol',
+              displayName: 'GPT-5.6-Sol',
+              defaultReasoningEffort: 'low',
+              supportedReasoningEfforts: ['low', 'ultra'],
+            },
+          ],
+        },
+      ],
+    });
+    expect(listModels).toHaveBeenCalledWith({ refresh: true });
+    await expect(runtime.startProviderAuthentication('codex-cli')).resolves.toBe('started');
+    expect(startAuthentication).toHaveBeenCalledOnce();
+  });
+
   it('enforces real-provider, background, owner, and Mock concurrency ceilings', () => {
     const base: GenerationTask = {
       id: 'task_base',
@@ -227,6 +275,80 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     await expect(runtime.get(second.taskId)).resolves.toMatchObject({
       providerId: 'new',
       draftMarkdown: 'new-output',
+    });
+  });
+
+  it('falls back before the first delta and never switches after output starts', async () => {
+    const repositories = createInMemoryRepositories();
+    const primary = createMockProvider({
+      script: [{ type: 'fail', error: new Error('offline') }],
+      id: 'primary',
+    });
+    const backup = createMockProvider({ script: [{ type: 'text', text: 'backup' }], id: 'backup' });
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [primary, backup],
+      nextId: () => 'task-fallback',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    await runtime.submit({
+      taskKey: 'fallback',
+      inputSnapshotHash: 'fallback',
+      taskKind: 'chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner',
+      providerId: 'primary',
+      fallbackProviderIds: ['backup'],
+      maxAttempts: 2,
+      priority: 100,
+      prompt: 'hello',
+      model: 'gpt-5.6-sol',
+    });
+    await runtime.runNext();
+    await expect(runtime.get('task-fallback')).resolves.toMatchObject({
+      status: 'completed',
+      providerId: 'primary',
+      model: 'gpt-5.6-sol',
+      draftMarkdown: 'backup',
+      attempts: [
+        expect.objectContaining({ providerId: 'primary', status: 'failed', emittedDelta: false }),
+        expect.objectContaining({ providerId: 'backup', status: 'completed', emittedDelta: true }),
+      ],
+    });
+
+    const primaryWithOutput = createMockProvider({
+      id: 'primary-output',
+      script: [
+        { type: 'text', text: 'partial' },
+        { type: 'fail', error: new Error('after-output') },
+      ],
+    });
+    const backupSpy = vi.spyOn(backup, 'generate');
+    const secondRuntime = createGenerationRuntime({
+      repository: createInMemoryRepositories().generationTasks,
+      unitOfWork,
+      providers: [primaryWithOutput, backup],
+      nextId: () => 'task-no-fallback',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    await secondRuntime.submit({
+      taskKey: 'no-fallback',
+      inputSnapshotHash: 'no-fallback',
+      taskKind: 'chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner',
+      providerId: 'primary-output',
+      fallbackProviderIds: ['backup'],
+      maxAttempts: 2,
+      priority: 100,
+      prompt: 'hello',
+    });
+    await secondRuntime.runNext();
+    expect(backupSpy).not.toHaveBeenCalled();
+    await expect(secondRuntime.get('task-no-fallback')).resolves.toMatchObject({
+      status: 'failed',
+      draftMarkdown: 'partial',
     });
   });
 

@@ -70,6 +70,13 @@ const revision = {
   courseGoals: ['理解概率'],
   disciplineTag: '数学',
   topicTags: ['概率'],
+  modules: [
+    {
+      id: 'module_probability',
+      title: '概率基础',
+      lessonIds: ['probability-space'],
+    },
+  ],
   lessons: [
     {
       id: 'probability-space',

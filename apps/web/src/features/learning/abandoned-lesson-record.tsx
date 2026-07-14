@@ -1,34 +1,41 @@
+import { LessonNavigationWorkspace } from './lesson-navigation-workspace.js';
+
 export function AbandonedLessonRecord(props: {
   readonly learnedPoints: readonly string[];
   readonly remainingPoints: readonly string[];
   readonly stageReviewMarkdown?: string;
+  readonly title?: string;
+  readonly courseTitle?: string;
+  readonly outlineVersionLabel?: string;
   readonly onViewRecord: () => void;
   readonly onRestore: () => void;
+  readonly onBackToOutline?: () => void;
+  readonly onBackHome?: () => void;
 }) {
   return (
-    <section aria-label="已放弃课节恢复导航">
-      <h1>已放弃 · 恢复学习</h1>
-      <h2>已学习核心知识点</h2>
-      <ul>
-        {props.learnedPoints.map((point) => (
-          <li key={point}>{point}</li>
-        ))}
-      </ul>
-      <h2>待完成核心知识点</h2>
-      <ul>
-        {props.remainingPoints.map((point) => (
-          <li key={point}>{point}</li>
-        ))}
-      </ul>
-      {props.stageReviewMarkdown === undefined ? null : (
-        <article aria-label="现存阶段 Review">{props.stageReviewMarkdown}</article>
-      )}
-      <button type="button" onClick={props.onViewRecord}>
-        查看记录
-      </button>
-      <button type="button" onClick={props.onRestore}>
-        恢复学习
-      </button>
-    </section>
+    <LessonNavigationWorkspace
+      courseTitle={props.courseTitle ?? '当前课程'}
+      {...(props.outlineVersionLabel === undefined
+        ? {}
+        : { outlineVersionLabel: props.outlineVersionLabel })}
+      points={[
+        ...props.learnedPoints.map((point) => ({
+          marker: '✓',
+          title: `已学习：${point}`,
+          description: '此知识点已在冻结的原始学习会话中形成可追溯证据。',
+        })),
+        ...props.remainingPoints.map((point) => ({
+          marker: '→',
+          title: `待完成：${point}`,
+          description: '恢复同一会话后继续推进，不会把既有学习证据重新计入。',
+        })),
+      ]}
+      state="abandoned"
+      title={props.title ?? '恢复当前课节'}
+      onBackHome={props.onBackHome ?? (() => undefined)}
+      onBackToOutline={props.onBackToOutline ?? (() => undefined)}
+      onPrimary={props.onRestore}
+      onViewRecord={props.onViewRecord}
+    />
   );
 }

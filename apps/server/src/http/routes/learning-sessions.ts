@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import {
@@ -7,38 +9,49 @@ import {
   GenerationStoppedResponseSchema,
   GenerationTaskAcceptedResponseSchema,
   LessonSessionStartedResponseSchema,
+  LearningSessionViewResponseSchema,
+  LessonRecordResponseSchema,
+  LessonEntryStateResponseSchema,
   StartLessonSessionBodySchema,
   StartSupplementarySessionBodySchema,
   StopLessonGenerationBodySchema,
   SupplementarySessionResponseSchema,
 } from '@learning-more/contracts';
+import type { LessonRecordView } from '@learning-more/contracts';
 
-import type {
-  LearningSessionModule,
-  SessionGenerationCoordinator,
-  SessionGenerationInputManifest,
-} from '../../modules/learning-session/interface.js';
+import type { LearningSessionModule } from '../../modules/learning-session/interface.js';
+import type { InteractiveTeaching } from '../../modules/interactive-teaching/interface.js';
 import { buildCommandContext, buildQueryContext } from '../command-context.js';
 import { mapApplicationError } from '../error-mapper.js';
-import { classifyUserLearningMessage } from '../../modules/learning-session/implementation/evidence-checkpoint.js';
 
-type SessionReference = Omit<SessionGenerationInputManifest, 'userMessageId'>;
+type SessionReference = Readonly<{
+  courseId: string;
+  lessonId: string;
+  sessionId: string;
+}>;
 
 export type LearningSessionRouteOptions = Readonly<{
   module: LearningSessionModule;
-  generation: SessionGenerationCoordinator;
+  teaching: InteractiveTeaching;
   resolveSession(sessionId: string): Promise<SessionReference>;
   saveUserMessage(messageId: string, markdown: string): Promise<string>;
   loadArtifactMarkdown?(artifactRef: string): Promise<string | undefined>;
-  getLessonRecord?(lessonId: string): Promise<{
+  listSessionMessages?(sessionId: string): Promise<
+    readonly Readonly<{
+      id: string;
+      role: 'user' | 'assistant';
+      createdAt: string;
+      contentArtifactRef: string;
+      generationTaskId?: string | undefined;
+    }>[]
+  >;
+  getLessonRecord?(lessonId: string): Promise<LessonRecordView>;
+  getLessonEntryState?(lessonId: string): Promise<{
     lessonId: string;
-    original: { sessionId: string; label: string; messages: readonly string[] };
-    supplementary: readonly {
-      sessionId: string;
-      label: string;
-      messages: readonly string[];
-    }[];
-    finalReviewMarkdown: string;
+    progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
+    sessionId?: string;
+    stageReviewMarkdown?: string;
+    resourceVersion: number;
   }>;
   nextCommandId(): string;
   nextCorrelationId(): string;
@@ -75,13 +88,36 @@ export async function registerLearningSessionRoutes(
   app: FastifyInstance,
   options: LearningSessionRouteOptions,
 ): Promise<void> {
+  if (options.getLessonEntryState !== undefined) {
+    app.get<{ Params: { lessonId: string } }>(
+      '/api/v1/lessons/:lessonId/learning-state',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          const state = LessonEntryStateResponseSchema.parse(
+            await options.getLessonEntryState!(request.params.lessonId),
+          );
+          return reply.header('etag', `"${state.resourceVersion}"`).code(200).send(state);
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+  }
   if (options.getLessonRecord !== undefined) {
     app.get<{ Params: { lessonId: string } }>(
       '/api/v1/lessons/:lessonId/record',
       async (request, reply) => {
         const correlation = correlationId(request, options);
         try {
-          return reply.code(200).send(await options.getLessonRecord!(request.params.lessonId));
+          return reply
+            .code(200)
+            .send(
+              LessonRecordResponseSchema.parse(
+                await options.getLessonRecord!(request.params.lessonId),
+              ),
+            );
         } catch (error) {
           const problem = mapApplicationError(error, correlation);
           return reply.code(problem.status).send(problem);
@@ -203,23 +239,15 @@ export async function registerLearningSessionRoutes(
           requireIfMatch: true,
           requirePageInstanceId: true,
         });
-        const appended = await options.module.execute(
+        const task = await options.teaching.advanceTurn(
           {
-            type: 'AppendUserMessage',
+            courseId: reference.courseId,
             lessonId: reference.lessonId,
-            messageId,
-            contentArtifactRef,
-            establishesEvidence: classifyUserLearningMessage(body.markdown),
+            sessionId: reference.sessionId,
+            userMessageId: messageId,
+            userContentArtifactRef: contentArtifactRef,
           },
           context,
-        );
-        const task = await options.generation.request(
-          {
-            ...reference,
-            userMessageId: messageId,
-            currentMessageRefs: [...reference.currentMessageRefs, contentArtifactRef],
-          },
-          { ...context, expectedVersion: appended.value.resourceVersion },
         );
         const response = GenerationTaskAcceptedResponseSchema.parse(task);
         return reply.header('etag', `"${response.resourceVersion}"`).code(202).send(response);
@@ -271,7 +299,7 @@ export async function registerLearningSessionRoutes(
       const correlation = correlationId(request, options);
       try {
         const body = StopLessonGenerationBodySchema.parse(request.body);
-        const reference = await options.resolveSession(request.params.sessionId);
+        await options.resolveSession(request.params.sessionId);
         const context = buildCommandContext(request, {
           commandId: options.nextCommandId(),
           correlationId: correlation,
@@ -279,15 +307,18 @@ export async function registerLearningSessionRoutes(
           requireIfMatch: true,
           requirePageInstanceId: true,
         });
-        const result = await options.generation.stop(
+        const result = await options.teaching.stopTurn(
           {
-            lessonId: reference.lessonId,
             sessionId: request.params.sessionId,
             taskId: body.taskId,
           },
           context,
         );
-        const response = GenerationStoppedResponseSchema.parse(result);
+        const response = GenerationStoppedResponseSchema.parse({
+          taskId: result.taskId,
+          draftArtifactRef: result.draftArtifactRef,
+          resourceVersion: result.resourceVersion,
+        });
         return reply.header('etag', `"${response.resourceVersion}"`).code(200).send(response);
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
@@ -310,20 +341,66 @@ export async function registerLearningSessionRoutes(
           view.finalReview === undefined
             ? undefined
             : await options.loadArtifactMarkdown?.(view.finalReview.artifactRef);
-        return reply
-          .header('etag', `"${view.resourceVersion}"`)
-          .code(200)
-          .send({
-            ...view,
-            ...(view.finalReview === undefined
-              ? {}
-              : {
-                  finalReview: {
-                    ...view.finalReview,
-                    ...(markdown === undefined ? {} : { markdown }),
-                  },
-                }),
-          });
+        const storedMessages =
+          options.listSessionMessages === undefined
+            ? undefined
+            : await options.listSessionMessages(request.params.sessionId);
+        const messages =
+          storedMessages === undefined
+            ? undefined
+            : await Promise.all(
+                storedMessages.map(async (message) => ({
+                  id: message.id,
+                  role: message.role,
+                  createdAt: message.createdAt,
+                  markdown:
+                    (await options.loadArtifactMarkdown?.(message.contentArtifactRef)) ?? '',
+                  ...(message.generationTaskId === undefined
+                    ? {}
+                    : { generationTaskId: message.generationTaskId }),
+                })),
+              );
+        const sourceMessageIds = messages?.map((message) => message.id) ?? [];
+        const sessionSnapshotHash =
+          view.learning.session === undefined
+            ? undefined
+            : createHash('sha256')
+                .update(
+                  JSON.stringify({
+                    lessonId: view.learning.lessonId,
+                    sessionId: view.learning.session.id,
+                    resourceVersion: view.resourceVersion,
+                    sourceMessageIds,
+                  }),
+                )
+                .digest('hex');
+        const closurePreparation =
+          view.learning.session === undefined || sourceMessageIds.length === 0
+            ? undefined
+            : {
+                sessionId: view.learning.session.id,
+                sourceSessionIds: [view.learning.session.id],
+                sourceMessageIds,
+                messageRangeChecksum: createHash('sha256')
+                  .update(JSON.stringify({ sessionId: view.learning.session.id, sourceMessageIds }))
+                  .digest('hex'),
+                endIntent: '完成本课并生成最终 Review',
+              };
+        const response = LearningSessionViewResponseSchema.parse({
+          ...view,
+          ...(sessionSnapshotHash === undefined ? {} : { sessionSnapshotHash }),
+          ...(messages === undefined ? {} : { messages }),
+          ...(closurePreparation === undefined ? {} : { closurePreparation }),
+          ...(view.finalReview === undefined
+            ? {}
+            : {
+                finalReview: {
+                  ...view.finalReview,
+                  ...(markdown === undefined ? {} : { markdown }),
+                },
+              }),
+        });
+        return reply.header('etag', `"${view.resourceVersion}"`).code(200).send(response);
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);

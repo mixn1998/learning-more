@@ -35,17 +35,14 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
   it('freezes and restores the same evidenced original session', () => {
     let learning = createLessonLearning('lesson_01');
     learning = apply(learning, { type: 'start', sessionId: 'session_01' }, 'c1');
-    learning = apply(
-      learning,
-      { type: 'appendUserMessage', messageId: 'message_01', establishesEvidence: true },
-      'c2',
-    );
-    learning = apply(learning, { type: 'abandon' }, 'c3');
+    learning = apply(learning, { type: 'appendUserMessage', messageId: 'message_01' }, 'c2');
+    learning = apply(learning, { type: 'establishEvidenceCheckpoint' }, 'c3');
+    learning = apply(learning, { type: 'abandon' }, 'c4');
     expect(learning).toMatchObject({
       progress: 'abandoned',
       session: { id: 'session_01', state: 'frozen', evidenceCheckpoint: true },
     });
-    learning = apply(learning, { type: 'restore' }, 'c4');
+    learning = apply(learning, { type: 'restore' }, 'c5');
     expect(learning).toMatchObject({
       progress: 'in_progress',
       session: { id: 'session_01', state: 'active' },
@@ -70,12 +67,9 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
     expect(() => decide(learning, { type: 'start', sessionId: 'session_02' }, 'c2')).toThrow(
       expect.objectContaining({ code: 'session_conflict' }),
     );
-    learning = apply(
-      learning,
-      { type: 'appendUserMessage', messageId: 'message_01', establishesEvidence: true },
-      'c3',
-    );
-    learning = apply(learning, { type: 'commitFinalReview', reviewId: 'review_01' }, 'c4');
+    learning = apply(learning, { type: 'appendUserMessage', messageId: 'message_01' }, 'c3');
+    learning = apply(learning, { type: 'establishEvidenceCheckpoint' }, 'c4');
+    learning = apply(learning, { type: 'commitFinalReview', reviewId: 'review_01' }, 'c5');
     expect(learning).toMatchObject({
       progress: 'completed',
       session: { state: 'closed', finalReviewId: 'review_01' },
@@ -103,8 +97,8 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
       fc.record({
         type: fc.constant('appendUserMessage' as const),
         messageId: fc.uuid(),
-        establishesEvidence: fc.boolean(),
       }),
+      fc.constant<LearningSessionCommand>({ type: 'establishEvidenceCheckpoint' }),
       fc.record({ type: fc.constant('startGeneration' as const), taskId: fc.uuid() }),
       fc.constant<LearningSessionCommand>({ type: 'stopGeneration' }),
       fc.constant<LearningSessionCommand>({ type: 'abandon' }),

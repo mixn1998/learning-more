@@ -33,7 +33,26 @@ const CourseModeSchema = z.enum([
   'cross_explore',
   'reading_seminar',
 ]);
-const OutlineSessionRecordSchema = z.strictObject({
+function migrateOutlineSessionRecord(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  const rawSession = record.session;
+  if (typeof rawSession !== 'object' || rawSession === null || Array.isArray(rawSession)) {
+    return value;
+  }
+  const session = rawSession as Record<string, unknown>;
+  const { assessmentArtifactId: _legacyAssessmentArtifactId, ...currentSession } = session;
+  void _legacyAssessmentArtifactId;
+  return {
+    ...record,
+    session: {
+      ...currentSession,
+      ...(session.state === 'ready-for-candidates' ? { state: 'assessment-ready' } : {}),
+    },
+  };
+}
+
+const CurrentOutlineSessionRecordSchema = z.strictObject({
   resourceVersion: z.number().int().nonnegative(),
   candidateCommandReceipts: z.record(z.string(), z.strictObject({ taskId: z.string() })),
   session: z.strictObject({
@@ -43,21 +62,79 @@ const OutlineSessionRecordSchema = z.strictObject({
     state: z.enum([
       'collecting-input',
       'assessing',
-      'ready-for-candidates',
+      'assessment-turn-running',
+      'assessment-ready',
+      'alignment-turn-running',
       'generating-candidates',
       'candidate-ready',
       'confirming',
       'confirmed',
     ]),
-    assessmentArtifactId: z.string().optional(),
+    messageIds: z.array(z.string()).default([]),
+    completedAssessmentRounds: z.number().int().nonnegative().default(0),
+    activeUserMessageId: z.string().optional(),
+    pendingAlignment: z
+      .strictObject({
+        action: z.enum(['regenerate', 'patch']),
+        targetModuleIds: z.array(z.string()),
+      })
+      .optional(),
     activeCandidateTaskId: z.string().optional(),
     candidateVersionIds: z.array(z.string()),
     latestCandidateVersionId: z.string().optional(),
     confirmingCandidateVersionId: z.string().optional(),
     confirmedCourseId: z.string().optional(),
+    savedAsDraft: z.boolean().optional(),
   }),
+  messages: z
+    .array(
+      z.strictObject({
+        messageId: z.string(),
+        role: z.enum(['user', 'assistant']),
+        content: z.string(),
+        status: z.enum(['complete', 'failed']),
+        createdAt: z.string(),
+        inReplyToMessageId: z.string().optional(),
+        alignmentAction: z.enum(['clarify', 'regenerate', 'patch']).optional(),
+        targetModuleIds: z.array(z.string()).optional(),
+      }),
+    )
+    .default([]),
 });
-const CandidateVersionSchema = z.strictObject({
+const OutlineSessionRecordSchema = z.preprocess(
+  migrateOutlineSessionRecord,
+  CurrentOutlineSessionRecordSchema,
+);
+function migrateCandidateVersion(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const version = value as Record<string, unknown>;
+  const rawCandidate = version.candidate;
+  if (
+    typeof rawCandidate !== 'object' ||
+    rawCandidate === null ||
+    Array.isArray(rawCandidate) ||
+    'modules' in rawCandidate
+  ) {
+    return value;
+  }
+  const candidate = rawCandidate as Record<string, unknown>;
+  if (!Array.isArray(candidate.lessons)) return value;
+  const modules = candidate.lessons.flatMap((rawLesson, index) => {
+    if (typeof rawLesson !== 'object' || rawLesson === null || Array.isArray(rawLesson)) return [];
+    const lesson = rawLesson as Record<string, unknown>;
+    if (typeof lesson.id !== 'string' || typeof lesson.title !== 'string') return [];
+    return [
+      {
+        id: `module_legacy_${index + 1}`,
+        title: lesson.title,
+        lessonIds: [lesson.id],
+      },
+    ];
+  });
+  return { ...version, candidate: { ...candidate, modules } };
+}
+
+const CurrentCandidateVersionSchema = z.strictObject({
   id: z.string(),
   outlineSessionId: z.string(),
   parentVersionId: z.string().optional(),
@@ -67,6 +144,7 @@ const CandidateVersionSchema = z.strictObject({
   createdAt: z.string(),
   resourceVersion: z.number().int().nonnegative(),
 });
+const CandidateVersionSchema = z.preprocess(migrateCandidateVersion, CurrentCandidateVersionSchema);
 const MaterialRecordSchema = z.strictObject({
   artifactRef: z.string(),
   outlineSessionId: z.string(),

@@ -1,4 +1,5 @@
 import type { CourseMode } from './commands.js';
+import type { StoredNextLessonRecommendation } from '../../next-lesson/interface.js';
 
 export interface CourseAggregate {
   readonly id: string;
@@ -6,7 +7,8 @@ export interface CourseAggregate {
   readonly courseMode: CourseMode;
   readonly outlineVersionId: string;
   readonly lessonIds: readonly string[];
-  readonly recommendedLessonId: string;
+  readonly recommendedLessonId?: string;
+  readonly nextLessonRecommendation?: StoredNextLessonRecommendation;
   readonly status: 'active' | 'closed';
   readonly closedAt?: string;
   readonly createdAt: string;

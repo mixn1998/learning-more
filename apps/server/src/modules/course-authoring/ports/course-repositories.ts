@@ -9,10 +9,12 @@ import {
 export interface CourseCreationRepositories {
   readonly courses: {
     get(id: string): Promise<CourseAggregate | undefined>;
+    list(): AsyncIterable<CourseAggregate>;
     save(tx: TransactionContext, course: CourseAggregate, expectedVersion: number): Promise<void>;
   };
   readonly outlineVersions: {
     get(id: string): Promise<ConfirmedOutlineVersion | undefined>;
+    listByCourse(courseId: string): AsyncIterable<ConfirmedOutlineVersion>;
     save(
       tx: TransactionContext,
       outline: ConfirmedOutlineVersion,
@@ -42,6 +44,9 @@ export function createInMemoryCourseCreationRepositories(): CourseCreationReposi
   return {
     courses: {
       get: async (id) => structuredClone(courses.get(id)),
+      async *list() {
+        for (const course of courses.values()) yield structuredClone(course);
+      },
       async save(_tx, value, expected) {
         const currentVersion = courses.get(value.id)?.resourceVersion ?? 0;
         if (currentVersion !== expected || value.resourceVersion !== expected) {
@@ -52,6 +57,11 @@ export function createInMemoryCourseCreationRepositories(): CourseCreationReposi
     },
     outlineVersions: {
       get: async (id) => structuredClone(outlines.get(id)),
+      async *listByCourse(courseId) {
+        for (const outline of outlines.values()) {
+          if (outline.courseId === courseId) yield structuredClone(outline);
+        }
+      },
       save: async (_tx, value, expected) => immutableSave(outlines, value, expected),
     },
     lessons: {

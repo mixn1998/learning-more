@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CandidateModelResponseSchema,
+  CandidateOutlineMetadataSchema,
   COURSE_MODES,
   CreateOutlineSessionBodySchema,
+  GenerationAcceptedResponseSchema,
   RequestCandidateGenerationBodySchema,
 } from './course-authoring.js';
 
@@ -32,5 +35,54 @@ describe('CourseAuthoring transport contracts', () => {
     expect(
       RequestCandidateGenerationBodySchema.safeParse({ prompt: 'private prompt' }).success,
     ).toBe(false);
+  });
+
+  it('keeps the candidate output contract separate from authoring context fields', () => {
+    const outline = {
+      courseGoals: ['理解概率模型'],
+      disciplineTag: '数学',
+      topicTags: ['概率'],
+      modules: [{ id: 'module_foundation', title: '基础', lessonIds: ['lesson_space'] }],
+      lessons: [
+        {
+          id: 'lesson_space',
+          title: '概率空间',
+          objective: '理解样本空间',
+          coreKnowledgePoints: ['样本空间'],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: ['source_topic'],
+        },
+      ],
+    };
+    expect(CandidateOutlineMetadataSchema.safeParse(outline).success).toBe(true);
+    expect(
+      CandidateModelResponseSchema.parse({
+        protocol: 'learning-more.candidate',
+        schemaVersion: 1,
+        outline,
+      }),
+    ).toMatchObject({ outline });
+    expect(
+      CandidateModelResponseSchema.safeParse({
+        schemaVersion: 2,
+        outlineSessionId: 'session_internal',
+        courseMode: 'standard',
+        topic: '概率论',
+        title: '概率论课程',
+        sourceRefs: ['source_topic'],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('transports the recoverable candidate failure category without exposing compiler details', () => {
+    expect(
+      GenerationAcceptedResponseSchema.parse({
+        taskId: 'task_01',
+        state: 'failed_recoverable',
+        failureCode: 'candidate_invalid',
+        resourceVersion: 3,
+      }),
+    ).toMatchObject({ failureCode: 'candidate_invalid' });
   });
 });

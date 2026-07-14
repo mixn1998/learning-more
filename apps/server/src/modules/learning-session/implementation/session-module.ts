@@ -45,15 +45,16 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
     return {
       type: 'appendUserMessage',
       messageId: command.messageId,
-      establishesEvidence: command.establishesEvidence,
     };
   }
   if (command.type === 'CommitAssistantMessage') {
     return {
       type: 'commitAssistantMessage',
       messageId: command.messageId,
-      establishesEvidence: command.establishesEvidence ?? true,
     };
+  }
+  if (command.type === 'EstablishEvidenceCheckpoint') {
+    return { type: 'establishEvidenceCheckpoint' };
   }
   if (command.type === 'StartSessionGeneration') {
     return { type: 'startGeneration', taskId: command.taskId };
@@ -259,6 +260,10 @@ export function createSessionModule(options: {
               ...(command.type === 'CommitAssistantMessage'
                 ? { generationTaskId: command.generationTaskId }
                 : {}),
+              completionStatus:
+                command.type === 'CommitAssistantMessage'
+                  ? (command.completionStatus ?? 'complete')
+                  : 'complete',
             });
           }
           if (events.length > 0) {

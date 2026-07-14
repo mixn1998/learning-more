@@ -60,6 +60,56 @@ function fixture(options: { assertLessonWritable?: (lessonId: string) => Promise
 }
 
 describe('LearningSession module', () => {
+  it('establishes evidence only from a validated teaching observation effect', async () => {
+    const { module } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_semantic_evidence', 'page_a'),
+    );
+    await module.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_01',
+        messageId: 'message_user_semantic',
+        contentArtifactRef: 'artifact:user:semantic',
+      },
+      { ...context('append_semantic', 'page_a'), expectedVersion: 1 },
+    );
+
+    expect(
+      (
+        await module.query(
+          { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+          {
+            correlationId: 'before',
+            actor: 'local-user',
+            requestedAt: nowIso(),
+            receivedAt: nowIso(),
+          },
+        )
+      ).learning.session?.evidenceCheckpoint,
+    ).toBe(false);
+
+    await module.execute(
+      { type: 'EstablishEvidenceCheckpoint', lessonId: 'lesson_01' },
+      { ...context('observe_semantic', 'page_a'), expectedVersion: 2 },
+    );
+
+    expect(
+      (
+        await module.query(
+          { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+          {
+            correlationId: 'after',
+            actor: 'local-user',
+            requestedAt: nowIso(),
+            receivedAt: nowIso(),
+          },
+        )
+      ).learning.session?.evidenceCheckpoint,
+    ).toBe(true);
+  });
+
   it('rejects a late session write after its course archive has entered permanent deletion', async () => {
     let deleted = false;
     const { module, messageLog } = fixture({
@@ -82,7 +132,6 @@ describe('LearningSession module', () => {
           lessonId: 'lesson_01',
           messageId: 'message_late',
           contentArtifactRef: 'artifact_late',
-          establishesEvidence: true,
         },
         { ...context('late_message', 'page_a'), expectedVersion: 1 },
       ),
@@ -125,7 +174,6 @@ describe('LearningSession module', () => {
       lessonId: 'lesson_01',
       messageId: 'message_user',
       contentArtifactRef: 'artifact:user',
-      establishesEvidence: true,
     };
     await module.execute(user, context('user', 'page_a'));
     await module.execute(user, context('user', 'page_a'));
@@ -184,7 +232,6 @@ describe('LearningSession module', () => {
           lessonId: 'lesson_01',
           messageId: 'old_writer',
           contentArtifactRef: 'artifact:old',
-          establishesEvidence: true,
         },
         { ...context('old', 'page_a'), expectedVersion: 2 },
       ),
@@ -239,23 +286,26 @@ describe('LearningSession module', () => {
         lessonId: 'lesson_01',
         messageId: 'evidence',
         contentArtifactRef: 'artifact:evidence',
-        establishesEvidence: true,
       },
       { ...context('evidence', 'page_a'), expectedVersion: 1 },
     );
     await module.execute(
+      { type: 'EstablishEvidenceCheckpoint', lessonId: 'lesson_01' },
+      { ...context('observed_evidence', 'page_a'), expectedVersion: 2 },
+    );
+    await module.execute(
       { type: 'AbandonLesson', lessonId: 'lesson_01' },
-      { ...context('abandon', 'page_a'), expectedVersion: 2 },
+      { ...context('abandon', 'page_a'), expectedVersion: 3 },
     );
     advance(30_000);
     await module.execute(
       { type: 'RestoreLesson', lessonId: 'lesson_01' },
-      { ...context('restore', 'page_a'), expectedVersion: 3 },
+      { ...context('restore', 'page_a'), expectedVersion: 4 },
     );
     advance(5_000);
     await module.execute(
       { type: 'PauseLesson', lessonId: 'lesson_01' },
-      { ...context('pause_final', 'page_a'), expectedVersion: 4 },
+      { ...context('pause_final', 'page_a'), expectedVersion: 5 },
     );
     expect(
       (
@@ -280,7 +330,7 @@ describe('LearningSession module', () => {
         sourceSessionIds: ['session_01'],
         messageRangeChecksum: 'b'.repeat(64),
       },
-      { ...context('complete', 'page_a'), expectedVersion: 5 },
+      { ...context('complete', 'page_a'), expectedVersion: 6 },
     );
     const completed = await module.query(
       { type: 'GetLessonLearning', lessonId: 'lesson_01' },

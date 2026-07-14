@@ -1,0 +1,198 @@
+import { createHash } from 'node:crypto';
+
+import type { GenerationRuntime } from '../../generation-runtime/interface.js';
+import type { GenerationExecution } from '../../generation-runtime/interface.js';
+import type { TeachingAgent } from '../ports/teaching-agent.js';
+import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
+
+const TEACHING_CAPABILITY = [
+  '依据提供的真实上下文继续当前互动式教学。',
+  '核心知识点是教学责任而不是固定顺序；根据学习者最新表达自由决定讲解、提问、案例、教学支线和节奏。',
+  '玩法意图只在出现自然教学机会时影响下一步选择，不必每回合显式呈现，也不规定输出形式。',
+  '与课程相关但不属于本课的问题属于课程邻接探索：可以自然展开，但不要冒充本课责任已经完成，也不要把未来课节自动记为已学习。',
+  '当课程邻接探索正在成为新的主要目标时，把选择权交给学习者：继续探索、暂存后回到本课，或以后补充学习。',
+  '对明显与课程无关的请求简短说明并邀请回到相关主题；不要用固定边界模板压制与课程有关的联想。',
+  '不要把缺少证据的掌握状态当作事实。只输出学习者可见的 Markdown。',
+].join('\n');
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function section(title: string, values: readonly string[]): string | undefined {
+  const content = values.map((value) => value.trim()).filter((value) => value.length > 0);
+  return content.length === 0 ? undefined : `【${title}】\n${content.join('\n')}`;
+}
+
+function knowledgeBackground(context: TeachingContextPackage): string[] {
+  const textByRef = new Map(
+    context.lesson.coreKnowledgePoints.map((point) => [point.ref, point.text] as const),
+  );
+  return context.teachingState.knowledgePoints.map((point) => {
+    const text = textByRef.get(point.ref) ?? '本课的一个知识责任点';
+    const delivery = point.delivery === 'explained' ? '已经讲解过' : '尚未讲解';
+    const evidence =
+      point.verification === 'supporting'
+        ? '学习者表现提供了支持性证据'
+        : point.verification === 'limiting'
+          ? '仍有需要处理的理解障碍'
+          : point.verification === 'mixed'
+            ? '现有表现相互混合，尚不能下结论'
+            : '尚未观察到足够的学习者证据';
+    return `- ${text}：${delivery}；${evidence}`;
+  });
+}
+
+function currentUserMessage(context: TeachingContextPackage): string {
+  return (
+    context.recentMessages.findLast(
+      (message) => message.role === 'user' && message.completionStatus === 'complete',
+    )?.markdown ?? ''
+  ).trim();
+}
+
+function priorConversation(context: TeachingContextPackage): string[] {
+  const visible = context.recentMessages.filter((message) => message.completionStatus !== 'failed');
+  const currentIndex = visible.findLastIndex(
+    (message) => message.role === 'user' && message.completionStatus === 'complete',
+  );
+  return visible.slice(0, Math.max(0, currentIndex)).map((message) => {
+    const partial = message.completionStatus === 'interrupted' ? '（未完成）' : '';
+    return `${message.role === 'user' ? '学习者' : '教学助手'}${partial}：${message.markdown.trim()}`;
+  });
+}
+
+export function renderTeachingConversationInput(context: TeachingContextPackage): string {
+  const relations = context.course.lessonMap.map(
+    (lesson) =>
+      `- ${lesson.title}（${lesson.relation === 'current' ? '本课' : lesson.relation === 'prerequisite' ? '前置课' : '相关课'}）：${lesson.objective}`,
+  );
+  const personalization = context.personalization.signals.map((signal) => {
+    const basis =
+      signal.explicitness === 'user_declared' ? '学习者曾明确说明' : '历史互动中的弱信号';
+    const limitations =
+      signal.limitations.length === 0 ? '' : `；使用时注意：${signal.limitations.join('；')}`;
+    return `- ${basis}：${signal.summary}${limitations}`;
+  });
+  const branches = context.teachingState.explorationBranches.map((branch) => {
+    const status =
+      branch.status === 'active'
+        ? '正在探索'
+        : branch.status === 'parked'
+          ? '已暂存'
+          : '已返回主线';
+    return `- ${branch.summary}（${status}）`;
+  });
+  const learnerSignals = context.teachingState.recentLearnerSignals.map((signal) =>
+    signal.explicitness === 'user_declared'
+      ? `- 学习者明确表达：${signal.summary}`
+      : `- 待继续验证的观察：${signal.summary}`,
+  );
+  const currentRequest = currentUserMessage(context);
+  if (currentRequest.length === 0) throw new Error('current_teaching_request_missing');
+  return [
+    TEACHING_CAPABILITY,
+    '下面是以学习者为中心整理的自然语言背景。它不是要展示给学习者的状态报告或字段清单。',
+    '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
+    '不要复述栏目名或内部状态，直接回应当前诉求。',
+    '',
+    `【已知学习背景】\n课程：${context.course.title}\n课程目标：${context.course.goals.join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
+    section('课程关系', relations),
+    context.course.playIntent === undefined
+      ? undefined
+      : `【互动关注】\n${context.course.playIntent}`,
+    context.learningStartSummary === undefined
+      ? undefined
+      : `【学习起点】\n${context.learningStartSummary.trim()}`,
+    section('本课知识责任与现有证据', knowledgeBackground(context)),
+    section(
+      '尚待处理的问题',
+      context.teachingState.openLoops.map((loop) => `- ${loop.summary}`),
+    ),
+    section('课程邻接探索', branches),
+    section('近期学习者信号', learnerSignals),
+    section('可用于个性化的背景', personalization),
+    section(
+      '相关 Review 摘要',
+      context.relevantFinalReviews.map((review) => review.markdown),
+    ),
+    section(
+      '相关学习材料',
+      context.readingMaterialExcerpts.map((material) => material.markdown),
+    ),
+    section('此前真实对话', priorConversation(context)),
+    `【当前诉求｜用户原话】\n${currentRequest}`,
+  ]
+    .filter((value): value is string => value !== undefined)
+    .join('\n\n');
+}
+
+export function createGenerationTeachingAgent(options: {
+  runtime: GenerationRuntime;
+  execution?: GenerationExecution;
+  providerId: string;
+}): TeachingAgent {
+  async function awaitTerminal(
+    taskId: string,
+    recover: boolean,
+  ): Promise<Awaited<ReturnType<GenerationRuntime['get']>>> {
+    if (options.execution !== undefined) {
+      return recover ? options.execution.recover(taskId) : options.execution.awaitTerminal(taskId);
+    }
+    if (recover) await options.runtime.recoverExpiredLeases();
+    let task = await options.runtime.get(taskId);
+    for (
+      let index = 0;
+      index < 1_000 && (task.status === 'queued' || task.status === 'running');
+      index += 1
+    ) {
+      const ran = await options.runtime.runNext();
+      task = await options.runtime.get(taskId);
+      if (ran === undefined && (task.status === 'queued' || task.status === 'running')) {
+        throw new Error('teaching_generation_scheduler_stalled');
+      }
+    }
+    return task;
+  }
+
+  return {
+    async submit(context) {
+      const expressionContext = renderTeachingConversationInput(context);
+      return (options.execution ?? options.runtime).submit({
+        taskKey: `interactive-teaching:${context.teachingState.sessionId}:${sha256(expressionContext)}`,
+        inputSnapshotHash: sha256(expressionContext),
+        taskKind: 'interactive-teaching',
+        taskGroup: 'interactive',
+        ownerRef: context.teachingState.sessionId,
+        providerId: options.providerId,
+        priority: 100,
+        prompt: expressionContext,
+      });
+    },
+    async complete(taskId) {
+      const task = await awaitTerminal(taskId, false);
+      if (task.status !== 'completed') throw new Error('teaching_generation_incomplete');
+      return { markdown: task.draftMarkdown ?? '' };
+    },
+    async recover(taskId) {
+      const task = await awaitTerminal(taskId, true);
+      if (task.status === 'completed') {
+        return { markdown: task.draftMarkdown ?? '', completionStatus: 'complete' };
+      }
+      if (task.status === 'cancelled') {
+        return { markdown: task.draftMarkdown ?? '', completionStatus: 'interrupted' };
+      }
+      return {
+        completionStatus: 'failed',
+        errorCode: task.errorCode ?? `teaching_generation_${task.status}`,
+      };
+    },
+    async stop(taskId) {
+      const task = await (options.execution ?? options.runtime).cancel(taskId);
+      return {
+        markdown: task.draftMarkdown ?? '',
+        completionStatus: 'interrupted',
+      };
+    },
+  };
+}

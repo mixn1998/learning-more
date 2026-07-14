@@ -1,5 +1,27 @@
+import {
+  BeginLessonClosureBodySchema,
+  CourseArchiveResponseSchema,
+  CourseReviewResponseSchema,
+  DeleteCourseArchiveResponseSchema,
+  GenerationStoppedResponseSchema,
+  GenerationTaskAcceptedResponseSchema,
+  LearningSessionCommandResponseSchema,
+  LearningSessionViewResponseSchema,
+  LessonClosureResponseSchema,
+  LessonEntryStateResponseSchema,
+  LessonPreviewResponseSchema,
+  LessonProgressCommandResponseSchema,
+  LessonSessionStartedResponseSchema,
+  SupplementarySessionResponseSchema,
+  type CourseArchiveView,
+  type CourseReviewView,
+  type LearningSessionCommandView,
+  type LearningSessionView,
+  type LessonClosureView,
+} from '@learning-more/contracts';
+
 import type { AuthoringStreamEvent } from './course-authoring-client.js';
-import { getPageInstanceId } from '../state/page-instance.js';
+import { apiRequest, apiRequestOptional, createCommandAttempt } from './api-client.js';
 import { streamGenerationEvents } from './sse-client.js';
 
 export interface LearningClient {
@@ -12,41 +34,26 @@ export interface LearningClient {
     coreKnowledgePoints: readonly string[];
     estimatedMinutes: number;
   }>;
-  getCourse(courseId: string): Promise<{
-    courseId: string;
-    title: string;
-    status: 'active' | 'closed';
-    courseMode: string;
-    outlineVersionId: string;
-    lessonIds: readonly string[];
+  getLessonState(lessonId: string): Promise<{
+    lessonId: string;
+    progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
+    sessionId?: string | undefined;
+    stageReviewMarkdown?: string | undefined;
     resourceVersion: number;
   }>;
+  getCourse(courseId: string): Promise<CourseArchiveView>;
   deleteCourse(
     courseId: string,
     resourceVersion: number,
-  ): Promise<{
-    courseId: string;
-    deletedAt: string;
-    portraitRefresh: 'updating';
-  }>;
+  ): Promise<{ courseId: string; deletedAt: string; portraitRefresh: 'updating' }>;
   start(lessonId: string): Promise<{
     lessonId: string;
     sessionId: string;
     resourceVersion: number;
     writable: boolean;
-    leaseToken?: string;
+    leaseToken?: string | undefined;
   }>;
-  getSession(sessionId: string): Promise<{
-    resourceVersion: number;
-    learning: {
-      progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
-      session?: {
-        state: 'active' | 'paused' | 'frozen' | 'closed';
-        activeGenerationTaskId?: string;
-      };
-    };
-    finalReview?: { id: string; markdown?: string };
-  }>;
+  getSession(sessionId: string): Promise<LearningSessionView>;
   sendMessage(input: {
     sessionId: string;
     markdown: string;
@@ -58,19 +65,27 @@ export interface LearningClient {
     taskId: string;
     resourceVersion: number;
   }): Promise<{ taskId: string; draftArtifactRef: string; resourceVersion: number }>;
-  pause(sessionId: string, resourceVersion: number): Promise<unknown>;
-  resume(sessionId: string, resourceVersion: number): Promise<unknown>;
-  transferLease(
-    sessionId: string,
+  pause(sessionId: string, resourceVersion: number): Promise<LearningSessionCommandView>;
+  resume(sessionId: string, resourceVersion: number): Promise<LearningSessionCommandView>;
+  transferLease(sessionId: string, resourceVersion: number): Promise<LearningSessionCommandView>;
+  abandon(
+    lessonId: string,
+    resourceVersion: number,
+    sourceSnapshotHash: string,
+  ): Promise<{
+    progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
+    resourceVersion: number;
+  }>;
+  restore(
+    lessonId: string,
     resourceVersion: number,
   ): Promise<{
+    progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
     resourceVersion: number;
-    leaseToken: string;
   }>;
-  abandon(lessonId: string, resourceVersion: number, sourceSnapshotHash: string): Promise<unknown>;
-  restore(lessonId: string, resourceVersion: number): Promise<unknown>;
-  closeLesson(lessonId: string, resourceVersion: number, body: unknown): Promise<unknown>;
-  getClosure(transactionId: string): Promise<unknown>;
+  closeLesson(lessonId: string, resourceVersion: number, body: unknown): Promise<LessonClosureView>;
+  getClosure(transactionId: string): Promise<LessonClosureView>;
+  retryClosure(transactionId: string, resourceVersion: number): Promise<LessonClosureView>;
   startSupplementary(lessonId: string): Promise<{
     id: string;
     resourceVersion: number;
@@ -84,133 +99,164 @@ export interface LearningClient {
     courseId: string,
     resourceVersion: number,
     confirmAbandoned: boolean,
-  ): Promise<{ state: string; artifactRef?: string; markdown?: string; resourceVersion: number }>;
-  getCourseReview(
-    courseId: string,
-  ): Promise<
-    { state: string; artifactRef?: string; markdown?: string; resourceVersion: number } | undefined
-  >;
+  ): Promise<CourseReviewView>;
+  getCourseReview(courseId: string): Promise<CourseReviewView | undefined>;
 }
 
-function headers(resourceVersion?: number): HeadersInit {
-  return {
-    'content-type': 'application/json',
-    'idempotency-key': crypto.randomUUID(),
-    'x-page-instance-id': getPageInstanceId(),
-    'x-csrf-token': 'development-csrf',
-    ...(resourceVersion === undefined ? {} : { 'if-match': `"${resourceVersion}"` }),
-  };
-}
-
-async function request(url: string, init?: RequestInit) {
-  const response = await fetch(url, init);
-  const body: unknown = await response.json();
-  if (!response.ok) throw body;
-  return body as Record<string, unknown>;
-}
-
-async function stream(taskId: string, onEvent: (event: AuthoringStreamEvent) => void) {
-  await streamGenerationEvents({ taskId, onEvent });
+async function commandRequest<T>(
+  url: string,
+  options: {
+    body: unknown;
+    schema: Readonly<{ parse(value: unknown): T }>;
+    resourceVersion?: number;
+  },
+): Promise<T> {
+  return (
+    await apiRequest(url, {
+      method: 'POST',
+      body: options.body,
+      schema: options.schema,
+      command: createCommandAttempt(),
+      ...(options.resourceVersion === undefined
+        ? {}
+        : { resourceVersion: options.resourceVersion }),
+    })
+  ).data;
 }
 
 export const learningClient: LearningClient = {
-  getLessonPreview: (lessonId) =>
-    request(`/api/v1/lessons/${encodeURIComponent(lessonId)}`) as ReturnType<
-      LearningClient['getLessonPreview']
-    >,
-  getCourse: (courseId) =>
-    request(`/api/v1/courses/${encodeURIComponent(courseId)}`) as ReturnType<
-      LearningClient['getCourse']
-    >,
-  deleteCourse: (courseId, version) =>
-    request(`/api/v1/courses/${encodeURIComponent(courseId)}`, {
-      method: 'DELETE',
-      headers: headers(version),
-    }) as ReturnType<LearningClient['deleteCourse']>,
+  async getLessonPreview(lessonId) {
+    return (
+      await apiRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}`, {
+        schema: LessonPreviewResponseSchema,
+      })
+    ).data;
+  },
+  async getLessonState(lessonId) {
+    return (
+      await apiRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/learning-state`, {
+        schema: LessonEntryStateResponseSchema,
+      })
+    ).data;
+  },
+  async getCourse(courseId) {
+    return (
+      await apiRequest(`/api/v1/courses/${encodeURIComponent(courseId)}`, {
+        schema: CourseArchiveResponseSchema,
+      })
+    ).data;
+  },
+  async deleteCourse(courseId, resourceVersion) {
+    return (
+      await apiRequest(`/api/v1/courses/${encodeURIComponent(courseId)}`, {
+        method: 'DELETE',
+        schema: DeleteCourseArchiveResponseSchema,
+        command: createCommandAttempt(),
+        resourceVersion,
+      })
+    ).data;
+  },
   start: (lessonId) =>
-    request(`/api/v1/lessons/${encodeURIComponent(lessonId)}/sessions`, {
-      method: 'POST',
-      headers: headers(),
-      body: '{}',
-    }) as ReturnType<LearningClient['start']>,
-  getSession: (sessionId) =>
-    request(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}`) as ReturnType<
-      LearningClient['getSession']
-    >,
+    commandRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/sessions`, {
+      body: {},
+      schema: LessonSessionStartedResponseSchema,
+    }),
+  async getSession(sessionId) {
+    return (
+      await apiRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}`, {
+        schema: LearningSessionViewResponseSchema,
+      })
+    ).data;
+  },
   sendMessage: (input) =>
-    request(`/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/messages`, {
-      method: 'POST',
-      headers: headers(input.resourceVersion),
-      body: JSON.stringify({
-        markdown: input.markdown,
-      }),
-    }) as ReturnType<LearningClient['sendMessage']>,
-  stream,
+    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/messages`, {
+      body: { markdown: input.markdown },
+      schema: GenerationTaskAcceptedResponseSchema,
+      resourceVersion: input.resourceVersion,
+    }),
+  async stream(taskId, onEvent) {
+    await streamGenerationEvents({ taskId, onEvent });
+  },
   stop: (input) =>
-    request(`/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/generation-stops`, {
-      method: 'POST',
-      headers: headers(input.resourceVersion),
-      body: JSON.stringify({ taskId: input.taskId }),
-    }) as ReturnType<LearningClient['stop']>,
-  pause: (sessionId, version) =>
-    request(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/pauses`, {
-      method: 'POST',
-      headers: headers(version),
-      body: '{}',
+    commandRequest(
+      `/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/generation-stops`,
+      {
+        body: { taskId: input.taskId },
+        schema: GenerationStoppedResponseSchema,
+        resourceVersion: input.resourceVersion,
+      },
+    ),
+  pause: (sessionId, resourceVersion) =>
+    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/pauses`, {
+      body: {},
+      schema: LearningSessionCommandResponseSchema,
+      resourceVersion,
     }),
-  resume: (sessionId, version) =>
-    request(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/resumptions`, {
-      method: 'POST',
-      headers: headers(version),
-      body: '{}',
+  resume: (sessionId, resourceVersion) =>
+    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/resumptions`, {
+      body: {},
+      schema: LearningSessionCommandResponseSchema,
+      resourceVersion,
     }),
-  transferLease: (sessionId, version) =>
-    request(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/lease-transfers`, {
-      method: 'POST',
-      headers: headers(version),
-      body: '{}',
-    }) as ReturnType<LearningClient['transferLease']>,
-  abandon: (lessonId, version, sourceSnapshotHash) =>
-    request(`/api/v1/lessons/${encodeURIComponent(lessonId)}/abandonments`, {
-      method: 'POST',
-      headers: headers(version),
-      body: JSON.stringify({ sourceSnapshotHash }),
+  transferLease: (sessionId, resourceVersion) =>
+    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/lease-transfers`, {
+      body: {},
+      schema: LearningSessionCommandResponseSchema,
+      resourceVersion,
     }),
-  restore: (lessonId, version) =>
-    request(`/api/v1/lessons/${encodeURIComponent(lessonId)}/restorations`, {
-      method: 'POST',
-      headers: headers(version),
-      body: '{}',
+  abandon: (lessonId, resourceVersion, sourceSnapshotHash) =>
+    commandRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/abandonments`, {
+      body: { sourceSnapshotHash },
+      schema: LessonProgressCommandResponseSchema,
+      resourceVersion,
     }),
-  closeLesson: (lessonId, version, body) =>
-    request(`/api/v1/lessons/${encodeURIComponent(lessonId)}/closures`, {
-      method: 'POST',
-      headers: headers(version),
-      body: JSON.stringify(body),
+  restore: (lessonId, resourceVersion) =>
+    commandRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/restorations`, {
+      body: {},
+      schema: LessonProgressCommandResponseSchema,
+      resourceVersion,
     }),
-  getClosure: (id) => request(`/api/v1/closure-transactions/${encodeURIComponent(id)}`),
+  closeLesson: (lessonId, resourceVersion, input) =>
+    commandRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/closures`, {
+      body: BeginLessonClosureBodySchema.parse(input),
+      schema: LessonClosureResponseSchema,
+      resourceVersion,
+    }),
+  async getClosure(transactionId) {
+    return (
+      await apiRequest(`/api/v1/closure-transactions/${encodeURIComponent(transactionId)}`, {
+        schema: LessonClosureResponseSchema,
+      })
+    ).data;
+  },
+  retryClosure: (transactionId, resourceVersion) =>
+    commandRequest(`/api/v1/closure-transactions/${encodeURIComponent(transactionId)}/retries`, {
+      body: {},
+      schema: LessonClosureResponseSchema,
+      resourceVersion,
+    }),
   startSupplementary: (lessonId) =>
-    request(`/api/v1/lessons/${encodeURIComponent(lessonId)}/supplementary-sessions`, {
-      method: 'POST',
-      headers: headers(),
-      body: '{}',
-    }) as ReturnType<LearningClient['startSupplementary']>,
-  sendSupplementary: (sessionId, markdown, version) =>
-    request(`/api/v1/supplementary-sessions/${encodeURIComponent(sessionId)}/messages`, {
-      method: 'POST',
-      headers: headers(version),
-      body: JSON.stringify({ markdown }),
-    }) as ReturnType<LearningClient['sendSupplementary']>,
-  closeCourse: (courseId, version, confirmAbandoned) =>
-    request(`/api/v1/courses/${encodeURIComponent(courseId)}/closures`, {
-      method: 'POST',
-      headers: headers(version),
-      body: JSON.stringify({ confirmAbandoned }),
-    }) as ReturnType<LearningClient['closeCourse']>,
+    commandRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/supplementary-sessions`, {
+      body: {},
+      schema: SupplementarySessionResponseSchema,
+    }),
+  sendSupplementary: (sessionId, markdown, resourceVersion) =>
+    commandRequest(`/api/v1/supplementary-sessions/${encodeURIComponent(sessionId)}/messages`, {
+      body: { markdown },
+      schema: SupplementarySessionResponseSchema,
+      resourceVersion,
+    }),
+  closeCourse: (courseId, resourceVersion, confirmAbandoned) =>
+    commandRequest(`/api/v1/courses/${encodeURIComponent(courseId)}/closures`, {
+      body: { confirmAbandoned },
+      schema: CourseReviewResponseSchema,
+      resourceVersion,
+    }),
   async getCourseReview(courseId) {
-    const response = await fetch(`/api/v1/courses/${encodeURIComponent(courseId)}/review`);
-    if (response.status === 404) return undefined;
-    if (!response.ok) throw await response.json();
-    return (await response.json()) as Awaited<ReturnType<LearningClient['getCourseReview']>>;
+    return (
+      await apiRequestOptional(`/api/v1/courses/${encodeURIComponent(courseId)}/review`, {
+        schema: CourseReviewResponseSchema,
+      })
+    ).data;
   },
 };

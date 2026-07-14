@@ -97,11 +97,15 @@ describe('PortraitModule', () => {
     const { module, packedEvidence } = await fixture([]);
     const generating = await module.requestRefresh({ ...request, packedEvidence });
     const completed = await module.finalize(generating.versionId, 'task_portrait_01', {
-      title: '学习画像证据不足',
-      summary: '当前没有满足复合证据规则的可靠洞察。',
+      title: 'Learning Portrait V2 — Insufficient Evidence',
+      summary: 'No stable observation can be made.',
       claims: [],
     });
-    expect(completed).toMatchObject({ state: 'completed', claims: [] });
+    expect(completed).toMatchObject({
+      state: 'completed',
+      title: '学习画像：证据尚不足',
+      claims: [],
+    });
     expect(JSON.stringify(completed)).not.toMatch(/personality|人格|学习风格/i);
   });
 
@@ -118,6 +122,19 @@ describe('PortraitModule', () => {
     expect(repeated).toEqual(first);
     expect(submit).toHaveBeenCalledTimes(1);
     expect(first).toMatchObject({ state: 'generating', generationTaskId: 'task_portrait_01' });
+    const prompt = submit.mock.calls[0]?.[0]?.prompt as string;
+    expect(prompt).toContain('【机器输出契约】');
+    expect(prompt).toContain('【输出语言】');
+    expect(prompt).toContain('简体中文');
+    expect(prompt).toContain('【可用学习证据】');
+    expect(prompt).toContain('证据编号：e1');
+    expect(prompt).toContain('Neutral bounded observation from lesson:01.');
+    expect(prompt).not.toContain('manifestId');
+    expect(prompt).not.toContain('profileVersion');
+    expect(prompt).not.toContain('providerConfigFingerprint');
+    expect(prompt).not.toContain('sourceGroupId');
+    expect(prompt).not.toContain('resourceVersion');
+    expect(prompt).not.toContain('fact:fact_e1');
   });
 
   it('rejects output references outside the frozen manifest', async () => {

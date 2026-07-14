@@ -1,4 +1,4 @@
-import { CandidateOutlineMetadataSchema } from './schemas/candidate-outline.js';
+import { CandidateModelResponseSchema } from './schemas/candidate-outline.js';
 
 export interface CandidateInputManifest {
   readonly draftArtifactRef: string;
@@ -14,6 +14,11 @@ export type CandidateCompilationResult =
         courseGoals: readonly string[];
         disciplineTag: string;
         topicTags: readonly string[];
+        modules: readonly {
+          id: string;
+          title: string;
+          lessonIds: readonly string[];
+        }[];
         lessons: readonly {
           id: string;
           title: string;
@@ -47,20 +52,21 @@ export function compileCandidate(
   }
   try {
     const parsedJson = JSON.parse(match[1] ?? '') as unknown;
-    const parsed = CandidateOutlineMetadataSchema.safeParse(parsedJson);
-    if (!parsed.success) {
+    const response = CandidateModelResponseSchema.safeParse(parsedJson);
+    if (!response.success) {
       return {
         valid: false,
         draftArtifactRef: manifest.draftArtifactRef,
-        issues: parsed.error.issues.map((issue) => ({
+        issues: response.error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,
         })),
       };
     }
+    const parsed = response.data.outline;
     const issues: { path: string; message: string }[] = [];
     const lessonIds = new Set<string>();
-    for (const [index, lesson] of parsed.data.lessons.entries()) {
+    for (const [index, lesson] of parsed.lessons.entries()) {
       if (lessonIds.has(lesson.id)) {
         issues.push({ path: `lessons.${index}.id`, message: 'lesson ID 必须唯一' });
       }
@@ -74,7 +80,44 @@ export function compileCandidate(
         }
       }
     }
-    const coveredSourceRefs = new Set(parsed.data.lessons.flatMap((lesson) => lesson.sourceRefs));
+    const moduleIds = new Set<string>();
+    const lessonAssignments = new Map<string, number>();
+    for (const [index, module] of parsed.modules.entries()) {
+      if (moduleIds.has(module.id)) {
+        issues.push({ path: `modules.${index}.id`, message: 'module ID 必须唯一' });
+      }
+      moduleIds.add(module.id);
+      const localLessonIds = new Set<string>();
+      for (const lessonId of module.lessonIds) {
+        if (localLessonIds.has(lessonId)) {
+          issues.push({
+            path: `modules.${index}.lessonIds`,
+            message: `模块内重复引用课节: ${lessonId}`,
+          });
+        }
+        localLessonIds.add(lessonId);
+        if (!lessonIds.has(lessonId)) {
+          issues.push({
+            path: `modules.${index}.lessonIds`,
+            message: `未知课节: ${lessonId}`,
+          });
+        }
+        lessonAssignments.set(lessonId, (lessonAssignments.get(lessonId) ?? 0) + 1);
+      }
+    }
+    for (const lessonId of lessonIds) {
+      const assignments = lessonAssignments.get(lessonId) ?? 0;
+      if (assignments !== 1) {
+        issues.push({
+          path: 'modules.lessonIds',
+          message:
+            assignments === 0
+              ? `课节未归入任何模块: ${lessonId}`
+              : `课节只能归入一个模块: ${lessonId}`,
+        });
+      }
+    }
+    const coveredSourceRefs = new Set(parsed.lessons.flatMap((lesson) => lesson.sourceRefs));
     for (const requiredSourceRef of manifest.requiredSourceRefs ?? []) {
       if (!coveredSourceRefs.has(requiredSourceRef)) {
         issues.push({
@@ -85,7 +128,7 @@ export function compileCandidate(
     }
     const visiting = new Set<string>();
     const visited = new Set<string>();
-    const byId = new Map(parsed.data.lessons.map((lesson) => [lesson.id, lesson]));
+    const byId = new Map(parsed.lessons.map((lesson) => [lesson.id, lesson]));
     function visit(lessonId: string): void {
       if (visiting.has(lessonId)) {
         issues.push({ path: 'lessons.prerequisiteLessonIds', message: '先修关系存在循环' });
@@ -117,7 +160,7 @@ export function compileCandidate(
     return {
       valid: true,
       candidate: {
-        ...parsed.data,
+        ...parsed,
         outlineMarkdown,
       },
     };

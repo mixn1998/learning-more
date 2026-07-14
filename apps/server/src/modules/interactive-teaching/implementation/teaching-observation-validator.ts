@@ -1,0 +1,78 @@
+import { TeachingObservationSchema, type TeachingObservation } from '@learning-more/contracts';
+
+export type TeachingObservationValidationContext = Readonly<{
+  lessonId: string;
+  sessionId: string;
+  sourceSnapshotHash: string;
+  knowledgePointRefs: readonly string[];
+  courseRelationRefs: readonly string[];
+  openEntryRefs: readonly string[];
+  messages: readonly Readonly<{
+    messageId: string;
+    role: 'user' | 'assistant';
+    completionStatus: 'complete' | 'interrupted' | 'failed';
+  }>[];
+}>;
+
+function invalid(code: string): never {
+  throw new Error(code);
+}
+
+function messageIdFromRef(sourceRef: string): string | undefined {
+  return sourceRef.startsWith('message:') ? sourceRef.slice('message:'.length) : undefined;
+}
+
+export function validateTeachingObservation(
+  input: unknown,
+  context: TeachingObservationValidationContext,
+): TeachingObservation {
+  const observation = TeachingObservationSchema.parse(input);
+  if (observation.lessonId !== context.lessonId) invalid('observation_lesson_mismatch');
+  if (observation.sessionId !== context.sessionId) invalid('observation_session_mismatch');
+  if (observation.sourceSnapshotHash !== context.sourceSnapshotHash) {
+    invalid('observation_snapshot_stale');
+  }
+
+  const messageById = new Map(context.messages.map((message) => [message.messageId, message]));
+  const knowledgePointRefs = new Set(context.knowledgePointRefs);
+  const openEntryRefs = new Set(context.openEntryRefs);
+  const validRelationRefs = new Set([
+    ...context.knowledgePointRefs,
+    ...context.courseRelationRefs,
+    ...context.messages.map((message) => `message:${message.messageId}`),
+  ]);
+
+  for (const messageId of observation.sourceMessageIds) {
+    if (!messageById.has(messageId)) invalid('observation_source_message_unknown');
+  }
+  for (const relationRef of observation.scope.relationRefs) {
+    if (!validRelationRefs.has(relationRef)) invalid('observation_relation_unknown');
+  }
+  for (const entry of observation.entries) {
+    for (const knowledgePointRef of entry.knowledgePointRefs) {
+      if (!knowledgePointRefs.has(knowledgePointRef)) invalid('knowledge_point_reference_unknown');
+    }
+    for (const resolvedEntryRef of entry.resolvesEntryRefs) {
+      if (!openEntryRefs.has(resolvedEntryRef)) invalid('resolved_entry_reference_unknown');
+    }
+    for (const sourceRef of entry.sourceRefs) {
+      const messageId = messageIdFromRef(sourceRef);
+      if (messageId === undefined) invalid('observation_source_reference_invalid');
+      const message = messageById.get(messageId);
+      if (message === undefined) invalid('observation_source_message_unknown');
+      if (message.role === 'assistant' && message.completionStatus !== 'complete') {
+        invalid('assistant_evidence_incomplete');
+      }
+    }
+    if (
+      (observation.scope.alignment === 'unclear' || observation.scope.alignment === 'off_scope') &&
+      (entry.kind === 'teaching_delivery' ||
+        entry.kind === 'learner_demonstration' ||
+        entry.kind === 'learner_misconception') &&
+      entry.knowledgePointRefs.length > 0
+    ) {
+      invalid('unaligned_observation_cannot_update_lesson_state');
+    }
+  }
+  return observation;
+}

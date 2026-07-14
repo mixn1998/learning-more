@@ -1,16 +1,44 @@
-export function GlobalProfilePanel(props: { readonly profile: Readonly<Record<string, unknown>> }) {
-  const sufficiency = props.profile.sufficiency as
-    | { status?: string; activeEvidenceCount?: number; independentSourceGroupCount?: number }
-    | undefined;
-  const freshness =
-    typeof props.profile.freshness === 'string' ? props.profile.freshness : 'current';
+import type { GlobalLearningProfile } from '@learning-more/contracts';
+import { Badge, Grid, Panel, SectionHeader } from '@learning-more/ui';
+
+const sufficiencyLabel = {
+  insufficient: '证据不足',
+  limited: '有限证据',
+  sufficient: '证据充分',
+} as const;
+
+export function GlobalProfilePanel(props: { readonly profile: GlobalLearningProfile }) {
+  const profile = props.profile;
   return (
-    <section className="authoring-panel">
-      <h2>全局学习档案</h2>
-      {freshness === 'current' ? null : <p role="status">档案状态：{freshness}</p>}
-      <p>数据充分度：{sufficiency?.status ?? 'insufficient'}</p>
-      <p>有效候选证据：{sufficiency?.activeEvidenceCount ?? 0}</p>
-      <p>独立来源：{sufficiency?.independentSourceGroupCount ?? 0}</p>
-    </section>
+    <Panel className="global-profile-panel">
+      <SectionHeader
+        title="全局学习档案"
+        description={`观察窗口：${profile.window.from.slice(0, 10)} — ${profile.window.to.slice(0, 10)}`}
+        actions={
+          <Badge tone={profile.sufficiency.status === 'sufficient' ? 'success' : 'warning'}>
+            {sufficiencyLabel[profile.sufficiency.status]}
+          </Badge>
+        }
+      />
+      <Grid className="profile-metric-grid" columns={4}>
+        <p>
+          <strong>{profile.learningVolume.actualSeconds}</strong>
+          <small>实际学习秒数</small>
+        </p>
+        <p>
+          <strong>{profile.learningVolume.completedLessonCount}</strong>
+          <small>完成课节</small>
+        </p>
+        <p>
+          <strong>{profile.sufficiency.activeEvidenceCount}</strong>
+          <small>有效候选证据</small>
+        </p>
+        <p>
+          <strong>{profile.sufficiency.independentSourceGroupCount}</strong>
+          <small>独立来源</small>
+        </p>
+      </Grid>
+      <p className="profile-as-of">事实截至：{profile.asOfFactId ?? '空快照'}</p>
+    </Panel>
   );
 }

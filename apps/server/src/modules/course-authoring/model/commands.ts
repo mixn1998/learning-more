@@ -11,8 +11,22 @@ export type CourseMode =
 
 export type OutlineSessionCommand =
   | Readonly<{ type: 'startAssessment' }>
-  | Readonly<{ type: 'skipAssessment'; assessmentArtifactId: string }>
-  | Readonly<{ type: 'completeAssessment'; assessmentArtifactId: string }>
+  | Readonly<{ type: 'startAssessmentTurn'; userMessageId: string }>
+  | Readonly<{
+      type: 'completeAssessmentTurn';
+      userMessageId: string;
+      assistantMessageId: string;
+    }>
+  | Readonly<{ type: 'failAssessmentTurn'; userMessageId: string }>
+  | Readonly<{ type: 'startAlignmentTurn'; userMessageId: string }>
+  | Readonly<{
+      type: 'completeAlignmentTurn';
+      userMessageId: string;
+      assistantMessageId: string;
+      action: 'clarify' | 'regenerate' | 'patch';
+      targetModuleIds: readonly string[];
+    }>
+  | Readonly<{ type: 'failAlignmentTurn'; userMessageId: string }>
   | Readonly<{ type: 'requestCandidate'; generationTaskId: string }>
   | Readonly<{
       type: 'candidateGenerated';

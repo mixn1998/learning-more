@@ -1,4 +1,4 @@
-import type { DataKey } from '@learning-more/contracts';
+import type { DataKey, ProfileEvidenceCandidateGovernance } from '@learning-more/contracts';
 
 import type { LearningFact, LearningFactType } from '../learning-facts/interface.js';
 
@@ -25,6 +25,7 @@ export type CandidateEvidence = Readonly<{
   extractorVersion: string;
   dedupKey: string;
   status: 'active' | 'superseded' | 'retracted';
+  governance?: ProfileEvidenceCandidateGovernance;
   resourceVersion: number;
 }>;
 

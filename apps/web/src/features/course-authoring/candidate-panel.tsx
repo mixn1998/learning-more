@@ -1,20 +1,24 @@
-import Markdown from 'react-markdown';
-import rehypeSanitize from 'rehype-sanitize';
+import { AiContent, Button, ContentState, Inline } from '@learning-more/ui';
+import type { CandidateGenerationFailureCode } from '@learning-more/contracts';
+
+import { candidateGenerationFailurePresentation } from './candidate-generation-failure.js';
 
 export function CandidatePanel(props: {
   readonly markdown: string;
   readonly state: 'generating' | 'ready' | 'failed' | 'confirmed';
+  readonly failureCode?: CandidateGenerationFailureCode;
   readonly onGenerate: () => void;
   readonly onConfirm: () => void;
 }) {
   if (props.state === 'failed') {
+    const failure = candidateGenerationFailurePresentation(props.failureCode);
     return (
       <section className="authoring-panel">
-        <p role="alert">生成中断，草稿已保留。</p>
-        <p role="status">未完成内容会在重试时继续使用。</p>
-        <button type="button" onClick={props.onGenerate}>
+        <ContentState title={failure.title} role="alert" />
+        <p role="status">{failure.detail}</p>
+        <Button type="button" onClick={props.onGenerate}>
           重试生成
-        </button>
+        </Button>
       </section>
     );
   }
@@ -28,16 +32,16 @@ export function CandidatePanel(props: {
   if (props.state === 'ready' || props.state === 'confirmed') {
     return (
       <section className="authoring-panel candidate-markdown">
-        <Markdown rehypePlugins={[rehypeSanitize]}>{props.markdown}</Markdown>
+        <AiContent markdown={props.markdown} />
         {props.state === 'ready' ? (
-          <div>
-            <button type="button" onClick={props.onGenerate}>
+          <Inline>
+            <Button type="button" onClick={props.onGenerate}>
               生成新版本
-            </button>
-            <button type="button" onClick={props.onConfirm}>
+            </Button>
+            <Button type="button" variant="primary" onClick={props.onConfirm}>
               确认此候选
-            </button>
-          </div>
+            </Button>
+          </Inline>
         ) : (
           <p>候选已确认</p>
         )}

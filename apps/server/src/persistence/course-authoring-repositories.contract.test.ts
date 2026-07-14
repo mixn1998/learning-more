@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -11,17 +11,67 @@ import {
   createLocalFileCourseAuthoringRepositories,
 } from './course-authoring-repositories.js';
 import { DataRoot } from './data-root.js';
+import { checksumJson, encodeJson } from './json-codec.js';
 import { createStorePaths, initializeStoreLayout } from './paths.js';
 import { createUnitOfWork } from './unit-of-work.js';
 import { recoverTransactions } from './recover-transactions.js';
 import type { TransactionFaultPoint } from './unit-of-work.js';
 
 const candidateMarkdown = `\`\`\`learning-more-outline
-{"courseGoals":["掌握目标"],"disciplineTag":"数学","topicTags":["概率"],"lessons":[{"id":"lesson_1","title":"第一课","objective":"理解概念","coreKnowledgePoints":["概念"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]}]}
+{"protocol":"learning-more.candidate","schemaVersion":1,"outline":{"courseGoals":["掌握目标"],"disciplineTag":"数学","topicTags":["概率"],"modules":[{"id":"module_1","title":"基础","lessonIds":["lesson_1"]}],"lessons":[{"id":"lesson_1","title":"第一课","objective":"理解概念","coreKnowledgePoints":["概念"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]}]}}
 \`\`\`
 # 第一课`;
 
 describe('course authoring repository adapters', () => {
+  it('reads the known pre-conversation session shape without classifying it as corruption', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-authoring-legacy-'));
+    try {
+      const dataRoot = DataRoot.create(directory);
+      const paths = createStorePaths(dataRoot);
+      await initializeStoreLayout(paths);
+      const data = {
+        resourceVersion: 7,
+        candidateCommandReceipts: {},
+        session: {
+          outlineSessionId: 'session_legacy',
+          courseMode: 'brainstorm',
+          topic: 'legacy topic',
+          state: 'ready-for-candidates',
+          assessmentArtifactId: 'assessment_legacy',
+          candidateVersionIds: [],
+        },
+      };
+      const document = {
+        schema: 'learning-more/outline-sessions',
+        schemaVersion: 1,
+        entityType: 'outline-sessions',
+        entityId: 'session_legacy',
+        resourceVersion: 7,
+        createdAt: 'preserved-in-data',
+        updatedAt: '2026-07-14T00:00:00.000Z',
+        contentSha256: checksumJson(data),
+        data,
+      };
+      const file = paths.aggregate('outline-sessions', 'session_legacy');
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, encodeJson(document), 'utf8');
+
+      await expect(
+        createLocalFileCourseAuthoringRepositories(dataRoot).outlineSessions.get('session_legacy'),
+      ).resolves.toMatchObject({
+        resourceVersion: 7,
+        messages: [],
+        session: {
+          state: 'assessment-ready',
+          messageIds: [],
+          completedAssessmentRounds: 0,
+        },
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('LocalFile persists Unicode sessions across reopen and detects corruption', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-authoring-repo-'));
     try {
@@ -38,7 +88,12 @@ describe('course authoring repository adapters', () => {
       await unitOfWork.execute({ transactionId: 'tx_save_session' }, (tx) =>
         repositories.outlineSessions.save(
           tx,
-          { session, resourceVersion: 0, candidateCommandReceipts: {} },
+          {
+            session,
+            resourceVersion: 0,
+            candidateCommandReceipts: {},
+            messages: [],
+          },
           0,
         ),
       );
@@ -72,7 +127,12 @@ describe('course authoring repository adapters', () => {
         stageText: async () => undefined,
         deleteOnCommit: async () => undefined,
       },
-      { session, resourceVersion: 0, candidateCommandReceipts: {} },
+      {
+        session,
+        resourceVersion: 0,
+        candidateCommandReceipts: {},
+        messages: [],
+      },
       0,
     );
 
@@ -86,7 +146,12 @@ describe('course authoring repository adapters', () => {
           stageText: async () => undefined,
           deleteOnCommit: async () => undefined,
         },
-        { session, resourceVersion: 0, candidateCommandReceipts: {} },
+        {
+          session,
+          resourceVersion: 0,
+          candidateCommandReceipts: {},
+          messages: [],
+        },
         0,
       ),
     ).rejects.toMatchObject({ code: 'version_conflict', currentVersion: 1 });

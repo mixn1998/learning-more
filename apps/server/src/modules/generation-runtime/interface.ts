@@ -9,6 +9,9 @@ export interface GenerationRequest {
   readonly taskGroup: 'interactive' | 'background';
   readonly ownerRef: string;
   readonly providerId: string;
+  readonly model?: string;
+  readonly fallbackProviderIds?: readonly string[];
+  readonly maxAttempts?: number;
   readonly priority: number;
   readonly prompt: string;
 }
@@ -53,4 +56,12 @@ export interface GenerationFrameLog {
     frames: GenerationStreamEvent[];
     meta: GenerationFrameMeta;
   }>;
+}
+
+export interface GenerationExecution {
+  submit(request: GenerationRequest): Promise<{ taskId: string }>;
+  awaitTerminal(taskId: string): Promise<GenerationTask>;
+  stream(taskId: string, afterSequence: number): ReturnType<GenerationFrameLog['readAfter']>;
+  cancel(taskId: string): Promise<GenerationTask>;
+  recover(taskId: string): Promise<GenerationTask>;
 }

@@ -14,7 +14,6 @@ export type LearningSessionCommand =
         type: 'AppendUserMessage';
         messageId: string;
         contentArtifactRef: string;
-        establishesEvidence: boolean;
       }>)
   | (LessonCommand &
       Readonly<{
@@ -22,8 +21,9 @@ export type LearningSessionCommand =
         messageId: string;
         contentArtifactRef: string;
         generationTaskId: string;
-        establishesEvidence?: boolean;
+        completionStatus?: 'complete' | 'interrupted';
       }>)
+  | (LessonCommand & Readonly<{ type: 'EstablishEvidenceCheckpoint' }>)
   | (LessonCommand & Readonly<{ type: 'StartSessionGeneration'; taskId: string }>)
   | (LessonCommand & Readonly<{ type: 'StopSessionGeneration' }>)
   | (LessonCommand & Readonly<{ type: 'AbandonLesson' }>)
@@ -73,26 +73,4 @@ export interface LearningSessionModule {
     context: CommandContext,
   ): Promise<CommandResult<LearningSessionResult>>;
   query(query: LearningSessionQuery, context: QueryContext): Promise<LearningSessionView>;
-}
-
-export type SessionGenerationInputManifest = Readonly<{
-  courseId: string;
-  lessonId: string;
-  sessionId: string;
-  lessonDefinitionId: string;
-  outlineVersionId: string;
-  userMessageId: string;
-  completedReviewRefs: readonly string[];
-  currentMessageRefs: readonly string[];
-}>;
-
-export interface SessionGenerationCoordinator {
-  request(
-    input: SessionGenerationInputManifest,
-    context: CommandContext,
-  ): Promise<{ taskId: string; resourceVersion: number }>;
-  stop(
-    input: { lessonId: string; sessionId: string; taskId: string },
-    context: CommandContext,
-  ): Promise<{ taskId: string; draftArtifactRef: string; resourceVersion: number }>;
 }

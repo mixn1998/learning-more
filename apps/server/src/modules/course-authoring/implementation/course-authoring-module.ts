@@ -3,8 +3,11 @@ import { randomUUID } from 'node:crypto';
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { CourseAuthoringRepositories } from '../../../persistence/course-authoring-repositories.js';
 import type { CourseMode } from '../model/commands.js';
+import type { OutlineMessage } from '../model/outline-message.js';
 import { createOutlineSession, decide, evolveAll } from '../model/outline-session.js';
 import { compileCandidate, type CandidateInputManifest } from './outline-compiler.js';
+import { buildCandidateGenerationPrompt } from './candidate-output-contract.js';
+import type { CandidatePromptInput } from './prompt-input-builder.js';
 
 export function createCourseAuthoringModule(options: {
   readonly repositories: CourseAuthoringRepositories;
@@ -33,18 +36,55 @@ export function createCourseAuthoringModule(options: {
       topic: string;
       assessmentArtifactId: string;
     }) {
-      let session = createOutlineSession(input);
-      session = evolveAll(
-        session,
-        decide(session, {
-          type: 'skipAssessment',
-          assessmentArtifactId: input.assessmentArtifactId,
-        }),
-      );
+      let session = createOutlineSession({
+        outlineSessionId: input.outlineSessionId,
+        courseMode: input.courseMode,
+        topic: input.topic,
+      });
+      session = evolveAll(session, decide(session, { type: 'startAssessment' }));
+      const messages: OutlineMessage[] = [];
+      for (let round = 1; round <= 3; round += 1) {
+        const userMessageId = `${input.assessmentArtifactId}:user:${round}`;
+        const assistantMessageId = `${input.assessmentArtifactId}:assistant:${round}`;
+        session = evolveAll(
+          session,
+          decide(session, { type: 'startAssessmentTurn', userMessageId }),
+        );
+        session = evolveAll(
+          session,
+          decide(session, {
+            type: 'completeAssessmentTurn',
+            userMessageId,
+            assistantMessageId,
+          }),
+        );
+        messages.push(
+          {
+            messageId: userMessageId,
+            role: 'user' as const,
+            content: input.topic,
+            status: 'complete' as const,
+            createdAt: now().toISOString(),
+          },
+          {
+            messageId: assistantMessageId,
+            role: 'assistant' as const,
+            content: 'Assessment acknowledged.',
+            status: 'complete' as const,
+            createdAt: now().toISOString(),
+            inReplyToMessageId: userMessageId,
+          },
+        );
+      }
       await options.unitOfWork.execute({ transactionId: `tx_authoring_${randomUUID()}` }, (tx) =>
         options.repositories.outlineSessions.save(
           tx,
-          { session, resourceVersion: 0, candidateCommandReceipts: {} },
+          {
+            session,
+            resourceVersion: 0,
+            candidateCommandReceipts: {},
+            messages,
+          },
           0,
         ),
       );
@@ -54,12 +94,32 @@ export function createCourseAuthoringModule(options: {
       commandId: string;
       outlineSessionId: string;
       inputSnapshotHash: string;
-      promptInputArtifactRef: string;
+      promptInput?: CandidatePromptInput;
+      promptInputArtifactRef?: string;
     }) {
       const record = await options.repositories.outlineSessions.get(input.outlineSessionId);
       if (record === undefined) throw new Error('OUTLINE_SESSION_NOT_FOUND');
       const receipt = record.candidateCommandReceipts[input.commandId];
       if (receipt !== undefined) return receipt;
+      if (record.session.completedAssessmentRounds < 3) {
+        throw new Error('assessment_required');
+      }
+      const promptInput: CandidatePromptInput = input.promptInput ?? {
+        courseDirection: record.session.topic,
+        learningApproach:
+          '以学习者当前选择的方式作为关注重心，同时允许根据问题跨越解释、案例、论证和决策分析。',
+        conversation: record.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+        sources: [
+          {
+            sourceRef: 'source_topic',
+            title: 'Initial course direction',
+            excerpt: record.session.topic,
+          },
+        ],
+      };
       const task = await options.generationRuntime.submit({
         taskKey: `outline-candidate:${input.outlineSessionId}:${input.commandId}`,
         inputSnapshotHash: input.inputSnapshotHash,
@@ -68,10 +128,7 @@ export function createCourseAuthoringModule(options: {
         ownerRef: input.outlineSessionId,
         providerId: options.providerId ?? 'current',
         priority: 100,
-        prompt: JSON.stringify({
-          templateRef: 'course-outline-candidate@v1',
-          inputArtifactRef: input.promptInputArtifactRef,
-        }),
+        prompt: buildCandidateGenerationPrompt(promptInput),
       });
       const session = evolveAll(
         record.session,
@@ -84,8 +141,8 @@ export function createCourseAuthoringModule(options: {
         options.repositories.outlineSessions.save(
           tx,
           {
+            ...record,
             session,
-            resourceVersion: record.resourceVersion,
             candidateCommandReceipts: {
               ...record.candidateCommandReceipts,
               [input.commandId]: task,

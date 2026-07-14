@@ -1,18 +1,39 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { EVENT_TYPES, type LearningEventEnvelope } from '@learning-more/contracts';
+import {
+  EVENT_TYPES,
+  type LearningEventEnvelope,
+  type ProfileEvidenceCheckpointKind,
+  type TeachingCheckpointSnapshot,
+} from '@learning-more/contracts';
 
 import { createMockProvider, type MockProviderStep } from '../ai-providers/mock-provider.js';
 import type { AiProvider } from '../ai-providers/provider.js';
 import { createCandidateGenerationCoordinator } from '../modules/course-authoring/implementation/candidate-generation-coordinator.js';
+import { createGenerationCandidateAlignmentPlanner } from '../modules/course-authoring/implementation/generation-candidate-alignment-planner.js';
+import { createGenerationAuthoringAgent } from '../modules/course-authoring/implementation/generation-authoring-agent.js';
 import { createCourseAuthoringFacade } from '../modules/course-authoring/implementation/course-authoring-facade.js';
 import { createCourseArchiveDeletion } from '../modules/course-authoring/implementation/course-archive-deletion.js';
 import { createCourseAuthoringModule } from '../modules/course-authoring/implementation/course-authoring-module.js';
+import type { LessonDefinition } from '../modules/course-authoring/model/lesson-definition.js';
+import { ingestSelectedMaterial } from '../modules/course-authoring/implementation/material-ingestion.js';
 import { closeCourse as closeCourseAggregate } from '../modules/course-authoring/implementation/close-course.js';
 import { createGenerationFrameLog } from '../modules/generation-runtime/implementation/frame-log.js';
+import { createGenerationExecution } from '../modules/generation-runtime/implementation/generation-execution.js';
 import { createGenerationRuntime } from '../modules/generation-runtime/implementation/generation-runtime.js';
+import { createGenerationReasoningBehaviorAnalyzer } from '../modules/global-user-profile/implementation/generation-reasoning-behavior-analyzer.js';
+import { createReasoningBehaviorModule } from '../modules/global-user-profile/implementation/reasoning-behavior-module.js';
+import type { ReasoningBehaviorAnalysisRecord } from '../modules/global-user-profile/ports/reasoning-behavior-repository.js';
+import { createTeachingContextAssembler } from '../modules/interactive-teaching/implementation/context-assembler.js';
+import { createGenerationTeachingAgent } from '../modules/interactive-teaching/implementation/generation-teaching-agent.js';
+import { createGenerationTeachingObserver } from '../modules/interactive-teaching/implementation/generation-teaching-observer.js';
+import { createInteractiveTeaching } from '../modules/interactive-teaching/implementation/interactive-teaching.js';
+import { teachingPlayIntent } from '../modules/interactive-teaching/implementation/teaching-play-intent.js';
+import { createGenerationNextLessonRecommender } from '../modules/next-lesson/implementation/generation-next-lesson-recommender.js';
+import { resolveNextLessonRecommendation } from '../modules/next-lesson/implementation/recommendation-policy.js';
+import type { TeachingContextSources } from '../modules/interactive-teaching/ports/teaching-context-sources.js';
 import { createLocalFileMessageLog } from '../modules/learning-session/implementation/message-log.js';
-import { createSessionGenerationCoordinator } from '../modules/learning-session/implementation/session-generation.js';
+import type { LearningSessionRecord } from '../persistence/learning-session-repositories.js';
 import { createSessionModule } from '../modules/learning-session/implementation/session-module.js';
 import { actualLearningSeconds } from '../modules/learning-session/implementation/time-intervals.js';
 import { createSupplementarySessionModule } from '../modules/learning-session/implementation/supplementary-session-module.js';
@@ -28,13 +49,17 @@ import { createWeeklyReportScheduler } from '../modules/learning-facts/implement
 import { createWeeklyReportService } from '../modules/learning-facts/implementation/weekly-report-service.js';
 import { createProfileEvidencePipeline } from '../modules/profile-evidence/implementation/pipeline.js';
 import { queryGlobalLearningProfile } from '../modules/profile-evidence/implementation/profile-query.js';
+import { createReasoningEvidenceProjector } from '../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
+import { createAiProfileEvidenceExtractor } from '../modules/profile-evidence/implementation/ai-profile-evidence-extractor.js';
+import { createProfileEvidenceAggregator } from '../modules/profile-evidence/implementation/profile-evidence-aggregator.js';
 import { packPortraitEvidence } from '../modules/learning-portrait/implementation/evidence-packer.js';
-import { independentSourceKey } from '../modules/learning-portrait/implementation/evidence-policy.js';
 import { createPortraitModule } from '../modules/learning-portrait/implementation/portrait-module.js';
 import { createPlanFlowService } from '../modules/planning/implementation/plan-flow-service.js';
+import type { PlanSuggestion } from '../modules/planning/model/plan-flow.js';
 import { createPlanningModule } from '../modules/planning/implementation/planning-module.js';
 import { createCourseReviewWorkflow } from '../modules/review-closure/implementation/course-review.js';
 import { createLessonClosureWorkflow } from '../modules/review-closure/implementation/lesson-closure.js';
+import { createGenerationReviewWriter } from '../modules/review-closure/implementation/generation-review-writer.js';
 import {
   createStageReviewWorkflow,
   reviewIdForLesson,
@@ -43,6 +68,7 @@ import { createLocalFileCourseAuthoringRepositories } from '../persistence/cours
 import { createLocalFileCourseCreationRepositories } from '../persistence/course-creation-repositories.js';
 import {
   createLocalFileCourseArchiveStore,
+  createLocalFileOutlineSessionDraftStore,
   readPortraitRefreshState,
   stagePortraitRefreshState,
 } from '../persistence/course-archive-store.js';
@@ -54,6 +80,7 @@ import { createLocalFileLearningSessionRepositories } from '../persistence/learn
 import { createLocalFileFactRepository } from '../persistence/learning-facts-repositories.js';
 import { createMarkdownArtifactStore } from '../persistence/markdown-artifact-store.js';
 import { createOutbox } from '../persistence/outbox.js';
+import { RepositoryVersionConflictError } from '../persistence/repository-errors.js';
 import { createStorePaths, initializeStoreLayout } from '../persistence/paths.js';
 import {
   createLocalFilePlanFlowRepository,
@@ -62,9 +89,12 @@ import {
 import { recoverTransactions } from '../persistence/recover-transactions.js';
 import { createLocalFileReviewClosureRepositories } from '../persistence/review-closure-repositories.js';
 import { createLocalFileSupplementarySessionRepository } from '../persistence/supplementary-session-repository.js';
+import { createLocalFileTeachingLedgerRepository } from '../persistence/teaching-ledger-repositories.js';
+import { createLocalFileReasoningBehaviorRepository } from '../persistence/reasoning-behavior-repositories.js';
 import { createUnitOfWork } from '../persistence/unit-of-work.js';
 import { createLocalFileWeeklyReportRepository } from '../persistence/weekly-report-repositories.js';
 import { createLocalFileEvidenceRepositories } from '../persistence/profile-evidence-repositories.js';
+import { latestLearningActivityAt } from './home-dashboard.js';
 import { createLocalFilePortraitRepository } from '../persistence/portrait-repositories.js';
 import type { ServerDependencies } from './app.js';
 import { createMemorySecretStore } from '../runtime/memory-secret-store.js';
@@ -77,16 +107,333 @@ import type { SecretStore } from '../runtime/secret-store.js';
 
 function candidateMarkdown(version: number): string {
   return `\`\`\`learning-more-outline
-{"courseGoals":["Understand probability"],"disciplineTag":"mathematics","topicTags":["probability"],"lessons":[{"id":"probability-space","title":"Probability spaces","objective":"Understand sample spaces","coreKnowledgePoints":["sample space"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]},{"id":"random-variable","title":"Random variables","objective":"Model outcomes","coreKnowledgePoints":["random variable"],"prerequisiteLessonIds":["probability-space"],"estimatedMinutes":45,"sourceRefs":["source_topic"]}]}
+{"protocol":"learning-more.candidate","schemaVersion":1,"outline":{"courseGoals":["理解并运用概率模型"],"disciplineTag":"数学","topicTags":["概率论"],"modules":[{"id":"module_probability","title":"概率基础","lessonIds":["probability-space","random-variable"]}],"lessons":[{"id":"probability-space","title":"概率空间","objective":"理解样本空间","coreKnowledgePoints":["样本空间"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]},{"id":"random-variable","title":"随机变量","objective":"用模型描述结果","coreKnowledgePoints":["随机变量"],"prerequisiteLessonIds":["probability-space"],"estimatedMinutes":45,"sourceRefs":["source_topic"]}]}}
 \`\`\`
-# Candidate outline ${version}
+# 候选大纲 ${version}
 
 1. Probability spaces
 2. Random variables`;
 }
 
-function mockScript(attempt: number, failOnce: boolean): readonly MockProviderStep[] {
-  if (failOnce && attempt === 1) {
+function parseStructuredJson(markdown: string): unknown {
+  const trimmed = markdown.trim();
+  const fenced = /^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```$/u.exec(trimmed);
+  return JSON.parse((fenced?.[1] ?? trimmed).trim()) as unknown;
+}
+
+function parsePlanSuggestions(markdown: string): readonly PlanSuggestion[] {
+  const parsed = parseStructuredJson(markdown) as { suggestions?: unknown };
+  if (!Array.isArray(parsed.suggestions)) throw new Error('plan_preview_invalid');
+  return parsed.suggestions.map((value) => {
+    if (typeof value !== 'object' || value === null) throw new Error('plan_preview_invalid');
+    const suggestion = value as Record<string, unknown>;
+    for (const key of [
+      'courseId',
+      'lessonId',
+      'startAt',
+      'endAt',
+      'timezoneAtCreation',
+      'explanation',
+    ]) {
+      if (typeof suggestion[key] !== 'string' || suggestion[key] === '') {
+        throw new Error('plan_preview_invalid');
+      }
+    }
+    return suggestion as PlanSuggestion;
+  });
+}
+
+function mockScript(
+  attempt: number,
+  failCandidate: boolean,
+  prompt = '',
+): readonly MockProviderStep[] {
+  if (prompt.startsWith('COURSE_CANDIDATE_ALIGNMENT_PLAN_V1')) {
+    const input = JSON.parse(prompt.slice(prompt.lastIndexOf('\n\n') + 2)) as {
+      messages?: { role: 'user' | 'assistant'; content: string }[];
+    };
+    const request = [...(input.messages ?? [])]
+      .reverse()
+      .find((message) => message.role === 'user');
+    const asksForGlobalChange = /重做|整版|全部|目标改为|受众改为/u.test(request?.content ?? '');
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          action: asksForGlobalChange ? 'regenerate' : 'patch',
+          rationale: asksForGlobalChange
+            ? '用户改变了全局课程方向。'
+            : '用户请求可在保留整体结构时局部落实。',
+          targetModuleIds: [],
+        }),
+      },
+    ];
+  }
+  if (prompt.startsWith('COURSE_AUTHORING_CONVERSATION_V1')) {
+    return [
+      {
+        type: 'text',
+        text: '我已收到你的初始学习方向。为了把课程边界对齐得更准确，你目前有哪些相关经验，最希望通过这门课解决什么问题？',
+      },
+    ];
+  }
+  if (prompt.includes('【课程与待规划课节】') && prompt.includes('【可用时间与安排偏好】')) {
+    const lessonRefs = [...prompt.matchAll(/（课节标识：([^；）]+)；课程标识：([^）]+)）/gu)].map(
+      (match) => ({ lessonId: match[1]!, courseId: match[2]! }),
+    );
+    const start = /最早开始日期：([^\r\n]+)/u.exec(prompt)?.[1];
+    const dailyMinutes = Number(/单日目标时长：([\d.]+) 分钟/u.exec(prompt)?.[1] ?? 45);
+    const learningDays = new Set(/可学习日期：([^\r\n]+)/u.exec(prompt)?.[1]?.split('、') ?? []);
+    const base = new Date(`${start ?? '2026-01-01'}T11:00:00.000Z`);
+    let offsetDays = 0;
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          suggestions: lessonRefs.map(({ lessonId, courseId }, index) => {
+            void index;
+            let startAt = new Date(base.getTime() + offsetDays * 86_400_000);
+            while (
+              learningDays.size > 0 &&
+              !learningDays.has(
+                new Intl.DateTimeFormat('zh-CN', {
+                  timeZone: 'Asia/Shanghai',
+                  weekday: 'short',
+                }).format(startAt),
+              )
+            ) {
+              offsetDays += 1;
+              startAt = new Date(base.getTime() + offsetDays * 86_400_000);
+            }
+            offsetDays += 1;
+            return {
+              courseId,
+              lessonId,
+              startAt: startAt.toISOString(),
+              endAt: new Date(startAt.getTime() + dailyMinutes * 60 * 1_000).toISOString(),
+              timezoneAtCreation: 'Asia/Shanghai',
+              explanation: '根据给定时间窗口、课节依赖和已有日程形成的候选安排。',
+            };
+          }),
+        }),
+      },
+    ];
+  }
+  if (prompt.includes('【周报范围】') && prompt.includes('【可用学习证据】')) {
+    const refs = [...prompt.matchAll(/^来源标记：([^\r\n]+)$/gmu)].map((match) => match[1]!);
+    const minutes = [...prompt.matchAll(/^实际学习时长：([\d.]+) 分钟$/gmu)].reduce(
+      (total, match) => total + Number(match[1]),
+      0,
+    );
+    const sourceComment = refs.length === 0 ? '' : ` <!-- sources:${refs.join(',')} -->`;
+    return [
+      {
+        type: 'text',
+        text: `# 周学习回顾\n\n${
+          refs.length === 0
+            ? '当前证据不足以判断稳定的学习变化。'
+            : `本周冻结快照包含 ${refs.length} 条可追溯证据，记录学习 ${minutes} 分钟。${sourceComment}\n\n这些记录只描述已发生的学习活动，不代表知识已经完全掌握。${sourceComment}`
+        }`,
+      },
+    ];
+  }
+  if (prompt.startsWith('PROFILE_EVIDENCE_EXTRACTION_V1')) {
+    const input = JSON.parse(prompt.slice(prompt.lastIndexOf('\n\n') + 2)) as {
+      checkpoint?: {
+        sources?: { sourceRef: string; role: string; observedAt: string }[];
+      };
+    };
+    const userSources = (input.checkpoint?.sources ?? []).filter(
+      (source) => source.role === 'user',
+    );
+    const latest = userSources.at(-1);
+    const expiresAt = new Date(
+      Date.parse(latest?.observedAt ?? '2026-07-14T00:00:00.000Z') + 90 * 86_400_000,
+    ).toISOString();
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          candidates:
+            latest === undefined
+              ? []
+              : [
+                  {
+                    candidateKind: 'thinking_behavior',
+                    claimDimension: 'thinking_tendency.contextual_relation_exploration',
+                    label: '当前证据中的情境关系探索',
+                    summary: '在当前受控检查点中，用户通过提出对象关系或条件变化推进学习问题。',
+                    explicitness: 'ai_observed',
+                    sourceRefs: [latest.sourceRef],
+                    confidence: 0.68,
+                    qualityFlags: ['direct'],
+                    limitations: [
+                      '只代表当前检查点中的可见学习行为，不构成固定人格或永久能力判断。',
+                    ],
+                    safetyStatus: 'usable',
+                    polarity: 'supporting',
+                    contradictionEvidenceIds: [],
+                    expiryPolicy: { kind: 'window_bound', expiresAt },
+                  },
+                ],
+        }),
+      },
+    ];
+  }
+  if (prompt.includes('【分析边界】') && prompt.includes('【可用学习证据】')) {
+    const evidence = prompt
+      .split(/^### 学习证据 \d+$/gmu)
+      .slice(1)
+      .flatMap((block) => {
+        const evidenceId = /^证据编号：([^\r\n]+)$/mu.exec(block)?.[1];
+        const theme = /^观察主题：([^\r\n]+)$/mu.exec(block)?.[1];
+        return evidenceId === undefined || theme === undefined ? [] : [{ evidenceId, theme }];
+      });
+    const groups = new Map<string, typeof evidence>();
+    for (const item of evidence) {
+      const group = groups.get(item.theme) ?? [];
+      group.push(item);
+      groups.set(item.theme, group);
+    }
+    const claims = [...groups.entries()]
+      .filter(([, group]) => group.length >= 2)
+      .map(([dimension, group], index) => ({
+        claimId: `claim_${index + 1}`,
+        markdown: `在多个独立学习情境中观察到与“${dimension}”相关的局部模式。`,
+        evidenceIds: group.map((item) => item.evidenceId),
+        confidence: 0.65,
+        limitations: ['该观察只适用于当前证据窗口，不构成固定人格或能力标签。'],
+        counterEvidenceChecked: true,
+      }));
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          title: claims.length === 0 ? '学习画像证据不足' : '当前学习画像',
+          summary:
+            claims.length === 0
+              ? '当前没有满足复合证据规则的可靠观察。'
+              : '以下观察来自当前窗口内可追溯的复合证据。',
+          claims,
+        }),
+      },
+    ];
+  }
+  if (prompt.includes('【当前学习背景】') && prompt.includes('【可选课节】')) {
+    const selectedBlock = prompt.split(/^### /gmu).slice(1)[0];
+    const selected =
+      selectedBlock === undefined
+        ? undefined
+        : {
+            title: selectedBlock.split(/\r?\n/u)[0]?.trim(),
+            semanticKey: /^课节标识：([^\r\n]+)$/mu.exec(selectedBlock)?.[1],
+          };
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          semanticKey: selected?.semanticKey,
+          rationale:
+            selected === undefined
+              ? '没有可推荐课节'
+              : `当前先学习“${selected.title}”最有利于建立后续依赖。`,
+        }),
+      },
+    ];
+  }
+  if (prompt.startsWith('只观察给定消息范围')) {
+    const separator = prompt.lastIndexOf('\n\n');
+    const input = JSON.parse(prompt.slice(separator + 2)) as {
+      knowledgePointRefs?: string[];
+      messages?: { messageId: string; role: 'user' | 'assistant' }[];
+    };
+    const knowledgePointRef = input.knowledgePointRefs?.[0];
+    const assistant = input.messages?.find((message) => message.role === 'assistant');
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          scope: {
+            alignment: knowledgePointRef === undefined ? 'unclear' : 'direct',
+            relationRefs: knowledgePointRef === undefined ? [] : [knowledgePointRef],
+            rationale: '本地模拟观察仅确认当前互动与本课的可追溯关系。',
+          },
+          entries:
+            knowledgePointRef === undefined || assistant === undefined
+              ? []
+              : [
+                  {
+                    entryId: `entry_delivery_${assistant.messageId}`,
+                    kind: 'teaching_delivery',
+                    summary: '教学智能体回应了当前课节问题。',
+                    knowledgePointRefs: [knowledgePointRef],
+                    sourceRefs: [`message:${assistant.messageId}`],
+                    resolvesEntryRefs: [],
+                    qualityFlags: ['direct', 'complete'],
+                  },
+                ],
+        }),
+      },
+    ];
+  }
+  if (prompt.startsWith('依据提供的真实上下文继续当前互动式教学')) {
+    return [
+      { type: 'text', text: '我们从你刚才的问题继续，先把关键关系讲清，再根据你的理解推进。' },
+    ];
+  }
+  if (prompt.startsWith('根据给定的局部思维行为证据')) {
+    const separator = prompt.lastIndexOf('\n\n');
+    const input = JSON.parse(prompt.slice(separator + 2)) as {
+      episodes?: { episodeId: string }[];
+    };
+    const episodeIds = input.episodes?.map((episode) => episode.episodeId) ?? [];
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          dimensions:
+            episodeIds.length === 0
+              ? []
+              : [
+                  {
+                    label: '当前证据中的关系推进',
+                    description: '学习者通过说明对象之间的关系推进当前理解。',
+                    inclusionSignals: ['表达中包含可说明的对象关系'],
+                    exclusionSignals: ['只重复对象名称而没有关系'],
+                    derivedFromEpisodeIds: episodeIds,
+                  },
+                ],
+          classifications: episodeIds.map((episodeId) => ({
+            episodeId,
+            labels: [
+              {
+                label: '当前证据中的关系推进',
+                rationale: '本地模拟分析仅用于验证开放维度数据链路。',
+                confidence: 0.6,
+              },
+            ],
+          })),
+        }),
+      },
+    ];
+  }
+  if (prompt.startsWith('根据完整、冻结且可追溯的教学证据')) {
+    return [
+      {
+        type: 'text',
+        text: '# 学习 Review\n\n这份 Review 仅依据已冻结的教学证据，总结实际推进、仍待确认之处与有价值的教学支线。',
+      },
+    ];
+  }
+  if (prompt.startsWith('根据冻结的课程结构、全部可用课时 Review')) {
+    return [
+      {
+        type: 'text',
+        text: '# 课程学习回看\n\n这份总 Review 仅依据课程结构与已冻结的课时 Review，区分已有证据、仍存缺口和可继续深化的方向。',
+      },
+    ];
+  }
+  if (failCandidate && prompt.startsWith('COURSE_OUTLINE_CANDIDATE_V4')) {
     return [
       { type: 'text', text: '# Partial candidate' },
       { type: 'fail', error: new Error('mock_provider_interrupted') },
@@ -110,6 +457,10 @@ export async function createLocalApplication(options: {
     protocolVersion: string;
   }>;
   readonly providers?: readonly AiProvider[];
+  readonly additionalProviders?: readonly AiProvider[];
+  readonly initialProviderId?: string;
+  readonly defaultFallbackProviderIds?: readonly string[];
+  readonly defaultMaxAttempts?: number;
   readonly secretStore?: SecretStore;
   readonly providerConfigRepository?: ProviderConfigRepository;
   readonly createDiagnostics?: () => Promise<Readonly<{ artifactRef: string }>>;
@@ -136,17 +487,42 @@ export async function createLocalApplication(options: {
   }
   const localRepositories = createLocalFileRepositories(dataRoot);
   const frameLog = createGenerationFrameLog(dataRoot);
+  let failedConfiguredCandidate = false;
   const provider = createMockProvider({
     id: 'mock',
-    scriptFactory: (attempt) => mockScript(attempt, options.mockFailOnce ?? false),
+    scriptFactory: (attempt, request) => {
+      const failCandidate =
+        options.mockFailOnce === true &&
+        !failedConfiguredCandidate &&
+        request.prompt.startsWith('COURSE_OUTLINE_CANDIDATE_V4');
+      if (failCandidate) failedConfiguredCandidate = true;
+      return mockScript(attempt, failCandidate, request.prompt);
+    },
   });
-  const providers = options.providers ?? [provider];
+  const providers = options.providers ?? [provider, ...(options.additionalProviders ?? [])];
   const generationRuntime = createGenerationRuntime({
     repository: localRepositories.generationTasks,
     unitOfWork,
     providers,
+    ...(options.initialProviderId === undefined
+      ? {}
+      : { initialProviderId: options.initialProviderId }),
+    ...(options.defaultFallbackProviderIds === undefined
+      ? {}
+      : { defaultFallbackProviderIds: options.defaultFallbackProviderIds }),
+    ...(options.defaultMaxAttempts === undefined
+      ? {}
+      : { defaultMaxAttempts: options.defaultMaxAttempts }),
     nextId: () => `task_${randomUUID()}`,
     now: runtimeNow,
+  });
+  const generationExecution = createGenerationExecution({
+    runtime: generationRuntime,
+    frameLog,
+  });
+  const nextLessonRecommender = createGenerationNextLessonRecommender({
+    execution: generationExecution,
+    providerId: 'current',
   });
   const providerConfigService = createProviderConfigService({
     runtime: generationRuntime,
@@ -155,6 +531,7 @@ export async function createLocalApplication(options: {
     now: runtimeNow,
   });
   let runtimeProviderStatus: 'ready' | 'degraded' = 'ready';
+  let teachingProjectionStatus: 'ready' | 'degraded' = 'ready';
   const savedProviderConfiguration = await providerConfigService.getConfiguration();
   if (savedProviderConfiguration !== undefined) {
     try {
@@ -186,6 +563,70 @@ export async function createLocalApplication(options: {
   const eventDispatcher = createEventDispatcher();
   const factRepository = createLocalFileFactRepository(dataRoot);
   const evidenceRepositories = createLocalFileEvidenceRepositories(dataRoot);
+  const profileEvidenceExtractor = createAiProfileEvidenceExtractor({
+    runtime: generationRuntime,
+    execution: generationExecution,
+    providerId: 'current',
+    analyzerVersion: 'profile-evidence-analyzer@1',
+    extractorVersion: 'profile-evidence@1',
+    now: runtimeNow,
+  });
+  const profileEvidenceAggregator = createProfileEvidenceAggregator({
+    repositories: evidenceRepositories,
+    unitOfWork,
+    now: runtimeNow,
+    nextTransactionId: () => `tx_profile_evidence_${randomUUID()}`,
+  });
+  let profileEvidenceBarrier: Promise<void> = Promise.resolve();
+  let lastProfileEvidenceError: string | undefined;
+  function enqueueProfileEvidenceCheckpoint(input: unknown): void {
+    const queued = profileEvidenceBarrier.then(async () => {
+      if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+        throw new Error('profile_checkpoint_invalid');
+      }
+      const existingCandidates = [];
+      for await (const candidate of evidenceRepositories.evidence.list()) {
+        if (candidate.status !== 'active' || candidate.governance === undefined) continue;
+        existingCandidates.push({
+          evidenceId: candidate.evidenceId,
+          semanticKey: candidate.governance.semanticKey,
+          claimDimension: candidate.claimDimension,
+          summary: candidate.summary,
+          sourceGroupId: candidate.sourceGroupId,
+        });
+      }
+      const extracted = await profileEvidenceExtractor.extract({
+        ...(input as Record<string, unknown>),
+        existingCandidates,
+      });
+      await profileEvidenceAggregator.ingest(extracted);
+      if (
+        extracted.checkpoint.checkpointKind === 'authoring_candidate_confirmed' &&
+        extracted.checkpoint.courseId !== undefined &&
+        extracted.checkpoint.courseMode !== undefined
+      ) {
+        await reasoningBehaviorModule.captureFromConfirmedAuthoring({
+          courseId: extracted.checkpoint.courseId,
+          courseMode: extracted.checkpoint.courseMode,
+          checkpointId: extracted.checkpoint.checkpointId,
+          sourceGroupId: extracted.checkpoint.sourceGroupId,
+          sourceSnapshotHash: extracted.sourceSnapshotHash,
+          extractedAt: extracted.extractedAt,
+          sources: extracted.checkpoint.sources.map((source) => ({
+            sourceRef: source.sourceRef,
+            role: source.role === 'user' ? 'user' : 'assistant',
+            observedAt: source.observedAt,
+          })),
+          candidates: extracted.candidates,
+        });
+      }
+      lastProfileEvidenceError = undefined;
+    });
+    profileEvidenceBarrier = queued.catch((error: unknown) => {
+      lastProfileEvidenceError =
+        error instanceof Error ? error.message : 'profile_evidence_extraction_failed';
+    });
+  }
   const portraitRepository = createLocalFilePortraitRepository(dataRoot);
   const factProjector = createFactProjector({ repository: factRepository, unitOfWork });
   for (const eventType of EVENT_TYPES) {
@@ -209,7 +650,7 @@ export async function createLocalApplication(options: {
     await dispatch;
   }
   await dispatchOutbox();
-  const nextId = (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment') =>
+  const nextId = (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment' | 'message') =>
     `${kind}_${randomUUID()}`;
   const courseArchiveDeletion = createCourseArchiveDeletion({
     store: createLocalFileCourseArchiveStore(dataRoot),
@@ -246,13 +687,161 @@ export async function createLocalApplication(options: {
     courses: courseRepositories,
     unitOfWork,
     candidateGeneration,
+    authoringAgent: createGenerationAuthoringAgent({
+      execution: generationExecution,
+      providerId: 'current',
+    }),
+    candidateAlignmentPlanner: createGenerationCandidateAlignmentPlanner({
+      execution: generationExecution,
+      providerId: 'current',
+    }),
+    nextLessonRecommender,
     outbox,
-    assessmentStore: artifactStore,
+    profileEvidenceSink: { capture: enqueueProfileEvidenceCheckpoint },
     nextId,
     now: () => new Date(),
     courseArchiveDeletion,
+    outlineSessionDraftStore: createLocalFileOutlineSessionDraftStore(dataRoot),
   });
   const learningRepositories = createLocalFileLearningSessionRepositories(dataRoot);
+  async function refreshNextLessonRecommendation(
+    courseId: string,
+    trigger: 'lesson-completed' | 'schedule-changed' = 'lesson-completed',
+    currentLessonId?: string,
+  ): Promise<void> {
+    const course = await courseRepositories.courses.get(courseId);
+    if (course === undefined || course.status !== 'active') return;
+    const lessons: LessonDefinition[] = [];
+    for (const lessonId of course.lessonIds) {
+      const lesson = await courseRepositories.lessons.get(lessonId);
+      if (lesson !== undefined) lessons.push(lesson);
+    }
+    const semanticKeyById = new Map(lessons.map((lesson) => [lesson.id, lesson.semanticKey]));
+    const completedSemanticKeys = [];
+    const learningByLessonId = new Map<string, LearningSessionRecord | undefined>();
+    for (const lesson of lessons) {
+      const learning = await learningRepositories.get(lesson.id);
+      learningByLessonId.set(lesson.id, learning);
+      if (learning?.learning.progress === 'completed') {
+        completedSemanticKeys.push(lesson.semanticKey);
+      }
+    }
+    const scheduled = (await planning.list()).filter(
+      (item) => item.courseId === courseId && item.status === 'scheduled',
+    );
+    const currentLearning =
+      currentLessonId === undefined ? undefined : learningByLessonId.get(currentLessonId);
+    const currentFinalReviewMarkdown =
+      currentLearning?.finalReview?.artifactRef === undefined
+        ? undefined
+        : (await artifactStore.read(currentLearning.finalReview.artifactRef))?.content;
+    const previous = course.nextLessonRecommendation;
+    const previousSemanticKey =
+      previous === undefined ? undefined : semanticKeyById.get(previous.recommendedLessonId);
+    const recommendation = await resolveNextLessonRecommendation({
+      recommender: nextLessonRecommender,
+      now: runtimeNow,
+      input: {
+        courseId,
+        trigger,
+        candidates: lessons.map((lesson) => {
+          const learning = learningByLessonId.get(lesson.id);
+          const scheduledStartAt = scheduled.find((item) => item.lessonId === lesson.id)?.startAt;
+          return {
+            semanticKey: lesson.semanticKey,
+            title: lesson.title,
+            objective: lesson.objective,
+            prerequisiteSemanticKeys: lesson.prerequisiteLessonIds
+              .map((id) => semanticKeyById.get(id))
+              .filter((value): value is string => value !== undefined),
+            estimatedMinutes: lesson.estimatedMinutes,
+            progress: learning?.learning.progress ?? 'not_started',
+            courseStatus: course.status,
+            available: course.lessonIds.includes(lesson.id),
+            activeSession: learning?.learning.progress === 'in_progress',
+            ...(scheduledStartAt === undefined ? {} : { scheduledStartAt }),
+            evidenceRefs: [
+              ...lesson.sourceRefs,
+              ...(learning?.finalReview?.artifactRef === undefined
+                ? []
+                : [learning.finalReview.artifactRef]),
+            ],
+          };
+        }),
+        completedSemanticKeys,
+        ...(currentFinalReviewMarkdown === undefined ? {} : { currentFinalReviewMarkdown }),
+        ...(scheduled.length === 0
+          ? {}
+          : {
+              planSummary: scheduled
+                .map((item) => `${item.lessonId}: ${item.startAt} - ${item.endAt}`)
+                .join('\n'),
+            }),
+        ...(previous === undefined || previousSemanticKey === undefined
+          ? {}
+          : {
+              previousRecommendation: {
+                versionId: previous.versionId,
+                semanticKey: previousSemanticKey,
+                rankedSemanticKeys: previous.rankedLessonIds
+                  .map((id) => semanticKeyById.get(id))
+                  .filter((key): key is string => key !== undefined),
+                rationale: previous.rationale,
+                evidenceRefs: previous.evidenceRefs,
+                confidence: previous.confidence,
+                expiresAt: previous.expiresAt,
+                sourceSnapshotHash: previous.sourceSnapshotHash,
+                status: previous.status,
+                warnings: previous.warnings,
+              },
+            }),
+      },
+    });
+    const selected =
+      recommendation === undefined
+        ? undefined
+        : lessons.find((lesson) => lesson.semanticKey === recommendation.semanticKey);
+    if (recommendation !== undefined && selected === undefined) {
+      throw new Error('next_lesson_recommendation_invalid');
+    }
+    const {
+      recommendedLessonId: _previousRecommendedLessonId,
+      nextLessonRecommendation: _previousRecommendation,
+      ...courseWithoutRecommendation
+    } = course;
+    void _previousRecommendedLessonId;
+    void _previousRecommendation;
+    await unitOfWork.execute(
+      { transactionId: `tx_next_lesson_${courseId}_${course.resourceVersion}` },
+      (tx) =>
+        courseRepositories.courses.save(
+          tx,
+          {
+            ...courseWithoutRecommendation,
+            ...(selected === undefined ? {} : { recommendedLessonId: selected.id }),
+            ...(recommendation === undefined || selected === undefined
+              ? {}
+              : {
+                  nextLessonRecommendation: {
+                    versionId: recommendation.versionId,
+                    recommendedLessonId: selected.id,
+                    rankedLessonIds: recommendation.rankedSemanticKeys
+                      .map((key) => lessons.find((lesson) => lesson.semanticKey === key)?.id)
+                      .filter((id): id is string => id !== undefined),
+                    rationale: recommendation.rationale,
+                    evidenceRefs: recommendation.evidenceRefs,
+                    confidence: recommendation.confidence,
+                    expiresAt: recommendation.expiresAt,
+                    sourceSnapshotHash: recommendation.sourceSnapshotHash,
+                    status: recommendation.status,
+                    warnings: recommendation.warnings,
+                  },
+                }),
+          },
+          course.resourceVersion,
+        ),
+    );
+  }
   const reviewClosureRepositories = createLocalFileReviewClosureRepositories(dataRoot);
   const messageLog = createLocalFileMessageLog(dataRoot);
   const supplementaryRepository = createLocalFileSupplementarySessionRepository(dataRoot);
@@ -300,7 +889,7 @@ export async function createLocalApplication(options: {
           event.type === 'EvidenceFreeLessonAbandoned'
         ) {
           append('LessonAbandoned', {
-            sessionId,
+            ...(sessionId === undefined ? {} : { sessionId }),
             evidenceCheckpoint: event.type === 'EvidencedLessonAbandoned',
           });
         } else if (event.type === 'AbandonedLessonRestored') {
@@ -319,21 +908,272 @@ export async function createLocalApplication(options: {
       await outbox.enqueue(tx, publicEvents);
     },
   });
-  const sessionGeneration = createSessionGenerationCoordinator({
-    runtime: generationRuntime,
+  const teachingLedgerRepository = createLocalFileTeachingLedgerRepository(dataRoot);
+  const reasoningBehaviorRepository = createLocalFileReasoningBehaviorRepository(dataRoot);
+  const reasoningBehaviorModule = createReasoningBehaviorModule({
+    repository: reasoningBehaviorRepository,
+    unitOfWork,
+    analyzer: createGenerationReasoningBehaviorAnalyzer({
+      runtime: generationRuntime,
+      execution: generationExecution,
+      providerId: 'current',
+      analyzerVersion: 'reasoning-analyzer@1',
+    }),
+    now: runtimeNow,
+    nextTransactionId: () => `tx_reasoning_${randomUUID()}`,
+  });
+  const reasoningEvidenceProjector = createReasoningEvidenceProjector({
+    reasoningRepository: reasoningBehaviorRepository,
+    evidenceRepositories,
+    unitOfWork,
+    now: runtimeNow,
+    nextTransactionId: () => `tx_reasoning_evidence_${randomUUID()}`,
+  });
+  async function latestUsableReasoningAnalysis() {
+    let latest: ReasoningBehaviorAnalysisRecord | undefined;
+    for await (const analysis of reasoningBehaviorRepository.listAnalyses()) {
+      if (analysis.snapshot.status !== 'usable') continue;
+      const filter = analysis.snapshot.filter;
+      if (
+        filter.windowStart !== undefined ||
+        filter.windowEnd !== undefined ||
+        filter.courseIds.length > 0 ||
+        filter.lessonIds.length > 0 ||
+        filter.courseModes.length > 0 ||
+        filter.elicitations.length > 0
+      ) {
+        continue;
+      }
+      if (latest === undefined || analysis.snapshot.createdAt > latest.snapshot.createdAt) {
+        latest = analysis;
+      }
+    }
+    return latest;
+  }
+  async function refreshAndProjectReasoningAnalysis(
+    filter?: Parameters<typeof reasoningBehaviorModule.refreshAnalysis>[0],
+  ) {
+    const analysis = await reasoningBehaviorModule.refreshAnalysis(filter);
+    if (analysis !== undefined) await reasoningEvidenceProjector.project(analysis);
+    return analysis;
+  }
+  async function refreshReasoningBehaviorAnalysis(): Promise<void> {
+    try {
+      await refreshAndProjectReasoningAnalysis();
+    } catch {
+      teachingProjectionStatus = 'degraded';
+    }
+  }
+  const teachingContextSources: TeachingContextSources = {
+    async getCourseAndLesson({ courseId, lessonId }) {
+      const [course, lesson] = await Promise.all([
+        courseRepositories.courses.get(courseId),
+        courseRepositories.lessons.get(lessonId),
+      ]);
+      if (course === undefined || lesson === undefined || lesson.courseId !== course.id) {
+        throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+      }
+      const lessonMap = [];
+      for await (const candidate of courseRepositories.lessons.listByCourse(courseId)) {
+        lessonMap.push({
+          lessonId: candidate.id,
+          title: candidate.title,
+          objective: candidate.objective,
+          relation:
+            candidate.id === lessonId
+              ? ('current' as const)
+              : lesson.prerequisiteLessonIds.includes(candidate.id)
+                ? ('prerequisite' as const)
+                : ('other' as const),
+        });
+      }
+      const playIntent = teachingPlayIntent(course.courseMode);
+      return {
+        course: {
+          courseId: course.id,
+          outlineVersionId: course.outlineVersionId,
+          title: course.title,
+          courseMode: course.courseMode,
+          ...(playIntent === undefined ? {} : { playIntent }),
+          goals: lessonMap.map((item) => item.objective),
+          lessonMap,
+        },
+        lesson: {
+          lessonId: lesson.id,
+          outlineVersionId: lesson.outlineVersionId,
+          title: lesson.title,
+          objective: lesson.objective,
+          coreKnowledgePoints: lesson.coreKnowledgePoints.map((text) => ({
+            ref: `knowledge:${lesson.id}:${createHash('sha256').update(text).digest('hex').slice(0, 16)}`,
+            text,
+          })),
+        },
+      };
+    },
+    async listMessages(sessionId) {
+      const messages = await messageLog.list(sessionId);
+      return Promise.all(
+        messages.map(async (message) => ({
+          messageId: message.id,
+          role: message.role,
+          completionStatus: message.completionStatus,
+          markdown:
+            (await artifactStore.read(message.contentArtifactRef))?.content ??
+            (await artifactStore.readDraft(message.contentArtifactRef)) ??
+            '',
+          sourceRef: `message:${message.id}`,
+        })),
+      );
+    },
+    async listRelevantFinalReviews(courseId, lessonId) {
+      const reviews = [];
+      for await (const lesson of courseRepositories.lessons.listByCourse(courseId)) {
+        if (lesson.id === lessonId) continue;
+        const learning = await learningRepositories.get(lesson.id);
+        if (learning?.finalReview === undefined) continue;
+        const markdown = (await artifactStore.read(learning.finalReview.artifactRef))?.content;
+        if (markdown === undefined) continue;
+        reviews.push({
+          sourceRef: `review:${learning.finalReview.id}`,
+          version: learning.finalReview.contentSha256,
+          markdown,
+          selectedBecause: '同一课程中的已完成课节，可提供相关学习证据。',
+        });
+      }
+      return reviews;
+    },
+    async listRelevantMaterialExcerpts(lessonId) {
+      const lesson = await courseRepositories.lessons.get(lessonId);
+      if (lesson === undefined) return [];
+      const excerpts = [];
+      for (const sourceRef of lesson.sourceRefs) {
+        const material = await authoringRepositories.materials.get(sourceRef);
+        if (material === undefined) continue;
+        excerpts.push({
+          sourceRef,
+          version: material.sha256,
+          markdown: material.extractedText,
+          selectedBecause: '已由当前课节的绑定版本显式引用。',
+        });
+      }
+      return excerpts;
+    },
+    async getLearningStartSummary() {
+      return undefined;
+    },
+    async getPersonalizationView({ courseId, lessonId }) {
+      const reasoning = await latestUsableReasoningAnalysis();
+      const createdAt = runtimeNow().toISOString();
+      const counts = new Map(
+        reasoning?.snapshot.dimensions.map((count) => [count.dimensionId, count]) ?? [],
+      );
+      const reasoningSignals = (reasoning?.dimensions ?? [])
+        .filter(
+          (dimension) => (counts.get(dimension.dimensionId)?.independentSourceGroupCount ?? 0) >= 2,
+        )
+        .slice(0, 8)
+        .map((dimension) => ({
+          evidenceId: dimension.dimensionId,
+          summary: `当前证据窗口中出现“${dimension.label}”：${dimension.description}`,
+          explicitness: 'ai_observed' as const,
+          sourceRefs: dimension.derivedFromEpisodeIds.map(
+            (episodeId) => `reasoning-episode:${episodeId}`,
+          ),
+          limitations: [
+            '这是从当前证据窗口动态归纳的学习行为维度，不是永久人格、能力等级或固定思维类型。',
+          ],
+        }));
+      const candidateSignals = [];
+      let candidateProfileVersion = 0;
+      for await (const candidate of evidenceRepositories.evidence.list()) {
+        const governance = candidate.governance;
+        if (
+          candidate.status !== 'active' ||
+          governance === undefined ||
+          governance.safetyStatus === 'blocked' ||
+          governance.confidence < 0.65 ||
+          (governance.explicitness === 'ai_observed' && governance.observedCount < 2)
+        ) {
+          continue;
+        }
+        const expiry = governance.expiryPolicy;
+        const expiryAt =
+          expiry.kind === 'until_corrected'
+            ? undefined
+            : expiry.kind === 'window_bound'
+              ? expiry.expiresAt
+              : expiry.reviewAt;
+        if (expiryAt !== undefined && Date.parse(expiryAt) <= runtimeNow().getTime()) continue;
+        candidateProfileVersion = Math.max(candidateProfileVersion, candidate.resourceVersion);
+        candidateSignals.push({
+          evidenceId: candidate.evidenceId,
+          summary: `${governance.label}：${candidate.summary}`,
+          explicitness: governance.explicitness,
+          sourceRefs: [...candidate.sourceRefs],
+          limitations: [
+            ...governance.limitations,
+            '该信号是可撤回的候选证据，只用于调整当前教学表达与探查方式，不代表已确认的全局用户档案事实。',
+          ],
+        });
+      }
+      const signals = [...candidateSignals, ...reasoningSignals]
+        .filter(
+          (signal, index, all) =>
+            all.findIndex((candidate) => candidate.evidenceId === signal.evidenceId) === index,
+        )
+        .slice(0, 8);
+      return {
+        profileVersion: Math.max(reasoning?.resourceVersion ?? 0, candidateProfileVersion),
+        purpose: 'interactive_teaching',
+        courseId,
+        lessonId,
+        signals,
+        completeness: signals.length === 0 ? 'insufficient' : 'limited',
+        sourceSnapshotHash: createHash('sha256')
+          .update(
+            JSON.stringify({
+              courseId,
+              lessonId,
+              reasoningSource: reasoning?.snapshot.sourceSnapshotHash,
+              evidenceIds: signals.map((signal) => signal.evidenceId),
+            }),
+          )
+          .digest('hex'),
+        createdAt,
+      };
+    },
+  };
+  const teachingContextAssembler = createTeachingContextAssembler({
+    sources: teachingContextSources,
+  });
+  const interactiveTeachingRuntime = createInteractiveTeaching({
     sessionModule,
+    contextSources: teachingContextSources,
+    contextAssembler: teachingContextAssembler,
+    agent: createGenerationTeachingAgent({
+      runtime: generationRuntime,
+      execution: generationExecution,
+      providerId: 'current',
+    }),
+    observer: createGenerationTeachingObserver({
+      runtime: generationRuntime,
+      execution: generationExecution,
+      providerId: 'current',
+      now: runtimeNow,
+    }),
+    reasoningBehaviorSink: reasoningBehaviorModule,
+    ledgerRepository: teachingLedgerRepository,
+    unitOfWork,
     frameLog,
-    artifactStore: {
-      saveDraft: artifactStore.saveDraft,
-      async saveManifest(manifest) {
-        const content = JSON.stringify(manifest);
-        const id = `manifest_${createHash('sha256').update(content).digest('hex')}`;
-        await artifactStore.saveDraft(id, content);
-        return id;
+    assistantArtifacts: {
+      async save(input) {
+        await artifactStore.saveDraft(input.artifactRef, input.markdown);
       },
     },
-    providerId: 'current',
-    nextMessageId: () => `message_${randomUUID()}`,
+    nextAssistantMessageId: () => `message_${randomUUID()}`,
+    nextCheckpointId: () => `teaching_checkpoint_${randomUUID()}`,
+    nextTransactionId: () => `tx_teaching_${randomUUID()}`,
+    now: runtimeNow,
   });
   const supplementarySessions = createSupplementarySessionModule({
     repository: supplementaryRepository,
@@ -350,10 +1190,202 @@ export async function createLocalApplication(options: {
     nextSessionId: () => `supplementary_${randomUUID()}`,
     now: () => new Date(),
   });
+  async function captureTeachingProfileCheckpoint(
+    checkpoint: TeachingCheckpointSnapshot,
+  ): Promise<void> {
+    const selectedMessageIds = new Set(checkpoint.sourceMessageIds);
+    const messages = (await messageLog.list(checkpoint.sessionId))
+      .filter((message) => selectedMessageIds.has(message.id))
+      .slice(-64);
+    const sourceGroupId = `lesson:${checkpoint.lessonId}:session:${checkpoint.sessionId}`;
+    const sources = (
+      await Promise.all(
+        messages.map(async (message) => {
+          const excerpt =
+            (await artifactStore.read(message.contentArtifactRef))?.content ??
+            (await artifactStore.readDraft(message.contentArtifactRef));
+          if (excerpt === undefined || excerpt.trim() === '') return undefined;
+          return {
+            sourceRef: `message:${message.id}`,
+            sourceGroupId,
+            sourceType: 'lesson' as const,
+            role: message.role,
+            excerpt,
+            observedAt: message.createdAt,
+          };
+        }),
+      )
+    ).filter((source) => source !== undefined);
+    if (sources.length === 0) return;
+    const lesson = await courseRepositories.lessons.get(checkpoint.lessonId);
+    const course =
+      lesson === undefined ? undefined : await courseRepositories.courses.get(lesson.courseId);
+    enqueueProfileEvidenceCheckpoint({
+      checkpointId: `profile:${checkpoint.checkpointId}:teaching`,
+      checkpointKind: 'teaching_session_closed',
+      sourceType: 'lesson',
+      sourceGroupId,
+      dependentSourceGroupIds: [],
+      ...(course === undefined ? {} : { courseContext: course.title }),
+      ...(lesson === undefined ? {} : { lessonContext: `${lesson.title}｜${lesson.objective}` }),
+      completeness: checkpoint.observationCompleteness === 'complete' ? 'complete' : 'partial',
+      sources,
+    });
+  }
+
+  async function captureReviewProfileCheckpoint(input: {
+    checkpointKind: Extract<
+      ProfileEvidenceCheckpointKind,
+      'stage_review_finalized' | 'lesson_review_finalized' | 'course_review_finalized'
+    >;
+    sourceRef: string;
+    markdown: string;
+    courseId: string;
+    lessonId?: string;
+    observedAt: string;
+  }): Promise<void> {
+    if (input.markdown.trim() === '') return;
+    const sourceGroupId = `review:${input.sourceRef}`;
+    const [course, lesson] = await Promise.all([
+      courseRepositories.courses.get(input.courseId),
+      input.lessonId === undefined
+        ? Promise.resolve(undefined)
+        : courseRepositories.lessons.get(input.lessonId),
+    ]);
+    const dependentSourceGroupIds: string[] = [];
+    if (input.lessonId !== undefined) {
+      const learning = await learningRepositories.get(input.lessonId);
+      if (learning?.learning.session?.id !== undefined) {
+        dependentSourceGroupIds.push(
+          `lesson:${input.lessonId}:session:${learning.learning.session.id}`,
+        );
+      }
+    } else if (course !== undefined) {
+      for (const lessonId of course.lessonIds) {
+        const learning = await learningRepositories.get(lessonId);
+        if (learning?.finalReview !== undefined) {
+          dependentSourceGroupIds.push(`review:review:${learning.finalReview.id}`);
+        }
+      }
+    }
+    enqueueProfileEvidenceCheckpoint({
+      checkpointId: `profile:${input.sourceRef}:${input.checkpointKind}`,
+      checkpointKind: input.checkpointKind,
+      sourceType: 'review',
+      sourceGroupId,
+      dependentSourceGroupIds,
+      ...(course === undefined ? {} : { courseContext: course.title }),
+      ...(lesson === undefined ? {} : { lessonContext: `${lesson.title}｜${lesson.objective}` }),
+      completeness: 'complete',
+      sources: [
+        {
+          sourceRef: input.sourceRef,
+          sourceGroupId,
+          sourceType: 'review',
+          role: 'review',
+          excerpt: input.markdown,
+          observedAt: input.observedAt,
+        },
+      ],
+    });
+  }
+
+  async function captureSupplementaryProfileCheckpoint(
+    session: NonNullable<Awaited<ReturnType<typeof supplementarySessions.get>>>,
+  ): Promise<void> {
+    const sourceGroupId = `supplementary:${session.id}`;
+    const sources = (
+      await Promise.all(
+        session.messageIds.slice(-64).map(async (messageId) => {
+          const excerpt =
+            (await artifactStore.read(messageId))?.content ??
+            (await artifactStore.readDraft(messageId));
+          if (excerpt === undefined || excerpt.trim() === '') return undefined;
+          return {
+            sourceRef: `supplementary:${messageId}`,
+            sourceGroupId,
+            sourceType: 'supplementary' as const,
+            role: 'user' as const,
+            excerpt,
+            observedAt: session.updatedAt,
+          };
+        }),
+      )
+    ).filter((source) => source !== undefined);
+    if (sources.length === 0) return;
+    const lesson = await courseRepositories.lessons.get(session.lessonId);
+    const course = await courseRepositories.courses.get(session.courseId);
+    const learning = await learningRepositories.get(session.lessonId);
+    const dependentSourceGroupIds =
+      learning?.learning.session?.id === undefined
+        ? []
+        : [`lesson:${session.lessonId}:session:${learning.learning.session.id}`];
+    enqueueProfileEvidenceCheckpoint({
+      checkpointId: `profile:${session.id}:closed`,
+      checkpointKind: 'supplementary_session_closed',
+      sourceType: 'supplementary',
+      sourceGroupId,
+      dependentSourceGroupIds,
+      ...(course === undefined ? {} : { courseContext: course.title }),
+      ...(lesson === undefined ? {} : { lessonContext: `${lesson.title}｜${lesson.objective}` }),
+      completeness: 'complete',
+      sources,
+    });
+  }
+  const reviewWriter = createGenerationReviewWriter({
+    runtime: generationRuntime,
+    execution: generationExecution,
+    providerId: 'current',
+  });
+  async function buildReviewEvidencePack(
+    kind: 'stage' | 'final',
+    sessionId: string,
+    sourceSnapshotHash: string,
+  ) {
+    const ledger = await teachingLedgerRepository.get(sessionId);
+    if (ledger === undefined) throw new Error('review_teaching_ledger_not_found');
+    const checkpoint = [...ledger.checkpoints]
+      .reverse()
+      .find((candidate) => candidate.sourceSnapshotHash === sourceSnapshotHash);
+    if (checkpoint === undefined) throw new Error('review_checkpoint_not_found');
+    const facts = await teachingContextSources.getCourseAndLesson({
+      courseId: ledger.courseId,
+      lessonId: ledger.lessonId,
+    });
+    const messages = await teachingContextSources.listMessages(sessionId);
+    const observationIds = new Set(
+      checkpoint.observationRefs.map((ref) => ref.replace(/^observation:/u, '')),
+    );
+    return {
+      kind,
+      checkpoint,
+      course: { courseId: facts.course.courseId, title: facts.course.title },
+      lesson: {
+        lessonId: facts.lesson.lessonId,
+        title: facts.lesson.title,
+        objective: facts.lesson.objective,
+        coreKnowledgePoints: facts.lesson.coreKnowledgePoints.map((point) => point.text),
+      },
+      observations: ledger.observations.filter((observation) =>
+        observationIds.has(observation.observationId),
+      ),
+      messages: messages.filter((message) =>
+        checkpoint.sourceMessageIds.includes(message.messageId),
+      ),
+      ...(facts.course.playIntent === undefined ? {} : { reviewLens: facts.course.playIntent }),
+    } as const;
+  }
   const stageReviews = createStageReviewWorkflow({
     repository: reviewClosureRepositories.stageReviews,
     unitOfWork,
-    generationRuntime,
+    reviewTask: {
+      async submit(input) {
+        return reviewWriter.submit(
+          await buildReviewEvidencePack('stage', input.sessionId, input.sourceSnapshotHash),
+          input.commandId,
+        );
+      },
+    },
     providerId: 'current',
     now: () => new Date(),
     assertLessonWritable,
@@ -390,7 +1422,18 @@ export async function createLocalApplication(options: {
     repository: lessonClosureRepository,
     unitOfWork,
     sessionModule,
-    generationRuntime,
+    reviewTask: {
+      async submit(input) {
+        return reviewWriter.submit(
+          await buildReviewEvidencePack(
+            'final',
+            input.record.sessionId,
+            input.record.messageRangeChecksum,
+          ),
+          input.commandId,
+        );
+      },
+    },
     nextTransactionId: () => `closure_${randomUUID()}`,
     nextReviewId: reviewIdForLesson,
     now: () => new Date(),
@@ -399,7 +1442,68 @@ export async function createLocalApplication(options: {
   const courseReviews = createCourseReviewWorkflow({
     repository: reviewClosureRepositories.courseReviews,
     unitOfWork,
-    generationRuntime,
+    reviewTask: {
+      async submit(input) {
+        const course = await courseRepositories.courses.get(input.courseId);
+        if (course === undefined) throw new Error('course_review_course_not_found');
+        const lessons = [];
+        const finalReviewLessonByRef = new Map<string, string>();
+        for await (const lesson of courseRepositories.lessons.listByCourse(input.courseId)) {
+          lessons.push({
+            lessonId: lesson.id,
+            title: lesson.title,
+            objective: lesson.objective,
+            coreKnowledgePoints: lesson.coreKnowledgePoints,
+          });
+          const learning = await learningRepositories.get(lesson.id);
+          if (learning?.finalReview !== undefined) {
+            finalReviewLessonByRef.set(learning.finalReview.artifactRef, lesson.id);
+          }
+        }
+        const lessonReviews = [];
+        for (const sourceRef of input.inputManifest.completedFinalReviewRefs) {
+          const lessonId = finalReviewLessonByRef.get(sourceRef);
+          const markdown = (await artifactStore.read(sourceRef))?.content;
+          if (lessonId === undefined || markdown === undefined) {
+            throw new Error('course_review_evidence_pack_incomplete');
+          }
+          lessonReviews.push({ lessonId, kind: 'final' as const, sourceRef, markdown });
+        }
+        for (const reviewId of input.inputManifest.abandonedStageReviewRefs) {
+          const stageReview = await reviewClosureRepositories.stageReviews.get(reviewId);
+          const artifactRef = stageReview?.artifactRef;
+          const markdown =
+            artifactRef === undefined
+              ? undefined
+              : (await artifactStore.read(artifactRef))?.content;
+          if (stageReview === undefined || artifactRef === undefined || markdown === undefined) {
+            throw new Error('course_review_evidence_pack_incomplete');
+          }
+          lessonReviews.push({
+            lessonId: stageReview.lessonId,
+            kind: 'stage' as const,
+            sourceRef: artifactRef,
+            markdown,
+          });
+        }
+        const playIntent = teachingPlayIntent(course.courseMode);
+        return reviewWriter.submitCourse(
+          {
+            kind: 'course',
+            course: {
+              courseId: course.id,
+              title: course.title,
+              outlineVersionId: input.inputManifest.outlineVersionId,
+            },
+            lessons,
+            lessonReviews,
+            abandonedWithoutReviewLessonIds: input.inputManifest.abandonedWithoutReviewLessonIds,
+            ...(playIntent === undefined ? {} : { reviewLens: playIntent }),
+          },
+          input.commandId,
+        );
+      },
+    },
     outbox,
     nextEventId: () => `event_${randomUUID()}`,
     now: () => new Date(),
@@ -472,12 +1576,67 @@ export async function createLocalApplication(options: {
     scheduleRepository,
     unitOfWork,
     generationRuntime,
+    async assemblePreviewContext(input) {
+      const courses = [];
+      for (const courseId of input.courseRefs) {
+        const course = await courseRepositories.courses.get(courseId);
+        if (course !== undefined) {
+          courses.push({
+            courseId: course.id,
+            title: course.title,
+            lessonIds: course.lessonIds,
+          });
+        }
+      }
+      const lessons = [];
+      for (const lessonId of input.lessonRefs) {
+        const lesson = await courseRepositories.lessons.get(lessonId);
+        if (lesson !== undefined) {
+          lessons.push({
+            lessonId: lesson.id,
+            courseId: lesson.courseId,
+            title: lesson.title,
+            objective: lesson.objective,
+            prerequisiteLessonIds: lesson.prerequisiteLessonIds,
+            estimatedMinutes: lesson.estimatedMinutes,
+            progress:
+              (await learningRepositories.get(lesson.id))?.learning.progress ?? 'not_started',
+          });
+        }
+      }
+      const existingSchedule = [];
+      for await (const item of scheduleRepository.list()) existingSchedule.push(item);
+      const constraints = await artifactStore.read(input.constraintsArtifactRef);
+      const preference = (prefix: string) =>
+        input.timeWindowRefs.find((ref) => ref.startsWith(prefix))?.slice(prefix.length);
+      return {
+        courses,
+        lessons,
+        timezone: 'Asia/Shanghai',
+        availability: {
+          startLocalDate: preference('start:'),
+          dailyTargetMinutes: Number(preference('daily:') ?? 0),
+          learningDays: preference('days:')?.split(',') ?? [],
+        },
+        userPreferences: {
+          preserveExistingDates: preference('preserve:') === 'true',
+          rescheduleOverdue: preference('overdue:') === 'true',
+          strategy: preference('strategy:') ?? 'balanced',
+        },
+        declaredTimeWindows: input.timeWindowRefs,
+        constraintsMarkdown: constraints?.content,
+        existingSchedule,
+        fixedCommitments: existingSchedule.filter((item) => item.locked === true),
+      };
+    },
     getScheduleVersion: scheduleVersion,
     lessonIsPlannable: async (lessonId) => {
       if ((await courseRepositories.lessons.get(lessonId)) === undefined) return false;
       const progress = (await learningRepositories.get(lessonId))?.learning.progress;
       return progress !== 'completed' && progress !== 'abandoned';
     },
+    getLessonPrerequisiteIds: async (lessonId) =>
+      (await courseRepositories.lessons.get(lessonId))?.prerequisiteLessonIds ?? [],
     nextPlanFlowId: () => `plan_flow_${randomUUID()}`,
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
@@ -512,6 +1671,53 @@ export async function createLocalApplication(options: {
   const weeklyReports = createWeeklyReportService({
     repository: weeklyReportRepository,
     factRepository,
+    async assembleAdditionalEvidence() {
+      const evidence = [];
+      for await (const ledger of teachingLedgerRepository.list()) {
+        for (const observation of ledger.observations) {
+          if (observation.status !== 'active') continue;
+          evidence.push({
+            factId: `teaching-observation:${observation.observationId}`,
+            sourceRef: `teaching-observation:${observation.observationId}`,
+            kind: 'teaching-ledger' as const,
+            occurredAt: observation.observedAt,
+            summary: observation.entries.map((entry) => entry.summary).join('；'),
+            payload: {
+              scope: observation.scope,
+              entries: observation.entries.map((entry) => ({
+                kind: entry.kind,
+                summary: entry.summary,
+                sourceRefs: entry.sourceRefs,
+              })),
+            },
+            courseId: ledger.courseId,
+            lessonId: ledger.lessonId,
+            actualSeconds: 0,
+            topicTags: [],
+          });
+        }
+      }
+      for await (const episode of reasoningBehaviorRepository.listEpisodes()) {
+        if (episode.status !== 'active') continue;
+        evidence.push({
+          factId: `reasoning:${episode.episodeId}`,
+          sourceRef: `reasoning:${episode.episodeId}`,
+          kind: 'reasoning-evidence' as const,
+          occurredAt: episode.observedAt,
+          summary: episode.behaviorSummary,
+          payload: {
+            elicitation: episode.elicitation,
+            sourceRefs: episode.sourceRefs,
+            extractorVersion: episode.extractorVersion,
+          },
+          courseId: episode.courseId,
+          lessonId: episode.lessonId,
+          actualSeconds: 0,
+          topicTags: [],
+        });
+      }
+      return evidence;
+    },
     unitOfWork,
     generationRuntime,
     finalizeArtifact: (input, tx) => artifactStore.stageFinalize(tx, input),
@@ -557,17 +1763,17 @@ export async function createLocalApplication(options: {
         );
       }
       if (report.state !== 'generating') return;
-      await generationRuntime.cancel(report.generationTaskId);
-      const completedLessons = report.factSnapshot.length;
-      const actualSeconds = report.factSnapshot.reduce(
-        (total, fact) => total + fact.actualSeconds,
-        0,
-      );
-      await weeklyReports.finalize(
-        command.localWeekKey,
-        report.generationTaskId,
-        `# Weekly Review\n\n本周完成 ${completedLessons} 个课节，共学习 ${actualSeconds} 秒。`,
-      );
+      const task = await generationExecution.awaitTerminal(report.generationTaskId);
+      const markdown = task.draftMarkdown?.trim() ?? '';
+      if (task.status !== 'completed' || markdown === '') {
+        await weeklyReports.fail(
+          command.localWeekKey,
+          task.errorCode ?? 'ai_unavailable',
+          `draft_${report.generationTaskId}`,
+        );
+        return;
+      }
+      await weeklyReports.finalize(command.localWeekKey, report.generationTaskId, markdown);
     },
   });
   await weeklyReportScheduler.tick(runtimeNow());
@@ -666,7 +1872,16 @@ export async function createLocalApplication(options: {
     },
   });
   async function requestPortraitRefresh(input: { idempotencyKey: string; tokenBudget: number }) {
-    const profile = await globalProfile();
+    await profileEvidenceBarrier;
+    if (lastProfileEvidenceError !== undefined) {
+      throw new Error(`profile_evidence_checkpoint_failed:${lastProfileEvidenceError}`);
+    }
+    await profileEvidenceAggregator.expire();
+    await refreshReasoningBehaviorAnalysis();
+    const [profile, reasoningBehaviorAnalysis] = await Promise.all([
+      globalProfile(),
+      latestUsableReasoningAnalysis(),
+    ]);
     const candidates = [];
     for await (const candidate of evidenceRepositories.evidence.list()) candidates.push(candidate);
     const packedEvidence = packPortraitEvidence({
@@ -680,41 +1895,44 @@ export async function createLocalApplication(options: {
       window: profile.window,
       promptTemplateVersion: 'portrait@1',
       providerConfigFingerprint: createHash('sha256').update('mock').digest('hex'),
+      ...(reasoningBehaviorAnalysis === undefined
+        ? {}
+        : {
+            reasoningBehaviorInput: {
+              snapshotId: reasoningBehaviorAnalysis.snapshot.snapshotId,
+              sourceSnapshotHash: reasoningBehaviorAnalysis.snapshot.sourceSnapshotHash,
+              dimensionSetVersion: reasoningBehaviorAnalysis.snapshot.dimensionSetVersion,
+            },
+          }),
       idempotencyKey: input.idempotencyKey,
     });
     if (requested.state === 'completed' || requested.state === 'failed') return requested;
     if (requested.generationTaskId === undefined) return requested;
-    await generationRuntime.cancel(requested.generationTaskId);
-    const included = candidates.filter((candidate) =>
-      packedEvidence.includedEvidenceIds.includes(candidate.evidenceId),
-    );
-    const byDimension = new Map<string, typeof included>();
-    for (const candidate of included) {
-      const group = byDimension.get(candidate.claimDimension) ?? [];
-      group.push(candidate);
-      byDimension.set(candidate.claimDimension, group);
+    const task = await generationExecution.awaitTerminal(requested.generationTaskId);
+    const markdown = task.draftMarkdown?.trim() ?? '';
+    if (task.status !== 'completed' || markdown === '') {
+      return portraitModule.fail(
+        requested.versionId,
+        requested.generationTaskId,
+        task.errorCode ?? 'ai_unavailable',
+        `draft_${requested.generationTaskId}`,
+      );
     }
-    const claims = [...byDimension.entries()]
-      .filter(
-        ([, group]) => new Set(group.map((candidate) => independentSourceKey(candidate))).size >= 2,
-      )
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([dimension, group], index) => ({
-        claimId: `claim_${index + 1}`,
-        markdown: `在多个独立学习情境中观察到与 ${dimension} 相关的局部模式。`,
-        evidenceIds: group.map((candidate) => candidate.evidenceId).sort(),
-        confidence: 0.65,
-        limitations: ['该观察仅适用于当前证据窗口，不构成稳定人格或能力标签。'],
-        counterEvidenceChecked: true as const,
-      }));
-    return portraitModule.finalize(requested.versionId, requested.generationTaskId, {
-      title: claims.length === 0 ? '学习画像证据不足' : '当前学习画像',
-      summary:
-        claims.length === 0
-          ? '当前尚无满足复合证据规则的可靠洞察。'
-          : '以下洞察仅基于当前窗口内可追溯的复合证据。',
-      claims,
-    });
+    try {
+      return await portraitModule.finalize(
+        requested.versionId,
+        requested.generationTaskId,
+        parseStructuredJson(markdown),
+      );
+    } catch (error) {
+      await portraitModule.fail(
+        requested.versionId,
+        requested.generationTaskId,
+        error instanceof Error ? error.message : 'portrait_output_invalid',
+        `draft_${requested.generationTaskId}`,
+      );
+      throw error;
+    }
   }
   async function resolveSession(sessionId: string) {
     let found;
@@ -745,15 +1963,50 @@ export async function createLocalApplication(options: {
       currentMessageRefs: messages.map((message) => message.contentArtifactRef),
     };
   }
+  await generationRuntime.recoverExpiredLeases();
+  for await (const record of learningRepositories.list()) {
+    const sessionId = record.learning.session?.id;
+    if (sessionId === undefined || (await messageLog.list(sessionId)).length === 0) continue;
+    const lesson = await courseRepositories.lessons.get(record.lessonId);
+    if (lesson === undefined) continue;
+    const timestamp = runtimeNow().toISOString();
+    try {
+      await interactiveTeachingRuntime.recoverSession({
+        courseId: lesson.courseId,
+        lessonId: lesson.id,
+        sessionId,
+        context: {
+          commandId: `recover_teaching_${sessionId}`,
+          correlationId: `recover_teaching_${sessionId}`,
+          idempotencyKey: `recover_teaching_${sessionId}`,
+          actor: 'local-user',
+          requestedAt: timestamp,
+          receivedAt: timestamp,
+          ...(record.writeLease?.pageInstanceId === undefined
+            ? {}
+            : { pageInstanceId: record.writeLease.pageInstanceId }),
+        },
+      });
+    } catch {
+      teachingProjectionStatus = 'degraded';
+    }
+  }
+  await refreshReasoningBehaviorAnalysis();
   const serverDependencies: ServerDependencies = {
     getRuntimeReadiness: async () => ({
-      status: 'ready',
+      status:
+        teachingProjectionStatus === 'ready' && runtimeProviderStatus === 'ready'
+          ? 'ready'
+          : 'degraded',
       instanceId: runtimeInstanceId,
       buildId: options.runtimeIdentity?.buildId ?? 'development',
       protocolVersion: options.runtimeIdentity?.protocolVersion ?? '1',
       storeStatus: 'ready',
-      projectionStatus: 'ready',
+      projectionStatus: teachingProjectionStatus,
       providerStatus: runtimeProviderStatus,
+      ...(teachingProjectionStatus === 'degraded'
+        ? { reasonCode: 'teaching_observation_recovery_failed' }
+        : {}),
       ...(options.runtimeIdentity === undefined
         ? {}
         : {
@@ -762,15 +2015,140 @@ export async function createLocalApplication(options: {
             identityFingerprint: options.runtimeIdentity.identityFingerprint,
           }),
     }),
+    home: {
+      async getHome() {
+        const draftSessions = [];
+        for await (const record of authoringRepositories.outlineSessions.list()) {
+          if (record.session.state === 'confirmed' || record.session.savedAsDraft !== true)
+            continue;
+          draftSessions.push({
+            outlineSessionId: record.session.outlineSessionId,
+            topic: record.session.topic,
+            courseMode: record.session.courseMode,
+            state: record.session.state,
+            resourceVersion: record.resourceVersion,
+          });
+        }
+        const courses = [];
+        const lessons = [];
+        for await (const course of courseRepositories.courses.list()) {
+          courses.push({
+            courseId: course.id,
+            title: course.title,
+            status: course.status,
+            courseMode: course.courseMode,
+            outlineVersionId: course.outlineVersionId,
+            resourceVersion: course.resourceVersion,
+          });
+          for (const lessonId of course.lessonIds) {
+            const [lesson, learning] = await Promise.all([
+              courseRepositories.lessons.get(lessonId),
+              learningRepositories.get(lessonId),
+            ]);
+            if (lesson === undefined) continue;
+            const lastActivityAt = latestLearningActivityAt(learning?.intervals ?? []);
+            const recommendation = course.nextLessonRecommendation;
+            const recommendationRank =
+              recommendation === undefined ? -1 : recommendation.rankedLessonIds.indexOf(lessonId);
+            lessons.push({
+              courseId: course.id,
+              lessonId,
+              title: lesson.title,
+              progress: learning?.learning.progress ?? 'not_started',
+              ...(learning?.learning.session?.id === undefined
+                ? {}
+                : { sessionId: learning.learning.session.id }),
+              recommended: lessonId === course.recommendedLessonId && recommendationRank <= 0,
+              ...(recommendation === undefined || recommendationRank < 0
+                ? {}
+                : {
+                    recommendation: {
+                      versionId: recommendation.versionId,
+                      rank: recommendationRank + 1,
+                      rationale: recommendation.rationale,
+                      evidenceRefs: [...recommendation.evidenceRefs],
+                      confidence: recommendation.confidence,
+                      expiresAt: recommendation.expiresAt,
+                      status: recommendation.status,
+                      warnings: [...recommendation.warnings],
+                    },
+                  }),
+              ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
+            });
+          }
+        }
+        const schedule = (await planning.list())
+          .filter((item) => item.status === 'scheduled')
+          .map((item) => ({
+            scheduleItemId: item.id,
+            courseId: item.courseId,
+            lessonId: item.lessonId,
+            startAt: item.startAt,
+            endAt: item.endAt,
+            source: item.source,
+            locked: item.locked ?? false,
+          }));
+        return {
+          generatedAt: runtimeNow().toISOString(),
+          draftSessions,
+          courses,
+          lessons,
+          schedule,
+        };
+      },
+    },
     courseAuthoring: {
       module: courseAuthoring,
+      async ingestMaterial(outlineSessionId, input, context) {
+        const session = await authoringRepositories.outlineSessions.get(outlineSessionId);
+        if (session === undefined) {
+          throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+        }
+        if (context.expectedVersion !== session.resourceVersion) {
+          throw new RepositoryVersionConflictError(session.resourceVersion);
+        }
+        const ingested = await ingestSelectedMaterial(
+          { fileName: input.fileName, mediaType: input.mediaType, bytes: input.bytes },
+          { now: runtimeNow },
+        );
+        if (!ingested.valid) {
+          throw Object.assign(new Error(ingested.code), { code: ingested.code });
+        }
+        const artifactRef = `material:${outlineSessionId}:${ingested.snapshot.sha256}`;
+        const existing = await authoringRepositories.materials.get(artifactRef);
+        if (existing === undefined) {
+          await unitOfWork.execute({ transactionId: `tx_material_${context.commandId}` }, (tx) =>
+            authoringRepositories.materials.save(
+              tx,
+              {
+                ...ingested.snapshot,
+                artifactRef,
+                outlineSessionId,
+                resourceVersion: 0,
+              },
+              0,
+            ),
+          );
+        }
+        return {
+          outlineSessionId,
+          artifactRef,
+          originalFileName: ingested.snapshot.originalFileName,
+          format: ingested.snapshot.format,
+          sha256: ingested.snapshot.sha256,
+          importedAt: ingested.snapshot.importedAt,
+          sections: ingested.snapshot.sections.map((section) => ({ ...section })),
+          warnings: [...ingested.snapshot.warnings],
+          resourceVersion: session.resourceVersion,
+        };
+      },
       nextCommandId: () => `command_${randomUUID()}`,
       nextCorrelationId: () => `correlation_${randomUUID()}`,
       now: () => new Date(),
     },
     learningSession: {
       module: sessionModule,
-      generation: sessionGeneration,
+      teaching: interactiveTeachingRuntime.module,
       resolveSession,
       async saveUserMessage(messageId, markdown) {
         await artifactStore.saveDraft(messageId, markdown);
@@ -782,14 +2160,46 @@ export async function createLocalApplication(options: {
           (await artifactStore.readDraft(artifactRef))
         );
       },
+      listSessionMessages: (sessionId) => messageLog.list(sessionId),
+      async getLessonEntryState(lessonId) {
+        await assertLessonWritable(lessonId);
+        const record = await learningRepositories.get(lessonId);
+        if (record === undefined) {
+          return { lessonId, progress: 'not_started', resourceVersion: 0 };
+        }
+        const stageReviewId = record.learning.session?.stageReviewId;
+        const stageReviewMarkdown =
+          stageReviewId === undefined
+            ? undefined
+            : (await artifactStore.read(`lesson_review_${stageReviewId}`))?.content;
+        return {
+          lessonId,
+          progress: record.learning.progress,
+          ...(record.learning.session?.id === undefined
+            ? {}
+            : { sessionId: record.learning.session.id }),
+          ...(stageReviewMarkdown === undefined ? {} : { stageReviewMarkdown }),
+          resourceVersion: record.resourceVersion,
+        };
+      },
       async getLessonRecord(lessonId) {
         const record = await learningRepositories.get(lessonId);
         const sessionId = record?.learning.session?.id;
         if (record === undefined || sessionId === undefined || record.finalReview === undefined) {
           throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
         }
-        const messages = await messageLog.list(sessionId);
-        const messageMarkdown = await Promise.all(
+        const [lesson, messages] = await Promise.all([
+          courseRepositories.lessons.get(lessonId),
+          messageLog.list(sessionId),
+        ]);
+        if (lesson === undefined) {
+          throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
+        }
+        const course = await courseRepositories.courses.get(lesson.courseId);
+        if (course === undefined) {
+          throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
+        }
+        const originalMessages = await Promise.all(
           messages.map(async (message) => {
             const markdown =
               (await artifactStore.read(message.contentArtifactRef))?.content ??
@@ -797,12 +2207,34 @@ export async function createLocalApplication(options: {
             return `${message.role === 'user' ? '你' : '导师'}：${markdown ?? ''}`;
           }),
         );
+        const supplementary = [];
+        for await (const session of supplementarySessions.listByLesson(lessonId)) {
+          const sessionMessages = await Promise.all(
+            session.messageIds.map(async (messageId) => {
+              const markdown =
+                (await artifactStore.read(messageId))?.content ??
+                (await artifactStore.readDraft(messageId));
+              return `你：${markdown ?? ''}`;
+            }),
+          );
+          supplementary.push({
+            sessionId: session.id,
+            label: `补充学习 ${supplementary.length + 1}`,
+            createdAt: session.createdAt,
+            messages: sessionMessages,
+          });
+        }
         const finalReviewMarkdown =
           (await artifactStore.read(record.finalReview.artifactRef))?.content ?? '';
         return {
           lessonId,
-          original: { sessionId, label: '原始学习', messages: messageMarkdown },
-          supplementary: [],
+          courseId: lesson.courseId,
+          title: lesson.title,
+          courseTitle: course.title,
+          completedAt: record.finalReview.committedAt,
+          actualSeconds: actualLearningSeconds(record.intervals),
+          original: { sessionId, label: '原始学习', messages: originalMessages },
+          supplementary,
           finalReviewMarkdown,
         };
       },
@@ -810,18 +2242,45 @@ export async function createLocalApplication(options: {
       nextCorrelationId: () => `correlation_${randomUUID()}`,
       nextMessageId: () => `message_${randomUUID()}`,
       now: () => new Date(),
-      supplementary: supplementarySessions,
+      supplementary: {
+        async execute(command) {
+          const session = await supplementarySessions.execute(command);
+          if (command.type === 'ArchiveSupplementarySession') {
+            await captureSupplementaryProfileCheckpoint(session);
+          }
+          return session;
+        },
+        get: supplementarySessions.get,
+      },
     },
     reviewClosure: {
       services: {
-        async abandonLesson(lessonId, sourceSnapshotHash, context) {
-          const result = await abandonLesson({ lessonId, sourceSnapshotHash }, context, {
-            sessionModule,
-            stageReviews,
-          });
+        async abandonLesson(lessonId, _sourceSnapshotHash, context) {
+          const before = await learningRepositories.get(lessonId);
+          const sessionId = before?.learning.session?.id;
+          let checkpointSourceHash = '0'.repeat(64);
+          if (sessionId !== undefined && (await messageLog.list(sessionId)).length > 0) {
+            await interactiveTeachingRuntime.drainObservations(sessionId);
+            const state = await interactiveTeachingRuntime.module.getTeachingState(sessionId);
+            const checkpoint = await interactiveTeachingRuntime.module.freezeCheckpoint({
+              sessionId,
+              reason: state.evidenceCheckpoint ? 'evidenced_abandon' : 'manual_pause',
+            });
+            await captureTeachingProfileCheckpoint(checkpoint);
+            await refreshReasoningBehaviorAnalysis();
+            checkpointSourceHash = checkpoint.sourceSnapshotHash;
+          }
+          const result = await abandonLesson(
+            { lessonId, sourceSnapshotHash: checkpointSourceHash },
+            context,
+            {
+              sessionModule,
+              stageReviews,
+            },
+          );
           if (result.stageReview === undefined) return result;
-          await generationRuntime.cancel(result.stageReview.taskId);
-          const markdown = '# Stage Review\nLearning preserved for restoration.';
+          const generated = await reviewWriter.complete(result.stageReview.taskId);
+          const markdown = generated.markdown;
           const artifactRef = `lesson_review_${result.stageReview.reviewId}`;
           await artifactStore.finalize({
             artifactId: artifactRef,
@@ -833,8 +2292,19 @@ export async function createLocalApplication(options: {
             reviewId: result.stageReview.reviewId,
             taskId: result.stageReview.taskId,
             artifactRef,
-            contentSha256: createHash('sha256').update(markdown).digest('hex'),
+            contentSha256: generated.contentSha256,
           });
+          const reviewedLesson = await courseRepositories.lessons.get(lessonId);
+          if (reviewedLesson !== undefined) {
+            await captureReviewProfileCheckpoint({
+              checkpointKind: 'stage_review_finalized',
+              sourceRef: `review:${result.stageReview.reviewId}`,
+              markdown,
+              courseId: reviewedLesson.courseId,
+              lessonId,
+              observedAt: runtimeNow().toISOString(),
+            });
+          }
           const view = await sessionModule.query(
             { type: 'GetLessonLearning', lessonId },
             {
@@ -851,30 +2321,66 @@ export async function createLocalApplication(options: {
             .execute({ type: 'RestoreLesson', lessonId }, context)
             .then((result) => result.value),
         async beginLessonClosure(lessonId, body, context) {
+          const current = await learningRepositories.get(lessonId);
+          const sessionId = current?.learning.session?.id;
+          if (current === undefined || sessionId === undefined || sessionId !== body.sessionId) {
+            throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+          }
+          await interactiveTeachingRuntime.drainObservations(sessionId);
+          const checkpoint = await interactiveTeachingRuntime.module.freezeCheckpoint({
+            sessionId,
+            reason: 'lesson_closure',
+          });
+          if (
+            checkpoint.observationCompleteness !== 'complete' ||
+            !checkpoint.teachingState.evidenceCheckpoint ||
+            checkpoint.retentionDecision !== 'preserve'
+          ) {
+            throw Object.assign(new Error('lesson_not_completable'), {
+              code: 'lesson_not_completable',
+            });
+          }
+          await captureTeachingProfileCheckpoint(checkpoint);
+          await refreshReasoningBehaviorAnalysis();
           const closure = await lessonClosures.begin({
             lessonId,
-            ...body,
-            expectedSessionVersion: context.expectedVersion ?? 0,
+            sessionId,
+            sourceSessionIds: [sessionId],
+            sourceMessageIds: [...checkpoint.sourceMessageIds],
+            messageRangeChecksum: checkpoint.sourceSnapshotHash,
+            endIntent: body.endIntent,
+            expectedSessionVersion: current.resourceVersion,
           });
-          await generationRuntime.cancel(closure.generationTaskId);
-          const checksum = body.messageRangeChecksum;
+          const generated = await reviewWriter.complete(closure.generationTaskId);
+          const checksum = checkpoint.sourceSnapshotHash;
           const artifactRef = `lesson_review_${reviewIdForLesson(lessonId)}`;
           await artifactStore.finalize({
             artifactId: artifactRef,
             kind: 'lesson-final-review',
-            content: '# Final Review\nLearning completed.',
+            content: generated.markdown,
             immutable: true,
           });
           await lessonClosures.markReviewReady(closure.transactionId, {
             artifactRef,
-            markdown: '# Final Review\nLearning completed.',
-            sourceSessionIds: body.sourceSessionIds,
+            markdown: generated.markdown,
+            sourceSessionIds: [sessionId],
             messageRangeChecksum: checksum,
-            contentSha256: createHash('sha256')
-              .update('# Final Review\nLearning completed.')
-              .digest('hex'),
+            contentSha256: generated.contentSha256,
           });
-          return lessonClosures.commit(closure.transactionId, checksum, context);
+          const committed = await lessonClosures.commit(closure.transactionId, checksum, context);
+          const lesson = await courseRepositories.lessons.get(lessonId);
+          if (lesson !== undefined) {
+            await captureReviewProfileCheckpoint({
+              checkpointKind: 'lesson_review_finalized',
+              sourceRef: `review:${reviewIdForLesson(lessonId)}`,
+              markdown: generated.markdown,
+              courseId: lesson.courseId,
+              lessonId,
+              observedAt: runtimeNow().toISOString(),
+            });
+            await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lessonId);
+          }
+          return committed;
         },
         async closeCourse(courseId, confirmAbandoned, context) {
           const course = await courseRepositories.courses.get(courseId);
@@ -937,12 +2443,12 @@ export async function createLocalApplication(options: {
             inputManifest,
             context.commandId,
           );
-          if (pendingReview.generationTaskId !== undefined) {
-            await generationRuntime.cancel(pendingReview.generationTaskId);
+          if (pendingReview.generationTaskId === undefined) {
+            throw new Error('course_review_generation_task_missing');
           }
+          const generatedCourseReview = await reviewWriter.complete(pendingReview.generationTaskId);
           const courseReviewArtifactRef = `course_review_${courseId}`;
-          const courseReviewMarkdown =
-            '# 主题总结\n\n## 核心知识线索\n\n课程核心知识已经按最终大纲与课时 Review 汇总。\n\n## 总体学习表现\n\n学习表现仅依据课程内可追溯的真实互动与 Review。\n\n## 推荐扩展课程\n\n建议基于当前主题创建一门独立的扩展课程继续深化。';
+          const courseReviewMarkdown = generatedCourseReview.markdown;
           await artifactStore.finalize({
             artifactId: courseReviewArtifactRef,
             kind: 'course-review',
@@ -952,9 +2458,16 @@ export async function createLocalApplication(options: {
           await courseReviews.markReady(
             courseId,
             courseReviewArtifactRef,
-            createHash('sha256').update(courseReviewMarkdown).digest('hex'),
+            generatedCourseReview.contentSha256,
           );
           const review = await courseReviews.finalize(courseId, context.idempotencyKey);
+          await captureReviewProfileCheckpoint({
+            checkpointKind: 'course_review_finalized',
+            sourceRef: `course-review:${courseId}`,
+            markdown: courseReviewMarkdown,
+            courseId,
+            observedAt: runtimeNow().toISOString(),
+          });
           return {
             ...review,
             markdown: courseReviewMarkdown,
@@ -968,8 +2481,46 @@ export async function createLocalApplication(options: {
             throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
           return closure;
         },
-        retryClosure: (transactionId, context) =>
-          lessonClosures.retry(transactionId, context.commandId),
+        async retryClosure(transactionId, context) {
+          const retried = await lessonClosures.retry(transactionId, context.commandId);
+          const generated = await reviewWriter.complete(retried.generationTaskId);
+          const artifactRef = `lesson_review_${reviewIdForLesson(retried.lessonId)}`;
+          await artifactStore.finalize({
+            artifactId: artifactRef,
+            kind: 'lesson-final-review',
+            content: generated.markdown,
+            immutable: true,
+          });
+          await lessonClosures.markReviewReady(retried.transactionId, {
+            artifactRef,
+            markdown: generated.markdown,
+            sourceSessionIds: retried.sourceSessionIds,
+            messageRangeChecksum: retried.messageRangeChecksum,
+            contentSha256: generated.contentSha256,
+          });
+          const committed = await lessonClosures.commit(
+            retried.transactionId,
+            retried.messageRangeChecksum,
+            context,
+          );
+          const lesson = await courseRepositories.lessons.get(retried.lessonId);
+          if (lesson !== undefined) {
+            await captureReviewProfileCheckpoint({
+              checkpointKind: 'lesson_review_finalized',
+              sourceRef: `review:${reviewIdForLesson(retried.lessonId)}`,
+              markdown: generated.markdown,
+              courseId: lesson.courseId,
+              lessonId: retried.lessonId,
+              observedAt: runtimeNow().toISOString(),
+            });
+            await refreshNextLessonRecommendation(
+              lesson.courseId,
+              'lesson-completed',
+              retried.lessonId,
+            );
+          }
+          return committed;
+        },
         async getCourseReview(courseId) {
           const review = await reviewClosureRepositories.courseReviews.get(courseId);
           if (review === undefined) return undefined;
@@ -985,24 +2536,46 @@ export async function createLocalApplication(options: {
       now: () => new Date(),
     },
     planning: {
-      planning,
+      planning: {
+        async execute(command, context) {
+          const result = await planning.execute(command, context);
+          await refreshNextLessonRecommendation(result.scheduleItem.courseId, 'schedule-changed');
+          return result;
+        },
+        list: planning.list,
+      },
       planFlows: {
         async requestPreview(input, commandId) {
           const requested = await planFlows.requestPreview(input, commandId);
-          await generationRuntime.cancel(requested.generationTaskId);
-          return planFlows.markPreviewReady(
-            requested.id,
-            input.lessonRefs.map((lessonId, index) => ({
-              courseId: input.courseRefs[0]!,
-              lessonId,
-              startAt: new Date(Date.UTC(2026, 6, 20 + index, 11)).toISOString(),
-              endAt: new Date(Date.UTC(2026, 6, 20 + index, 12)).toISOString(),
-              timezoneAtCreation: 'Asia/Shanghai',
-              explanation: '符合用户时间窗并保持课节顺序',
-            })),
-          );
+          const task = await generationExecution.awaitTerminal(requested.generationTaskId);
+          const markdown = task.draftMarkdown?.trim() ?? '';
+          if (task.status !== 'completed' || markdown === '') {
+            return planFlows.fail(
+              requested.id,
+              task.errorCode ?? 'ai_unavailable',
+              `draft_${requested.generationTaskId}`,
+            );
+          }
+          try {
+            return await planFlows.markPreviewReady(requested.id, parsePlanSuggestions(markdown));
+          } catch (error) {
+            await planFlows.fail(
+              requested.id,
+              error instanceof Error ? error.message : 'plan_preview_invalid',
+              `draft_${requested.generationTaskId}`,
+            );
+            throw error;
+          }
         },
-        confirm: planFlows.confirm,
+        async confirm(id, context) {
+          const confirmed = await planFlows.confirm(id, context);
+          for (const courseId of confirmed.courseRefs) {
+            await refreshNextLessonRecommendation(courseId, 'schedule-changed');
+          }
+          return confirmed;
+        },
+        get: planFlows.get,
+        manage: planFlows.manage,
       },
       nextCommandId: () => `command_${randomUUID()}`,
       nextCorrelationId: () => `correlation_${randomUUID()}`,
@@ -1036,12 +2609,39 @@ export async function createLocalApplication(options: {
         }
         return evidence;
       },
+      async listReasoningEpisodes() {
+        const episodes = [];
+        for await (const episode of reasoningBehaviorRepository.listEpisodes()) {
+          episodes.push(episode);
+        }
+        return episodes;
+      },
+      refreshReasoningAnalysis: refreshAndProjectReasoningAnalysis,
+      getReasoningAnalysis: (snapshotId) => reasoningBehaviorModule.getAnalysis(snapshotId),
     },
     portraits: {
       requestRefresh: requestPortraitRefresh,
       async getCurrent() {
         const cursor = await portraitRepository.getCurrent();
-        if (cursor !== undefined) return portraitRepository.getVersion(cursor.currentVersionId);
+        if (cursor !== undefined) {
+          const [portrait, reasoningBehaviorAnalysis] = await Promise.all([
+            portraitRepository.getVersion(cursor.currentVersionId),
+            latestUsableReasoningAnalysis(),
+          ]);
+          return portrait === undefined
+            ? undefined
+            : {
+                ...portrait,
+                ...(reasoningBehaviorAnalysis === undefined
+                  ? {}
+                  : {
+                      reasoningBehaviorAnalysis: {
+                        snapshot: reasoningBehaviorAnalysis.snapshot,
+                        dimensions: reasoningBehaviorAnalysis.dimensions,
+                      },
+                    }),
+              };
+        }
         const refresh = await readPortraitRefreshState(dataRoot);
         return refresh === undefined
           ? undefined
@@ -1052,13 +2652,36 @@ export async function createLocalApplication(options: {
               updatedAt: refresh.updatedAt,
             };
       },
-      getVersion: (versionId) => portraitRepository.getVersion(versionId),
+      async getVersion(versionId) {
+        const [portrait, reasoningBehaviorAnalysis] = await Promise.all([
+          portraitRepository.getVersion(versionId),
+          latestUsableReasoningAnalysis(),
+        ]);
+        return portrait === undefined
+          ? undefined
+          : {
+              ...portrait,
+              ...(reasoningBehaviorAnalysis === undefined
+                ? {}
+                : {
+                    reasoningBehaviorAnalysis: {
+                      snapshot: reasoningBehaviorAnalysis.snapshot,
+                      dimensions: reasoningBehaviorAnalysis.dimensions,
+                    },
+                  }),
+            };
+      },
       nextCorrelationId: () => `correlation_${randomUUID()}`,
     },
     generationFrameLog: frameLog,
     runtimeControl: {
       switchProvider: providerConfigService.switchProvider,
       getProviderStatus: providerConfigService.getStatus,
+      reconnectProvider: providerConfigService.reconnect,
+      getProviderCatalog: generationRuntime.getProviderCatalog,
+      startProviderAuthentication: async (providerId) => ({
+        state: await generationRuntime.startProviderAuthentication(providerId),
+      }),
       ...(options.createDiagnostics === undefined
         ? {}
         : { createDiagnostics: options.createDiagnostics }),

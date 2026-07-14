@@ -178,6 +178,92 @@
             }
           }
         }
+      },
+      "delete": {
+        "operationId": "deleteOutlineSessionDraft",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unconfirmed outline session permanently deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOutlineSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Application problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProblem"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/outline-sessions/{sessionId}/messages": {
@@ -931,18 +1017,117 @@
             "enum": [
               "collecting-input",
               "assessing",
-              "ready-for-candidates",
+              "assessment-turn-running",
+              "assessment-ready",
+              "alignment-turn-running",
               "generating-candidates",
               "candidate-ready",
               "confirming",
               "confirmed"
             ]
+          },
+          "topic": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "courseMode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "brainstorm",
+              "argument_clash",
+              "case_study",
+              "business_insight",
+              "process_decomposition",
+              "decision_analysis",
+              "cross_explore",
+              "reading_seminar"
+            ]
+          },
+          "completedAssessmentRounds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "canGenerateCandidate": {
+            "type": "boolean"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "messageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "complete",
+                    "failed"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "inReplyToMessageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "alignmentAction": {
+                  "type": "string",
+                  "enum": [
+                    "clarify",
+                    "regenerate",
+                    "patch"
+                  ]
+                },
+                "targetModuleIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                }
+              },
+              "required": [
+                "messageId",
+                "role",
+                "content",
+                "status",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
           "outlineSessionId",
           "resourceVersion",
-          "state"
+          "state",
+          "topic",
+          "courseMode",
+          "completedAssessmentRounds",
+          "canGenerateCandidate",
+          "messages"
         ],
         "additionalProperties": false
       },
@@ -964,7 +1149,9 @@
             "enum": [
               "collecting-input",
               "assessing",
-              "ready-for-candidates",
+              "assessment-turn-running",
+              "assessment-ready",
+              "alignment-turn-running",
               "generating-candidates",
               "candidate-ready",
               "confirming",
@@ -998,6 +1185,82 @@
               "maxLength": 200
             }
           },
+          "completedAssessmentRounds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "canGenerateCandidate": {
+            "type": "boolean"
+          },
+          "savedAsDraft": {
+            "type": "boolean"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "messageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "complete",
+                    "failed"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "inReplyToMessageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "alignmentAction": {
+                  "type": "string",
+                  "enum": [
+                    "clarify",
+                    "regenerate",
+                    "patch"
+                  ]
+                },
+                "targetModuleIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                }
+              },
+              "required": [
+                "messageId",
+                "role",
+                "content",
+                "status",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
           "candidateVersionId": {
             "type": "string",
             "minLength": 1,
@@ -1010,6 +1273,56 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactRef": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "originalFileName": {
+                  "type": "string"
+                },
+                "format": {
+                  "type": "string",
+                  "enum": [
+                    "markdown",
+                    "text",
+                    "pdf"
+                  ]
+                },
+                "importedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "sections": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "artifactRef",
+                "originalFileName",
+                "format",
+                "importedAt",
+                "sections",
+                "warnings"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -1018,7 +1331,10 @@
           "state",
           "topic",
           "courseMode",
-          "candidateVersionIds"
+          "candidateVersionIds",
+          "completedAssessmentRounds",
+          "canGenerateCandidate",
+          "messages"
         ],
         "additionalProperties": false
       },
@@ -1035,7 +1351,9 @@
             "enum": [
               "collecting-input",
               "assessing",
-              "ready-for-candidates",
+              "assessment-turn-running",
+              "assessment-ready",
+              "alignment-turn-running",
               "generating-candidates",
               "candidate-ready",
               "confirming",
@@ -1046,12 +1364,22 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          },
+          "completedAssessmentRounds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "canGenerateCandidate": {
+            "type": "boolean"
           }
         },
         "required": [
           "outlineSessionId",
           "state",
-          "resourceVersion"
+          "resourceVersion",
+          "completedAssessmentRounds",
+          "canGenerateCandidate"
         ],
         "additionalProperties": false
       },
@@ -1072,6 +1400,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 100
+          },
+          "failureCode": {
+            "type": "string",
+            "enum": [
+              "candidate_invalid",
+              "generation_timeout",
+              "generation_interrupted"
+            ]
           },
           "resourceVersion": {
             "type": "integer",
@@ -1182,6 +1518,175 @@
               "maxLength": 200
             }
           },
+          "recommendedLessonId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "nextLessonRecommendation": {
+            "type": "object",
+            "properties": {
+              "versionId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "recommendedLessonId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "rankedLessonIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "rationale": {
+                "type": "string"
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              "sourceSnapshotHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "current",
+                  "stale",
+                  "fallback"
+                ]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "versionId",
+              "recommendedLessonId",
+              "rankedLessonIds",
+              "rationale",
+              "evidenceRefs",
+              "confidence",
+              "expiresAt",
+              "sourceSnapshotHash",
+              "status",
+              "warnings"
+            ],
+            "additionalProperties": false
+          },
+          "outlineMarkdown": {
+            "type": "string"
+          },
+          "lessons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "lessonId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "outlineVersionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "title": {
+                  "type": "string"
+                },
+                "objective": {
+                  "type": "string"
+                },
+                "coreKnowledgePoints": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "prerequisiteLessonIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "estimatedMinutes": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "lessonId",
+                "outlineVersionId",
+                "title",
+                "objective",
+                "coreKnowledgePoints",
+                "prerequisiteLessonIds",
+                "estimatedMinutes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "outlineVersions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "outlineVersionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "sourceCandidateVersionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "current": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "outlineVersionId",
+                "sourceCandidateVersionId",
+                "createdAt",
+                "current"
+              ],
+              "additionalProperties": false
+            }
+          },
           "resourceVersion": {
             "type": "integer",
             "minimum": 0,
@@ -1221,6 +1726,26 @@
           "courseId",
           "deletedAt",
           "portraitRefresh"
+        ],
+        "additionalProperties": false
+      },
+      "DeleteOutlineSessionResponse": {
+        "type": "object",
+        "properties": {
+          "outlineSessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "deletedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "outlineSessionId",
+          "deletedAt"
         ],
         "additionalProperties": false
       },
@@ -1302,6 +1827,12 @@
               "confirmation_in_progress",
               "confirmation_failed",
               "outline_session_transition_invalid",
+              "outline_session_already_confirmed",
+              "material_too_large",
+              "material_format_unsupported",
+              "material_text_invalid",
+              "material_pdf_encrypted",
+              "material_pdf_text_unavailable",
               "immutable_resource",
               "version_conflict",
               "idempotency_conflict",

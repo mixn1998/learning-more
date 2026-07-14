@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -26,7 +26,7 @@ const unitOfWork = {
   },
 };
 const markdown = `\`\`\`learning-more-outline
-{"courseGoals":["Understand probability"],"disciplineTag":"mathematics","topicTags":["probability"],"lessons":[{"id":"probability-space","title":"Probability spaces","objective":"Understand sample spaces","coreKnowledgePoints":["sample space"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]},{"id":"random-variable","title":"Random variables","objective":"Model outcomes","coreKnowledgePoints":["random variable"],"prerequisiteLessonIds":["probability-space"],"estimatedMinutes":45,"sourceRefs":["source_topic"]}]}
+{"protocol":"learning-more.candidate","schemaVersion":1,"outline":{"courseGoals":["Understand probability"],"disciplineTag":"mathematics","topicTags":["probability"],"modules":[{"id":"module_probability","title":"Probability foundations","lessonIds":["probability-space","random-variable"]}],"lessons":[{"id":"probability-space","title":"Probability spaces","objective":"Understand sample spaces","coreKnowledgePoints":["sample space"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]},{"id":"random-variable","title":"Random variables","objective":"Model outcomes","coreKnowledgePoints":["random variable"],"prerequisiteLessonIds":["probability-space"],"estimatedMinutes":45,"sourceRefs":["source_topic"]}]}}
 \`\`\`
 # Probability course`;
 
@@ -89,5 +89,66 @@ describe('candidate generation coordinator', () => {
       'artifact.ready',
       'task.completed',
     ]);
+  });
+
+  it('replays a real codex-cli context-envelope response as candidate_invalid instead of an interruption', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-candidate-replay-'));
+    roots.push(directory);
+    const dataRoot = DataRoot.create(directory);
+    await initializeStoreLayout(createStorePaths(dataRoot));
+    const captured = await readFile(
+      new URL('./fixtures/codex-cli-context-envelope-as-outline.md', import.meta.url),
+      'utf8',
+    );
+    const authoring = createInMemoryCourseAuthoringRepositories();
+    const runtime = createGenerationRuntime({
+      repository: createInMemoryRepositories().generationTasks,
+      unitOfWork,
+      providers: [
+        createMockProvider({ id: 'codex-cli-replay', script: [{ type: 'text', text: captured }] }),
+      ],
+      nextId: () => 'task_replayed_invalid',
+      now: () => new Date('2026-07-14T06:42:28.447Z'),
+    });
+    const module = createCourseAuthoringModule({
+      repositories: authoring,
+      unitOfWork,
+      generationRuntime: runtime,
+      providerId: 'codex-cli-replay',
+      draftStore: { saveDraft: async () => undefined },
+    });
+    await module.createOutlineSession({
+      outlineSessionId: 'session_replay',
+      courseMode: 'argument_clash',
+      topic: '自我与外界的冲突',
+      assessmentArtifactId: 'assessment_replay',
+    });
+    const frameLog = createGenerationFrameLog(dataRoot);
+    const coordinator = createCandidateGenerationCoordinator({
+      module,
+      repositories: authoring,
+      runtime,
+      frameLog,
+      nextCandidateId: () => 'candidate_must_not_exist',
+    });
+
+    const result = await coordinator.generate({
+      commandId: 'command_replay',
+      outlineSessionId: 'session_replay',
+    });
+
+    expect(result).toMatchObject({
+      taskId: 'task_replayed_invalid',
+      state: 'failed_recoverable',
+      failureCode: 'candidate_invalid',
+    });
+    await expect(
+      authoring.candidateVersions.get('candidate_must_not_exist'),
+    ).resolves.toBeUndefined();
+    const replay = await frameLog.readAfter('task_replayed_invalid', 0);
+    expect(replay.frames.at(-1)).toMatchObject({
+      type: 'task.failed',
+      data: { problem: { code: 'candidate_invalid' } },
+    });
   });
 });

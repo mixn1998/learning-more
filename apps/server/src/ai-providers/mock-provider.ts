@@ -8,7 +8,10 @@ export type MockProviderStep =
 export function createMockProvider(options: {
   readonly id: string;
   readonly script?: readonly MockProviderStep[];
-  readonly scriptFactory?: (attempt: number) => readonly MockProviderStep[];
+  readonly scriptFactory?: (
+    attempt: number,
+    request: NormalizedGenerationRequest,
+  ) => readonly MockProviderStep[];
 }): AiProvider {
   let attempt = 0;
   return {
@@ -20,9 +23,9 @@ export function createMockProvider(options: {
     }),
     validateConfig: async () => ({ valid: true }),
     healthCheck: async () => ({ status: 'healthy' }),
-    async *generate(_request: NormalizedGenerationRequest, signal: AbortSignal) {
+    async *generate(request: NormalizedGenerationRequest, signal: AbortSignal) {
       attempt += 1;
-      const script = options.scriptFactory?.(attempt) ?? options.script ?? [];
+      const script = options.scriptFactory?.(attempt, request) ?? options.script ?? [];
       for (const step of script) {
         if (signal.aborted) return;
         if (step.type === 'wait') await step.wait();

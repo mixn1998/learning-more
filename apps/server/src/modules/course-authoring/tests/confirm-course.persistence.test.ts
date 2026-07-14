@@ -14,7 +14,7 @@ import { confirmCourse } from '../implementation/confirm-course.js';
 import { createCourseAuthoringModule } from '../implementation/course-authoring-module.js';
 
 const markdown = `\`\`\`learning-more-outline
-{"courseGoals":["掌握目标"],"disciplineTag":"数学","topicTags":["概率"],"lessons":[{"id":"lesson_1","title":"第一课","objective":"理解概念","coreKnowledgePoints":["概念"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]}]}
+{"protocol":"learning-more.candidate","schemaVersion":1,"outline":{"courseGoals":["掌握目标"],"disciplineTag":"数学","topicTags":["概率"],"modules":[{"id":"module_1","title":"基础","lessonIds":["lesson_1"]}],"lessons":[{"id":"lesson_1","title":"第一课","objective":"理解概念","coreKnowledgePoints":["概念"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]}]}}
 \`\`\`
 # 第一课`;
 

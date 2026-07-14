@@ -25,7 +25,21 @@ const CourseSchema = z.strictObject({
   ]),
   outlineVersionId: z.string(),
   lessonIds: z.array(z.string()),
-  recommendedLessonId: z.string(),
+  recommendedLessonId: z.string().optional(),
+  nextLessonRecommendation: z
+    .strictObject({
+      versionId: z.string(),
+      recommendedLessonId: z.string(),
+      rankedLessonIds: z.array(z.string()),
+      rationale: z.string(),
+      evidenceRefs: z.array(z.string()),
+      confidence: z.number().min(0).max(1),
+      expiresAt: z.string(),
+      sourceSnapshotHash: z.string(),
+      status: z.enum(['current', 'stale', 'fallback']),
+      warnings: z.array(z.string()),
+    })
+    .optional(),
   status: z.enum(['active', 'closed']),
   closedAt: z.string().optional(),
   createdAt: z.string(),
@@ -114,6 +128,12 @@ export function createLocalFileCourseCreationRepositories(
   const courses: CourseCreationRepositories['courses'] = {
     get: (id) =>
       read('courses', id, CourseSchema) as ReturnType<CourseCreationRepositories['courses']['get']>,
+    async *list() {
+      for (const id of await ids('courses')) {
+        const course = await courses.get(id);
+        if (course !== undefined) yield course;
+      }
+    },
     async save(tx, value, expected) {
       const currentVersion = (await courses.get(value.id))?.resourceVersion ?? 0;
       if (currentVersion !== expected || value.resourceVersion !== expected) {
@@ -127,6 +147,12 @@ export function createLocalFileCourseCreationRepositories(
       read('outline-versions', id, OutlineSchema) as ReturnType<
         CourseCreationRepositories['outlineVersions']['get']
       >,
+    async *listByCourse(courseId) {
+      for (const id of await ids('outline-versions')) {
+        const outline = await outlineVersions.get(id);
+        if (outline?.courseId === courseId) yield outline;
+      }
+    },
     async save(tx, value, expected) {
       await immutableSave(
         tx,

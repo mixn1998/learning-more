@@ -1,0 +1,144 @@
+body:has(.lesson-navigation-workspace) .lm-app-header {
+  display: none;
+}
+body:has(.lesson-navigation-workspace) .lm-app-body,
+body:has(.lesson-navigation-workspace) .runtime-write-boundary {
+  min-height: 100vh;
+}
+
+.lesson-navigation-workspace {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+}
+.lesson-navigation-workspace .lesson-navigation-topbar {
+  position: relative;
+}
+.lesson-navigation-workspace .nav-stage {
+  display: grid;
+  min-height: calc(100vh - 72px);
+  padding: 24px;
+  place-items: center;
+}
+.lesson-navigation-workspace .nav-modal {
+  width: min(880px, 100%);
+  overflow: hidden;
+  border-top: 4px solid var(--accent);
+}
+.lesson-navigation-workspace .nav-head {
+  position: relative;
+  padding: 22px 25px 17px;
+  border-bottom: 1px solid var(--line);
+}
+.lesson-navigation-workspace .nav-return-actions {
+  position: absolute;
+  top: 22px;
+  right: 25px;
+  display: flex;
+  gap: 8px;
+}
+.lesson-navigation-workspace .nav-head h1 {
+  margin: 7px 0 5px;
+  font-size: 27px;
+  line-height: 1.65;
+}
+.lesson-navigation-workspace .nav-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.lesson-navigation-workspace .nav-state-kicker {
+  margin-top: 12px;
+}
+.lesson-navigation-workspace .nav-body {
+  padding: 20px 25px;
+}
+.lesson-navigation-workspace .nav-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+.lesson-navigation-workspace .nav-points {
+  display: grid;
+  gap: 9px;
+}
+.lesson-navigation-workspace .nav-point {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 11px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+}
+.lesson-navigation-workspace .nav-point b {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--tint);
+  color: var(--accent-dark);
+  font-size: 11px;
+  place-items: center;
+}
+.lesson-navigation-workspace .nav-point strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+.lesson-navigation-workspace .nav-point span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.lesson-navigation-workspace .nav-inherit {
+  margin-top: 13px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--paper-2);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+.lesson-navigation-workspace .nav-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  padding: 14px 25px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.lesson-navigation-workspace .nav-foot .lm-actions {
+  justify-content: center;
+}
+.lesson-navigation-workspace .nav-foot > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+@media (max-width: 620px) {
+  .lesson-navigation-workspace .nav-foot {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .lesson-navigation-workspace .nav-foot .lm-actions {
+    width: 100%;
+  }
+  .lesson-navigation-workspace .nav-stage {
+    padding: 10px;
+  }
+  .lesson-navigation-workspace .nav-head,
+  .lesson-navigation-workspace .nav-body,
+  .lesson-navigation-workspace .nav-foot {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+  .lesson-navigation-workspace .nav-return-actions {
+    position: static;
+    margin-top: 14px;
+  }
+}

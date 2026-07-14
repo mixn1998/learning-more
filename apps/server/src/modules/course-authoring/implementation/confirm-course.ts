@@ -8,6 +8,10 @@ import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
 import { CourseAuthoringError } from '../model/errors.js';
 import { decide, evolveAll } from '../model/outline-session.js';
+import {
+  resolveNextLessonRecommendation,
+  type NextLessonRecommender,
+} from '../../next-lesson/interface.js';
 
 export interface ConfirmCourseCommand {
   readonly type: 'courseAuthoring.confirmCourse';
@@ -28,6 +32,7 @@ export async function confirmCourse(
     readonly courses: CourseCreationRepositories;
     readonly unitOfWork: UnitOfWork;
     readonly outbox?: Outbox;
+    readonly nextLessonRecommender?: NextLessonRecommender;
     readonly nextEventId: () => string;
     readonly now: () => Date;
   },
@@ -55,13 +60,61 @@ export async function confirmCourse(
   const lessonIdBySemanticKey = new Map(
     candidate.candidate.lessons.map((lesson, index) => [lesson.id, lessonIds[index]!]),
   );
+  const recommendation = await resolveNextLessonRecommendation({
+    ...(dependencies.nextLessonRecommender === undefined
+      ? {}
+      : { recommender: dependencies.nextLessonRecommender }),
+    now: dependencies.now,
+    input: {
+      courseId: command.courseId,
+      trigger: 'course-confirmed',
+      candidates: candidate.candidate.lessons.map((lesson) => ({
+        semanticKey: lesson.id,
+        title: lesson.title,
+        objective: lesson.objective,
+        prerequisiteSemanticKeys: lesson.prerequisiteLessonIds,
+        estimatedMinutes: lesson.estimatedMinutes,
+        progress: 'not_started',
+        courseStatus: 'active',
+        available: true,
+        activeSession: false,
+        evidenceRefs: lesson.sourceRefs,
+      })),
+      completedSemanticKeys: [],
+    },
+  });
+  const recommendedLessonId =
+    recommendation === undefined
+      ? undefined
+      : lessonIdBySemanticKey.get(recommendation.semanticKey);
+  if (recommendation !== undefined && recommendedLessonId === undefined) {
+    throw new Error('next_lesson_recommendation_invalid');
+  }
   const course = {
     id: command.courseId,
     title: record.session.topic,
     courseMode: record.session.courseMode,
     outlineVersionId,
     lessonIds,
-    recommendedLessonId: lessonIds[0]!,
+    ...(recommendedLessonId === undefined ? {} : { recommendedLessonId }),
+    ...(recommendation === undefined
+      ? {}
+      : {
+          nextLessonRecommendation: {
+            versionId: recommendation.versionId,
+            recommendedLessonId: recommendedLessonId!,
+            rankedLessonIds: recommendation.rankedSemanticKeys
+              .map((key) => lessonIdBySemanticKey.get(key))
+              .filter((id): id is string => id !== undefined),
+            rationale: recommendation.rationale,
+            evidenceRefs: recommendation.evidenceRefs,
+            confidence: recommendation.confidence,
+            expiresAt: recommendation.expiresAt,
+            sourceSnapshotHash: recommendation.sourceSnapshotHash,
+            status: recommendation.status,
+            warnings: recommendation.warnings,
+          },
+        }),
     status: 'active' as const,
     createdAt,
     resourceVersion: 0,

@@ -15,6 +15,7 @@ export type LearningMessage = Readonly<{
   createdAt: string;
   contentArtifactRef: string;
   generationTaskId?: string | undefined;
+  completionStatus: 'complete' | 'interrupted';
 }>;
 
 export interface MessageLog {
@@ -28,6 +29,10 @@ const LearningMessageSchema = z.strictObject({
   createdAt: z.iso.datetime({ offset: true }),
   contentArtifactRef: z.string().min(1),
   generationTaskId: z.string().min(1).optional(),
+  completionStatus: z.enum(['complete', 'interrupted']),
+});
+const StoredLearningMessageSchema = LearningMessageSchema.extend({
+  completionStatus: z.enum(['complete', 'interrupted']).optional(),
 });
 
 function relativePath(sessionId: string): string {
@@ -48,11 +53,14 @@ async function readMessages(dataRoot: DataRoot, sessionId: string): Promise<Lear
     .filter(Boolean)
     .map((line) => {
       const record = JSON.parse(line) as { message?: unknown; checksum?: unknown };
-      const message = LearningMessageSchema.parse(record.message);
-      if (record.checksum !== checksumJson(message)) {
+      const storedMessage = StoredLearningMessageSchema.parse(record.message);
+      if (record.checksum !== checksumJson(storedMessage)) {
         throw new StorageDocumentError('storage_corrupted');
       }
-      return message;
+      return LearningMessageSchema.parse({
+        ...storedMessage,
+        completionStatus: storedMessage.completionStatus ?? 'complete',
+      });
     });
 }
 

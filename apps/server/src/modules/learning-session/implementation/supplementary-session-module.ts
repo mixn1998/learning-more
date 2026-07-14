@@ -86,5 +86,6 @@ export function createSupplementarySessionModule(options: {
       });
     },
     get: (id: string) => options.repository.get(id),
+    listByLesson: (lessonId: string) => options.repository.listByLesson(lessonId),
   };
 }

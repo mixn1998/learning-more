@@ -16,6 +16,13 @@ export const PortraitInputManifestSchema = z.strictObject({
   policyVersion: z.string().min(1),
   promptTemplateVersion: z.string().min(1),
   providerConfigFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  reasoningBehaviorInput: z
+    .strictObject({
+      snapshotId: z.string().min(1),
+      sourceSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/),
+      dimensionSetVersion: z.string().min(1),
+    })
+    .optional(),
   manifestChecksum: z.string().min(1),
   createdAt: z.iso.datetime({ offset: true }),
 });
@@ -26,6 +33,11 @@ export function createPortraitInputManifest(input: {
   window: Readonly<{ from: string; to: string }>;
   promptTemplateVersion: string;
   providerConfigFingerprint: string;
+  reasoningBehaviorInput?: Readonly<{
+    snapshotId: string;
+    sourceSnapshotHash: string;
+    dimensionSetVersion: string;
+  }>;
   createdAt: string;
 }): PortraitInputManifest {
   if (Date.parse(input.window.from) >= Date.parse(input.window.to)) {
@@ -39,6 +51,9 @@ export function createPortraitInputManifest(input: {
     policyVersion: input.packedEvidence.policyVersion,
     promptTemplateVersion: input.promptTemplateVersion,
     providerConfigFingerprint: input.providerConfigFingerprint,
+    ...(input.reasoningBehaviorInput === undefined
+      ? {}
+      : { reasoningBehaviorInput: input.reasoningBehaviorInput }),
     createdAt: input.createdAt,
   };
   const manifestChecksum = checksumJson(frozen);

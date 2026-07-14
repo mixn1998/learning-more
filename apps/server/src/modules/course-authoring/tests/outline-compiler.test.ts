@@ -8,6 +8,13 @@ const baseMetadata = {
   courseGoals: ['理解概率模型并能解释基本结果'],
   disciplineTag: '数学',
   topicTags: ['概率论', '随机变量'],
+  modules: [
+    {
+      id: 'module_foundation',
+      title: '概率基础',
+      lessonIds: ['lesson_probability_space'],
+    },
+  ],
   lessons: [
     {
       id: 'lesson_probability_space',
@@ -22,7 +29,11 @@ const baseMetadata = {
 };
 
 function markdownFor(metadata: unknown, body = '# 概率论入门\n\n从概率空间开始建立严谨基础。') {
-  return `\`\`\`learning-more-outline\n${JSON.stringify(metadata, null, 2)}\n\`\`\`\n\n${body}\n`;
+  return `\`\`\`learning-more-outline\n${JSON.stringify(
+    { protocol: 'learning-more.candidate', schemaVersion: 1, outline: metadata },
+    null,
+    2,
+  )}\n\`\`\`\n\n${body}\n`;
 }
 
 describe('compileCandidate', () => {
@@ -45,6 +56,22 @@ describe('compileCandidate', () => {
         ],
       },
     });
+  });
+
+  it('rejects a context envelope even when it is fenced as a candidate response', () => {
+    expect(
+      compileCandidate(
+        `\`\`\`learning-more-outline\n${JSON.stringify({
+          schemaVersion: 2,
+          outlineSessionId: 'session_1',
+          courseMode: 'standard',
+          topic: '概率论',
+          title: '概率论入门',
+          sourceRefs: ['source_topic'],
+        })}\n\`\`\`\n\n# 概率论入门`,
+        { draftArtifactRef: 'artifact_context', sourceRefs: ['source_topic'] },
+      ),
+    ).toMatchObject({ valid: false, draftArtifactRef: 'artifact_context' });
   });
 
   it.each([
@@ -77,6 +104,25 @@ describe('compileCandidate', () => {
     [
       'unknown source ref',
       { ...baseMetadata, lessons: [{ ...baseMetadata.lessons[0], sourceRefs: ['unknown'] }] },
+      '# 正文',
+    ],
+    [
+      'unknown module lesson',
+      {
+        ...baseMetadata,
+        modules: [{ ...baseMetadata.modules[0], lessonIds: ['lesson_missing'] }],
+      },
+      '# 正文',
+    ],
+    [
+      'lesson assigned to two modules',
+      {
+        ...baseMetadata,
+        modules: [
+          baseMetadata.modules[0],
+          { id: 'module_duplicate', title: '重复模块', lessonIds: ['lesson_probability_space'] },
+        ],
+      },
       '# 正文',
     ],
     ['script html', baseMetadata, '# 正文\n<script>alert(1)</script>'],

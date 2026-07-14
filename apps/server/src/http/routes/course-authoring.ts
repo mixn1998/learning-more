@@ -6,18 +6,25 @@ import {
   ConfirmOutlineCandidateBodySchema,
   CourseParamsSchema,
   CourseArchiveResponseSchema,
+  CourseOutlineVersionResponseSchema,
   CreateOutlineSessionBodySchema,
   DeleteCourseArchiveResponseSchema,
+  DeleteOutlineSessionResponseSchema,
+  SaveOutlineSessionDraftResponseSchema,
   GenerationAcceptedResponseSchema,
+  IngestOutlineMaterialBodySchema,
   LessonParamsSchema,
   LessonPreviewResponseSchema,
   OutlineMessageResponseSchema,
+  OutlineMaterialResponseSchema,
   OutlineRevisionResponseSchema,
   OutlineSessionParamsSchema,
   OutlineSessionResponseSchema,
   OutlineSessionViewResponseSchema,
   RequestCandidateGenerationBodySchema,
   ReviseCourseOutlineBodySchema,
+  type CommandContext,
+  type OutlineMaterialView,
 } from '@learning-more/contracts';
 
 import type { CourseAuthoring } from '../../modules/course-authoring/interface.js';
@@ -26,6 +33,11 @@ import { mapApplicationError } from '../error-mapper.js';
 
 export type CourseAuthoringRouteOptions = Readonly<{
   module: CourseAuthoring;
+  ingestMaterial?: (
+    outlineSessionId: string,
+    input: { fileName: string; mediaType: string; bytes: Uint8Array },
+    context: CommandContext,
+  ) => Promise<OutlineMaterialView>;
   nextCommandId: () => string;
   nextCorrelationId: () => string;
   now: () => Date;
@@ -60,10 +72,19 @@ export async function registerCourseAuthoringRoutes(
         context,
       );
       if (result.value.kind !== 'outline-session') throw new Error('unexpected_module_result');
+      const view = await options.module.query(
+        { type: 'GetOutlineSession', outlineSessionId: result.value.outlineSessionId },
+        buildQueryContext(correlation, options.now()),
+      );
       const response = OutlineSessionResponseSchema.parse({
-        outlineSessionId: result.value.outlineSessionId,
-        resourceVersion: result.resourceVersion,
-        ...(result.value.state === undefined ? {} : { state: result.value.state }),
+        outlineSessionId: view.outlineSessionId,
+        resourceVersion: view.resourceVersion,
+        state: view.state,
+        topic: view.topic,
+        courseMode: view.courseMode,
+        completedAssessmentRounds: view.completedAssessmentRounds,
+        canGenerateCandidate: view.canGenerateCandidate,
+        messages: view.messages,
       });
       return etag(reply, result.resourceVersion)
         .header('location', `/api/v1/outline-sessions/${result.value.outlineSessionId}`)
@@ -97,8 +118,51 @@ export async function registerCourseAuthoringRoutes(
           outlineSessionId: result.value.outlineSessionId,
           state: result.value.state,
           resourceVersion: result.resourceVersion,
+          completedAssessmentRounds: result.value.completedAssessmentRounds,
+          canGenerateCandidate: result.value.canGenerateCandidate,
         });
         return etag(reply, result.resourceVersion).code(200).send(response);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/outline-sessions/:sessionId/materials',
+    { bodyLimit: 70 * 1024 * 1024 },
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { sessionId } = OutlineSessionParamsSchema.parse(request.params);
+        const body = IngestOutlineMaterialBodySchema.parse(request.body);
+        if (options.ingestMaterial === undefined)
+          throw new Error('material_ingestion_not_configured');
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const material = await options.ingestMaterial(
+          sessionId,
+          {
+            fileName: body.fileName,
+            mediaType: body.mediaType,
+            bytes: Uint8Array.from(Buffer.from(body.contentBase64, 'base64')),
+          },
+          context,
+        );
+        return reply
+          .header('etag', `"${material.resourceVersion}"`)
+          .header(
+            'location',
+            `/api/v1/outline-sessions/${sessionId}/materials/${encodeURIComponent(material.artifactRef)}`,
+          )
+          .code(201)
+          .send(OutlineMaterialResponseSchema.parse(material));
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);
@@ -126,6 +190,9 @@ export async function registerCourseAuthoringRoutes(
         if (result.value.kind !== 'generation') throw new Error('unexpected_module_result');
         const response = GenerationAcceptedResponseSchema.parse({
           taskId: result.value.taskId,
+          ...(result.value.failureCode === undefined
+            ? {}
+            : { failureCode: result.value.failureCode }),
           ...(result.value.draftArtifactRef === undefined
             ? {}
             : { draftArtifactRef: result.value.draftArtifactRef }),
@@ -188,6 +255,71 @@ export async function registerCourseAuthoringRoutes(
         );
         const response = OutlineSessionViewResponseSchema.parse(view);
         return etag(reply, view.resourceVersion).code(200).send(response);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.delete<{ Params: { sessionId: string } }>(
+    '/api/v1/outline-sessions/:sessionId',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { sessionId } = OutlineSessionParamsSchema.parse(request.params);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+        });
+        const result = await options.module.execute(
+          { type: 'DeleteOutlineSessionDraft', outlineSessionId: sessionId },
+          context,
+        );
+        if (result.value.kind !== 'outline-session-deleted') {
+          throw new Error('unexpected_module_result');
+        }
+        return reply.code(200).send(
+          DeleteOutlineSessionResponseSchema.parse({
+            outlineSessionId: result.value.outlineSessionId,
+            deletedAt: result.value.deletedAt,
+          }),
+        );
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/outline-sessions/:sessionId/draft-saves',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { sessionId } = OutlineSessionParamsSchema.parse(request.params);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+        });
+        const result = await options.module.execute(
+          { type: 'SaveOutlineSessionDraft', outlineSessionId: sessionId },
+          context,
+        );
+        if (result.value.kind !== 'outline-session-draft-saved')
+          throw new Error('unexpected_module_result');
+        return etag(reply, result.resourceVersion)
+          .code(200)
+          .send(
+            SaveOutlineSessionDraftResponseSchema.parse({
+              outlineSessionId: sessionId,
+              resourceVersion: result.resourceVersion,
+            }),
+          );
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);
@@ -282,6 +414,32 @@ export async function registerCourseAuthoringRoutes(
       return reply.code(problem.status).send(problem);
     }
   });
+
+  app.get<{ Params: { courseId: string; outlineVersionId: string } }>(
+    '/api/v1/courses/:courseId/outline-versions/:outlineVersionId',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { courseId, outlineVersionId } = request.params;
+        CourseParamsSchema.parse({ courseId });
+        if (options.module.getOutlineVersion === undefined) {
+          throw new Error('outline_version_query_not_configured');
+        }
+        const view = await options.module.getOutlineVersion(
+          courseId,
+          outlineVersionId,
+          buildQueryContext(correlation, options.now()),
+        );
+        return reply
+          .header('etag', `"${view.resourceVersion}"`)
+          .code(200)
+          .send(CourseOutlineVersionResponseSchema.parse(view));
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
 
   app.get<{ Params: { lessonId: string } }>('/api/v1/lessons/:lessonId', async (request, reply) => {
     const correlation = correlationId(request, options);

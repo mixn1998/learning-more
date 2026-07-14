@@ -51,7 +51,7 @@ function fixture() {
 }
 
 describe('[EQ-LESSON-02] abandonLesson', () => {
-  it('removes an evidence-free session and its short time without requesting Review', async () => {
+  it('[EQ-LESSON-08] removes an evidence-free session and its short time without requesting Review', async () => {
     const { module, stageReviews, advance } = fixture();
     await module.execute(
       { type: 'StartLesson', lessonId: 'lesson_01' },
@@ -91,13 +91,16 @@ describe('[EQ-LESSON-02] abandonLesson', () => {
         lessonId: 'lesson_01',
         messageId: 'message_01',
         contentArtifactRef: 'artifact:01',
-        establishesEvidence: true,
       },
       { ...baseContext, commandId: 'message', expectedVersion: 1 },
     );
+    await module.execute(
+      { type: 'EstablishEvidenceCheckpoint', lessonId: 'lesson_01' },
+      { ...baseContext, commandId: 'observed', expectedVersion: 2 },
+    );
     const abandoned = await abandonLesson(
       { lessonId: 'lesson_01', sourceSnapshotHash: 'b'.repeat(64) },
-      { ...baseContext, commandId: 'abandon', expectedVersion: 2 },
+      { ...baseContext, commandId: 'abandon', expectedVersion: 3 },
       { sessionModule: module, stageReviews },
     );
     expect(abandoned).toMatchObject({
@@ -107,7 +110,7 @@ describe('[EQ-LESSON-02] abandonLesson', () => {
     });
     const restored = await module.execute(
       { type: 'RestoreLesson', lessonId: 'lesson_01' },
-      { ...baseContext, commandId: 'restore', expectedVersion: 3 },
+      { ...baseContext, commandId: 'restore', expectedVersion: 4 },
     );
     expect(restored.value).toMatchObject({ progress: 'in_progress', sessionId: 'session_01' });
   });
@@ -125,14 +128,17 @@ describe('[EQ-LESSON-02] abandonLesson', () => {
         lessonId: 'lesson_01',
         messageId: 'message_01',
         contentArtifactRef: 'artifact:01',
-        establishesEvidence: true,
       },
       { ...baseContext, commandId: 'message', expectedVersion: 1 },
+    );
+    await module.execute(
+      { type: 'EstablishEvidenceCheckpoint', lessonId: 'lesson_01' },
+      { ...baseContext, commandId: 'observed', expectedVersion: 2 },
     );
     await expect(
       abandonLesson(
         { lessonId: 'lesson_01', sourceSnapshotHash: 'c'.repeat(64) },
-        { ...baseContext, commandId: 'abandon', expectedVersion: 2 },
+        { ...baseContext, commandId: 'abandon', expectedVersion: 3 },
         { sessionModule: module, stageReviews },
       ),
     ).rejects.toThrow('provider unavailable');
@@ -142,7 +148,7 @@ describe('[EQ-LESSON-02] abandonLesson', () => {
         { ...baseContext, correlationId: 'query' },
       ),
     ).resolves.toMatchObject({
-      resourceVersion: 3,
+      resourceVersion: 4,
       learning: { progress: 'abandoned', session: { id: 'session_01', state: 'frozen' } },
     });
   });

@@ -46,7 +46,17 @@ describe('compound portrait evidence policy', () => {
       window: { from: '2026-07-01T00:00:00.000Z', to: '2026-08-01T00:00:00.000Z' },
       promptTemplateVersion: 'portrait@1',
       providerConfigFingerprint: 'a'.repeat(64),
+      reasoningBehaviorInput: {
+        snapshotId: 'reasoning_snapshot_01',
+        sourceSnapshotHash: 'b'.repeat(64),
+        dimensionSetVersion: 'dimension-set:01',
+      },
       createdAt: '2026-07-13T00:00:00.000Z',
+    });
+    expect(manifest.reasoningBehaviorInput).toEqual({
+      snapshotId: 'reasoning_snapshot_01',
+      sourceSnapshotHash: 'b'.repeat(64),
+      dimensionSetVersion: 'dimension-set:01',
     });
     const output = {
       title: 'Bounded portrait',

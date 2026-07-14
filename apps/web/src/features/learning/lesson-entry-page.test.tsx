@@ -28,6 +28,11 @@ describe('LessonEntryPage', () => {
         coreKnowledgePoints: ['sample space', 'event algebra'],
         estimatedMinutes: 30,
       }),
+      getLessonState: vi.fn().mockResolvedValue({
+        lessonId: 'lesson_01',
+        progress: 'not_started',
+        resourceVersion: 0,
+      }),
       start,
       getSession: vi.fn().mockResolvedValue({
         resourceVersion: 1,

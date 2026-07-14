@@ -16,7 +16,7 @@ const unitOfWork = {
 
 function candidateMarkdown(title: string) {
   return `\`\`\`learning-more-outline
-{"courseGoals":["掌握目标"],"disciplineTag":"数学","topicTags":["概率"],"lessons":[{"id":"lesson_1","title":"${title}","objective":"理解概念","coreKnowledgePoints":["概念"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]}]}
+{"protocol":"learning-more.candidate","schemaVersion":1,"outline":{"courseGoals":["掌握目标"],"disciplineTag":"数学","topicTags":["概率"],"modules":[{"id":"module_1","title":"${title}","lessonIds":["lesson_1"]}],"lessons":[{"id":"lesson_1","title":"${title}","objective":"理解概念","coreKnowledgePoints":["概念"],"prerequisiteLessonIds":[],"estimatedMinutes":30,"sourceRefs":["source_topic"]}]}}
 \`\`\`
 # ${title}`;
 }
@@ -91,7 +91,7 @@ describe('CourseAuthoringModule', () => {
     expect(result).toMatchObject({ valid: false });
     expect(saveDraft).toHaveBeenCalledWith('draft_invalid', 'not a candidate');
     await expect(repositories.outlineSessions.get('session_invalid')).resolves.toMatchObject({
-      session: { state: 'ready-for-candidates' },
+      session: { state: 'assessment-ready' },
     });
     const versions = [];
     for await (const version of repositories.candidateVersions.listBySession('session_invalid'))
@@ -130,7 +130,7 @@ describe('CourseAuthoringModule', () => {
 
     expect(saveDraft).toHaveBeenCalledWith('draft_failed', '# 已生成的部分');
     await expect(repositories.outlineSessions.get('session_failed')).resolves.toMatchObject({
-      session: { state: 'ready-for-candidates' },
+      session: { state: 'assessment-ready' },
     });
   });
 

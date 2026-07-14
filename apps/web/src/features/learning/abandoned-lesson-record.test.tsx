@@ -19,8 +19,8 @@ describe('abandoned lesson record', () => {
         onRestore={vi.fn()}
       />,
     );
-    expect(screen.getByText('已理解反馈')).toBeInTheDocument();
-    expect(screen.getByText('待验证节奏')).toBeInTheDocument();
+    expect(screen.getByText('已学习：已理解反馈')).toBeInTheDocument();
+    expect(screen.getByText('待完成：待验证节奏')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '查看记录' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '恢复学习' })).toBeInTheDocument();
     expect(screen.queryByText(/补充学习|全局历史|继承上下文/u)).not.toBeInTheDocument();

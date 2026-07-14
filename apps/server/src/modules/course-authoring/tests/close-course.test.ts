@@ -176,7 +176,7 @@ describe('course closure', () => {
     const workflow = createCourseReviewWorkflow({
       repository,
       unitOfWork,
-      generationRuntime: { submit },
+      reviewTask: { submit },
       now: () => new Date(),
       outbox: {
         enqueue: async (_tx, events) => {
@@ -194,8 +194,9 @@ describe('course closure', () => {
     await workflow.retry('course_01', 'retry_01');
     expect(submit).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        inputSnapshotHash: expect.any(String),
-        prompt: expect.stringContaining('course-review@v1'),
+        courseId: 'course_01',
+        inputManifest: closure.inputManifest,
+        commandId: 'retry_01',
       }),
     );
     await expect(repository.get('course_01')).resolves.toMatchObject({

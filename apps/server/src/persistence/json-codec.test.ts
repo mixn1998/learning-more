@@ -65,6 +65,28 @@ describe('canonical JSON codec', () => {
     ).toThrow(expect.objectContaining({ code: 'storage_corrupted' }));
   });
 
+  it('verifies the stored payload before applying schema defaults or migrations', () => {
+    const data = { title: 'legacy course' };
+    const document = {
+      schema: 'learning-more/course',
+      schemaVersion: 1,
+      entityType: 'courses',
+      entityId: 'course_legacy',
+      resourceVersion: 1,
+      createdAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+      contentSha256: checksumJson(data),
+      data,
+    };
+
+    expect(
+      decodeAggregateDocument(
+        encodeJson(document),
+        z.object({ title: z.string(), migrated: z.boolean().default(true) }),
+      ).data,
+    ).toEqual({ title: 'legacy course', migrated: true });
+  });
+
   it('distinguishes an unsupported store version from corruption', () => {
     const manifest = {
       storeId: 'store_01',

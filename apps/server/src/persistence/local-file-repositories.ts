@@ -60,6 +60,22 @@ const GenerationTaskSchema = z.strictObject({
   inputSnapshotHash: z.string().optional(),
   priority: z.number().optional(),
   providerId: z.string().optional(),
+  model: z.string().optional(),
+  fallbackProviderIds: z.array(z.string()).optional(),
+  maxAttempts: z.number().int().positive().optional(),
+  attempts: z
+    .array(
+      z.strictObject({
+        providerId: z.string(),
+        model: z.string().optional(),
+        startedAt: timestampSchema,
+        completedAt: timestampSchema.optional(),
+        status: z.enum(['running', 'completed', 'failed']),
+        errorCode: z.string().optional(),
+        emittedDelta: z.boolean(),
+      }),
+    )
+    .optional(),
   prompt: z.string().optional(),
   draftMarkdown: z.string().optional(),
   resultRef: z.string().optional(),

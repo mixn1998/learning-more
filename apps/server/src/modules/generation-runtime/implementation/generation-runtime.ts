@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import type { ProviderCatalog } from '@learning-more/contracts';
+
 import type {
   AiProvider,
   ProviderPublicConfig,
@@ -12,6 +14,7 @@ import type {
   GenerationTask,
   GenerationTaskRepository,
 } from '../ports/generation-task-repository.js';
+import { ProviderExecutionError } from '../../../ai-providers/provider.js';
 
 export interface GenerationRuntimeOptions {
   readonly repository: GenerationTaskRepository;
@@ -20,6 +23,9 @@ export interface GenerationRuntimeOptions {
   readonly nextId?: () => string;
   readonly now?: () => Date;
   readonly taskTimeoutMs?: number;
+  readonly initialProviderId?: string;
+  readonly defaultFallbackProviderIds?: readonly string[];
+  readonly defaultMaxAttempts?: number;
 }
 
 export function createGenerationRuntime(options: GenerationRuntimeOptions): GenerationRuntime & {
@@ -32,6 +38,8 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   describeProvider(providerId: string): ReturnType<AiProvider['describe']>;
   checkProviderHealth(providerId: string): ReturnType<AiProvider['healthCheck']>;
   getProviderStatus(): Promise<{ currentProviderId: string; providers: readonly string[] }>;
+  getProviderCatalog(options?: Readonly<{ refresh?: boolean }>): Promise<ProviderCatalog>;
+  startProviderAuthentication(providerId: string): Promise<'started' | 'already_authenticated'>;
 } {
   const providers = new Map(
     options.providers.map((provider) => [provider.describe().id, provider]),
@@ -40,7 +48,8 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   const nextId = options.nextId ?? (() => `task_${randomUUID()}`);
   const now = options.now ?? (() => new Date());
   const taskTimeoutMs = options.taskTimeoutMs ?? 20 * 60 * 1_000;
-  let currentProviderId = options.providers[0]?.describe().id ?? '';
+  let currentProviderId = options.initialProviderId ?? options.providers[0]?.describe().id ?? '';
+  let currentModel: string | undefined;
 
   async function allTasks(): Promise<GenerationTask[]> {
     const tasks: GenerationTask[] = [];
@@ -78,6 +87,9 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     const timestamp = now().toISOString();
     const id = nextId();
     const providerId = request.providerId === 'current' ? currentProviderId : request.providerId;
+    const model = request.model ?? (request.providerId === 'current' ? currentModel : undefined);
+    const fallbackProviderIds = request.fallbackProviderIds ?? options.defaultFallbackProviderIds;
+    const maxAttempts = request.maxAttempts ?? options.defaultMaxAttempts;
     await options.unitOfWork.execute({ transactionId: `tx_generation_${randomUUID()}` }, (tx) =>
       options.repository.save(
         tx,
@@ -94,6 +106,11 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           inputSnapshotHash: request.inputSnapshotHash,
           priority: request.priority,
           providerId,
+          ...(model === undefined ? {} : { model }),
+          ...(fallbackProviderIds === undefined
+            ? {}
+            : { fallbackProviderIds: [...fallbackProviderIds] }),
+          ...(maxAttempts === undefined ? {} : { maxAttempts }),
           prompt: request.prompt,
           draftMarkdown: '',
         },
@@ -112,8 +129,14 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       now(),
     );
     if (selected === undefined) return undefined;
-    const provider = providers.get(selected.providerId ?? '');
-    if (provider === undefined) {
+    const providerIds = [selected.providerId ?? '', ...(selected.fallbackProviderIds ?? [])].filter(
+      (providerId, index, all) => providerId !== '' && all.indexOf(providerId) === index,
+    );
+    const maxAttempts = Math.max(
+      1,
+      Math.min(selected.maxAttempts ?? providerIds.length, providerIds.length),
+    );
+    if (providerIds.length === 0) {
       await persist({
         ...selected,
         status: 'failed',
@@ -128,62 +151,133 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       updatedAt: now().toISOString(),
       leaseExpiresAt: new Date(now().getTime() + 30_000).toISOString(),
     });
-    const controller = new AbortController();
-    controllers.set(current.id, controller);
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, taskTimeoutMs);
-    try {
-      for await (const delta of provider.generate(
-        { taskId: current.id, prompt: current.prompt ?? '' },
-        controller.signal,
-      )) {
-        if (controller.signal.aborted) break;
+    for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
+      const providerId = providerIds[attemptIndex]!;
+      const provider = providers.get(providerId);
+      const startedAt = now().toISOString();
+      let emittedDelta = false;
+      if (provider === undefined) {
         current = await persist({
           ...current,
-          draftMarkdown: `${current.draftMarkdown ?? ''}${delta.text}`,
+          attempts: [
+            ...(current.attempts ?? []),
+            {
+              providerId,
+              ...(current.model === undefined ? {} : { model: current.model }),
+              startedAt,
+              completedAt: now().toISOString(),
+              status: 'failed' as const,
+              errorCode: 'provider_unavailable',
+              emittedDelta: false,
+            },
+          ],
           updatedAt: now().toISOString(),
-          leaseExpiresAt: new Date(now().getTime() + 30_000).toISOString(),
         });
+        continue;
       }
-      current = await get(current.id);
-      if (current.status === 'running') {
-        await persist(
-          timedOut
-            ? {
-                ...current,
-                status: 'timeout',
-                errorCode: 'generation_timeout',
-                updatedAt: now().toISOString(),
-              }
-            : {
-                ...current,
-                status: 'completed',
-                resultRef: `generation-task:${current.id}:draft`,
-                updatedAt: now().toISOString(),
-              },
-        );
-      }
-    } catch (error) {
-      current = await get(current.id);
-      if (current.status === 'running') {
-        await persist({
+      current = await persist({
+        ...current,
+        attempts: [
+          ...(current.attempts ?? []),
+          {
+            providerId,
+            ...(current.model === undefined ? {} : { model: current.model }),
+            startedAt,
+            status: 'running' as const,
+            emittedDelta: false,
+          },
+        ],
+        updatedAt: now().toISOString(),
+      });
+      const controller = new AbortController();
+      controllers.set(current.id, controller);
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, taskTimeoutMs);
+      try {
+        for await (const delta of provider.generate(
+          {
+            taskId: current.id,
+            prompt: current.prompt ?? '',
+            ...(current.model === undefined ? {} : { model: current.model }),
+          },
+          controller.signal,
+        )) {
+          if (controller.signal.aborted) break;
+          emittedDelta = true;
+          current = await persist({
+            ...current,
+            draftMarkdown: `${current.draftMarkdown ?? ''}${delta.text}`,
+            attempts: (current.attempts ?? []).map((attempt, index, all) =>
+              index === all.length - 1 ? { ...attempt, emittedDelta: true } : attempt,
+            ),
+            updatedAt: now().toISOString(),
+            leaseExpiresAt: new Date(now().getTime() + 30_000).toISOString(),
+          });
+        }
+        current = await get(current.id);
+        if (current.status === 'running') {
+          current = await persist({
+            ...current,
+            status: timedOut ? 'timeout' : 'completed',
+            ...(timedOut ? {} : { resultRef: `generation-task:${current.id}:draft` }),
+            ...(timedOut ? { errorCode: 'generation_timeout' } : {}),
+            attempts: (current.attempts ?? []).map((attempt, index, all) =>
+              index === all.length - 1
+                ? {
+                    ...attempt,
+                    status: timedOut ? ('failed' as const) : ('completed' as const),
+                    completedAt: now().toISOString(),
+                    emittedDelta,
+                  }
+                : attempt,
+            ),
+            updatedAt: now().toISOString(),
+          });
+        }
+        break;
+      } catch (error) {
+        current = await get(current.id);
+        const providerError = error instanceof ProviderExecutionError ? error : undefined;
+        const retryable =
+          !emittedDelta &&
+          !timedOut &&
+          !controller.signal.aborted &&
+          (providerError?.options.retryable ?? true);
+        const errorCode = timedOut
+          ? 'generation_timeout'
+          : controller.signal.aborted
+            ? 'generation_cancelled'
+            : (providerError?.options.code ?? 'provider_failed');
+        current = await persist({
+          ...current,
+          attempts: (current.attempts ?? []).map((attempt, index, all) =>
+            index === all.length - 1
+              ? {
+                  ...attempt,
+                  status: 'failed' as const,
+                  completedAt: now().toISOString(),
+                  errorCode,
+                  emittedDelta,
+                }
+              : attempt,
+          ),
+          updatedAt: now().toISOString(),
+        });
+        if (retryable && attemptIndex + 1 < maxAttempts) continue;
+        current = await persist({
           ...current,
           status: timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'failed',
-          errorCode: timedOut
-            ? 'generation_timeout'
-            : controller.signal.aborted
-              ? 'generation_cancelled'
-              : 'provider_failed',
+          errorCode,
           updatedAt: now().toISOString(),
         });
+        break;
+      } finally {
+        clearTimeout(timeout);
+        controllers.delete(current.id);
       }
-      if (!controller.signal.aborted) void error;
-    } finally {
-      clearTimeout(timeout);
-      controllers.delete(current.id);
     }
     return current.id;
   }
@@ -243,9 +337,16 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       if (provider === undefined) return Promise.resolve({ valid: false, message: 'not_found' });
       return provider.validateConfig(config, secrets);
     },
-    async switchProvider(providerId) {
+    async switchProvider(providerId, config?: ProviderPublicConfig, secrets?: SecretResolver) {
       if (!providers.has(providerId)) throw new Error('PROVIDER_NOT_FOUND');
+      const provider = providers.get(providerId)!;
+      if (config !== undefined && secrets !== undefined)
+        await provider.configure?.(config, secrets);
       currentProviderId = providerId;
+      currentModel =
+        config !== undefined && typeof config.model === 'string' && config.model.trim() !== ''
+          ? config.model.trim()
+          : undefined;
     },
     describeProvider(providerId) {
       const provider = providers.get(providerId);
@@ -259,6 +360,45 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     },
     async getProviderStatus() {
       return { currentProviderId, providers: [...providers.keys()] };
+    },
+    async getProviderCatalog(input) {
+      return {
+        providers: await Promise.all(
+          [...providers.entries()].map(async ([providerId, provider]) => {
+            const capabilities = provider.describe();
+            try {
+              const health = await provider.healthCheck();
+              const models =
+                provider.listModels === undefined
+                  ? []
+                  : await provider.listModels({ refresh: input?.refresh ?? false });
+              return {
+                providerId,
+                capabilities,
+                health,
+                models: models.map((model) => ({
+                  ...model,
+                  supportedReasoningEfforts: [...model.supportedReasoningEfforts],
+                })),
+              };
+            } catch {
+              return {
+                providerId,
+                capabilities,
+                health: { status: 'unhealthy' as const, message: 'provider_catalog_unavailable' },
+                models: [],
+              };
+            }
+          }),
+        ),
+      };
+    },
+    async startProviderAuthentication(providerId) {
+      const provider = providers.get(providerId);
+      if (provider?.startAuthentication === undefined) {
+        throw new Error('provider_authentication_unavailable');
+      }
+      return provider.startAuthentication();
     },
   };
 }

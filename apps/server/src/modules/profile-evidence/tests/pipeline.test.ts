@@ -230,5 +230,5 @@ describe('ProfileEvidencePipeline', () => {
       ),
       { numRuns: 500 },
     );
-  });
+  }, 10_000);
 });

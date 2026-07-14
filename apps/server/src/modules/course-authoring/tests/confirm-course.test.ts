@@ -24,10 +24,19 @@ async function fixture() {
     courseMode: 'standard',
     topic: '概率论',
   });
-  session = evolveAll(
-    session,
-    decide(session, { type: 'skipAssessment', assessmentArtifactId: 'a1' }),
-  );
+  session = evolveAll(session, decide(session, { type: 'startAssessment' }));
+  for (let round = 1; round <= 3; round += 1) {
+    const userMessageId = `user_${round}`;
+    session = evolveAll(session, decide(session, { type: 'startAssessmentTurn', userMessageId }));
+    session = evolveAll(
+      session,
+      decide(session, {
+        type: 'completeAssessmentTurn',
+        userMessageId,
+        assistantMessageId: `assistant_${round}`,
+      }),
+    );
+  }
   session = evolveAll(
     session,
     decide(session, { type: 'requestCandidate', generationTaskId: 'task_1' }),
@@ -42,7 +51,12 @@ async function fixture() {
   );
   await authoring.outlineSessions.save(
     tx,
-    { session, resourceVersion: 0, candidateCommandReceipts: {} },
+    {
+      session,
+      resourceVersion: 0,
+      candidateCommandReceipts: {},
+      messages: [],
+    },
     0,
   );
   await authoring.candidateVersions.save(
@@ -59,6 +73,13 @@ async function fixture() {
         courseGoals: ['理解概率'],
         disciplineTag: '数学',
         topicTags: ['概率'],
+        modules: [
+          {
+            id: 'module_probability',
+            title: '概率基础',
+            lessonIds: ['probability-space', 'random-variable'],
+          },
+        ],
         lessons: [
           {
             id: 'probability-space',

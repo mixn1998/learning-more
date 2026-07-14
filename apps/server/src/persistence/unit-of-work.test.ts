@@ -64,4 +64,39 @@ describe('UnitOfWork [EQ-DATA-02]', () => {
 
     await first.release();
   });
+
+  it('serializes concurrent transactions created by the same local application', async () => {
+    const root = await temporaryDataRoot();
+    const unitOfWork = createUnitOfWork({ dataRoot: root });
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+    const firstMayFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const order: string[] = [];
+
+    const first = unitOfWork.execute({ transactionId: 'tx_first' }, async (tx) => {
+      order.push('first-started');
+      markFirstStarted();
+      await firstMayFinish;
+      await tx.stageText('work/first.txt', 'first');
+      order.push('first-finished');
+    });
+    await firstStarted;
+    const second = unitOfWork.execute({ transactionId: 'tx_second' }, async (tx) => {
+      order.push('second-started');
+      await tx.stageText('work/second.txt', 'second');
+      order.push('second-finished');
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(order).toEqual(['first-started']);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(order).toEqual(['first-started', 'first-finished', 'second-started', 'second-finished']);
+  });
 });

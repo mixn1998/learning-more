@@ -29,6 +29,13 @@ export type PortraitInputManifest = Readonly<{
   policyVersion: string;
   promptTemplateVersion: string;
   providerConfigFingerprint: string;
+  reasoningBehaviorInput?:
+    | Readonly<{
+        snapshotId: string;
+        sourceSnapshotHash: string;
+        dimensionSetVersion: string;
+      }>
+    | undefined;
   manifestChecksum: string;
   createdAt: string;
 }>;

@@ -50,6 +50,9 @@ describe('SupplementarySession module', () => {
       messageIds: ['message_supplementary_01'],
       resourceVersion: 2,
     });
+    const listed = [];
+    for await (const session of module.listByLesson('lesson_01')) listed.push(session.id);
+    expect(listed).toEqual(['supplementary_01']);
     expect(finalReview).toEqual({
       id: 'review_final_01',
       artifactRef: 'artifact_final_01',

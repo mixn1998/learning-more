@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -14,6 +15,7 @@ import {
   createLocalFileMessageLog,
 } from '../modules/learning-session/implementation/message-log.js';
 import { DataRoot } from './data-root.js';
+import { checksumJson, encodeJson } from './json-codec.js';
 import { createStorePaths, initializeStoreLayout } from './paths.js';
 import {
   createInMemoryLearningSessionRepositories,
@@ -46,6 +48,7 @@ async function localFixture() {
   await initializeStoreLayout(createStorePaths(dataRoot));
   const unitOfWork = createUnitOfWork({ dataRoot });
   return {
+    dataRoot,
     repositories: createLocalFileLearningSessionRepositories(dataRoot),
     messageLog: createLocalFileMessageLog(dataRoot),
     unitOfWork,
@@ -122,6 +125,7 @@ describe('LearningSession repository contracts', () => {
       role: 'user' as const,
       createdAt: '2026-07-13T00:00:00.000Z',
       contentArtifactRef: 'artifact:01',
+      completionStatus: 'complete' as const,
     };
     for (const transactionId of ['tx_message_1', 'tx_message_2']) {
       await unitOfWork.execute({ transactionId }, (tx) =>
@@ -129,5 +133,27 @@ describe('LearningSession repository contracts', () => {
       );
     }
     await expect(messageLog.list('session_01')).resolves.toEqual([message]);
+  });
+
+  it('reads pre-migration message records as complete without invalidating their checksum', async () => {
+    const { dataRoot, messageLog } = await localFixture();
+    const legacyMessage = {
+      id: 'message_legacy',
+      role: 'assistant' as const,
+      createdAt: '2026-07-13T00:00:00.000Z',
+      contentArtifactRef: 'artifact:legacy',
+    };
+    const hash = createHash('sha256').update('session_legacy', 'utf8').digest('hex');
+    const directory = path.join(dataRoot.absolutePath, 'work', 'session-messages');
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      path.join(directory, `${hash}.ndjson`),
+      encodeJson({ message: legacyMessage, checksum: checksumJson(legacyMessage) }),
+      'utf8',
+    );
+
+    await expect(messageLog.list('session_legacy')).resolves.toEqual([
+      { ...legacyMessage, completionStatus: 'complete' },
+    ]);
   });
 });

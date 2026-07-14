@@ -55,74 +55,93 @@ async function writeStagedFile(filePath: string, content: string): Promise<void>
 }
 
 export function createUnitOfWork(options: UnitOfWorkOptions): UnitOfWork {
+  let transactionBarrier: Promise<void> = Promise.resolve();
   return {
-    async execute<T>(
+    execute<T>(
       request: TransactionRequest,
       work: (tx: TransactionContext) => Promise<T>,
     ): Promise<T> {
-      assertSafePathSegment(request.transactionId);
-      const lease = await acquireStoreWriteLease(options.dataRoot);
-      const journal: TransactionJournal = {
-        schemaVersion: 1,
-        transactionId: request.transactionId,
-        state: 'preparing',
-        operations: [],
-      };
-      const operations = new Map<string, 'write' | 'delete'>();
-      await mkdir(transactionDirectory(options.dataRoot, request.transactionId), {
-        recursive: true,
-      });
-
-      try {
-        await writeTransactionJournal(options.dataRoot, journal);
-        await options.faultInjector?.('journal:preparing');
-
-        const context: TransactionContext = {
-          async stageJson(relativePath, value) {
-            validateRelativePath(relativePath);
-            operations.set(relativePath, 'write');
-            await writeStagedFile(
-              transactionFilePath(options.dataRoot, request.transactionId, 'staging', relativePath),
-              encodeJson(value),
-            );
-          },
-          async stageText(relativePath, value) {
-            validateRelativePath(relativePath);
-            operations.set(relativePath, 'write');
-            await writeStagedFile(
-              transactionFilePath(options.dataRoot, request.transactionId, 'staging', relativePath),
-              value.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
-            );
-          },
-          async deleteOnCommit(relativePath) {
-            validateRelativePath(relativePath);
-            operations.set(relativePath, 'delete');
-          },
+      const executeTransaction = async (): Promise<T> => {
+        assertSafePathSegment(request.transactionId);
+        const lease = await acquireStoreWriteLease(options.dataRoot);
+        const journal: TransactionJournal = {
+          schemaVersion: 1,
+          transactionId: request.transactionId,
+          state: 'preparing',
+          operations: [],
         };
+        const operations = new Map<string, 'write' | 'delete'>();
+        await mkdir(transactionDirectory(options.dataRoot, request.transactionId), {
+          recursive: true,
+        });
 
-        const result = await work(context);
-        journal.operations.push(
-          ...[...operations.entries()]
-            .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-            .map(([relativePath, kind]) => ({ relativePath, kind, state: 'pending' as const })),
-        );
-        journal.state = 'prepared';
-        await writeTransactionJournal(options.dataRoot, journal);
-        await options.faultInjector?.('journal:prepared');
+        try {
+          await writeTransactionJournal(options.dataRoot, journal);
+          await options.faultInjector?.('journal:preparing');
 
-        journal.state = 'committing';
-        await writeTransactionJournal(options.dataRoot, journal);
-        await options.faultInjector?.('journal:committing');
-        await applyJournalOperations(options.dataRoot, journal, options.faultInjector);
+          const context: TransactionContext = {
+            async stageJson(relativePath, value) {
+              validateRelativePath(relativePath);
+              operations.set(relativePath, 'write');
+              await writeStagedFile(
+                transactionFilePath(
+                  options.dataRoot,
+                  request.transactionId,
+                  'staging',
+                  relativePath,
+                ),
+                encodeJson(value),
+              );
+            },
+            async stageText(relativePath, value) {
+              validateRelativePath(relativePath);
+              operations.set(relativePath, 'write');
+              await writeStagedFile(
+                transactionFilePath(
+                  options.dataRoot,
+                  request.transactionId,
+                  'staging',
+                  relativePath,
+                ),
+                value.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
+              );
+            },
+            async deleteOnCommit(relativePath) {
+              validateRelativePath(relativePath);
+              operations.set(relativePath, 'delete');
+            },
+          };
 
-        journal.state = 'committed';
-        await writeTransactionJournal(options.dataRoot, journal);
-        await options.faultInjector?.('journal:committed');
-        await cleanupTransaction(options.dataRoot, journal, options.faultInjector);
-        return result;
-      } finally {
-        await lease.release();
-      }
+          const result = await work(context);
+          journal.operations.push(
+            ...[...operations.entries()]
+              .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+              .map(([relativePath, kind]) => ({ relativePath, kind, state: 'pending' as const })),
+          );
+          journal.state = 'prepared';
+          await writeTransactionJournal(options.dataRoot, journal);
+          await options.faultInjector?.('journal:prepared');
+
+          journal.state = 'committing';
+          await writeTransactionJournal(options.dataRoot, journal);
+          await options.faultInjector?.('journal:committing');
+          await applyJournalOperations(options.dataRoot, journal, options.faultInjector);
+
+          journal.state = 'committed';
+          await writeTransactionJournal(options.dataRoot, journal);
+          await options.faultInjector?.('journal:committed');
+          await cleanupTransaction(options.dataRoot, journal, options.faultInjector);
+          return result;
+        } finally {
+          await lease.release();
+        }
+      };
+      const execution = transactionBarrier.then(executeTransaction);
+      transactionBarrier = execution.then(
+        () => undefined,
+        () => undefined,
+      );
+      return execution;
     },
   };
 }

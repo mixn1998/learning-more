@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { DataKeySchema } from '@learning-more/contracts';
+import {
+  DataKeySchema,
+  GovernedProfileEvidenceCandidateSchema,
+  ProfileEvidenceCandidateGovernanceSchema,
+} from '@learning-more/contracts';
 
 import type { LearningFactType } from '../../learning-facts/interface.js';
 import type { CandidateEvidence, EvidenceSourceGroup } from '../interface.js';
@@ -57,6 +61,7 @@ export const CandidateEvidenceSchema = z.strictObject({
   extractorVersion: z.string().min(1).max(100),
   dedupKey: z.string().regex(/^[a-f0-9]{64}$/),
   status: z.enum(['active', 'superseded', 'retracted']),
+  governance: ProfileEvidenceCandidateGovernanceSchema.optional(),
   resourceVersion: z.number().int().nonnegative(),
 });
 
@@ -81,10 +86,24 @@ export function parseCandidateEvidence(input: unknown, now: Date): CandidateEvid
   if (parsed.dependentSourceGroupIds.includes(parsed.sourceGroupId)) {
     throw new Error('evidence_source_group_self_dependency');
   }
-  const { sourceFactType, ...required } = parsed;
+  if (parsed.governance !== undefined) {
+    GovernedProfileEvidenceCandidateSchema.parse({
+      ...parsed.governance,
+      evidenceId: parsed.evidenceId,
+      claimDimension: parsed.claimDimension,
+      summary: parsed.summary,
+      sourceRefs: parsed.sourceRefs,
+      sourceGroupId: parsed.sourceGroupId,
+      dependentSourceGroupIds: parsed.dependentSourceGroupIds,
+      extractorVersion: parsed.extractorVersion,
+      status: parsed.status,
+    });
+  }
+  const { sourceFactType, governance, ...required } = parsed;
   return {
     ...required,
     ...(sourceFactType === undefined ? {} : { sourceFactType }),
+    ...(governance === undefined ? {} : { governance }),
   };
 }
 

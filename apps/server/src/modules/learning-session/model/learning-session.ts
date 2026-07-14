@@ -111,9 +111,13 @@ export function decide(
             ? 'UserMessageAppended'
             : 'AssistantMessageCommitted',
         messageId: command.messageId,
-        establishesEvidence: command.establishesEvidence,
       }),
     ];
+  }
+  if (command.type === 'establishEvidenceCheckpoint') {
+    return session.evidenceCheckpoint
+      ? []
+      : [event(commandId, { type: 'EvidenceCheckpointEstablished' })];
   }
   if (command.type === 'startGeneration') {
     if (session.state !== 'active') throw new LearningSessionError('session_not_writable');
@@ -191,10 +195,18 @@ export function evolve(learning: LessonLearning, event: LearningSessionEvent): L
     return {
       ...learning,
       session: {
-        ...session,
+        ...(event.type === 'AssistantMessageCommitted'
+          ? withoutActiveGeneration(session)
+          : session),
         messageIds: [...session.messageIds, event.messageId],
-        evidenceCheckpoint: session.evidenceCheckpoint || event.establishesEvidence,
       },
+      processedCommandIds,
+    };
+  }
+  if (event.type === 'EvidenceCheckpointEstablished') {
+    return {
+      ...learning,
+      session: { ...session, evidenceCheckpoint: true },
       processedCommandIds,
     };
   }

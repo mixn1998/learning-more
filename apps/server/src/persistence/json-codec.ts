@@ -63,13 +63,14 @@ export function decodeAggregateDocument<TSchema extends z.ZodType>(
   dataSchema: TSchema,
 ): AggregateDocument<z.output<TSchema>> {
   try {
-    const document = aggregateDocumentSchema(dataSchema).parse(
-      parseStoredJson(text),
-    ) as AggregateDocument<z.output<TSchema>>;
-    if (checksumJson(document.data) !== document.contentSha256) {
+    const storedDocument = aggregateDocumentSchema(z.unknown()).parse(parseStoredJson(text));
+    if (checksumJson(storedDocument.data) !== storedDocument.contentSha256) {
       throw new StorageDocumentError('storage_corrupted');
     }
-    return document;
+    return {
+      ...storedDocument,
+      data: dataSchema.parse(storedDocument.data) as z.output<TSchema>,
+    };
   } catch (error) {
     if (error instanceof StorageDocumentError) throw error;
     throw new StorageDocumentError('storage_corrupted', error);
