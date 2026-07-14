@@ -20,6 +20,7 @@
 - 运行中心只显示本机 Codex CLI 实际返回的可用模型和推理强度。
 - 启动时自动发现可执行的 Codex CLI；环境变量仍可作为显式覆盖。
 - Codex CLI 的“可用”必须同时表示：可执行文件可运行、登录状态有效、模型目录可解析。
+- Codex CLI 未登录时，用户可以从运行中心启动登录；CLI 自动打开官方账号验证网页，验证完成后页面自动刷新状态和模型目录。
 - 课程生成通过真实 `codex exec` 参数调用，而不是项目自定义的无效 CLI 参数。
 - 本地服务“一键重连”可以取得当前有效 capability，并完成受控重启、健康等待和界面刷新。
 - 本地服务恢复结果与 AI Provider 恢复结果独立呈现；AI 恢复失败不能抹掉已经成功的本地服务恢复结果。
@@ -47,6 +48,7 @@
 ```ts
 interface CodexCliAdapter {
   probe(): Promise<CodexCliProbe>;
+  startLogin(): Promise<'started' | 'already_authenticated'>;
   generate(request: CodexGenerationRequest, signal: AbortSignal): AsyncIterable<ProviderDelta>;
 }
 ```
@@ -68,6 +70,8 @@ Adapter 的发现顺序为：
 3. `codex debug models` 并按严格 Schema 解析。
 
 任一步失败均返回不可用状态和稳定错误码。模型目录允许短时内存缓存，但“重新检查”必须绕过缓存重新探测。
+
+`startLogin()` 先检查当前登录状态；已经登录时不重复启动进程，未登录时以 `shell: false` 启动当前用户的 `codex login`。登录进程由 Codex CLI 打开官方验证网页并处理回调，Learning MORE 不解析、不代理、不保存账号凭据或 OAuth 回调。相同登录进程运行期间重复请求必须幂等返回 `started`，不得并发打开多个验证页面。
 
 生成调用使用 `codex exec --ephemeral --skip-git-repo-check --sandbox read-only --model <model> -c model_reasoning_effort=<effort> <prompt>`。参数数组直接传给 `spawn`，保持 `shell: false`；中止信号必须终止子进程。只有标准输出中的最终文本进入生成流，诊断信息不得混入 AI 正文。
 
@@ -96,6 +100,14 @@ Server 提供同源只读接口：
 ```text
 GET /api/v1/ai-runtime/providers
 ```
+
+并提供同源受 CSRF 保护的登录启动接口：
+
+```text
+POST /api/v1/ai-runtime/providers/codex-cli/login
+```
+
+响应只包含 `started` 或 `already_authenticated`，不包含验证 URL、账号或令牌。
 
 Generation Runtime 只暴露一个列举 Provider 目录的方法；每个 Provider 自行实现可选的模型列举能力。Mock 和普通 API-compatible Provider 可以返回空模型目录，Codex CLI 返回实时目录。Web 不再维护 Codex 型号常量。
 
@@ -129,7 +141,16 @@ getCapability(): { value: string; expiresAt: number };
 4. 验证成功后原子切换并持久化公开配置；验证失败则保留原 Provider。
 5. Web 重新获取当前状态和目录，以后端结果覆盖本地选择状态。
 
-### 5.3 本地服务一键重连
+### 5.3 Codex CLI 登录
+
+1. Provider 目录返回 `codex_cli_not_authenticated`，运行中心显示“登录 Codex”。
+2. 用户点击后，Web 调用登录启动接口。
+3. Server 通过 Codex CLI Adapter 幂等启动 `codex login`，Codex CLI 自动打开官方验证网页。
+4. Web 每两秒重新读取一次 Provider 目录，最长等待两分钟；页面关闭时立即停止轮询。
+5. 探测转为健康后，Web 自动停止轮询、刷新模型目录并恢复切换按钮。
+6. 登录进程失败或两分钟内未完成时显示可重试提示，Mock 和其他 Provider 继续可用。
+
+### 5.4 本地服务一键重连
 
 1. Web 获取当前 Launcher capability。
 2. Launcher 核验当前实例身份并执行受控重启。
@@ -143,6 +164,7 @@ getCapability(): { value: string; expiresAt: number };
 - 未发现 CLI：`codex_cli_not_found`。
 - CLI 无法执行：`codex_cli_unexecutable`。
 - 未登录：`codex_cli_not_authenticated`。
+- 登录进程无法启动：`codex_cli_login_failed`。
 - 模型目录不可解析或为空：`codex_cli_catalog_unavailable`。
 - 所选模型或推理强度已失效：`codex_cli_model_unavailable`。
 - 生成进程异常退出：沿用 `provider_process_failed`，允许在首个 delta 前按现有策略重试。
@@ -157,6 +179,7 @@ getCapability(): { value: string; expiresAt: number };
 - Codex CLI 模型选择器只显示返回目录；每个模型旁显示其真实默认推理强度。
 - 选择模型后，推理强度选择器只显示该模型支持的值。
 - 没有模型时禁用切换操作，并明确显示探测失败原因。
+- 未登录时显示“登录 Codex”；启动后显示“等待浏览器验证”，验证成功后自动加载真实模型，不要求手动刷新。
 - “启动并检查”强制刷新 Provider 目录；“重新连接”重放已保存配置并重新探测。
 - 本地服务四阶段继续保留“核验实例、重连服务、等待健康、刷新 AI”，但最后一阶段的 AI 失败不会回滚前三阶段的成功结果。
 - 保持现有视觉规格、字体、行距、组件尺寸和九种玩法配色，不改动页面布局基线。
@@ -168,6 +191,7 @@ getCapability(): { value: string; expiresAt: number };
 - CLI 发现按覆盖、PATH、当前用户安装目录的顺序选择，并跳过不可执行候选。
 - `debug models` 的真实形状被严格解析；未知字段可忽略，缺少关键字段必须失败。
 - CLI Provider 拒绝目录外模型和不支持的推理强度。
+- 未登录时只启动一个 `codex login` 进程；已登录时返回 `already_authenticated`；重复点击不并发打开验证页面。
 - 生成命令使用真实 `codex exec` 参数、`shell: false` 和中止信号。
 - Provider 目录路由通过 Contracts Schema 校验，不泄露敏感字段。
 - capability 轮换后，状态返回值与写操作校验值一致。
@@ -179,6 +203,7 @@ getCapability(): { value: string; expiresAt: number };
 - 页面中不再出现 `gpt-5.6-luna`、`gpt-5.5-luna` 等未由实际 CLI 返回的型号。
 - 当前机器上模型选择器与 `codex debug models` 的可见目录一致。
 - Codex CLI 登录有效时显示可用；未登录或可执行文件缺失时显示不可用。
+- 在未登录测试 Adapter 下点击“登录 Codex”会启动登录并轮询，模拟验证完成后自动出现动态模型选项。
 - 点击“一键重连”不再产生 403，后台实例 PID/instanceId 更新后恢复为健康。
 - 重连期间 `http://127.0.0.1:43119/` 始终返回站点页面。
 - Provider 切换到 Codex CLI 后执行一次最小真实生成冒烟，确认收到有效文本。
@@ -191,6 +216,7 @@ getCapability(): { value: string; expiresAt: number };
 - 运行中心没有静态 Codex 模型白名单。
 - 模型目录、连接状态和当前配置均可追溯到同一 Server 运行时结果。
 - Codex CLI 能自动发现、健康探测、切换并执行最小真实生成。
+- Codex CLI 需要账号验证时可以从运行中心启动登录并自动打开官方验证网页，成功后自动刷新模型目录。
 - 本地服务一键重连完成真实受控重启，且 capability 轮换无 403。
 - 三项用户报告症状均有红绿回归测试和真实运行验证。
 - 相关设计规格、实施计划和最终验收报告同步更新。
