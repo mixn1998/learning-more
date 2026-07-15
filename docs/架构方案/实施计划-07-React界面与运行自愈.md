@@ -56,7 +56,7 @@
 
 - [ ] 写失败测试：无 manifest 启动；健康实例复用；陈旧 manifest 隔离；未知 43120 占用进入 `blocked_external_port`；错身份进程不终止；10 分钟内第 6 次崩溃进入 `blocked_restart_storm`；非法配置和数据恢复分别进入对应 blocked 状态。
 - [ ] 运行 launcher 测试，预期失败。
-- [ ] 启动顺序：加 launcher lease、校验 manifest/进程/端口、恢复 store、启动 server、轮询 identity health、打开浏览器。用 `spawn` 参数数组并 `shell:false`，生产窗口隐藏。
+- [ ] 启动顺序：加 launcher lease、校验 manifest/进程/端口、恢复 store、启动 server、轮询 identity health、进入无界面监督循环。Launcher 永不打开浏览器；仅显式交互包装器在 ready 后打开一次主页。用 `spawn` 参数数组并 `shell:false`，生产窗口隐藏。
 - [ ] Launcher 状态固定为 `stopped -> starting -> healthy -> degraded -> restarting -> backoff -> healthy`；意外退出退避为 0.5s/1s/2s/4s/8s，10 分钟最多自动重启 5 次。配置变化 750ms debounce，同批只重启一次；store corrupted、migration failed、外部端口占用不自动重启循环。
 - [ ] 控制面校验 loopback、Host、精确 Origin、自定义 header 和短期 capability；reconnect 的受控重启停止新命令/任务、持久化游标、关闭计时区间、等待最多 10 秒，超时后只终止匹配完整身份的 child process。浏览器固定展示核验实例、重连服务、等待健康、刷新 AI 四阶段。
 - [ ] 运行测试和真实子进程 smoke，预期通过。

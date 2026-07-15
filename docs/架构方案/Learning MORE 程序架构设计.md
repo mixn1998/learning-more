@@ -1244,10 +1244,13 @@ LocalFile Adapter 分别保存 `reasoning-behavior-episodes` 和 `reasoning-beha
 
 ### 12.1 运行拓扑
 
-一键重连要求应用后端失效时仍有控制进程，因此包含 Launcher 和 Server 两个本地进程。
+一键重连要求应用后端失效时仍有控制进程。正式后台链包含 Windows 计划任务常驻 runner、Host、Launcher 和 Server；浏览器不拥有任何服务进程。
 
 ```mermaid
 flowchart LR
+    TASK["Task Scheduler 单次登录触发"] --> RUNNER["常驻 PowerShell runner"]
+    RUNNER --> HOST["Host"]
+    HOST --> CTRL
     B["浏览器"] --> APP["应用后端 127.0.0.1:43120"]
     B --> CTRL["Launcher 控制面 127.0.0.1:43119"]
     CTRL --> APP
@@ -1255,7 +1258,7 @@ flowchart LR
     APP --> AI["AI Provider"]
 ```
 
-Launcher 失效时，浏览器不能凭空创建本机进程，必须提示重新运行启动入口。
+计划任务仅保留一个 `AtLogOn` 触发器，不配置每分钟或其他周期触发。runner 由 Windows `Schedule` 服务持有；Host 退出后等待两秒再启动 Host，Host 负责恢复 Launcher，Launcher 负责恢复 Server。Launcher 失效时，浏览器不能凭空创建本机进程，必须提示重新运行显式启动入口。
 
 ### 12.2 端口
 
@@ -1339,9 +1342,11 @@ type RuntimeManifest = {
 8. 获取数据锁并恢复事务/outbox/任务；
 9. 校验关键索引和 schema；
 10. 写 ready；
-11. 打开正确 URL。
+11. 进入无界面监督循环，不打开 URL。
 
 ready 前只响应健康和诊断，业务请求返回 runtime_not_ready。
+
+浏览器副作用不属于 Launcher。工作区只有 `pnpm start:open` 或 `node tools/start-learning-more.mjs --open` 可在 ready 后打开一次固定主页；普通 `pnpm start` 不打开。可移植包的 `START.cmd` 是显式交互入口，安装、修复、卸载、自愈、重连、前端同步和 Provider 刷新始终无界面。Host 保留 `LEARNING_MORE_NO_OPEN=1` 仅保护可能回滚到的旧 Launcher；当前 Launcher 不读取该变量且没有 URL handler 能力。
 
 ### 12.7 健康与自愈
 
@@ -1370,6 +1375,8 @@ blocked_data_recovery
 意外退出退避为 0.5、1、2、4、8 秒；十分钟最多自动重启五次。配置变化 750 ms debounce，同批只重启一次。
 
 受控重启停止新命令/任务、持久化游标、关闭计时区间、等待最多 10 秒、恢复未完成任务并只终止经过完整身份验证的子进程。
+
+Host 的系统级恢复由单次登录触发的常驻 runner 完成，不依赖 Task Scheduler 把外部终止解释为普通失败，也不依赖周期轮询触发。计划任务设置 `MultipleInstances = IgnoreNew`、无限执行时间，并允许在电池供电时启动和继续运行。进程观察暂时不可用时按 `unavailable` 处理，不得误判为进程消失、抢占租约或终止未知进程。
 
 ### 12.8 一键重连控制面
 

@@ -103,14 +103,17 @@ node tools/start-learning-more.mjs --open   # ready 后打开一次主页
 ### 后台流程
 
 ```text
-Windows Task Scheduler
+Windows Task Scheduler（单个 AtLogOn 触发器）
+  -> 常驻 PowerShell runner
   -> Host
   -> Launcher
   -> Server ready
   -> 不打开浏览器
 ```
 
-Host 和 Launcher 的任何自动恢复均重复同一无界面流程。
+runner 由 `Schedule` 服务持有，不创建周期触发器；Host 退出后，runner 等待两秒再直接启动 Host。Host 和 Launcher 的任何自动恢复均重复同一无界面流程。计划任务配置为不因电池供电而拒绝启动或停止，避免电源状态切换切断守护链。
+
+当前 Launcher 已彻底移除浏览器能力。Host 仍向它启动的 Launcher 注入 `LEARNING_MORE_NO_OPEN=1`，仅用于回滚到旧 release 时阻止旧 Launcher 隐式弹页；这不是当前 Launcher 的行为开关。
 
 ### 显式交互流程
 
@@ -140,8 +143,8 @@ Host 和 Launcher 的任何自动恢复均重复同一无界面流程。
 1. 核验 43119 owner 的命令行、PID、Server 子进程和 readiness identity。
 2. 仅终止已确认的 `tools/start-learning-more.mjs` 孤立进程树。
 3. 构建 Host 与 Launcher。
-4. 运行 Host `repair`，由 Windows Task Scheduler 启动正式 Host。
-5. 验证 Host 父进程属于 `Schedule` 服务，Launcher 父进程属于 Host，Server 父进程属于 Launcher。
+4. 运行 Host `repair`，由 Windows Task Scheduler 启动常驻 runner 和正式 Host。
+5. 验证 runner 父进程属于 `Schedule` 服务，Host 父进程属于 runner，Launcher 父进程属于 Host，Server 父进程属于 Launcher。
 6. 验证任务只有一个 `AtLogOn` 触发器，`NextRunTime` 为空，不增加周期触发。
 7. 验证 43119/43120 ready、身份一致，并在恢复过程中没有新的浏览器窗口。
 
@@ -167,7 +170,7 @@ Host 和 Launcher 的任何自动恢复均重复同一无界面流程。
 - `pnpm start` 不打开主页。
 - `pnpm start:open` 在 ready 后只打开一次主页。
 - “同步前端版本”和“一键重连”不打开新页面。
-- Windows 计划任务恢复为 Running，进程父链由 `Schedule` 服务持有。
+- Windows 计划任务恢复为 Running，进程父链为 `Schedule` 服务 -> 常驻 runner -> Host -> Launcher -> Server。
 - 不增加每分钟或其他周期触发。
 - 当前孤立 development Launcher 被正式 Host release 替代。
 - Launcher、Host、发布构建和相关前端测试全部通过。
