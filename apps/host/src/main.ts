@@ -131,6 +131,8 @@ export function desiredHostTask(input: {
     userId: input.userId ?? currentUserId(),
     trigger: 'logon',
     startWhenAvailable: true,
+    allowStartOnBatteries: true,
+    stopIfGoingOnBatteries: false,
     multipleInstances: 'ignore-new',
     restartIntervalMinutes: 1,
     restartCount: 999,

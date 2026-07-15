@@ -10,6 +10,8 @@ const desired: HostTaskDefinition = {
   userId: 'DOGGY\\14627',
   trigger: 'logon',
   startWhenAvailable: true,
+  allowStartOnBatteries: true,
+  stopIfGoingOnBatteries: false,
   multipleInstances: 'ignore-new',
   restartIntervalMinutes: 1,
   restartCount: 999,
@@ -52,7 +54,11 @@ describe('Windows Host manager', () => {
     expect(scheduler.replacements).toBe(1);
     expect(scheduler.starts).toBe(2);
 
-    scheduler.definition = { ...desired, restartCount: 0 };
+    scheduler.definition = {
+      ...desired,
+      allowStartOnBatteries: false,
+      stopIfGoingOnBatteries: true,
+    };
     await expect(manager.status()).resolves.toMatchObject({ state: 'drifted', matches: false });
     await expect(manager.repair()).resolves.toMatchObject({ state: 'installed', matches: true });
     expect(scheduler.replacements).toBe(2);

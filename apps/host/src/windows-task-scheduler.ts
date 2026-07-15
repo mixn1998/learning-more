@@ -101,6 +101,8 @@ function parseDefinition(stdout: string): HostTaskDefinition {
     typeof value.userId !== 'string' ||
     value.trigger !== 'logon' ||
     typeof value.startWhenAvailable !== 'boolean' ||
+    typeof value.allowStartOnBatteries !== 'boolean' ||
+    typeof value.stopIfGoingOnBatteries !== 'boolean' ||
     value.multipleInstances !== 'ignore-new' ||
     typeof value.restartIntervalMinutes !== 'number' ||
     typeof value.restartCount !== 'number' ||
@@ -115,6 +117,8 @@ function parseDefinition(stdout: string): HostTaskDefinition {
     userId: value.userId,
     trigger: 'logon',
     startWhenAvailable: value.startWhenAvailable as true,
+    allowStartOnBatteries: value.allowStartOnBatteries,
+    stopIfGoingOnBatteries: value.stopIfGoingOnBatteries,
     multipleInstances: 'ignore-new',
     restartIntervalMinutes: value.restartIntervalMinutes as 1,
     restartCount: value.restartCount,
@@ -155,6 +159,8 @@ $restartInterval = [string]$task.Settings.RestartInterval
   userId = $task.Principal.UserId
   trigger = if ($trigger.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger') { 'logon' } else { 'unknown' }
   startWhenAvailable = [bool]$task.Settings.StartWhenAvailable
+  allowStartOnBatteries = -not [bool]$task.Settings.DisallowStartIfOnBatteries
+  stopIfGoingOnBatteries = [bool]$task.Settings.StopIfGoingOnBatteries
   multipleInstances = if ($task.Settings.MultipleInstances.ToString() -eq 'IgnoreNew') { 'ignore-new' } else { $task.Settings.MultipleInstances.ToString() }
   restartIntervalMinutes = [int]([Xml.XmlConvert]::ToTimeSpan($restartInterval).TotalMinutes)
   restartCount = [int]$task.Settings.RestartCount
@@ -187,7 +193,7 @@ $definitionJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$
 $definition = $definitionJson | ConvertFrom-Json
 $action = New-ScheduledTaskAction -Execute $definition.executable -Argument $definition.argumentString
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $definition.userId
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount $definition.restartCount -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount $definition.restartCount -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 $principal = New-ScheduledTaskPrincipal -UserId $definition.userId -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $definition.name -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 `;

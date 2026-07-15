@@ -5,6 +5,8 @@ export type HostTaskDefinition = Readonly<{
   userId: string;
   trigger: 'logon';
   startWhenAvailable: true;
+  allowStartOnBatteries: boolean;
+  stopIfGoingOnBatteries: boolean;
   multipleInstances: 'ignore-new';
   restartIntervalMinutes: 1;
   restartCount: number;

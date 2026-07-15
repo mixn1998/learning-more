@@ -10,6 +10,8 @@ const definition: HostTaskDefinition = {
   userId: 'DOGGY\\14627',
   trigger: 'logon',
   startWhenAvailable: true,
+  allowStartOnBatteries: true,
+  stopIfGoingOnBatteries: false,
   multipleInstances: 'ignore-new',
   restartIntervalMinutes: 1,
   restartCount: 999,
@@ -42,9 +44,42 @@ describe('Windows Task Scheduler adapter', () => {
     expect(registration).not.toContain('New-ScheduledTaskTrigger -Once');
     expect(registration).not.toContain('RepetitionInterval');
     expect(registration).toContain('MultipleInstances IgnoreNew');
+    expect(registration).toContain('AllowStartIfOnBatteries');
+    expect(registration).toContain('DontStopIfGoingOnBatteries');
     expect(registration).toContain('RestartInterval (New-TimeSpan -Minutes 1)');
     expect(registration).toContain('ExecutionTimeLimit ([TimeSpan]::Zero)');
     expect(registration).not.toContain(definition.executable);
     expect(registration).not.toContain(definition.userId);
+  });
+
+  it('reads battery continuity settings into the task contract', async () => {
+    const run = vi.fn(async (_executable: string, arguments_: readonly string[]) => {
+      const encoded = arguments_[arguments_.indexOf('-EncodedCommand') + 1]!;
+      const script = Buffer.from(encoded, 'base64').toString('utf16le');
+      if (!script.includes('Get-ScheduledTask')) {
+        return { exitCode: 0, stdout: '', stderr: '' };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          name: definition.name,
+          executable: definition.executable,
+          argumentString: '"C:\\Learning MORE\\host\\main.js" run --project-root "D:\\Growth OS"',
+          userId: definition.userId,
+          trigger: definition.trigger,
+          startWhenAvailable: definition.startWhenAvailable,
+          allowStartOnBatteries: definition.allowStartOnBatteries,
+          stopIfGoingOnBatteries: definition.stopIfGoingOnBatteries,
+          multipleInstances: definition.multipleInstances,
+          restartIntervalMinutes: definition.restartIntervalMinutes,
+          restartCount: definition.restartCount,
+          executionTimeLimit: definition.executionTimeLimit,
+        }),
+        stderr: '',
+      };
+    });
+    const scheduler = createWindowsTaskScheduler({ run, systemRoot: 'C:\\Windows' });
+
+    await expect(scheduler.read('Learning MORE')).resolves.toEqual(definition);
   });
 });
