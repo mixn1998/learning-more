@@ -5,7 +5,7 @@ export default defineConfig({
     include: [
       'apps/**/*.test.{ts,tsx}',
       'packages/**/*.test.{ts,tsx}',
-      'tools/**/*.test.ts',
+      'tools/**/*.test.{ts,mjs}',
       'tests/**/*.test.{ts,tsx}',
     ],
     passWithNoTests: true,

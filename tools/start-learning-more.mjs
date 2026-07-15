@@ -1,6 +1,15 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import {
+  openApplicationUrl,
+  parseInteractiveStartArguments,
+  runInteractiveStart,
+} from './interactive-start.mjs';
+
+const arguments_ = process.argv.slice(2);
+parseInteractiveStartArguments(arguments_);
+
 const projectRoot = process.cwd();
 const localStateRoot = path.join(projectRoot, '.learning-more-local');
 
@@ -25,14 +34,24 @@ process.env.LEARNING_MORE_ALLOWED_ORIGIN ??= 'http://127.0.0.1:43119';
 const launcherModule = await import(
   pathToFileURL(path.join(projectRoot, 'apps', 'launcher', 'dist', 'main.js')).href
 );
-const launcher = await launcherModule.runLauncher();
+const result = await runInteractiveStart({
+  arguments_,
+  startLauncher: () => launcherModule.runLauncher(),
+  openUrl: openApplicationUrl,
+  webUrl: process.env.LEARNING_MORE_WEB_URL,
+});
+if (result.exitCode !== 0) {
+  console.warn(
+    `Learning MORE is ready at ${process.env.LEARNING_MORE_WEB_URL}, but the browser could not be opened.`,
+  );
+}
 
 let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
-  await launcher.close();
-  process.exit(0);
+  await result.launcher.close();
+  process.exit(result.exitCode);
 }
 
 process.once('SIGINT', () => void stop());
