@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { executeHostCommand, readReleaseIdentity } from './main.js';
+import { desiredHostTask, executeHostCommand, readReleaseIdentity } from './main.js';
 
 const roots: string[] = [];
 
@@ -13,6 +13,33 @@ afterEach(async () => {
 });
 
 describe('Host CLI', () => {
+  it('wraps Host in one persistent non-Node scheduled-task runner', () => {
+    const entryPath = 'D:\\Learning MORE\\apps\\host\\dist\\main.js';
+    const projectRoot = 'D:\\Learning MORE';
+
+    const task = desiredHostTask({ entryPath, projectRoot, userId: 'DOGGY\\14627' });
+
+    expect(task.executable).toBe('C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    expect(task.arguments).toEqual(
+      expect.arrayContaining([
+        '-NoProfile',
+        '-NonInteractive',
+        '-WindowStyle',
+        'Hidden',
+        '-EncodedCommand',
+      ]),
+    );
+    const encoded = task.arguments[task.arguments.indexOf('-EncodedCommand') + 1]!;
+    const script = Buffer.from(encoded, 'base64').toString('utf16le');
+    expect(script).toContain('while ($true)');
+    expect(script).toContain(
+      "& $config.node $config.entry 'run' '--project-root' $config.projectRoot",
+    );
+    expect(script).toContain('Start-Sleep -Seconds 2');
+    expect(script).not.toContain('Start-Process');
+    expect(task.trigger).toBe('logon');
+  });
+
   it('dispatches only the named management operation', async () => {
     const manager = {
       install: vi.fn().mockResolvedValue({ state: 'installed', matches: true }),

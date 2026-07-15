@@ -114,20 +114,54 @@ function currentUserId(): string {
   return username;
 }
 
+function hostRunnerArguments(input: {
+  node: string;
+  entry: string;
+  projectRoot: string;
+}): readonly string[] {
+  const configuration = Buffer.from(JSON.stringify(input), 'utf8').toString('base64');
+  const script = [
+    "$ErrorActionPreference = 'Continue'",
+    `$configJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${configuration}'))`,
+    '$config = $configJson | ConvertFrom-Json',
+    'while ($true) {',
+    "  & $config.node $config.entry 'run' '--project-root' $config.projectRoot",
+    '  Start-Sleep -Seconds 2',
+    '}',
+  ].join('\r\n');
+  return [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-WindowStyle',
+    'Hidden',
+    '-EncodedCommand',
+    Buffer.from(script, 'utf16le').toString('base64'),
+  ];
+}
+
 export function desiredHostTask(input: {
   entryPath: string;
   projectRoot: string;
   userId?: string;
 }): HostTaskDefinition {
+  const projectRoot = path.resolve(input.projectRoot);
   return {
     name: 'Learning MORE',
-    executable: path.resolve(process.execPath),
-    arguments: [
-      path.resolve(input.entryPath),
-      'run',
-      '--project-root',
-      path.resolve(input.projectRoot),
-    ],
+    executable: path.join(
+      process.env.SystemRoot ?? 'C:\\Windows',
+      'System32',
+      'WindowsPowerShell',
+      'v1.0',
+      'powershell.exe',
+    ),
+    arguments: hostRunnerArguments({
+      node: path.resolve(process.execPath),
+      entry: path.resolve(input.entryPath),
+      projectRoot,
+    }),
     userId: input.userId ?? currentUserId(),
     trigger: 'logon',
     startWhenAvailable: true,
