@@ -123,8 +123,10 @@ export async function fetchLauncherStatus(): Promise<LauncherRuntimeStatus> {
   const control = LauncherControlStatusSchema.parse(await response.json());
   sessionStorage.setItem(launcherCapabilityStorageKey, control.capability);
   sessionStorage.setItem(launcherCapabilityExpiryKey, String(control.capabilityExpiresAt));
-  const { capability: _capability, capabilityExpiresAt: _capabilityExpiresAt, ...status } = control;
-  return status;
+  const status: Record<string, unknown> = { ...control };
+  delete status.capability;
+  delete status.capabilityExpiresAt;
+  return LauncherRuntimeStatusSchema.parse(status);
 }
 
 export async function fetchServedWebBuild(): Promise<WebBuildMeta> {
