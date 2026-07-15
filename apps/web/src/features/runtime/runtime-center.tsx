@@ -46,6 +46,24 @@ function stageLabel(
   return current === stage ? '进行中' : '待执行';
 }
 
+function recoveryFailureLabel(reason: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    source_identity_unavailable: '无法确认当前工作区版本',
+    candidate_build_failed: '候选版本连续两次构建失败',
+    candidate_stage_failed: '候选版本暂存失败',
+    candidate_verification_failed: '候选版本验证失败',
+    workspace_identity_changed: '构建期间工作区发生变化',
+    activation_rolled_back: '新版本验证失败，已回滚',
+    host_unavailable: 'Host 未响应，自动修复未恢复',
+    host_identity_mismatch: 'Host 身份或计划任务不匹配',
+    external_port_owner: '端口由其他程序占用，未执行强制接管',
+    served_web_build_mismatch: '页面资源仍不是目标版本',
+    runtime_build_mismatch: '运行实例仍不是目标版本',
+    runtime_ready_timeout: '等待目标运行实例超时',
+  };
+  return labels[reason] ?? '本地服务恢复失败';
+}
+
 export function RuntimeCenter({
   api = runtimeCenterClient,
   pollIntervalMs = 5_000,
@@ -209,6 +227,23 @@ export function RuntimeCenter({
         completeProviderOperation(false);
       }
       setStage('completed');
+      refresh();
+    } catch {
+      setStage('failed');
+    }
+  };
+
+  const syncFrontend = async () => {
+    if (recoverRuntime !== undefined) {
+      try {
+        await recoverRuntime();
+      } catch {
+        // The shared coordinator owns and exposes the durable failure state.
+      }
+      return;
+    }
+    try {
+      await api.refreshAi();
       refresh();
     } catch {
       setStage('failed');
@@ -985,6 +1020,18 @@ export function RuntimeCenter({
                           : '正在恢复'}
                   </span>
                 </header>
+                {recovery?.kind === 'failed' ? (
+                  <div className="rc-log" role="alert">
+                    <span className="bad">
+                      {recoveryFailureLabel(recovery.activation?.errorCode ?? recovery.reason)}
+                    </span>
+                    {typeof recovery.oldRuntimeAvailable === 'boolean' ? (
+                      <span>
+                        {recovery.oldRuntimeAvailable ? '旧版本仍可使用' : '旧版本当前不可用'}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 <ol aria-label="安全重连阶段" className="rc-heal-steps">
                   <li
                     className={`rc-heal-step ${stageLabel(visibleStage, 'verifying') === '完成' ? 'done' : visibleStage === 'verifying' ? 'active' : ''}`}
@@ -1012,15 +1059,7 @@ export function RuntimeCenter({
                   </li>
                 </ol>
                 <div className="rc-heal-actions">
-                  <button
-                    className="rc-btn"
-                    onClick={() =>
-                      void api.refreshAi().then(() => {
-                        void refresh();
-                      })
-                    }
-                    type="button"
-                  >
+                  <button className="rc-btn" onClick={() => void syncFrontend()} type="button">
                     同步前端版本
                   </button>
                   <button

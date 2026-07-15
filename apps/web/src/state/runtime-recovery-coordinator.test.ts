@@ -26,6 +26,7 @@ describe('RuntimeRecoveryCoordinator', () => {
       verify: vi.fn().mockResolvedValue(undefined),
       reconnect: vi.fn(() => reconnectGate),
       waitUntilReady: vi.fn().mockResolvedValue(readiness),
+      verifyActivated: vi.fn().mockResolvedValue(undefined),
       refreshRuntime: vi.fn().mockResolvedValue(undefined),
       refreshAi: vi.fn().mockResolvedValue(undefined),
     });
@@ -49,11 +50,34 @@ describe('RuntimeRecoveryCoordinator', () => {
       verify: vi.fn().mockResolvedValue(undefined),
       reconnect: vi.fn().mockResolvedValue({ targetBuildId: 'build_new' }),
       waitUntilReady,
+      verifyActivated: vi.fn().mockResolvedValue(undefined),
       refreshRuntime: vi.fn().mockResolvedValue(undefined),
       refreshAi: vi.fn().mockResolvedValue(undefined),
     });
 
     expect(waitUntilReady).toHaveBeenCalledWith('build_new');
+  });
+
+  it('does not complete when the served web build remains old', async () => {
+    const coordinator = createRuntimeRecoveryCoordinator();
+    const refreshRuntime = vi.fn();
+
+    await expect(
+      coordinator.recover({
+        verify: vi.fn().mockResolvedValue(undefined),
+        reconnect: vi.fn().mockResolvedValue({ targetBuildId: 'build_new' }),
+        waitUntilReady: vi.fn().mockResolvedValue({ ...readiness, buildId: 'build_new' }),
+        verifyActivated: vi.fn().mockRejectedValue(new Error('served_web_build_mismatch')),
+        refreshRuntime,
+        refreshAi: vi.fn(),
+      }),
+    ).rejects.toThrow('served_web_build_mismatch');
+
+    expect(refreshRuntime).not.toHaveBeenCalled();
+    expect(coordinator.snapshot()).toMatchObject({
+      kind: 'failed',
+      reason: 'served_web_build_mismatch',
+    });
   });
 
   it('separates AI refresh failure from recovered local service health', async () => {
@@ -63,6 +87,7 @@ describe('RuntimeRecoveryCoordinator', () => {
       verify: vi.fn().mockResolvedValue(undefined),
       reconnect: vi.fn().mockResolvedValue({}),
       waitUntilReady: vi.fn().mockResolvedValue(readiness),
+      verifyActivated: vi.fn().mockResolvedValue(undefined),
       refreshRuntime: vi.fn().mockResolvedValue(undefined),
       refreshAi: vi.fn().mockRejectedValue(new Error('ai unavailable')),
     });
@@ -81,6 +106,7 @@ describe('RuntimeRecoveryCoordinator', () => {
         verify: vi.fn().mockResolvedValue(undefined),
         reconnect: vi.fn().mockResolvedValue({}),
         waitUntilReady: vi.fn().mockRejectedValue(new Error('runtime_ready_timeout')),
+        verifyActivated: vi.fn(),
         refreshRuntime: vi.fn(),
         refreshAi: vi.fn(),
       }),
@@ -88,6 +114,51 @@ describe('RuntimeRecoveryCoordinator', () => {
     expect(coordinator.snapshot()).toMatchObject({
       kind: 'failed',
       reason: 'runtime_ready_timeout',
+    });
+  });
+
+  it('preserves public activation failure details for the runtime center', async () => {
+    const coordinator = createRuntimeRecoveryCoordinator();
+    const activation = {
+      schemaVersion: 2 as const,
+      requestId: 'request-01',
+      phase: 'failed' as const,
+      sourceBuildId: 'build-new',
+      activeBuildId: 'build-old',
+      targetBuildId: 'build-new',
+      attempt: 2 as const,
+      errorCode: 'candidate_build_failed' as const,
+      errorStage: 'building',
+      startedAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:02:00.000Z',
+      completedAt: '2026-07-16T00:02:00.000Z',
+    };
+    const failure = Object.assign(new Error('candidate_build_failed'), {
+      activation,
+      oldRuntimeAvailable: true,
+    });
+
+    await expect(
+      coordinator.recover({
+        verify: vi.fn().mockResolvedValue(undefined),
+        reconnect: vi.fn().mockResolvedValue({ targetBuildId: 'build-new' }),
+        waitUntilReady: vi.fn().mockRejectedValue(failure),
+        verifyActivated: vi.fn(),
+        refreshRuntime: vi.fn(),
+        refreshAi: vi.fn(),
+      }),
+    ).rejects.toThrow('candidate_build_failed');
+
+    expect(coordinator.snapshot()).toMatchObject({
+      kind: 'failed',
+      reason: 'candidate_build_failed',
+      activation: { attempt: 2, activeBuildId: 'build-old' },
+      oldRuntimeAvailable: true,
+    });
+    coordinator.reconcileReadiness({ ...readiness, buildId: 'build-old' });
+    expect(coordinator.snapshot()).toMatchObject({
+      kind: 'failed',
+      reason: 'candidate_build_failed',
     });
   });
 
@@ -99,6 +170,7 @@ describe('RuntimeRecoveryCoordinator', () => {
         verify: vi.fn().mockResolvedValue(undefined),
         reconnect: vi.fn().mockResolvedValue({}),
         waitUntilReady: vi.fn().mockRejectedValue(new Error('runtime_ready_timeout')),
+        verifyActivated: vi.fn(),
         refreshRuntime: vi.fn(),
         refreshAi: vi.fn(),
       }),

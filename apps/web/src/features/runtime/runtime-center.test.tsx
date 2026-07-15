@@ -151,6 +151,83 @@ describe('RuntimeCenter', () => {
     expect(serviceTab).not.toHaveTextContent('健康');
   });
 
+  it('shows the stable activation failure and whether the old Runtime remains available', async () => {
+    render(
+      <MemoryRouter>
+        <RuntimeStateContext.Provider
+          value={{
+            state,
+            refresh: vi.fn(),
+            recovery: {
+              kind: 'failed',
+              operationId: 2,
+              reason: 'candidate_build_failed',
+              aiRecoveryFailed: false,
+              oldRuntimeAvailable: true,
+              activation: {
+                schemaVersion: 2,
+                requestId: 'request-01',
+                phase: 'failed',
+                sourceBuildId: 'build-new',
+                activeBuildId: 'build-old',
+                targetBuildId: 'build-new',
+                attempt: 2,
+                errorCode: 'candidate_build_failed',
+                errorStage: 'building',
+                startedAt: '2026-07-16T00:00:00.000Z',
+                updatedAt: '2026-07-16T00:02:00.000Z',
+                completedAt: '2026-07-16T00:02:00.000Z',
+              },
+            },
+          }}
+        >
+          <RuntimeCenter
+            api={{
+              reconnect: vi.fn(),
+              waitUntilReady: vi.fn(),
+              refreshAi: vi.fn(),
+              switchProvider: vi.fn(),
+              getProviderStatus: vi.fn().mockResolvedValue(providerStatus),
+              getProviderCatalog: vi.fn().mockResolvedValue(providerCatalog),
+              createDiagnostics: vi.fn(),
+            }}
+          />
+        </RuntimeStateContext.Provider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /本地服务/ }));
+    expect(screen.getByRole('alert')).toHaveTextContent('候选版本连续两次构建失败');
+    expect(screen.getByRole('alert')).toHaveTextContent('旧版本仍可使用');
+  });
+
+  it('routes frontend synchronization through the shared local recovery flow', async () => {
+    const recover = vi.fn().mockResolvedValue(undefined);
+    const refreshAi = vi.fn();
+    render(
+      <MemoryRouter>
+        <RuntimeStateContext.Provider value={{ state, refresh: vi.fn(), recover }}>
+          <RuntimeCenter
+            api={{
+              reconnect: vi.fn(),
+              waitUntilReady: vi.fn(),
+              refreshAi,
+              switchProvider: vi.fn(),
+              getProviderStatus: vi.fn().mockResolvedValue(providerStatus),
+              getProviderCatalog: vi.fn().mockResolvedValue(providerCatalog),
+              createDiagnostics: vi.fn(),
+            }}
+          />
+        </RuntimeStateContext.Provider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /本地服务/ }));
+    fireEvent.click(screen.getByRole('button', { name: '同步前端版本' }));
+    await waitFor(() => expect(recover).toHaveBeenCalledOnce());
+    expect(refreshAi).not.toHaveBeenCalled();
+  });
+
   it('keeps the applied high effort after reopening and selecting the current Provider', async () => {
     const highStatus = {
       ...providerStatus,

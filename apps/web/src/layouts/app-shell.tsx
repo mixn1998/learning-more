@@ -3,7 +3,13 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { Badge, Button, StatusBanner, type StatusBannerStatus } from '@learning-more/ui';
 
-import { fetchRuntimeReadiness, runtimeCenterClient } from '../client/runtime-client.js';
+import {
+  fetchLauncherStatus,
+  fetchRuntimeReadiness,
+  fetchServedWebBuild,
+  runtimeCenterClient,
+  verifyRuntimeActivation,
+} from '../client/runtime-client.js';
 import {
   AppShellBrandSubtitleContext,
   AppShellHeaderStatusContext,
@@ -266,13 +272,17 @@ export function AppShell() {
   const recover = useCallback(async () => {
     let targetBuildId: string | undefined;
     await recoveryCoordinator.recover({
-      verify: async () => undefined,
+      verify: async () => {
+        await fetchLauncherStatus();
+        await fetchServedWebBuild().catch(() => undefined);
+      },
       reconnect: async () => {
         const status = await runtimeCenterClient.reconnect();
         targetBuildId = status.targetBuildId;
         return status;
       },
       waitUntilReady: (target) => runtimeCenterClient.waitUntilReady(target),
+      verifyActivated: verifyRuntimeActivation,
       refreshRuntime: async (readiness) => {
         const recoveredBuildId =
           readiness.protocolVersion === clientIdentity.protocolVersion &&

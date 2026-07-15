@@ -2,7 +2,11 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { runtimeCenterClient } from './runtime-client.js';
+import {
+  fetchServedWebBuild,
+  runtimeCenterClient,
+  verifyRuntimeActivation,
+} from './runtime-client.js';
 
 describe('runtime launcher client boundary', () => {
   afterEach(() => {
@@ -59,6 +63,55 @@ describe('runtime launcher client boundary', () => {
     await expect(runtimeCenterClient.reconnect()).rejects.toThrow();
   });
 
+  it('preserves a structured activation failure returned by Launcher', async () => {
+    const activation = {
+      schemaVersion: 2,
+      requestId: 'request-01',
+      phase: 'failed',
+      sourceBuildId: 'build-new',
+      activeBuildId: 'build-old',
+      targetBuildId: 'build-new',
+      attempt: 2,
+      errorCode: 'candidate_build_failed',
+      errorStage: 'building',
+      startedAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:02:00.000Z',
+      completedAt: '2026-07-16T00:02:00.000Z',
+    } as const;
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              state: 'healthy',
+              crashCount: 0,
+              capability: 'capability_01',
+              capabilityExpiresAt: Date.now() + 60_000,
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              code: 'candidate_build_failed',
+              activation,
+              oldRuntimeAvailable: true,
+            }),
+            { status: 503, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+    );
+
+    await expect(runtimeCenterClient.reconnect()).rejects.toMatchObject({
+      message: 'candidate_build_failed',
+      activation: { activeBuildId: 'build-old', attempt: 2 },
+      oldRuntimeAvailable: true,
+    });
+  });
+
   it('refreshes an expired launcher capability and retries one control write', async () => {
     const expiresAt = Date.now() + 60_000;
     const fetch = vi
@@ -111,6 +164,127 @@ describe('runtime launcher client boundary', () => {
         headers: expect.objectContaining({ 'x-learning-more-capability': 'capability_02' }),
       }),
     );
+  });
+
+  it('ignores a stale activation record after the accepted control connection drops', async () => {
+    const staleActivation = {
+      schemaVersion: 2,
+      requestId: 'request-old',
+      phase: 'activated',
+      sourceBuildId: 'build-old',
+      activeBuildId: 'build-old',
+      targetBuildId: 'build-old',
+      attempt: 1,
+      startedAt: '2026-07-15T00:00:00.000Z',
+      updatedAt: '2026-07-15T00:02:00.000Z',
+      completedAt: '2026-07-15T00:02:00.000Z',
+    } as const;
+    const freshActivation = {
+      ...staleActivation,
+      requestId: 'request-new',
+      sourceBuildId: 'build-new',
+      activeBuildId: 'build-new',
+      targetBuildId: 'build-new',
+      startedAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:02:00.000Z',
+      completedAt: '2026-07-16T00:02:00.000Z',
+    } as const;
+    const launcherStatus = (activation: typeof staleActivation | typeof freshActivation) =>
+      new Response(
+        JSON.stringify({
+          state: 'healthy',
+          crashCount: 0,
+          targetBuildId: activation.targetBuildId,
+          activation,
+          capability: 'capability_01',
+          capabilityExpiresAt: Date.now() + 60_000,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(launcherStatus(staleActivation))
+      .mockRejectedValueOnce(new TypeError('connection closed'))
+      .mockResolvedValueOnce(launcherStatus(staleActivation))
+      .mockResolvedValueOnce(launcherStatus(freshActivation));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(runtimeCenterClient.reconnect()).resolves.toMatchObject({
+      targetBuildId: 'build-new',
+      activation: { requestId: 'request-new' },
+    });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('reads the no-store served Web identity from the stable build metadata path', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ schemaVersion: 1, buildId: 'build-new', protocolVersion: '1' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(fetchServedWebBuild()).resolves.toEqual({
+      schemaVersion: 1,
+      buildId: 'build-new',
+      protocolVersion: '1',
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/build-meta\.json\?operation=/u),
+      expect.objectContaining({ cache: 'no-store' }),
+    );
+  });
+
+  it('rejects an activated Runtime when the served Web build remains old', async () => {
+    const activation = {
+      schemaVersion: 2,
+      requestId: 'request-01',
+      phase: 'activated',
+      sourceBuildId: 'build-new',
+      activeBuildId: 'build-new',
+      targetBuildId: 'build-new',
+      attempt: 1,
+      startedAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:02:00.000Z',
+      completedAt: '2026-07-16T00:02:00.000Z',
+    } as const;
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            state: 'healthy',
+            crashCount: 0,
+            targetBuildId: 'build-new',
+            activation,
+            capability: 'capability_01',
+            capabilityExpiresAt: Date.now() + 60_000,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ schemaVersion: 1, buildId: 'build-old', protocolVersion: '1' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      verifyRuntimeActivation('build-new', {
+        status: 'ready',
+        instanceId: 'instance-new',
+        buildId: 'build-new',
+        protocolVersion: '1',
+        storeStatus: 'ready',
+        projectionStatus: 'ready',
+        providerStatus: 'ready',
+      }),
+    ).rejects.toThrow('served_web_build_mismatch');
   });
 
   it('loads the dynamic Provider catalog from the Server contract', async () => {

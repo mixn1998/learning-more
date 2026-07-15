@@ -1,4 +1,8 @@
-import type { RuntimeReady } from '@learning-more/contracts';
+import {
+  WorkspaceActivationProgressSchema,
+  type RuntimeReady,
+  type WorkspaceActivationProgress,
+} from '@learning-more/contracts';
 
 export type RuntimeRecoveryStage = 'verifying' | 'reconnecting' | 'waiting' | 'refreshing';
 
@@ -21,12 +25,15 @@ export type RuntimeRecoverySnapshot =
       operationId: number;
       reason: string;
       aiRecoveryFailed: false;
+      activation?: WorkspaceActivationProgress;
+      oldRuntimeAvailable?: boolean;
     }>;
 
 export type RuntimeRecoveryDependencies = Readonly<{
   verify(): Promise<void>;
   reconnect(): Promise<Readonly<{ targetBuildId?: string | undefined }>>;
   waitUntilReady(targetBuildId?: string): Promise<RuntimeReady>;
+  verifyActivated(targetBuildId: string, readiness: RuntimeReady): Promise<void>;
   refreshRuntime(readiness: RuntimeReady): Promise<void>;
   refreshAi(): Promise<void>;
 }>;
@@ -41,6 +48,21 @@ export interface RuntimeRecoveryCoordinator {
 
 function errorReason(error: unknown): string {
   return error instanceof Error && error.message !== '' ? error.message : 'runtime_recovery_failed';
+}
+
+function activationFailureDetails(error: unknown): Readonly<{
+  activation?: WorkspaceActivationProgress;
+  oldRuntimeAvailable?: boolean;
+}> {
+  if (typeof error !== 'object' || error === null) return {};
+  const input = error as Record<string, unknown>;
+  const activation = WorkspaceActivationProgressSchema.safeParse(input.activation);
+  return {
+    ...(activation.success ? { activation: activation.data } : {}),
+    ...(typeof input.oldRuntimeAvailable === 'boolean'
+      ? { oldRuntimeAvailable: input.oldRuntimeAvailable }
+      : {}),
+  };
 }
 
 export function createRuntimeRecoveryCoordinator(): RuntimeRecoveryCoordinator {
@@ -78,6 +100,7 @@ export function createRuntimeRecoveryCoordinator(): RuntimeRecoveryCoordinator {
         const reconnect = await dependencies.reconnect();
         if (!publishStage(operationId, 'waiting')) return;
         const readiness = await dependencies.waitUntilReady(reconnect.targetBuildId);
+        await dependencies.verifyActivated(reconnect.targetBuildId ?? readiness.buildId, readiness);
         if (!publishStage(operationId, 'refreshing')) return;
         await dependencies.refreshRuntime(readiness);
         let aiRecoveryFailed = false;
@@ -96,6 +119,7 @@ export function createRuntimeRecoveryCoordinator(): RuntimeRecoveryCoordinator {
             operationId,
             reason: errorReason(error),
             aiRecoveryFailed: false,
+            ...activationFailureDetails(error),
           });
         }
         throw error;
@@ -104,6 +128,7 @@ export function createRuntimeRecoveryCoordinator(): RuntimeRecoveryCoordinator {
     reconcileReadiness(readiness) {
       if (
         current.kind === 'failed' &&
+        current.activation === undefined &&
         readiness.status === 'ready' &&
         readiness.storeStatus === 'ready' &&
         readiness.projectionStatus === 'ready'
