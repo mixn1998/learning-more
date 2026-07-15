@@ -22,6 +22,63 @@ export const RuntimeReadySchema = z.strictObject({
 
 export type RuntimeReady = Readonly<z.infer<typeof RuntimeReadySchema>>;
 
+export const ActivationErrorCodeSchema = z.enum([
+  'source_identity_unavailable',
+  'workspace_identity_changed',
+  'candidate_build_failed',
+  'candidate_stage_failed',
+  'candidate_verification_failed',
+  'activation_rolled_back',
+  'host_unavailable',
+  'host_identity_mismatch',
+  'external_port_owner',
+  'runtime_ready_timeout',
+  'served_web_build_mismatch',
+]);
+
+export type ActivationErrorCode = z.infer<typeof ActivationErrorCodeSchema>;
+
+export const WorkspaceActivationProgressSchema = z.strictObject({
+  schemaVersion: z.literal(2),
+  requestId: z.string().trim().min(1).max(200),
+  phase: z.enum([
+    'queued',
+    'verifying',
+    'building',
+    'cleaning',
+    'retrying',
+    'staging',
+    'activating',
+    'verifying-runtime',
+    'activated',
+    'failed',
+  ]),
+  sourceBuildId: z.string().trim().min(1).max(200).optional(),
+  activeBuildId: z.string().trim().min(1).max(200).optional(),
+  targetBuildId: z.string().trim().min(1).max(200).optional(),
+  attempt: z.union([z.literal(1), z.literal(2)]),
+  errorCode: ActivationErrorCodeSchema.optional(),
+  errorStage: z
+    .string()
+    .regex(/^[a-z0-9_-]+$/)
+    .optional(),
+  startedAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+  completedAt: z.iso.datetime({ offset: true }).optional(),
+});
+
+export type WorkspaceActivationProgress = Readonly<
+  z.infer<typeof WorkspaceActivationProgressSchema>
+>;
+
+export const WebBuildMetaSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  buildId: z.string().trim().min(1).max(200),
+  protocolVersion: z.string().trim().min(1).max(50),
+});
+
+export type WebBuildMeta = Readonly<z.infer<typeof WebBuildMetaSchema>>;
+
 export const RuntimeDiagnosticsResponseSchema = z.strictObject({
   artifactRef: z.string().trim().min(1).max(500),
 });
@@ -36,6 +93,7 @@ export const LauncherRuntimeStatusSchema = z.strictObject({
     'degraded',
     'restarting',
     'rebuilding',
+    'activation_failed',
     'backoff',
     'blocked_external_port',
     'blocked_identity_mismatch',
@@ -46,6 +104,7 @@ export const LauncherRuntimeStatusSchema = z.strictObject({
   ]),
   crashCount: z.number().int().nonnegative(),
   targetBuildId: z.string().trim().min(1).max(200).optional(),
+  activation: WorkspaceActivationProgressSchema.optional(),
 });
 
 export type LauncherRuntimeStatus = Readonly<z.infer<typeof LauncherRuntimeStatusSchema>>;
