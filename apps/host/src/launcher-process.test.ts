@@ -4,6 +4,21 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const spawnProcess = vi.hoisted(() =>
+  vi.fn(() => ({
+    pid: 43_119,
+    exitCode: null,
+    signalCode: null,
+    once: vi.fn(),
+    kill: vi.fn(),
+  })),
+);
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: spawnProcess };
+});
+
 import {
   commandMatchesLauncher,
   startOrAdoptLauncher,
@@ -14,6 +29,7 @@ const roots: string[] = [];
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  spawnProcess.mockClear();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -93,5 +109,30 @@ describe('commandMatchesLauncher', () => {
 
     await expect(launcher.waitForExit).resolves.toEqual({ exitCode: null, signal: null });
     expect(observeProcess).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps rollback-compatible Launcher releases headless', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'learning-more-spawned-launcher-'));
+    roots.push(root);
+
+    await startOrAdoptLauncher({
+      projectRoot: root,
+      runtimeDirectory: root,
+      dataRoot: path.join(root, 'data'),
+      secretDirectory: path.join(root, 'secrets'),
+      launcherEntry: path.join(root, 'app', 'launcher', 'dist', 'main.js'),
+      serverEntry: path.join(root, 'app', 'server', 'main.js'),
+      webRoot: path.join(root, 'app', 'web'),
+      buildId: 'test-build',
+      observeProcess: vi.fn(),
+    });
+
+    expect(spawnProcess).toHaveBeenCalledWith(
+      process.execPath,
+      [path.join(root, 'app', 'launcher', 'dist', 'main.js')],
+      expect.objectContaining({
+        env: expect.objectContaining({ LEARNING_MORE_NO_OPEN: '1' }),
+      }),
+    );
   });
 });

@@ -144,6 +144,7 @@ export async function startOrAdoptLauncher(options: {
         LEARNING_MORE_WEB_URL: 'http://127.0.0.1:43119',
         LEARNING_MORE_ALLOWED_ORIGIN: 'http://127.0.0.1:43119',
         LEARNING_MORE_BUILD_ID: options.buildId,
+        LEARNING_MORE_NO_OPEN: '1',
         ...(options.activationRequestPath === undefined
           ? {}
           : { LEARNING_MORE_ACTIVATION_REQUEST: options.activationRequestPath }),
