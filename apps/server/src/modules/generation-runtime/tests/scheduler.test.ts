@@ -454,6 +454,55 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     });
   });
 
+  it('does not recover an expired lease while this runtime is still executing the task', async () => {
+    const repositories = createInMemoryRepositories();
+    let currentTime = new Date('2026-07-13T00:00:00.000Z');
+    let releaseProvider: (() => void) | undefined;
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [
+        createMockProvider({
+          id: 'mock',
+          script: [
+            {
+              type: 'wait',
+              wait: () => new Promise<void>((resolve) => (releaseProvider = resolve)),
+            },
+            { type: 'text', text: 'answer after a slow first token' },
+          ],
+        }),
+      ],
+      nextId: () => 'task_slow_first_token',
+      now: () => currentTime,
+    });
+    const submitted = await runtime.submit({
+      taskKey: 'slow-first-token',
+      inputSnapshotHash: 'slow-first-token',
+      taskKind: 'plan-flow-preview',
+      taskGroup: 'background',
+      ownerRef: 'plan-flow-slow',
+      providerId: 'mock',
+      priority: 30,
+      prompt: 'plan',
+    });
+
+    const running = runtime.runNext();
+    await vi.waitFor(() => expect(releaseProvider).toBeTypeOf('function'));
+    currentTime = new Date('2026-07-13T00:01:00.000Z');
+    const recovered = await runtime.recoverExpiredLeases();
+    const stateDuringExecution = await runtime.get(submitted.taskId);
+    releaseProvider?.();
+    await running;
+
+    expect(recovered).toBe(0);
+    expect(stateDuringExecution.status).toBe('running');
+    await expect(runtime.get(submitted.taskId)).resolves.toMatchObject({
+      status: 'completed',
+      draftMarkdown: 'answer after a slow first token',
+    });
+  });
+
   it('replays an interrupted task after runtime recreation and drains the recovered queue', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'learning-more-generation-replay-'));
     try {

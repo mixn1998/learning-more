@@ -2,6 +2,12 @@ import type { GenerationExecution, GenerationFrameLog, GenerationRuntime } from 
 import type { GenerationTask } from '../ports/generation-task-repository.js';
 
 const TERMINAL = new Set<GenerationTask['status']>(['completed', 'failed', 'cancelled', 'timeout']);
+const IDLE_POLL_INTERVAL_MS = 25;
+const MAX_TERMINAL_WAIT_MS = 20 * 60 * 1_000;
+
+function waitForScheduler(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, IDLE_POLL_INTERVAL_MS));
+}
 
 export function createGenerationExecution(options: {
   runtime: GenerationRuntime;
@@ -10,18 +16,22 @@ export function createGenerationExecution(options: {
 }): GenerationExecution {
   const maxDispatches = options.maxDispatches ?? 1_000;
   async function awaitTerminal(taskId: string): Promise<GenerationTask> {
-    for (let dispatch = 0; dispatch < maxDispatches; dispatch += 1) {
+    const waitDeadline = Date.now() + MAX_TERMINAL_WAIT_MS;
+    let dispatches = 0;
+    while (dispatches < maxDispatches) {
       const task = await options.runtime.get(taskId);
       if (TERMINAL.has(task.status)) return task;
       const ran = await options.runtime.runNext();
-      if (ran === undefined) {
-        const recovered = await options.runtime.recoverExpiredLeases();
-        if (recovered > 0) continue;
-        throw Object.assign(new Error('generation_task_not_dispatchable'), {
-          code: 'generation_task_not_dispatchable',
-          taskId,
-        });
+      if (ran !== undefined) {
+        dispatches += 1;
+        continue;
       }
+      const recovered = await options.runtime.recoverExpiredLeases();
+      if (recovered > 0) continue;
+      const current = await options.runtime.get(taskId);
+      if (TERMINAL.has(current.status)) return current;
+      if (Date.now() >= waitDeadline) break;
+      await waitForScheduler();
     }
     throw Object.assign(new Error('generation_terminal_wait_exhausted'), {
       code: 'generation_terminal_wait_exhausted',

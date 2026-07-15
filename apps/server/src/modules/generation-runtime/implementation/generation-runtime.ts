@@ -343,6 +343,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       for (const task of await allTasks()) {
         if (
           task.status !== 'running' ||
+          controllers.has(task.id) ||
           task.leaseExpiresAt === undefined ||
           new Date(task.leaseExpiresAt).getTime() >= now().getTime()
         ) {

@@ -22,6 +22,29 @@ const queuedTask: GenerationTask = {
 };
 
 describe('GenerationExecution', () => {
+  it('waits for queued work when another generation already occupies the available slot', async () => {
+    let reads = 0;
+    const runtime: GenerationRuntime = {
+      submit: vi.fn(),
+      get: vi.fn(async () => ({
+        ...queuedTask,
+        status: ++reads >= 3 ? ('completed' as const) : ('queued' as const),
+      })),
+      runNext: vi.fn(async () => undefined),
+      recoverExpiredLeases: vi.fn(async () => 0),
+      cancel: vi.fn(),
+      getMetrics: vi.fn(),
+    };
+    const frameLog = {} as GenerationFrameLog;
+    const execution = createGenerationExecution({ runtime, frameLog });
+
+    await expect(execution.awaitTerminal(queuedTask.id)).resolves.toMatchObject({
+      id: queuedTask.id,
+      status: 'completed',
+    });
+    expect(runtime.runNext).toHaveBeenCalledOnce();
+  });
+
   it('recovers an expired lease before declaring a queued plan-flow task undispatchable', async () => {
     let recovered = false;
     let completed = false;
