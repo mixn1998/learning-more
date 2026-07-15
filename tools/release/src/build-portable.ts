@@ -141,29 +141,43 @@ async function allFiles(root: string, directory = root): Promise<string[]> {
   return output.sort();
 }
 
-function startCommand(buildId: string): string {
+function encodedPowerShell(script: string): string {
+  return Buffer.from(script, 'utf16le').toString('base64');
+}
+
+export function buildPortableStartCommand(): string {
+  const waitForReady = [
+    "$ErrorActionPreference = 'Stop'",
+    '$deadline = [DateTime]::UtcNow.AddSeconds(30)',
+    'while ([DateTime]::UtcNow -lt $deadline) {',
+    '  try {',
+    "    $ready = Invoke-RestMethod -Uri 'http://127.0.0.1:43119/api/v1/runtime/ready' -TimeoutSec 1",
+    "    if ($ready.status -eq 'ready') {",
+    "      Start-Process 'http://127.0.0.1:43119/'",
+    '      exit 0',
+    '    }',
+    '  } catch {',
+    '    # The Host may still be replacing Launcher or Server.',
+    '  }',
+    '  Start-Sleep -Milliseconds 250',
+    '}',
+    "[Console]::Error.WriteLine('learning_more_ready_timeout')",
+    'exit 1',
+  ].join('\r\n');
   return [
     '@echo off',
     'setlocal',
     'set "ROOT=%~dp0"',
-    'set "LEARNING_MORE_PROJECT_ROOT=%ROOT%"',
-    'set "LEARNING_MORE_DATA_ROOT=%LOCALAPPDATA%\\Learning MORE\\data"',
-    'set "LEARNING_MORE_RUNTIME_DIR=%LOCALAPPDATA%\\Learning MORE\\runtime"',
-    'set "LEARNING_MORE_LOG_DIR=%LOCALAPPDATA%\\Learning MORE\\logs"',
-    'set "LEARNING_MORE_SECRET_DIR=%LOCALAPPDATA%\\Learning MORE\\secrets"',
-    'set "LEARNING_MORE_SERVER_ENTRY=%ROOT%app\\server\\main.js"',
-    'set "LEARNING_MORE_WEB_ROOT=%ROOT%app\\web"',
-    'set "LEARNING_MORE_WEB_URL=http://127.0.0.1:43119"',
-    'set "LEARNING_MORE_ALLOWED_ORIGIN=http://127.0.0.1:43119"',
-    `set "LEARNING_MORE_BUILD_ID=${buildId}"`,
-    '"%ROOT%runtime\\node.exe" "%ROOT%app\\host\\dist\\main.js" run --project-root "%ROOT%"',
+    '"%ROOT%runtime\\node.exe" "%ROOT%app\\host\\dist\\main.js" repair --project-root "%ROOT%"',
+    'if errorlevel 1 exit /b %ERRORLEVEL%',
+    `"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encodedPowerShell(waitForReady)}`,
     'set "EXIT_CODE=%ERRORLEVEL%"',
     'endlocal & exit /b %EXIT_CODE%',
     '',
   ].join('\r\n');
 }
 
-function hostManagementCommand(command: 'install' | 'repair' | 'uninstall'): string {
+export function buildHostManagementCommand(command: 'install' | 'repair' | 'uninstall'): string {
   return [
     '@echo off',
     'setlocal',
@@ -300,20 +314,20 @@ export async function buildPortableRelease(
     'utf8',
   );
   await cp(path.join(projectRoot, 'release', 'README.txt'), path.join(expandedRoot, 'README.txt'));
-  await writeFile(path.join(expandedRoot, 'START.cmd'), startCommand(buildId), 'utf8');
+  await writeFile(path.join(expandedRoot, 'START.cmd'), buildPortableStartCommand(), 'utf8');
   await writeFile(
     path.join(expandedRoot, 'INSTALL-AUTOSTART.cmd'),
-    hostManagementCommand('install'),
+    buildHostManagementCommand('install'),
     'utf8',
   );
   await writeFile(
     path.join(expandedRoot, 'REPAIR-AUTOSTART.cmd'),
-    hostManagementCommand('repair'),
+    buildHostManagementCommand('repair'),
     'utf8',
   );
   await writeFile(
     path.join(expandedRoot, 'UNINSTALL-AUTOSTART.cmd'),
-    hostManagementCommand('uninstall'),
+    buildHostManagementCommand('uninstall'),
     'utf8',
   );
 

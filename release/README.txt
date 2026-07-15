@@ -1,7 +1,8 @@
 Learning MORE Portable for Windows x64
 
 Start:
-  Double-click START.cmd. The launcher binds only to 127.0.0.1 and opens the local application.
+  Double-click START.cmd. It repairs or starts the Windows Host, waits for verified readiness, and
+  opens the local application once. The runtime binds only to 127.0.0.1.
 
 Local state:
   Data, runtime identity, logs, diagnostics, and DPAPI-protected provider secrets are stored under
@@ -9,6 +10,8 @@ Local state:
   the release archive.
 
 Maintenance:
+  INSTALL-AUTOSTART.cmd, REPAIR-AUTOSTART.cmd, and UNINSTALL-AUTOSTART.cmd are headless maintenance
+  entries and never open a browser.
   Run tools\learning-more.cmd for offline verify, backup, doctor, migrate, and restore commands.
   Stop Learning MORE before a migration or whole-store restore.
 
