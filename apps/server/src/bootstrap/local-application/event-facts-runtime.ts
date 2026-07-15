@@ -1,0 +1,102 @@
+import { EVENT_TYPES } from '@learning-more/contracts';
+
+import { createFactProjector } from '../../modules/learning-facts/implementation/fact-projector.js';
+import { createCalendarProjection } from '../../modules/learning-facts/implementation/projections/calendar.js';
+import { createCourseSummaryProjection } from '../../modules/learning-facts/implementation/projections/course-summary.js';
+import { createHistoryProjection } from '../../modules/learning-facts/implementation/projections/history.js';
+import { createStatisticsProjection } from '../../modules/learning-facts/implementation/projections/statistics.js';
+import { createWeeklyProjection } from '../../modules/learning-facts/implementation/projections/weekly.js';
+import type { LearningFact } from '../../modules/learning-facts/interface.js';
+import type { DataRoot } from '../../persistence/data-root.js';
+import { createEventDispatcher } from '../../persistence/event-dispatcher.js';
+import { createEventLog } from '../../persistence/event-log.js';
+import { createLocalFileFactRepository } from '../../persistence/learning-facts-repositories.js';
+import { createOutbox } from '../../persistence/outbox.js';
+import type { UnitOfWork } from '../../persistence/unit-of-work.js';
+
+export type LocalEventFactsRuntime = Readonly<{
+  outbox: ReturnType<typeof createOutbox>;
+  factRepository: ReturnType<typeof createLocalFileFactRepository>;
+  flush(): Promise<void>;
+  facts(): Promise<readonly LearningFact[]>;
+  historyView(): Promise<ReturnType<ReturnType<typeof createHistoryProjection>['view']>>;
+  courseSummaryView(): Promise<
+    ReturnType<ReturnType<typeof createCourseSummaryProjection>['view']>
+  >;
+  statisticsView(): Promise<ReturnType<ReturnType<typeof createStatisticsProjection>['view']>>;
+  calendarView(): Promise<ReturnType<ReturnType<typeof createCalendarProjection>['view']>>;
+  weeklyView(): Promise<ReturnType<ReturnType<typeof createWeeklyProjection>['view']>>;
+}>;
+
+export async function createLocalEventFactsRuntime(
+  input: Readonly<{ dataRoot: DataRoot; unitOfWork: UnitOfWork }>,
+): Promise<LocalEventFactsRuntime> {
+  const eventLog = createEventLog(input.dataRoot);
+  const eventDispatcher = createEventDispatcher();
+  const factRepository = createLocalFileFactRepository(input.dataRoot);
+  const factProjector = createFactProjector({
+    repository: factRepository,
+    unitOfWork: input.unitOfWork,
+  });
+  for (const eventType of EVENT_TYPES) {
+    eventDispatcher.register(eventType, async (event) => {
+      await factProjector.project(event);
+    });
+  }
+  for (const event of await eventLog.readAll()) await factProjector.project(event);
+  const outbox = createOutbox({
+    dataRoot: input.dataRoot,
+    unitOfWork: input.unitOfWork,
+    eventLog,
+    dispatcher: eventDispatcher,
+  });
+  let barrier: Promise<void> = Promise.resolve();
+
+  async function flush(): Promise<void> {
+    const dispatch = barrier.then(async () => {
+      await outbox.dispatchPending(10_000);
+    });
+    barrier = dispatch.catch(() => undefined);
+    await dispatch;
+  }
+
+  async function facts(): Promise<readonly LearningFact[]> {
+    await flush();
+    const result: LearningFact[] = [];
+    for await (const fact of factRepository.list()) result.push(fact);
+    return result;
+  }
+
+  await flush();
+  return {
+    outbox,
+    factRepository,
+    flush,
+    facts,
+    async historyView() {
+      const projection = createHistoryProjection();
+      projection.apply(await facts());
+      return projection.view();
+    },
+    async courseSummaryView() {
+      const projection = createCourseSummaryProjection();
+      projection.apply(await facts());
+      return projection.view();
+    },
+    async statisticsView() {
+      const projection = createStatisticsProjection('Asia/Shanghai');
+      projection.apply(await facts());
+      return projection.view();
+    },
+    async calendarView() {
+      const projection = createCalendarProjection('Asia/Shanghai');
+      projection.apply(await facts());
+      return projection.view();
+    },
+    async weeklyView() {
+      const projection = createWeeklyProjection('Asia/Shanghai');
+      projection.apply(await facts());
+      return projection.view();
+    },
+  };
+}

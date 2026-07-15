@@ -1,0 +1,489 @@
+import { createHash, randomUUID } from 'node:crypto';
+
+import type { PortraitRouteOptions } from '../../http/routes/portraits.js';
+import type { ProfileRouteOptions } from '../../http/routes/profile.js';
+import { createGenerationReasoningBehaviorAnalyzer } from '../../modules/global-user-profile/implementation/generation-reasoning-behavior-analyzer.js';
+import { createReasoningBehaviorModule } from '../../modules/global-user-profile/implementation/reasoning-behavior-module.js';
+import type { ReasoningBehaviorAnalysisRecord } from '../../modules/global-user-profile/ports/reasoning-behavior-repository.js';
+import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
+import type { AdditionalWeeklyEvidence } from '../../modules/learning-facts/implementation/weekly-evidence-assembler.js';
+import { packPortraitEvidence } from '../../modules/learning-portrait/implementation/evidence-packer.js';
+import { createPortraitModule } from '../../modules/learning-portrait/implementation/portrait-module.js';
+import { createAiProfileEvidenceExtractor } from '../../modules/profile-evidence/implementation/ai-profile-evidence-extractor.js';
+import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/implementation/profile-evidence-aggregator.js';
+import { createProfileEvidencePipeline } from '../../modules/profile-evidence/implementation/pipeline.js';
+import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
+import { createReasoningEvidenceProjector } from '../../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
+import { readPortraitRefreshState } from '../../persistence/course-archive-store.js';
+import type { DataRoot } from '../../persistence/data-root.js';
+import { createLocalFilePortraitRepository } from '../../persistence/portrait-repositories.js';
+import { createLocalFileEvidenceRepositories } from '../../persistence/profile-evidence-repositories.js';
+import { createLocalFileReasoningBehaviorRepository } from '../../persistence/reasoning-behavior-repositories.js';
+import type { UnitOfWork } from '../../persistence/unit-of-work.js';
+import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
+import type { LocalGenerationRuntime } from './generation-runtime.js';
+
+function parseStructuredJson(markdown: string): unknown {
+  const trimmed = markdown.trim();
+  const fenced = /^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```$/u.exec(trimmed);
+  return JSON.parse((fenced?.[1] ?? trimmed).trim()) as unknown;
+}
+
+export type LocalProfileRuntime = Readonly<{
+  checkpointSink: Readonly<{ capture(input: unknown): void }>;
+  reasoningBehaviorSink: ReturnType<typeof createReasoningBehaviorModule>;
+  profileRoutes: ProfileRouteOptions;
+  portraitRoutes: PortraitRouteOptions;
+  requestPortraitRefresh: PortraitRouteOptions['requestRefresh'];
+  getTeachingPersonalization: TeachingContextSources['getPersonalizationView'];
+  listWeeklyReasoningEvidence(): Promise<readonly AdditionalWeeklyEvidence[]>;
+  recoverReasoningAnalysis(): Promise<void>;
+  getProjectionStatus(): 'ready' | 'degraded';
+}>;
+
+export function createLocalProfileRuntime(
+  input: Readonly<{
+    dataRoot: DataRoot;
+    unitOfWork: UnitOfWork;
+    now: () => Date;
+    generation: LocalGenerationRuntime;
+    events: LocalEventFactsRuntime;
+  }>,
+): LocalProfileRuntime {
+  const evidenceRepositories = createLocalFileEvidenceRepositories(input.dataRoot);
+  const reasoningBehaviorRepository = createLocalFileReasoningBehaviorRepository(input.dataRoot);
+  const portraitRepository = createLocalFilePortraitRepository(input.dataRoot);
+  const reasoningBehaviorModule = createReasoningBehaviorModule({
+    repository: reasoningBehaviorRepository,
+    unitOfWork: input.unitOfWork,
+    analyzer: createGenerationReasoningBehaviorAnalyzer({
+      runtime: input.generation.runtime,
+      execution: input.generation.execution,
+      providerId: 'current',
+      analyzerVersion: 'reasoning-analyzer@1',
+    }),
+    now: input.now,
+    nextTransactionId: () => `tx_reasoning_${randomUUID()}`,
+  });
+  const reasoningEvidenceProjector = createReasoningEvidenceProjector({
+    reasoningRepository: reasoningBehaviorRepository,
+    evidenceRepositories,
+    unitOfWork: input.unitOfWork,
+    now: input.now,
+    nextTransactionId: () => `tx_reasoning_evidence_${randomUUID()}`,
+  });
+  const profileEvidenceExtractor = createAiProfileEvidenceExtractor({
+    runtime: input.generation.runtime,
+    execution: input.generation.execution,
+    providerId: 'current',
+    analyzerVersion: 'profile-evidence-analyzer@1',
+    extractorVersion: 'profile-evidence@1',
+    now: input.now,
+  });
+  const profileEvidenceAggregator = createProfileEvidenceAggregator({
+    repositories: evidenceRepositories,
+    unitOfWork: input.unitOfWork,
+    now: input.now,
+    nextTransactionId: () => `tx_profile_evidence_${randomUUID()}`,
+  });
+  let profileEvidenceBarrier: Promise<void> = Promise.resolve();
+  let lastProfileEvidenceError: string | undefined;
+  let projectionStatus: 'ready' | 'degraded' = 'ready';
+
+  function enqueueProfileEvidenceCheckpoint(checkpoint: unknown): void {
+    const queued = profileEvidenceBarrier.then(async () => {
+      if (typeof checkpoint !== 'object' || checkpoint === null || Array.isArray(checkpoint)) {
+        throw new Error('profile_checkpoint_invalid');
+      }
+      const existingCandidates = [];
+      for await (const candidate of evidenceRepositories.evidence.list()) {
+        if (candidate.status !== 'active' || candidate.governance === undefined) continue;
+        existingCandidates.push({
+          evidenceId: candidate.evidenceId,
+          semanticKey: candidate.governance.semanticKey,
+          claimDimension: candidate.claimDimension,
+          summary: candidate.summary,
+          sourceGroupId: candidate.sourceGroupId,
+        });
+      }
+      const extracted = await profileEvidenceExtractor.extract({
+        ...(checkpoint as Record<string, unknown>),
+        existingCandidates,
+      });
+      await profileEvidenceAggregator.ingest(extracted);
+      if (
+        extracted.checkpoint.checkpointKind === 'authoring_candidate_confirmed' &&
+        extracted.checkpoint.courseId !== undefined &&
+        extracted.checkpoint.courseMode !== undefined
+      ) {
+        await reasoningBehaviorModule.captureFromConfirmedAuthoring({
+          courseId: extracted.checkpoint.courseId,
+          courseMode: extracted.checkpoint.courseMode,
+          checkpointId: extracted.checkpoint.checkpointId,
+          sourceGroupId: extracted.checkpoint.sourceGroupId,
+          sourceSnapshotHash: extracted.sourceSnapshotHash,
+          extractedAt: extracted.extractedAt,
+          sources: extracted.checkpoint.sources.map((source) => ({
+            sourceRef: source.sourceRef,
+            role: source.role === 'user' ? 'user' : 'assistant',
+            observedAt: source.observedAt,
+          })),
+          candidates: extracted.candidates,
+        });
+      }
+      lastProfileEvidenceError = undefined;
+    });
+    profileEvidenceBarrier = queued.catch((error: unknown) => {
+      lastProfileEvidenceError =
+        error instanceof Error ? error.message : 'profile_evidence_extraction_failed';
+    });
+  }
+
+  async function latestUsableReasoningAnalysis() {
+    let latest: ReasoningBehaviorAnalysisRecord | undefined;
+    for await (const analysis of reasoningBehaviorRepository.listAnalyses()) {
+      if (analysis.snapshot.status !== 'usable') continue;
+      const filter = analysis.snapshot.filter;
+      if (
+        filter.windowStart !== undefined ||
+        filter.windowEnd !== undefined ||
+        filter.courseIds.length > 0 ||
+        filter.lessonIds.length > 0 ||
+        filter.courseModes.length > 0 ||
+        filter.elicitations.length > 0
+      ) {
+        continue;
+      }
+      if (latest === undefined || analysis.snapshot.createdAt > latest.snapshot.createdAt) {
+        latest = analysis;
+      }
+    }
+    return latest;
+  }
+
+  async function refreshAndProjectReasoningAnalysis(
+    filter?: Parameters<typeof reasoningBehaviorModule.refreshAnalysis>[0],
+  ) {
+    const analysis = await reasoningBehaviorModule.refreshAnalysis(filter);
+    if (analysis !== undefined) await reasoningEvidenceProjector.project(analysis);
+    return analysis;
+  }
+
+  async function recoverReasoningAnalysis(): Promise<void> {
+    try {
+      await refreshAndProjectReasoningAnalysis();
+    } catch {
+      projectionStatus = 'degraded';
+    }
+  }
+
+  const evidencePipeline = createProfileEvidencePipeline({
+    factRepository: input.events.factRepository,
+    repositories: evidenceRepositories,
+    unitOfWork: input.unitOfWork,
+    extractorVersion: 'facts@1',
+    now: input.now,
+    nextTransactionId: () => `tx_evidence_${randomUUID()}`,
+  });
+  let evidenceBarrier: Promise<void> = Promise.resolve();
+  async function syncProfileEvidence(): Promise<void> {
+    const synchronization = evidenceBarrier.then(async () => {
+      await input.events.flush();
+      let batch;
+      do {
+        batch = await evidencePipeline.processFacts({ limit: 100 });
+      } while (batch.processed > 0);
+    });
+    evidenceBarrier = synchronization.catch(() => undefined);
+    await synchronization;
+  }
+
+  function globalProfileWindow() {
+    return {
+      from: '1970-01-01T00:00:00.000Z',
+      to: new Date(input.now().getTime() + 86_400_000).toISOString(),
+    };
+  }
+
+  async function globalProfile() {
+    await syncProfileEvidence();
+    return queryGlobalLearningProfile({
+      factRepository: input.events.factRepository,
+      evidenceRepository: evidenceRepositories.evidence,
+      timeZone: 'Asia/Shanghai',
+      window: globalProfileWindow(),
+    });
+  }
+
+  const portraitModule = createPortraitModule({
+    repository: portraitRepository,
+    evidenceRepository: evidenceRepositories.evidence,
+    unitOfWork: input.unitOfWork,
+    generationRuntime: input.generation.runtime,
+    providerId: 'current',
+    nextVersionId: () => `portrait_${randomUUID()}`,
+    nextTransactionId: () => `tx_portrait_${randomUUID()}`,
+    now: input.now,
+    async recordCreated(event, tx) {
+      const eventId = `event_${randomUUID()}`;
+      const timestamp = input.now().toISOString();
+      await input.events.outbox.enqueue(tx, [
+        {
+          id: eventId,
+          schema_version: 1,
+          type: 'PortraitVersionCommitted',
+          occurred_at: timestamp,
+          recorded_at: timestamp,
+          source: 'LearningPortrait',
+          target_refs: { portraitVersionId: event.versionId },
+          payload: { manifestId: event.manifestId },
+          idempotency_key: `portrait-version:${event.versionId}`,
+          correlation_id: eventId,
+        },
+      ]);
+    },
+  });
+
+  async function requestPortraitRefresh(inputRequest: {
+    idempotencyKey: string;
+    tokenBudget: number;
+  }) {
+    await profileEvidenceBarrier;
+    if (lastProfileEvidenceError !== undefined) {
+      throw new Error(`profile_evidence_checkpoint_failed:${lastProfileEvidenceError}`);
+    }
+    await profileEvidenceAggregator.expire();
+    await recoverReasoningAnalysis();
+    const [profile, reasoningBehaviorAnalysis] = await Promise.all([
+      globalProfile(),
+      latestUsableReasoningAnalysis(),
+    ]);
+    const candidates = [];
+    for await (const candidate of evidenceRepositories.evidence.list()) candidates.push(candidate);
+    const packedEvidence = packPortraitEvidence({
+      evidence: candidates,
+      tokenBudget: inputRequest.tokenBudget,
+      dimensionPriority: [],
+    });
+    const requested = await portraitModule.requestRefresh({
+      profileVersion: profile.profileSchemaVersion,
+      packedEvidence,
+      window: profile.window,
+      promptTemplateVersion: 'portrait@1',
+      providerConfigFingerprint: createHash('sha256').update('mock').digest('hex'),
+      ...(reasoningBehaviorAnalysis === undefined
+        ? {}
+        : {
+            reasoningBehaviorInput: {
+              snapshotId: reasoningBehaviorAnalysis.snapshot.snapshotId,
+              sourceSnapshotHash: reasoningBehaviorAnalysis.snapshot.sourceSnapshotHash,
+              dimensionSetVersion: reasoningBehaviorAnalysis.snapshot.dimensionSetVersion,
+            },
+          }),
+      idempotencyKey: inputRequest.idempotencyKey,
+    });
+    if (requested.state === 'completed' || requested.state === 'failed') return requested;
+    if (requested.generationTaskId === undefined) return requested;
+    const task = await input.generation.execution.awaitTerminal(requested.generationTaskId);
+    const markdown = task.draftMarkdown?.trim() ?? '';
+    if (task.status !== 'completed' || markdown === '') {
+      return portraitModule.fail(
+        requested.versionId,
+        requested.generationTaskId,
+        task.errorCode ?? 'ai_unavailable',
+        `draft_${requested.generationTaskId}`,
+      );
+    }
+    try {
+      return await portraitModule.finalize(
+        requested.versionId,
+        requested.generationTaskId,
+        parseStructuredJson(markdown),
+      );
+    } catch (error) {
+      await portraitModule.fail(
+        requested.versionId,
+        requested.generationTaskId,
+        error instanceof Error ? error.message : 'portrait_output_invalid',
+        `draft_${requested.generationTaskId}`,
+      );
+      throw error;
+    }
+  }
+
+  const getTeachingPersonalization: TeachingContextSources['getPersonalizationView'] = async ({
+    courseId,
+    lessonId,
+  }) => {
+    const reasoning = await latestUsableReasoningAnalysis();
+    const createdAt = input.now().toISOString();
+    const counts = new Map(
+      reasoning?.snapshot.dimensions.map((count) => [count.dimensionId, count]) ?? [],
+    );
+    const reasoningSignals = (reasoning?.dimensions ?? [])
+      .filter(
+        (dimension) => (counts.get(dimension.dimensionId)?.independentSourceGroupCount ?? 0) >= 2,
+      )
+      .slice(0, 8)
+      .map((dimension) => ({
+        evidenceId: dimension.dimensionId,
+        summary: `当前证据窗口中出现“${dimension.label}”：${dimension.description}`,
+        explicitness: 'ai_observed' as const,
+        sourceRefs: dimension.derivedFromEpisodeIds.map(
+          (episodeId) => `reasoning-episode:${episodeId}`,
+        ),
+        limitations: [
+          '这是从当前证据窗口动态归纳的学习行为维度，不是永久人格、能力等级或固定思维类型。',
+        ],
+      }));
+    const candidateSignals = [];
+    let candidateProfileVersion = 0;
+    for await (const candidate of evidenceRepositories.evidence.list()) {
+      const governance = candidate.governance;
+      if (
+        candidate.status !== 'active' ||
+        governance === undefined ||
+        governance.safetyStatus === 'blocked' ||
+        governance.confidence < 0.65 ||
+        (governance.explicitness === 'ai_observed' && governance.observedCount < 2)
+      ) {
+        continue;
+      }
+      const expiry = governance.expiryPolicy;
+      const expiryAt =
+        expiry.kind === 'until_corrected'
+          ? undefined
+          : expiry.kind === 'window_bound'
+            ? expiry.expiresAt
+            : expiry.reviewAt;
+      if (expiryAt !== undefined && Date.parse(expiryAt) <= input.now().getTime()) continue;
+      candidateProfileVersion = Math.max(candidateProfileVersion, candidate.resourceVersion);
+      candidateSignals.push({
+        evidenceId: candidate.evidenceId,
+        summary: `${governance.label}：${candidate.summary}`,
+        explicitness: governance.explicitness,
+        sourceRefs: [...candidate.sourceRefs],
+        limitations: [
+          ...governance.limitations,
+          '该信号是可撤回的候选证据，只用于调整当前教学表达与探查方式，不代表已确认的全局用户档案事实。',
+        ],
+      });
+    }
+    const signals = [...candidateSignals, ...reasoningSignals]
+      .filter(
+        (signal, index, all) =>
+          all.findIndex((candidate) => candidate.evidenceId === signal.evidenceId) === index,
+      )
+      .slice(0, 8);
+    return {
+      profileVersion: Math.max(reasoning?.resourceVersion ?? 0, candidateProfileVersion),
+      purpose: 'interactive_teaching',
+      courseId,
+      lessonId,
+      signals,
+      completeness: signals.length === 0 ? 'insufficient' : 'limited',
+      sourceSnapshotHash: createHash('sha256')
+        .update(
+          JSON.stringify({
+            courseId,
+            lessonId,
+            reasoningSource: reasoning?.snapshot.sourceSnapshotHash,
+            evidenceIds: signals.map((signal) => signal.evidenceId),
+          }),
+        )
+        .digest('hex'),
+      createdAt,
+    };
+  };
+
+  const profileRoutes: ProfileRouteOptions = {
+    getGlobalProfile: globalProfile,
+    async listEvidence() {
+      await syncProfileEvidence();
+      const evidence = [];
+      for await (const candidate of evidenceRepositories.evidence.list()) evidence.push(candidate);
+      return evidence;
+    },
+    async listReasoningEpisodes() {
+      const episodes = [];
+      for await (const episode of reasoningBehaviorRepository.listEpisodes())
+        episodes.push(episode);
+      return episodes;
+    },
+    refreshReasoningAnalysis: refreshAndProjectReasoningAnalysis,
+    getReasoningAnalysis: (snapshotId) => reasoningBehaviorModule.getAnalysis(snapshotId),
+  };
+
+  async function portraitWithReasoning(versionId: string) {
+    const [portrait, reasoningBehaviorAnalysis] = await Promise.all([
+      portraitRepository.getVersion(versionId),
+      latestUsableReasoningAnalysis(),
+    ]);
+    return portrait === undefined
+      ? undefined
+      : {
+          ...portrait,
+          ...(reasoningBehaviorAnalysis === undefined
+            ? {}
+            : {
+                reasoningBehaviorAnalysis: {
+                  snapshot: reasoningBehaviorAnalysis.snapshot,
+                  dimensions: reasoningBehaviorAnalysis.dimensions,
+                },
+              }),
+        };
+  }
+
+  const portraitRoutes: PortraitRouteOptions = {
+    requestRefresh: requestPortraitRefresh,
+    async getCurrent() {
+      const cursor = await portraitRepository.getCurrent();
+      if (cursor !== undefined) return portraitWithReasoning(cursor.currentVersionId);
+      const refresh = await readPortraitRefreshState(input.dataRoot);
+      return refresh === undefined
+        ? undefined
+        : {
+            state: refresh.state,
+            errorCode: refresh.errorCode,
+            retryable: refresh.state === 'failed',
+            updatedAt: refresh.updatedAt,
+          };
+    },
+    getVersion: portraitWithReasoning,
+    nextCorrelationId: () => `correlation_${randomUUID()}`,
+  };
+
+  return {
+    checkpointSink: { capture: enqueueProfileEvidenceCheckpoint },
+    reasoningBehaviorSink: reasoningBehaviorModule,
+    profileRoutes,
+    portraitRoutes,
+    requestPortraitRefresh,
+    getTeachingPersonalization,
+    async listWeeklyReasoningEvidence() {
+      const evidence: AdditionalWeeklyEvidence[] = [];
+      for await (const episode of reasoningBehaviorRepository.listEpisodes()) {
+        if (episode.status !== 'active') continue;
+        evidence.push({
+          factId: `reasoning:${episode.episodeId}`,
+          sourceRef: `reasoning:${episode.episodeId}`,
+          kind: 'reasoning-evidence',
+          occurredAt: episode.observedAt,
+          summary: episode.behaviorSummary,
+          payload: {
+            elicitation: episode.elicitation,
+            sourceRefs: episode.sourceRefs,
+            extractorVersion: episode.extractorVersion,
+          },
+          courseId: episode.courseId,
+          lessonId: episode.lessonId,
+          actualSeconds: 0,
+          topicTags: [],
+        });
+      }
+      return evidence;
+    },
+    recoverReasoningAnalysis,
+    getProjectionStatus: () => projectionStatus,
+  };
+}

@@ -61,6 +61,8 @@ export async function startLauncher(root: string): Promise<RuntimeHarness> {
           'bootstrap',
           'main.js',
         ),
+        LEARNING_MORE_WEB_URL: 'http://127.0.0.1:5173',
+        LEARNING_MORE_ALLOWED_ORIGIN: 'http://127.0.0.1:5173',
         LEARNING_MORE_NO_OPEN: '1',
       },
     },
@@ -147,5 +149,5 @@ export async function removeRuntimeRoot(root: string): Promise<void> {
   const expectedParent = path.resolve(process.cwd(), 'tests', '.tmp');
   if (!resolved.startsWith(`${expectedParent}${path.sep}`))
     throw new Error('unsafe_runtime_cleanup');
-  await rm(resolved, { recursive: true, force: true });
+  await rm(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

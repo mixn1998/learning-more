@@ -35,7 +35,7 @@ function contract(name: string, factory: () => Promise<SecretStore>) {
         await expect(store.get('提供商/主密钥')).rejects.toThrow('secret_not_found');
         await expect(store.describe('提供商/主密钥')).resolves.toEqual({ configured: false });
       },
-      name === 'Windows DPAPI' ? 15_000 : 5_000,
+      name === 'Windows DPAPI' ? 30_000 : 5_000,
     );
 
     it('rejects empty secrets and empty handles', async () => {

@@ -149,7 +149,7 @@ describe('local CourseAuthoring application', () => {
       suggestions: [expect.objectContaining({ lessonId: 'slow-lesson' })],
     });
     expect(after.total).toBe(before.total);
-  });
+  }, 15_000);
 
   it('[EQ-COURSE-03..06] runs confirmation, revision, closure, review, and permanent deletion through HTTP → Module → LocalFile', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-'));

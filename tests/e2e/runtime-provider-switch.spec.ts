@@ -20,7 +20,10 @@ function provider(id: string, requiresSecret = false): AiProvider {
     },
     healthCheck: async () => ({ status: 'healthy' }),
     async *generate() {
-      yield { type: 'text', text: `${id}-output` };
+      yield {
+        type: 'text',
+        text: '## This week\n\nInsufficient evidence to infer a stable change.',
+      };
     },
   };
 }
@@ -68,7 +71,11 @@ test('persists a validated Provider switch and keeps its DPAPI secret after rest
       providerId: 'new',
     });
   } finally {
-    await app.close();
+    try {
+      await app.close();
+    } finally {
+      await first.close();
+    }
   }
   const restarted = await createLocalApplication({
     dataRoot,
@@ -77,24 +84,28 @@ test('persists a validated Provider switch and keeps its DPAPI secret after rest
     secretStore: createWindowsDpapiSecretStore(secretDirectory),
     providerConfigRepository: createLocalFileProviderConfigRepository(configPath),
   });
-  const afterRestart = await restarted.generationRuntime.submit({
-    taskKey: 'provider-e2e-restarted',
-    inputSnapshotHash: 'restarted',
-    taskKind: 'learning-chat',
-    taskGroup: 'interactive',
-    ownerRef: 'owner-restarted',
-    providerId: 'current',
-    priority: 100,
-    prompt: 'hello again',
-  });
-  await expect(restarted.generationRuntime.get(afterRestart.taskId)).resolves.toMatchObject({
-    providerId: 'new',
-  });
-  const disk = await Promise.all(
-    (await readdir(secretDirectory)).map((name) =>
-      readFile(path.join(secretDirectory, name), 'utf8'),
-    ),
-  );
-  expect(disk.join('\n')).not.toContain('E2E_PROVIDER_SECRET_SENTINEL');
-  await removeRuntimeRoot(root);
+  try {
+    const afterRestart = await restarted.generationRuntime.submit({
+      taskKey: 'provider-e2e-restarted',
+      inputSnapshotHash: 'restarted',
+      taskKind: 'learning-chat',
+      taskGroup: 'interactive',
+      ownerRef: 'owner-restarted',
+      providerId: 'current',
+      priority: 100,
+      prompt: 'hello again',
+    });
+    await expect(restarted.generationRuntime.get(afterRestart.taskId)).resolves.toMatchObject({
+      providerId: 'new',
+    });
+    const disk = await Promise.all(
+      (await readdir(secretDirectory)).map((name) =>
+        readFile(path.join(secretDirectory, name), 'utf8'),
+      ),
+    );
+    expect(disk.join('\n')).not.toContain('E2E_PROVIDER_SECRET_SENTINEL');
+  } finally {
+    await restarted.close();
+    await removeRuntimeRoot(root);
+  }
 });

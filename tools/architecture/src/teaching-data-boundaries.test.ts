@@ -8,7 +8,8 @@ function source(relative: string): string {
 }
 
 describe('interactive teaching and reasoning-data architecture boundaries', () => {
-  const localApplication = source('apps/server/src/bootstrap/local-application.ts');
+  const learningRuntime = source('apps/server/src/bootstrap/local-application/learning-runtime.ts');
+  const profileRuntime = source('apps/server/src/bootstrap/local-application/profile-runtime.ts');
   const teachingModule = source(
     'apps/server/src/modules/interactive-teaching/implementation/interactive-teaching.ts',
   );
@@ -26,17 +27,17 @@ describe('interactive teaching and reasoning-data architecture boundaries', () =
   const profileRoutes = source('apps/server/src/http/routes/profile.ts');
 
   it('wires the deep teaching module at the HTTP composition root instead of the legacy scene coordinator', () => {
-    expect(localApplication).toContain('createInteractiveTeaching');
-    expect(localApplication).toContain('teaching: interactiveTeachingRuntime.module');
-    expect(localApplication).not.toContain('createSessionGenerationCoordinator');
-    expect(localApplication).not.toContain('lesson-response@v1');
+    expect(learningRuntime).toContain('createInteractiveTeaching');
+    expect(learningRuntime).toContain('teaching: interactiveTeachingRuntime.module');
+    expect(learningRuntime).not.toContain('createSessionGenerationCoordinator');
+    expect(learningRuntime).not.toContain('lesson-response@v1');
   });
 
   it('keeps raw observation mode-neutral and connects it through a narrow reasoning sink port', () => {
     expect(observer).not.toMatch(/courseMode|playIntent/u);
     expect(teachingModule).toContain('../ports/reasoning-behavior-sink.js');
     expect(teachingModule).not.toMatch(/modules\/global-user-profile/u);
-    expect(localApplication).toContain('reasoningBehaviorSink: reasoningBehaviorModule');
+    expect(learningRuntime).toContain('reasoningBehaviorSink: input.profile.reasoningBehaviorSink');
   });
 
   it('uses open semantic dimensions rather than fixed thought-type columns', () => {
@@ -54,11 +55,11 @@ describe('interactive teaching and reasoning-data architecture boundaries', () =
   });
 
   it('wires persistence, global-only consumption, startup recovery, and degraded readiness together', () => {
-    expect(localApplication).toContain('createLocalFileTeachingLedgerRepository');
-    expect(localApplication).toContain('createLocalFileReasoningBehaviorRepository');
-    expect(localApplication).toContain('filter.courseIds.length > 0');
-    expect(localApplication).toContain('interactiveTeachingRuntime.recoverSession');
-    expect(localApplication).toContain("teachingProjectionStatus = 'degraded'");
+    expect(learningRuntime).toContain('createLocalFileTeachingLedgerRepository');
+    expect(profileRuntime).toContain('createLocalFileReasoningBehaviorRepository');
+    expect(profileRuntime).toContain('filter.courseIds.length > 0');
+    expect(learningRuntime).toContain('interactiveTeachingRuntime.recoverSession');
+    expect(learningRuntime).toContain("projectionStatus = 'degraded'");
     expect(profileRoutes).toContain("header('deprecation', 'true')");
   });
 
