@@ -202,8 +202,28 @@ export type PortableBuildResult = Readonly<{
   buildId: string;
 }>;
 
+export type PortableBuildOptions = Readonly<{
+  outputRoot?: string;
+  workRoot?: string;
+  writeWorkspaceManifest?: boolean;
+}>;
+
+export function resolvePortableBuildPaths(
+  projectRoot: string,
+  options: PortableBuildOptions = {},
+): Readonly<{ outputRoot: string; workRoot: string; expandedRoot: string }> {
+  const outputRoot = path.resolve(options.outputRoot ?? path.join(projectRoot, 'release', 'dist'));
+  const workRoot = path.resolve(options.workRoot ?? path.join(projectRoot, 'release', '.work'));
+  return {
+    outputRoot,
+    workRoot,
+    expandedRoot: path.join(outputRoot, 'portable', 'Learning MORE'),
+  };
+}
+
 export async function buildPortableRelease(
   projectRoot = path.resolve('.'),
+  options: PortableBuildOptions = {},
 ): Promise<PortableBuildResult> {
   const rootManifest = JSON.parse(
     await readFile(path.join(projectRoot, 'package.json'), 'utf8'),
@@ -213,9 +233,7 @@ export async function buildPortableRelease(
   };
   const sourceIdentity = await readSourceIdentity(projectRoot);
   const buildId = process.env.LEARNING_MORE_BUILD_ID ?? sourceIdentity.buildId;
-  const outputRoot = path.join(projectRoot, 'release', 'dist');
-  const workRoot = path.join(projectRoot, 'release', '.work');
-  const expandedRoot = path.join(outputRoot, 'portable', 'Learning MORE');
+  const { outputRoot, workRoot, expandedRoot } = resolvePortableBuildPaths(projectRoot, options);
   await rm(outputRoot, { recursive: true, force: true });
   await rm(workRoot, { recursive: true, force: true });
   await mkdir(expandedRoot, { recursive: true });
@@ -388,7 +406,9 @@ export async function buildPortableRelease(
     await rm(outputRoot, { recursive: true, force: true });
     throw error;
   }
-  await writeWorkspaceBuildManifest(projectRoot, sourceIdentity, buildId);
+  if (options.writeWorkspaceManifest ?? true) {
+    await writeWorkspaceBuildManifest(projectRoot, sourceIdentity, buildId);
+  }
   process.stdout.write(`${JSON.stringify(result)}\n`);
   await rm(workRoot, { recursive: true, force: true });
   return result;
