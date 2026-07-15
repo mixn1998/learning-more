@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createPlanFlowService } from '../implementation/plan-flow-service.js';
+import {
+  createPlanFlowService,
+  type PlanPreviewContext,
+} from '../implementation/plan-flow-service.js';
 import { createInMemoryPlanFlowRepository } from '../ports/plan-flow-repository.js';
 import { createInMemoryScheduleRepository } from '../ports/schedule-repository.js';
 
@@ -24,7 +27,7 @@ const context = {
   expectedVersion: 2,
 };
 
-function fixture() {
+function fixture(existingSchedule: PlanPreviewContext['existingSchedule'] = []) {
   const flows = createInMemoryPlanFlowRepository();
   const schedules = createInMemoryScheduleRepository();
   let scheduleVersion = 0;
@@ -71,8 +74,8 @@ function fixture() {
           strategy: 'balanced',
         },
         constraintsMarkdown: 'Keep the existing evening commitments.',
-        existingSchedule: [],
-        fixedCommitments: [],
+        existingSchedule,
+        fixedCommitments: existingSchedule.filter((item) => item.locked === true),
       };
     },
     getScheduleVersion: async () => scheduleVersion,
@@ -124,6 +127,47 @@ const suggestions = [
 ];
 
 describe('PlanFlowService', () => {
+  it('accepts an atomic lesson longer than the daily target', async () => {
+    const { service } = fixture();
+    const requested = await service.requestPreview(
+      {
+        ...previewInput,
+        timeWindowRefs: ['start:2026-07-14', 'daily:45', 'days:周二,周三'],
+      },
+      'preview_soft_daily_target',
+    );
+
+    const ready = await service.markPreviewReady(requested.id, suggestions);
+
+    expect(ready).toMatchObject({ state: 'preview-ready', suggestions });
+  });
+
+  it('excludes already scheduled lessons when preserving existing dates', async () => {
+    const { service, submit } = fixture([
+      {
+        courseId: 'course_01',
+        lessonId: 'lesson_01',
+        startAt: '2026-07-16T11:00:00.000Z',
+        endAt: '2026-07-16T12:00:00.000Z',
+        timezoneAtCreation: 'Asia/Shanghai',
+        status: 'scheduled',
+      },
+    ]);
+
+    const requested = await service.requestPreview(
+      {
+        ...previewInput,
+        timeWindowRefs: [...previewInput.timeWindowRefs, 'preserve:true'],
+      },
+      'preview_preserve_existing',
+    );
+
+    expect(requested.lessonRefs).toEqual(['lesson_02']);
+    const prompt = submit.mock.calls[0]?.[0]?.prompt as string;
+    expect(prompt).not.toContain('Foundations');
+    expect(prompt).toContain('Applications');
+  });
+
   it('rejects late confirmation after a referenced course archive is permanently deleted', async () => {
     const { service, schedules, deleteCourseArchive } = fixture();
     const requested = await service.requestPreview(previewInput, 'preview_delete_race');
@@ -205,7 +249,7 @@ describe('PlanFlowService', () => {
     ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
     await expect(
       service.markPreviewReady(requested.id, [
-        { ...suggestions[0]!, endAt: '2026-07-14T12:01:00.000Z' },
+        { ...suggestions[0]!, endAt: suggestions[0]!.startAt },
         suggestions[1]!,
       ]),
     ).rejects.toMatchObject({ code: 'plan_preview_invalid' });

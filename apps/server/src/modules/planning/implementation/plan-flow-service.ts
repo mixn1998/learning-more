@@ -109,7 +109,7 @@ function renderPlanPreviewPrompt(context: PlanPreviewContext): string {
       : `最早开始日期：${context.availability.startLocalDate}`,
     context.availability.dailyTargetMinutes === undefined
       ? undefined
-      : `单日目标时长：${context.availability.dailyTargetMinutes} 分钟`,
+      : `单日目标时长（软目标；课节不可拆分时可略超）：${context.availability.dailyTargetMinutes} 分钟`,
     context.availability.learningDays.length === 0
       ? undefined
       : `可学习日期：${context.availability.learningDays.join('、')}`,
@@ -215,8 +215,6 @@ export function createPlanFlowService(options: {
     const allowedLessonIds = new Set(flow.lessonRefs);
     const allowedCourseIds = new Set(flow.courseRefs);
     const startDate = flow.timeWindowRefs.find((ref) => ref.startsWith('start:'))?.slice(6);
-    const dailyMinutesText = flow.timeWindowRefs.find((ref) => ref.startsWith('daily:'))?.slice(6);
-    const dailyMinutes = dailyMinutesText === undefined ? undefined : Number(dailyMinutesText);
     const learningDays = new Set(
       flow.timeWindowRefs
         .find((ref) => ref.startsWith('days:'))
@@ -251,13 +249,6 @@ export function createPlanFlowService(options: {
       ) {
         throw new PlanFlowError('plan_preview_invalid');
       }
-      if (
-        dailyMinutes !== undefined &&
-        Number.isFinite(dailyMinutes) &&
-        Date.parse(suggestion.endAt) - Date.parse(suggestion.startAt) > dailyMinutes * 60_000
-      ) {
-        throw new PlanFlowError('plan_preview_invalid');
-      }
       lessonIds.add(suggestion.lessonId);
     }
     if (flow.lessonRefs.some((lessonId) => !lessonIds.has(lessonId))) {
@@ -285,9 +276,30 @@ export function createPlanFlowService(options: {
       const id = options.nextPlanFlowId();
       const baseScheduleVersion = await options.getScheduleVersion();
       const materializedContext = await options.assemblePreviewContext(input);
-      const inputManifest = { ...input, baseScheduleVersion, materializedContext };
+      const preservedLessonIds = new Set(
+        materializedContext.userPreferences.preserveExistingDates
+          ? materializedContext.existingSchedule
+              .filter((item) => item.status !== 'removed')
+              .map((item) => item.lessonId)
+          : [],
+      );
+      const effectiveInput = {
+        ...input,
+        lessonRefs: input.lessonRefs.filter((lessonId) => !preservedLessonIds.has(lessonId)),
+      };
+      const effectiveContext = {
+        ...materializedContext,
+        lessons: materializedContext.lessons.filter((lesson) =>
+          effectiveInput.lessonRefs.includes(lesson.lessonId),
+        ),
+      };
+      const inputManifest = {
+        ...effectiveInput,
+        baseScheduleVersion,
+        materializedContext: effectiveContext,
+      };
       const inputSnapshotHash = hash(inputManifest);
-      const prompt = renderPlanPreviewPrompt(materializedContext);
+      const prompt = renderPlanPreviewPrompt(effectiveContext);
       const task = await options.generationRuntime.submit({
         taskKey: `plan-flow-preview:${id}:${commandId}`,
         inputSnapshotHash,
@@ -302,7 +314,7 @@ export function createPlanFlowService(options: {
       return save({
         id,
         state: 'previewing',
-        ...input,
+        ...effectiveInput,
         baseScheduleVersion,
         inputSnapshotHash,
         warnings: [],
