@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createLauncherRuntime, type LauncherDependencies } from './main.js';
+import {
+  createLauncherRuntime,
+  projectWorkspaceActivation,
+  type LauncherDependencies,
+} from './main.js';
 
 function dependencies(
   overrides: Partial<LauncherDependencies> = {},
@@ -44,6 +48,7 @@ function dependencies(
     },
     syncFrontend: async () => {
       calls.push('sync');
+      return { mode: 'reconnect' as const };
     },
     createDiagnostics: async () => ({ artifactRef: 'diagnostics_01' }),
     wait: async (delayMs) => {
@@ -55,6 +60,33 @@ function dependencies(
 }
 
 describe('Launcher runtime orchestration', () => {
+  it('projects durable activation failure after Launcher replacement', () => {
+    expect(
+      projectWorkspaceActivation(
+        { state: 'healthy', crashCount: 0 },
+        {
+          schemaVersion: 2,
+          requestId: 'request-01',
+          phase: 'failed',
+          sourceBuildId: 'build_new',
+          activeBuildId: 'build_old',
+          targetBuildId: 'build_new',
+          attempt: 2,
+          errorCode: 'candidate_build_failed',
+          errorStage: 'building',
+          startedAt: '2026-07-16T00:00:00.000Z',
+          updatedAt: '2026-07-16T00:02:00.000Z',
+          completedAt: '2026-07-16T00:02:00.000Z',
+        },
+        'build_old',
+      ),
+    ).toMatchObject({
+      state: 'activation_failed',
+      targetBuildId: 'build_new',
+      activation: { errorCode: 'candidate_build_failed' },
+    });
+  });
+
   it('starts in the fixed recovery order and reports healthy only after verified readiness', async () => {
     const adapters = dependencies();
     const launcher = createLauncherRuntime(adapters);
@@ -92,9 +124,21 @@ describe('Launcher runtime orchestration', () => {
   });
 
   it('delegates a changed workspace to Host activation instead of restarting the old server', async () => {
+    const activation = {
+      schemaVersion: 2 as const,
+      requestId: 'request-01',
+      phase: 'building' as const,
+      sourceBuildId: 'build_new',
+      activeBuildId: 'build_old',
+      targetBuildId: 'build_new',
+      attempt: 1 as const,
+      startedAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:00:01.000Z',
+    };
     const requestWorkspaceActivation = vi.fn().mockResolvedValue({
       mode: 'activate' as const,
       targetBuildId: 'build_new',
+      activation,
     });
     const adapters = dependencies({ requestWorkspaceActivation });
     const launcher = createLauncherRuntime(adapters);
@@ -109,7 +153,37 @@ describe('Launcher runtime orchestration', () => {
       state: 'rebuilding',
       crashCount: 0,
       targetBuildId: 'build_new',
+      activation,
     });
+  });
+
+  it('uses Host activation for frontend synchronization without restarting Server', async () => {
+    const activation = {
+      schemaVersion: 2 as const,
+      requestId: 'request-02',
+      phase: 'building' as const,
+      sourceBuildId: 'build_new',
+      targetBuildId: 'build_new',
+      attempt: 1 as const,
+      startedAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:00:01.000Z',
+    };
+    const adapters = dependencies({
+      syncFrontend: vi.fn().mockResolvedValue({
+        mode: 'activate' as const,
+        targetBuildId: 'build_new',
+        activation,
+      }),
+    });
+    const launcher = createLauncherRuntime(adapters);
+    await launcher.start();
+    adapters.calls.length = 0;
+
+    await expect(launcher.syncFrontend()).resolves.toMatchObject({
+      state: 'rebuilding',
+      targetBuildId: 'build_new',
+    });
+    expect(adapters.calls).toEqual([]);
   });
 
   it('keeps the launcher available in degraded state when the internal server cannot start', async () => {

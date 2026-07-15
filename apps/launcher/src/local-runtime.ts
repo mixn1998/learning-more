@@ -17,7 +17,11 @@ import {
   terminateVerifiedChild,
   type ManagedChildProcess,
 } from './server-process.js';
-import { requestWorkspaceActivation } from './workspace-activation.js';
+import {
+  readWorkspaceActivationStatus,
+  requestWorkspaceActivation,
+  type WorkspaceActivationProgress,
+} from './workspace-activation.js';
 
 export type LocalRuntimeOptions = Readonly<{
   projectRoot: string;
@@ -29,6 +33,10 @@ export type LocalRuntimeOptions = Readonly<{
   allowedOrigin: string;
   activationRequestPath?: string;
   activationStatusPath?: string;
+  hostEntry?: string;
+  hostProjectRoot?: string;
+  activationAcknowledgementMs?: number;
+  activationTimeoutMs?: number;
   onUnexpectedExit?(): void;
 }>;
 
@@ -36,15 +44,20 @@ export type LocalRuntimeAdapters = Readonly<{
   dependencies: LauncherDependencies;
   capability: Readonly<{ value: string; expiresAt: number }>;
   refreshCapability(): Readonly<{ value: string; expiresAt: number }>;
+  readActivationStatus(): Promise<WorkspaceActivationProgress | undefined>;
   close(): Promise<void>;
 }>;
 
-function executeFile(executable: string, arguments_: readonly string[]): Promise<string> {
+function executeFile(
+  executable: string,
+  arguments_: readonly string[],
+  cwd?: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       executable,
       [...arguments_],
-      { encoding: 'utf8', shell: false, windowsHide: true },
+      { encoding: 'utf8', shell: false, windowsHide: true, ...(cwd === undefined ? {} : { cwd }) },
       (error, stdout) => (error ? reject(error) : resolve(stdout)),
     );
   });
@@ -206,6 +219,33 @@ export async function createLocalRuntimeAdapters(
     return observation;
   }
 
+  const activateWorkspace = async () => {
+    if (options.activationRequestPath === undefined || options.activationStatusPath === undefined) {
+      return { mode: 'reconnect' } as const;
+    }
+    return requestWorkspaceActivation({
+      requestPath: options.activationRequestPath,
+      statusPath: options.activationStatusPath,
+      ...(options.activationAcknowledgementMs === undefined
+        ? {}
+        : { acknowledgementMs: options.activationAcknowledgementMs }),
+      ...(options.activationTimeoutMs === undefined
+        ? {}
+        : { timeoutMs: options.activationTimeoutMs }),
+      ...(options.hostEntry === undefined || options.hostProjectRoot === undefined
+        ? {}
+        : {
+            repairHost: async () => {
+              await executeFile(
+                process.execPath,
+                [options.hostEntry!, 'repair', '--project-root', options.hostProjectRoot!],
+                options.hostProjectRoot,
+              );
+            },
+          }),
+    });
+  };
+
   const dependencies: LauncherDependencies = {
     async acquireLease() {
       try {
@@ -302,18 +342,11 @@ export async function createLocalRuntimeAdapters(
       return result.terminated;
     },
     async requestWorkspaceActivation() {
-      if (
-        options.activationRequestPath === undefined ||
-        options.activationStatusPath === undefined
-      ) {
-        return { mode: 'reconnect' } as const;
-      }
-      return requestWorkspaceActivation({
-        requestPath: options.activationRequestPath,
-        statusPath: options.activationStatusPath,
-      });
+      return activateWorkspace();
     },
-    async syncFrontend() {},
+    async syncFrontend() {
+      return activateWorkspace();
+    },
     async createDiagnostics() {
       const response = await fetch(
         `http://127.0.0.1:${options.serverPort}/api/v1/runtime/diagnostics`,
@@ -349,6 +382,11 @@ export async function createLocalRuntimeAdapters(
         capability.expiresAt = Date.now() + 5 * 60_000;
       }
       return capability;
+    },
+    readActivationStatus() {
+      return options.activationStatusPath === undefined
+        ? Promise.resolve(undefined)
+        : readWorkspaceActivationStatus({ statusPath: options.activationStatusPath });
     },
     async close() {
       if (child !== undefined) await dependencies.terminateVerifiedServer();

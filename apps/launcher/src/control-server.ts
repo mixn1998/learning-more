@@ -10,6 +10,8 @@ import {
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 
+import { WorkspaceActivationError } from './workspace-activation.js';
+
 export type ControlServerOptions = Readonly<{
   allowedOrigin: string;
   getCapability(): Readonly<{ value: string; expiresAt: number }>;
@@ -226,7 +228,18 @@ export async function buildControlServer(options: ControlServerOptions): Promise
       if (request.url === '/control/v1/diagnose')
         return response(200, await options.diagnose(), corsHeaders);
       return response(404, { code: 'control_route_not_found' }, corsHeaders);
-    } catch {
+    } catch (error) {
+      if (error instanceof WorkspaceActivationError) {
+        return response(
+          503,
+          {
+            code: error.code,
+            ...(error.activation === undefined ? {} : { activation: error.activation }),
+            oldRuntimeAvailable: error.activation?.activeBuildId !== undefined,
+          },
+          corsHeaders,
+        );
+      }
       return response(503, { code: 'control_action_failed' }, corsHeaders);
     }
   }

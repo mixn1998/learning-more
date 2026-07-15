@@ -76,6 +76,29 @@ describe('commandMatchesLauncher', () => {
     });
   });
 
+  it('accepts a target-matching candidate while Host still reports activation in progress', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              state: 'rebuilding',
+              targetBuildId: 'build-new',
+              activation: { phase: 'activating' },
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: 'ready', buildId: 'build-new' }), { status: 200 }),
+        ),
+    );
+
+    await expect(waitForLauncherReady('build-new', 100)).resolves.toBeUndefined();
+  });
+
   it('does not report an adopted Launcher exit from a transient observation failure', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'learning-more-adopted-launcher-'));
     roots.push(root);
@@ -121,6 +144,8 @@ describe('commandMatchesLauncher', () => {
       dataRoot: path.join(root, 'data'),
       secretDirectory: path.join(root, 'secrets'),
       launcherEntry: path.join(root, 'app', 'launcher', 'dist', 'main.js'),
+      hostEntry: path.join(root, 'app', 'host', 'dist', 'main.js'),
+      hostProjectRoot: root,
       serverEntry: path.join(root, 'app', 'server', 'main.js'),
       webRoot: path.join(root, 'app', 'web'),
       buildId: 'test-build',
@@ -131,7 +156,11 @@ describe('commandMatchesLauncher', () => {
       process.execPath,
       [path.join(root, 'app', 'launcher', 'dist', 'main.js')],
       expect.objectContaining({
-        env: expect.objectContaining({ LEARNING_MORE_NO_OPEN: '1' }),
+        env: expect.objectContaining({
+          LEARNING_MORE_NO_OPEN: '1',
+          LEARNING_MORE_HOST_ENTRY: path.join(root, 'app', 'host', 'dist', 'main.js'),
+          LEARNING_MORE_HOST_PROJECT_ROOT: root,
+        }),
       }),
     );
   });

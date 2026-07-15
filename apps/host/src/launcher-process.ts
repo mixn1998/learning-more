@@ -102,6 +102,8 @@ export async function startOrAdoptLauncher(options: {
   dataRoot: string;
   secretDirectory: string;
   launcherEntry: string;
+  hostEntry?: string;
+  hostProjectRoot?: string;
   serverEntry: string;
   webRoot: string;
   buildId: string;
@@ -145,6 +147,10 @@ export async function startOrAdoptLauncher(options: {
         LEARNING_MORE_ALLOWED_ORIGIN: 'http://127.0.0.1:43119',
         LEARNING_MORE_BUILD_ID: options.buildId,
         LEARNING_MORE_NO_OPEN: '1',
+        ...(options.hostEntry === undefined ? {} : { LEARNING_MORE_HOST_ENTRY: options.hostEntry }),
+        ...(options.hostProjectRoot === undefined
+          ? {}
+          : { LEARNING_MORE_HOST_PROJECT_ROOT: options.hostProjectRoot }),
         ...(options.activationRequestPath === undefined
           ? {}
           : { LEARNING_MORE_ACTIVATION_REQUEST: options.activationRequestPath }),
@@ -179,8 +185,12 @@ export async function waitForLauncherReady(
       if (control.ok && readiness.ok) {
         const status = (await control.json()) as Record<string, unknown>;
         const ready = (await readiness.json()) as Record<string, unknown>;
+        const candidateIsServingTarget =
+          expectedBuildId !== undefined &&
+          status.state === 'rebuilding' &&
+          status.targetBuildId === expectedBuildId;
         if (
-          status.state === 'healthy' &&
+          (status.state === 'healthy' || candidateIsServingTarget) &&
           ready.status === 'ready' &&
           (expectedBuildId === undefined || ready.buildId === expectedBuildId)
         ) {

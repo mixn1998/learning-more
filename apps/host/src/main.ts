@@ -55,16 +55,19 @@ function layout(
   projectRoot: string,
   isPortable: boolean,
 ): Readonly<{
+  hostEntry: string;
   launcherEntry: string;
   serverEntry: string;
   webRoot: string;
 }> {
   const workspace = {
+    hostEntry: path.join(projectRoot, 'apps', 'host', 'dist', 'main.js'),
     launcherEntry: path.join(projectRoot, 'apps', 'launcher', 'dist', 'main.js'),
     serverEntry: path.join(projectRoot, 'apps', 'server', 'dist', 'bootstrap', 'main.js'),
     webRoot: path.join(projectRoot, 'apps', 'web', 'dist'),
   };
   const portableLayout = {
+    hostEntry: path.join(projectRoot, 'app', 'host', 'dist', 'main.js'),
     launcherEntry: path.join(projectRoot, 'app', 'launcher', 'dist', 'main.js'),
     serverEntry: path.join(projectRoot, 'app', 'server', 'main.js'),
     webRoot: path.join(projectRoot, 'app', 'web'),
@@ -179,6 +182,7 @@ export async function runHost(projectRoot: string): Promise<void> {
   const identity = await readReleaseIdentity(resolvedRoot);
   const application = layout(resolvedRoot, identity.portable);
   await Promise.all([
+    access(application.hostEntry),
     access(application.launcherEntry),
     access(application.serverEntry),
     access(application.webRoot),
@@ -227,6 +231,8 @@ export async function runHost(projectRoot: string): Promise<void> {
         dataRoot,
         secretDirectory,
         launcherEntry: selected.launcherEntry,
+        hostEntry: application.hostEntry,
+        hostProjectRoot: resolvedRoot,
         serverEntry: selected.serverEntry,
         webRoot: selected.webRoot,
         buildId: selectedIdentity.buildId,
@@ -241,6 +247,7 @@ export async function runHost(projectRoot: string): Promise<void> {
     verifyCandidate: async (releaseRoot) => {
       const selected = layout(releaseRoot, true);
       await Promise.all([
+        access(selected.hostEntry),
         access(selected.launcherEntry),
         access(selected.serverEntry),
         access(selected.webRoot),

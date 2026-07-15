@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { buildControlServer } from './control-server.js';
+import { WorkspaceActivationError } from './workspace-activation.js';
 
 describe('Launcher control server', () => {
   it('validates a write against the same current capability published by status', async () => {
@@ -166,6 +167,52 @@ describe('Launcher control server', () => {
         headers: { host: '127.0.0.1:43119', origin: 'http://127.0.0.1:43119' },
       }),
     ).resolves.toMatchObject({ statusCode: 200 });
+  });
+
+  it('returns a public activation failure without leaking diagnostic details', async () => {
+    const activation = {
+      schemaVersion: 2 as const,
+      requestId: 'request-01',
+      phase: 'failed' as const,
+      sourceBuildId: 'build-new',
+      activeBuildId: 'build-old',
+      targetBuildId: 'build-new',
+      attempt: 2 as const,
+      errorCode: 'candidate_build_failed' as const,
+      errorStage: 'building',
+      startedAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:02:00.000Z',
+      completedAt: '2026-07-16T00:02:00.000Z',
+    };
+    const app = await buildControlServer({
+      allowedOrigin: 'http://127.0.0.1:43119',
+      getCapability: () => ({ value: 'capability_01', expiresAt: Date.now() + 60_000 }),
+      getStatus: async () => ({ state: 'activation_failed', activation }),
+      reconnect: async () => {
+        throw new WorkspaceActivationError('candidate_build_failed', activation);
+      },
+      syncFrontend: async () => ({ state: 'healthy' }),
+      diagnose: async () => ({ artifactRef: 'diagnostics_01' }),
+    });
+
+    const result = await app.inject({
+      method: 'POST',
+      url: '/control/v1/reconnect',
+      headers: {
+        host: '127.0.0.1:43119',
+        origin: 'http://127.0.0.1:43119',
+        'x-learning-more-capability': 'capability_01',
+      },
+      payload: {},
+    });
+
+    expect(result.statusCode).toBe(503);
+    expect(result.json()).toEqual({
+      code: 'candidate_build_failed',
+      activation,
+      oldRuntimeAvailable: true,
+    });
+    expect(result.body).not.toContain('stack');
   });
 
   it('binds only to loopback and applies the same policy to real HTTP requests', async () => {
