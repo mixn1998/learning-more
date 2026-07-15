@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { access, mkdir, open, readFile, rename, rm, type FileHandle } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -27,7 +27,6 @@ export type LocalRuntimeOptions = Readonly<{
   serverPort: number;
   webUrl: string;
   allowedOrigin: string;
-  openBrowser: boolean;
   activationRequestPath?: string;
   activationStatusPath?: string;
   onUnexpectedExit?(): void;
@@ -282,15 +281,6 @@ export async function createLocalRuntimeAdapters(
         })}`,
       );
     },
-    async openApplication() {
-      if (!options.openBrowser) return;
-      spawn('rundll32.exe', ['url.dll,FileProtocolHandler', options.webUrl], {
-        shell: false,
-        windowsHide: true,
-        detached: true,
-        stdio: 'ignore',
-      }).unref();
-    },
     async drainServer() {
       return false;
     },
@@ -323,16 +313,7 @@ export async function createLocalRuntimeAdapters(
         statusPath: options.activationStatusPath,
       });
     },
-    async syncFrontend() {
-      if (options.openBrowser) {
-        spawn('rundll32.exe', ['url.dll,FileProtocolHandler', options.webUrl], {
-          shell: false,
-          windowsHide: true,
-          detached: true,
-          stdio: 'ignore',
-        }).unref();
-      }
-    },
+    async syncFrontend() {},
     async createDiagnostics() {
       const response = await fetch(
         `http://127.0.0.1:${options.serverPort}/api/v1/runtime/diagnostics`,

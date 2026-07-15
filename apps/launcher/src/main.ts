@@ -18,7 +18,6 @@ export interface LauncherDependencies {
   recoverStore(): Promise<void>;
   startServer(): Promise<void>;
   waitForVerifiedReady(): Promise<void>;
-  openApplication(): Promise<void>;
   drainServer(timeoutMs: number): Promise<boolean>;
   terminateVerifiedServer(): Promise<boolean>;
   requestWorkspaceActivation?(): Promise<
@@ -58,16 +57,11 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
       state = 'starting';
       targetBuildId = undefined;
       await dependencies.acquireLease();
-      let applicationOpened = false;
       try {
         const decision = decideStartupRecovery(await dependencies.observeStartup());
         state = decision.state;
         if (decision.action === 'manual') return;
-        if (decision.action === 'reuse') {
-          await dependencies.openApplication();
-          applicationOpened = true;
-          return;
-        }
+        if (decision.action === 'reuse') return;
         if (decision.action === 'quarantine_and_start') {
           await dependencies.quarantineManifest();
         }
@@ -79,16 +73,10 @@ export function createLauncherRuntime(dependencies: LauncherDependencies): Launc
           }
         }
         await startNewServer();
-        await dependencies.openApplication();
-        applicationOpened = true;
       } catch {
         // The control server and static product UI must stay available so the
         // operator can diagnose and retry a failed internal server startup.
         state = 'degraded';
-      } finally {
-        if (!applicationOpened) {
-          await dependencies.openApplication().catch(() => undefined);
-        }
       }
     },
     async reconnect() {
@@ -169,7 +157,6 @@ export async function runLauncher(): Promise<Readonly<{ close(): Promise<void> }
     serverPort: 43_120,
     webUrl: process.env.LEARNING_MORE_WEB_URL ?? 'http://127.0.0.1:43119',
     allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:43119',
-    openBrowser: process.env.LEARNING_MORE_NO_OPEN !== '1',
     onUnexpectedExit: () => {
       void runtimeReference.current?.serverExitedUnexpectedly();
     },

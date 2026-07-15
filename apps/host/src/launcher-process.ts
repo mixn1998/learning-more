@@ -146,7 +146,6 @@ export async function startOrAdoptLauncher(options: {
         ...(options.activationStatusPath === undefined
           ? {}
           : { LEARNING_MORE_ACTIVATION_STATUS: options.activationStatusPath }),
-        LEARNING_MORE_NO_OPEN: '1',
       },
       shell: false,
       windowsHide: true,

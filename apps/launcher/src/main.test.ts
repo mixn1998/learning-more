@@ -34,9 +34,6 @@ function dependencies(
     waitForVerifiedReady: async () => {
       calls.push('ready');
     },
-    openApplication: async () => {
-      calls.push('open');
-    },
     drainServer: async () => {
       calls.push('drain');
       return true;
@@ -62,7 +59,8 @@ describe('Launcher runtime orchestration', () => {
     const adapters = dependencies();
     const launcher = createLauncherRuntime(adapters);
     await launcher.start();
-    expect(adapters.calls).toEqual(['lease', 'observe', 'recover', 'start', 'ready', 'open']);
+    expect(adapters.calls).toEqual(['lease', 'observe', 'recover', 'start', 'ready']);
+    expect(adapters.calls).not.toContain('open');
     expect(launcher.status()).toEqual({ state: 'healthy', crashCount: 0 });
   });
 
@@ -80,7 +78,7 @@ describe('Launcher runtime orchestration', () => {
     const launcher = createLauncherRuntime(adapters);
     await launcher.start();
     expect(launcher.status().state).toBe('blocked_external_port');
-    expect(adapters.calls).toEqual(['lease', 'open']);
+    expect(adapters.calls).toEqual(['lease']);
   });
 
   it('uses graceful draining and only asks the verified terminator after timeout', async () => {
@@ -124,7 +122,7 @@ describe('Launcher runtime orchestration', () => {
 
     await expect(launcher.start()).resolves.toBeUndefined();
     expect(launcher.status()).toEqual({ state: 'degraded', crashCount: 0 });
-    expect(adapters.calls).toContain('open');
+    expect(adapters.calls).not.toContain('open');
 
     await expect(launcher.reconnect()).resolves.toEqual({ state: 'healthy', crashCount: 0 });
     expect(launcher.status()).toEqual({ state: 'healthy', crashCount: 0 });
