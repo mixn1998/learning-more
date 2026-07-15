@@ -31,6 +31,28 @@ function parseRequest(value: unknown): WorkspaceActivationRequest | undefined {
     : undefined;
 }
 
+function parseStatus(value: unknown): WorkspaceActivationStatus | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const status = value as Record<string, unknown>;
+  const phases: readonly WorkspaceActivationPhase[] = [
+    'preparing',
+    'unchanged',
+    'building',
+    'activating',
+    'activated',
+    'failed',
+  ];
+  return status.schemaVersion === 1 &&
+    typeof status.requestId === 'string' &&
+    status.requestId !== '' &&
+    typeof status.phase === 'string' &&
+    phases.includes(status.phase as WorkspaceActivationPhase) &&
+    typeof status.updatedAt === 'string' &&
+    (status.sourceBuildId === undefined || typeof status.sourceBuildId === 'string')
+    ? (status as WorkspaceActivationStatus)
+    : undefined;
+}
+
 async function writeAtomically(target: string, value: unknown): Promise<void> {
   await mkdir(path.dirname(target), { recursive: true });
   const temporary = `${target}.${randomUUID()}.tmp`;
@@ -183,6 +205,22 @@ export function createWorkspaceActivationWorker(options: {
       return;
     }
     if (request === undefined || request.requestId === lastRequestId) return;
+    if (lastRequestId === undefined) {
+      try {
+        const status = parseStatus(
+          JSON.parse(await readFile(options.statusPath, 'utf8')) as unknown,
+        );
+        if (
+          status?.requestId === request.requestId &&
+          ['unchanged', 'activated', 'failed'].includes(status.phase)
+        ) {
+          lastRequestId = request.requestId;
+          return;
+        }
+      } catch {
+        // Missing or damaged status is recoverable from the durable request.
+      }
+    }
     lastRequestId = request.requestId;
     inFlight = true;
     let backup: Buffer | undefined;

@@ -107,4 +107,38 @@ describe('workspace activation worker', () => {
     expect(await readFile(input.manifestPath, 'utf8')).toBe('{"buildId":"build-old"}\n');
     expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({ phase: 'failed' });
   });
+
+  it('does not retry a terminal request after Host restarts', async () => {
+    const input = await fixture();
+    await writeFile(
+      input.statusPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        requestId: 'request-1',
+        phase: 'failed',
+        updatedAt: '2026-07-15T00:00:00.000Z',
+      })}\n`,
+      'utf8',
+    );
+    const buildCandidate = vi.fn();
+    const readSourceIdentity = vi.fn();
+    const worker = createWorkspaceActivationWorker({
+      projectRoot: input.root,
+      releasesRoot: path.join(input.root, 'releases'),
+      requestPath: input.requestPath,
+      statusPath: input.statusPath,
+      readSourceIdentity,
+      buildCandidate,
+      supervisor: { activateCandidate: vi.fn() },
+    });
+
+    await worker.processPending();
+
+    expect(readSourceIdentity).not.toHaveBeenCalled();
+    expect(buildCandidate).not.toHaveBeenCalled();
+    expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
+      requestId: 'request-1',
+      phase: 'failed',
+    });
+  });
 });
