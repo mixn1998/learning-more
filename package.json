@@ -35,7 +35,7 @@
     "test": "vitest run --passWithNoTests --maxWorkers=1",
     "test:ci": "vitest run --passWithNoTests --maxWorkers=1 --reporter=default --reporter=json --outputFile=artifacts/tests/unit.json",
     "test:capacity": "vitest run tests/performance/capacity-gate.test.ts",
-    "test:recovery": "vitest run tests/recovery/full-fault-matrix.test.ts tools/cli/src/maintenance/doctor.test.ts tools/cli/src/maintenance/restore.test.ts",
+    "test:recovery": "vitest run tests/recovery/full-fault-matrix.test.ts tests/recovery/runtime-activation-flow.test.ts tools/cli/src/maintenance/doctor.test.ts tools/cli/src/maintenance/restore.test.ts",
     "typecheck": "corepack pnpm --filter @learning-more/contracts build && corepack pnpm -r --if-present typecheck",
     "ui-samples:verify": "node \"docs/UI视觉预览/00-设计系统/tests/run-all-audits.mjs\"",
     "visual:test": "playwright test --config playwright.visual.config.ts",
