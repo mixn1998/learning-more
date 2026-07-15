@@ -137,6 +137,7 @@ describe('local CourseAuthoring application', () => {
     const previewMs = Date.now() - previewStartedAt;
     const after = await local.generationRuntime.getMetrics();
     await app.close();
+    await local.close();
 
     expect(responseMs).toBeLessThan(500);
     expect(response.statusCode, response.body).toBe(201);
@@ -463,6 +464,7 @@ describe('local CourseAuthoring application', () => {
     expect(afterDeleteHistory.json<{ entries: unknown[] }>().entries).toEqual([]);
     expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
     await app.close();
+    await local.close();
   }, 60_000);
 
   it('recovers a persisted committing lesson closure when the local service restarts', async () => {
@@ -574,6 +576,7 @@ describe('local CourseAuthoring application', () => {
       ),
     );
 
+    await first.close();
     const restarted = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
     await expect(
       restarted.serverDependencies.learningSession!.module.query(
@@ -596,6 +599,7 @@ describe('local CourseAuthoring application', () => {
         receivedAt: '2026-07-13T00:02:00.000Z',
       }),
     ).resolves.toMatchObject({ state: 'completed', finalReviewId: 'review_final_recovery' });
+    await restarted.close();
   }, 60_000);
 
   it('switches the active provider through HTTP and snapshots it on new generation tasks', async () => {
@@ -634,6 +638,7 @@ describe('local CourseAuthoring application', () => {
       providerId: 'new',
     });
     await app.close();
+    await local.close();
     const restarted = await createLocalApplication({
       dataRoot,
       csrfToken: 'test-csrf',
@@ -653,5 +658,6 @@ describe('local CourseAuthoring application', () => {
     await expect(restarted.generationRuntime.get(afterRestart.taskId)).resolves.toMatchObject({
       providerId: 'new',
     });
+    await restarted.close();
   });
 });

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import type {
-  CalendarDay,
-  CourseSummary,
-  HistoryEntry,
-  HomeDashboardView,
-  StatisticsResponse,
-  WeeklyReportResponse,
-  WeeklySummary,
+import {
+  completedWeeklyReportWindow,
+  nextWeeklyReportBoundary,
+  type CalendarDay,
+  type CourseSummary,
+  type HistoryEntry,
+  type HomeDashboardView,
+  type StatisticsResponse,
+  type WeeklyReportResponse,
 } from '@learning-more/contracts';
 import { Badge, Button, ContentState, Page, Stack } from '@learning-more/ui';
 
@@ -47,27 +48,6 @@ function localDate(value: string): string {
   }).formatToParts(new Date(value));
   const get = (type: string) => parts.find((part) => part.type === type)!.value;
   return `${get('year')}-${get('month')}-${get('day')}`;
-}
-
-function isoWeek(localDateValue: string): string {
-  const [year, month, day] = localDateValue.split('-').map(Number) as [number, number, number];
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const weekday = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - weekday);
-  const isoYear = date.getUTCFullYear();
-  const firstDay = new Date(Date.UTC(isoYear, 0, 1));
-  const week = Math.ceil(((date.getTime() - firstDay.getTime()) / 86_400_000 + 1) / 7);
-  return `${isoYear}-W${String(week).padStart(2, '0')}`;
-}
-
-function isoWeekBounds(value: string): Readonly<{ start: string; end: string }> {
-  const [yearValue, weekValue] = value.split('-W').map(Number) as [number, number];
-  const januaryFourth = new Date(Date.UTC(yearValue, 0, 4));
-  const mondayOffset = (januaryFourth.getUTCDay() || 7) - 1;
-  const monday = new Date(januaryFourth.getTime() - mondayOffset * 86_400_000);
-  monday.setUTCDate(monday.getUTCDate() + (weekValue - 1) * 7);
-  const sunday = new Date(monday.getTime() + 6 * 86_400_000);
-  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
 }
 
 function weeklyReportSections(markdown: string | undefined): Readonly<{
@@ -127,8 +107,11 @@ export function HistoryPage(props: {
   const [freshness, setFreshness] = useState<'current' | 'stale' | 'rebuilding'>('current');
   const [asOf, setAsOf] = useState<string>();
   const [factFilter, setFactFilter] = useState<HistoryFactFilter>('all');
-  const [weekly, setWeekly] = useState<WeeklySummary>();
   const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse>();
+  const reportWindow = useMemo(
+    () => completedWeeklyReportWindow(new Date(), 'Asia/Shanghai'),
+    [loadAttempt],
+  );
   const [section, setSection] = useState<HistorySection>(
     requestedTab === 'calendar'
       ? 'calendar'
@@ -150,8 +133,8 @@ export function HistoryPage(props: {
       ? weeklyReport?.state === 'finalized'
         ? { tone: 'success', text: '● 周报已生成' }
         : weeklyReport?.state === 'failed'
-          ? { tone: 'danger', text: '● 周报生成失败' }
-          : { tone: 'warning', text: '● 周报生成中' }
+          ? { tone: 'danger', text: '● 本周快照生成失败' }
+          : { tone: 'warning', text: '● 本周快照生成中' }
       : undefined,
   );
   const [summaryDrawer, setSummaryDrawer] = useState<{
@@ -166,7 +149,6 @@ export function HistoryPage(props: {
     let current = true;
     const now = localDate(new Date().toISOString());
     const year = now.slice(0, 4);
-    const currentWeek = isoWeek(now);
     setLoadState('loading');
     setErrors({});
     setPageError(undefined);
@@ -200,9 +182,8 @@ export function HistoryPage(props: {
       api.getDashboard(),
       loadHistoryAndCalendars(),
       api.getStatistics(),
-      api.getWeekly(currentWeek),
-      api.getWeeklyReport(currentWeek),
-    ]).then(([home, historyBundle, stats, weeklyView, report]) => {
+      api.getWeeklyReport(reportWindow.localWeekKey),
+    ]).then(([home, historyBundle, stats, report]) => {
       if (!current) return;
       const nextErrors: LoadErrors = {};
       const statuses: Array<'current' | 'stale' | 'rebuilding'> = [];
@@ -235,10 +216,6 @@ export function HistoryPage(props: {
         setAsOf((value) => value ?? stats.value.asOfEventId);
         statuses.push(stats.value.freshness);
       } else nextErrors.statistics = errorMessage(stats.reason);
-      if (weeklyView.status === 'fulfilled') {
-        setWeekly(weeklyView.value.week);
-        statuses.push(weeklyView.value.freshness);
-      } else nextErrors.weekly = errorMessage(weeklyView.reason);
       if (report.status === 'fulfilled') setWeeklyReport(report.value);
       else nextErrors.weekly = errorMessage(report.reason);
       setFreshness(statuses.find((status) => status !== 'current') ?? 'current');
@@ -248,7 +225,24 @@ export function HistoryPage(props: {
     return () => {
       current = false;
     };
-  }, [api, loadAttempt]);
+  }, [api, loadAttempt, reportWindow.localWeekKey]);
+
+  useEffect(() => {
+    const now = new Date();
+    const delay = Math.max(
+      1,
+      nextWeeklyReportBoundary(now, 'Asia/Shanghai').getTime() - now.getTime() + 250,
+    );
+    const timer = setTimeout(() => setLoadAttempt((value) => value + 1), delay);
+    return () => clearTimeout(timer);
+  }, [loadAttempt]);
+
+  useEffect(() => {
+    if (!showingWeekly || loadState !== 'ready') return;
+    if (weeklyReport !== undefined && weeklyReport.state !== 'generating') return;
+    const timer = setTimeout(() => setLoadAttempt((value) => value + 1), 5_000);
+    return () => clearTimeout(timer);
+  }, [loadState, showingWeekly, weeklyReport]);
 
   const filteredEntries = useMemo(
     () => entries.filter((entry) => factFilter === 'all' || entry.factType === factFilter),
@@ -293,10 +287,33 @@ export function HistoryPage(props: {
     () => buildStatisticsCourses({ dashboard, entries: analyticsEntries }),
     [analyticsEntries, dashboard],
   );
+  const completedWeeklySnapshotFacts = useMemo(
+    () =>
+      (weeklyReport?.factSnapshot ?? []).filter((fact) => fact.summary === 'LessonCompletedFact'),
+    [weeklyReport],
+  );
+  const weeklySnapshotSummary = useMemo(
+    () =>
+      weeklyReport === undefined
+        ? undefined
+        : {
+            isoWeek: weeklyReport.localWeekKey,
+            timezone: weeklyReport.timezone,
+            actualSeconds: completedWeeklySnapshotFacts.reduce(
+              (sum, fact) => sum + fact.actualSeconds,
+              0,
+            ),
+            completedLessonCount: completedWeeklySnapshotFacts.length,
+            activeDayCount: new Set(
+              completedWeeklySnapshotFacts.map((fact) => localDate(fact.occurredAt)),
+            ).size,
+          },
+    [completedWeeklySnapshotFacts, weeklyReport],
+  );
   const weeklyRecords = useMemo<readonly WeeklyReportRecord[]>(() => {
     const lessonById = new Map(dashboard?.lessons.map((lesson) => [lesson.lessonId, lesson]) ?? []);
     const courseById = new Map(dashboard?.courses.map((course) => [course.courseId, course]) ?? []);
-    return (weeklyReport?.factSnapshot ?? []).flatMap((fact) => {
+    return completedWeeklySnapshotFacts.flatMap((fact) => {
       if (fact.lessonId === undefined) return [];
       const lesson = lessonById.get(fact.lessonId);
       const courseId = fact.courseId ?? lesson?.courseId;
@@ -313,12 +330,11 @@ export function HistoryPage(props: {
         },
       ];
     });
-  }, [dashboard, weeklyReport]);
+  }, [completedWeeklySnapshotFacts, dashboard]);
   const today = localDate(new Date().toISOString());
-  const currentWeek = isoWeek(today);
   const weeklyBounds =
     weeklyReport === undefined
-      ? isoWeekBounds(currentWeek)
+      ? { start: reportWindow.startLocalDate, end: reportWindow.endLocalDate }
       : { start: weeklyReport.startLocalDate, end: weeklyReport.endLocalDate };
   const weeklySections = weeklyReportSections(weeklyReport?.markdown);
   const getStatisticsSnapshot = useCallback(
@@ -377,14 +393,11 @@ export function HistoryPage(props: {
   }
 
   if (showingWeekly) {
-    const snapshotSeconds =
-      weeklyReport?.factSnapshot.reduce((sum, fact) => sum + fact.actualSeconds, 0) ?? 0;
-    const snapshotActiveDays = new Set(weeklyRecords.map((record) => record.localDate)).size;
     return (
       <WeeklyReportWorkspace
-        activeDayCount={weekly?.activeDayCount ?? snapshotActiveDays}
-        actualSeconds={weekly?.actualSeconds ?? snapshotSeconds}
-        completedLessonCount={weekly?.completedLessonCount ?? weeklyRecords.length}
+        activeDayCount={weeklySnapshotSummary?.activeDayCount ?? 0}
+        actualSeconds={weeklySnapshotSummary?.actualSeconds ?? 0}
+        completedLessonCount={weeklySnapshotSummary?.completedLessonCount ?? 0}
         evidenceSourceCount={weeklyReport?.factSnapshot.length ?? 0}
         exclusionCount={weeklyReport?.snapshotExclusions?.length ?? 0}
         endLocalDate={weeklyBounds.end}
@@ -397,7 +410,7 @@ export function HistoryPage(props: {
           )
         }
         records={weeklyRecords}
-        reportState={weeklyReport?.state ?? 'missing'}
+        reportState={weeklyReport?.state ?? 'generating'}
         startLocalDate={weeklyBounds.start}
         {...(weeklySections.summary === undefined
           ? {}
@@ -528,7 +541,7 @@ export function HistoryPage(props: {
               {pageError === undefined ? null : <p role="alert">{pageError}</p>}
               {errors.weekly === undefined ? (
                 <WeeklyReportView
-                  {...(weekly === undefined ? {} : { week: weekly })}
+                  {...(weeklySnapshotSummary === undefined ? {} : { week: weeklySnapshotSummary })}
                   {...(weeklyReport === undefined ? {} : { report: weeklyReport })}
                 />
               ) : (

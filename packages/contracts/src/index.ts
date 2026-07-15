@@ -18,3 +18,4 @@ export * from './result.js';
 export * from './review-closure.js';
 export * from './runtime.js';
 export * from './teaching.js';
+export * from './weekly-report-window.js';

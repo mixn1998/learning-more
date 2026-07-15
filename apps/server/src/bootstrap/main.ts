@@ -26,6 +26,7 @@ export async function startServer(
   let manifestOwner: { instanceId: string; generation: number } | undefined;
   let manifestRepository: ReturnType<typeof createRuntimeManifestRepository> | undefined;
   let logger: StructuredLogger | undefined;
+  let closeLocalApplication: (() => Promise<void>) | undefined;
   let resolvedPort = port ?? 43_120;
   if (resolvedDependencies === undefined) {
     const config = await loadRuntimeConfig();
@@ -82,82 +83,81 @@ export async function startServer(
         ? {}
         : { override: process.env.LEARNING_MORE_CODEX_CLI_EXECUTABLE }),
     });
-    resolvedDependencies = (
-      await createLocalApplication({
-        dataRoot: config.dataRoot,
-        csrfToken: process.env.LEARNING_MORE_CSRF_TOKEN ?? 'development-csrf',
-        allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
-        mockFailOnce: process.env.LEARNING_MORE_MOCK_FAIL_ONCE === '1',
-        initialProviderId: config.providerId,
-        defaultFallbackProviderIds: (process.env.LEARNING_MORE_FALLBACK_PROVIDER_IDS ?? '')
-          .split(',')
-          .map((value) => value.trim())
-          .filter((value) => value !== ''),
-        defaultMaxAttempts: (() => {
-          const value = Number(process.env.LEARNING_MORE_FALLBACK_MAX_ATTEMPTS ?? '3');
-          return Number.isInteger(value) && value > 0 && value <= 10 ? value : 3;
-        })(),
-        additionalProviders: [
-          ...(process.env.LEARNING_MORE_API_BASE_URL === undefined ||
-          process.env.LEARNING_MORE_API_MODEL === undefined
-            ? []
-            : [
-                createApiProvider({
-                  id: process.env.LEARNING_MORE_API_PROVIDER_ID ?? 'api',
-                  defaultConfig: {
-                    baseUrl: process.env.LEARNING_MORE_API_BASE_URL,
-                    model: process.env.LEARNING_MORE_API_MODEL,
-                    ...(process.env.LEARNING_MORE_PROVIDER_API_KEY === undefined
-                      ? {}
-                      : { apiKey: process.env.LEARNING_MORE_PROVIDER_API_KEY }),
-                  },
-                }),
-              ]),
-          ...(codexCliExecutable === undefined
-            ? []
-            : [
-                createCliProvider({
-                  id: process.env.LEARNING_MORE_CODEX_CLI_PROVIDER_ID ?? 'codex-cli',
-                  executable: codexCliExecutable,
-                  ...(process.env.LEARNING_MORE_CODEX_CLI_MODEL === undefined
+    const localApplication = await createLocalApplication({
+      dataRoot: config.dataRoot,
+      csrfToken: process.env.LEARNING_MORE_CSRF_TOKEN ?? 'development-csrf',
+      allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
+      mockFailOnce: process.env.LEARNING_MORE_MOCK_FAIL_ONCE === '1',
+      initialProviderId: config.providerId,
+      defaultFallbackProviderIds: (process.env.LEARNING_MORE_FALLBACK_PROVIDER_IDS ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value !== ''),
+      defaultMaxAttempts: (() => {
+        const value = Number(process.env.LEARNING_MORE_FALLBACK_MAX_ATTEMPTS ?? '3');
+        return Number.isInteger(value) && value > 0 && value <= 10 ? value : 3;
+      })(),
+      additionalProviders: [
+        ...(process.env.LEARNING_MORE_API_BASE_URL === undefined ||
+        process.env.LEARNING_MORE_API_MODEL === undefined
+          ? []
+          : [
+              createApiProvider({
+                id: process.env.LEARNING_MORE_API_PROVIDER_ID ?? 'api',
+                defaultConfig: {
+                  baseUrl: process.env.LEARNING_MORE_API_BASE_URL,
+                  model: process.env.LEARNING_MORE_API_MODEL,
+                  ...(process.env.LEARNING_MORE_PROVIDER_API_KEY === undefined
                     ? {}
-                    : { defaultModel: process.env.LEARNING_MORE_CODEX_CLI_MODEL }),
-                  ...(process.env.LEARNING_MORE_CODEX_CLI_REASONING_EFFORT === undefined
-                    ? {}
-                    : {
-                        defaultReasoningEffort:
-                          process.env.LEARNING_MORE_CODEX_CLI_REASONING_EFFORT,
-                      }),
-                }),
-              ]),
-        ],
-        secretStore,
-        providerConfigRepository: createLocalFileProviderConfigRepository(
-          path.join(runtimeDirectory, 'provider-config.json'),
-        ),
-        createDiagnostics: async () =>
-          createDiagnosticsArtifact({
-            outputDirectory:
-              process.env.LEARNING_MORE_DIAGNOSTICS_DIR ??
-              path.join(localApplicationDirectory, 'diagnostics'),
-            logDirectory,
-            publicConfig: config,
-            manifest: {
-              ...manifest,
-              identityFingerprint: runtimeIdentityFingerprint(manifest),
-            },
-            checksumReport: { status: 'available', checkedFiles: 0 },
-          }),
-        runtimeIdentity: {
-          instanceId: manifest.instanceId,
-          generation: manifest.generation,
-          startedAt: manifest.startedAt,
-          identityFingerprint: runtimeIdentityFingerprint(manifest),
-          buildId: manifest.buildId,
-          protocolVersion: manifest.protocolVersion,
-        },
-      })
-    ).serverDependencies;
+                    : { apiKey: process.env.LEARNING_MORE_PROVIDER_API_KEY }),
+                },
+              }),
+            ]),
+        ...(codexCliExecutable === undefined
+          ? []
+          : [
+              createCliProvider({
+                id: process.env.LEARNING_MORE_CODEX_CLI_PROVIDER_ID ?? 'codex-cli',
+                executable: codexCliExecutable,
+                ...(process.env.LEARNING_MORE_CODEX_CLI_MODEL === undefined
+                  ? {}
+                  : { defaultModel: process.env.LEARNING_MORE_CODEX_CLI_MODEL }),
+                ...(process.env.LEARNING_MORE_CODEX_CLI_REASONING_EFFORT === undefined
+                  ? {}
+                  : {
+                      defaultReasoningEffort: process.env.LEARNING_MORE_CODEX_CLI_REASONING_EFFORT,
+                    }),
+              }),
+            ]),
+      ],
+      secretStore,
+      providerConfigRepository: createLocalFileProviderConfigRepository(
+        path.join(runtimeDirectory, 'provider-config.json'),
+      ),
+      createDiagnostics: async () =>
+        createDiagnosticsArtifact({
+          outputDirectory:
+            process.env.LEARNING_MORE_DIAGNOSTICS_DIR ??
+            path.join(localApplicationDirectory, 'diagnostics'),
+          logDirectory,
+          publicConfig: config,
+          manifest: {
+            ...manifest,
+            identityFingerprint: runtimeIdentityFingerprint(manifest),
+          },
+          checksumReport: { status: 'available', checkedFiles: 0 },
+        }),
+      runtimeIdentity: {
+        instanceId: manifest.instanceId,
+        generation: manifest.generation,
+        startedAt: manifest.startedAt,
+        identityFingerprint: runtimeIdentityFingerprint(manifest),
+        buildId: manifest.buildId,
+        protocolVersion: manifest.protocolVersion,
+      },
+    });
+    resolvedDependencies = localApplication.serverDependencies;
+    closeLocalApplication = localApplication.close;
     await manifestRepository.write(manifest);
   }
   const repository = manifestRepository;
@@ -168,6 +168,7 @@ export async function startServer(
       ? {}
       : {
           onClose: async () => {
+            await closeLocalApplication?.();
             if (activeLogger !== undefined) {
               await activeLogger
                 .log('runtime', {

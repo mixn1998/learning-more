@@ -169,10 +169,10 @@ export function WeeklyReportWorkspace(props: {
                   role={props.reportState === 'failed' ? 'alert' : 'status'}
                 >
                   {props.reportState === 'generating'
-                    ? '周报生成中，完成后会冻结为只读版本。'
+                    ? '本周快照生成中。完成后将冻结展示至下周日。'
                     : props.reportState === 'failed'
-                      ? '周报生成失败；学习事实不受影响。'
-                      : '暂无周报。'}
+                      ? '本周快照生成失败；学习事实不受影响。'
+                      : '本周快照生成中。'}
                 </div>
               )}
             </div>

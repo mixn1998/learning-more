@@ -55,12 +55,12 @@ export function WeeklyReportView(props: {
         props.report.markdown !== undefined ? (
         <AiContent markdown={props.report.markdown} />
       ) : props.report?.state === 'generating' ? (
-        <ContentState title="周报生成中" description="完成后会冻结为只读版本。" />
+        <ContentState title="本周快照生成中" description="完成后会冻结展示至下周日。" />
       ) : props.report?.state === 'failed' ? (
         <ContentState
           role="alert"
-          title="周报生成失败"
-          description="学习事实不受影响，可稍后重试。"
+          title="本周快照生成失败"
+          description="学习事实不受影响；本周不回退显示上一份快照。"
         />
       ) : (
         <p className="lm-content-state">暂无周报</p>

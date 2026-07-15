@@ -57,6 +57,42 @@ describe('WeeklyReportScheduler', () => {
       { localWeekKey: '2026-W53', startLocalDate: '2026-12-27', endLocalDate: '2027-01-03' },
     ]);
   });
+
+  it('stays armed and creates the next snapshot at Sunday midnight', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-11T15:59:30.000Z'));
+    try {
+      const existing = new Set<string>();
+      const commands: Array<{
+        localWeekKey: string;
+        startLocalDate: string;
+        endLocalDate: string;
+      }> = [];
+      const scheduler = createWeeklyReportScheduler({
+        timeZone: 'Asia/Shanghai',
+        hasReport: async (weekKey) => existing.has(weekKey),
+        enqueue: async (command) => {
+          commands.push(command);
+          existing.add(command.localWeekKey);
+        },
+      });
+
+      await scheduler.start();
+      expect(commands).toEqual([
+        { localWeekKey: '2026-W27', startLocalDate: '2026-06-28', endLocalDate: '2026-07-05' },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(commands.at(-1)).toEqual({
+        localWeekKey: '2026-W28',
+        startLocalDate: '2026-07-05',
+        endLocalDate: '2026-07-12',
+      });
+      scheduler.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('WeeklyReportService', () => {

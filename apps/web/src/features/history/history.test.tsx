@@ -256,9 +256,9 @@ describe('HistoryPage', () => {
       week: {
         isoWeek: '2026-W27',
         timezone: 'Asia/Shanghai',
-        actualSeconds: 600,
-        completedLessonCount: 1,
-        activeDayCount: 1,
+        actualSeconds: 99_999,
+        completedLessonCount: 99,
+        activeDayCount: 7,
       },
       projectionVersion: 1,
       freshness: 'current',
@@ -275,6 +275,7 @@ describe('HistoryPage', () => {
           occurredAt: '2026-07-02T08:00:00.000Z',
           courseId: 'course_01',
           lessonId: 'lesson_01',
+          summary: 'LessonCompletedFact',
           actualSeconds: 600,
           topicTags: ['反馈'],
         },
@@ -301,6 +302,8 @@ describe('HistoryPage', () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('冻结证据 1 条 · 本周窗口内来源已核验')).toBeVisible();
+    expect(screen.getByText('10 min')).toBeVisible();
+    expect(screen.queryByText('1667 min')).not.toBeInTheDocument();
     expect(screen.getByText('已建立可追溯的判断标准。')).toBeVisible();
     expect(screen.getByText('继续验证反馈是否改变行动。')).toBeVisible();
     expect(screen.getByRole('button', { name: /lesson_01 商业/ })).toBeVisible();
