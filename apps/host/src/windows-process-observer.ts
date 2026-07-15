@@ -14,13 +14,16 @@ function encodedArguments(script: string): readonly string[] {
 }
 
 export function observeWindowsProcess(pid: number): Promise<ObservedProcess> {
-  if (!Number.isInteger(pid) || pid < 1) return Promise.resolve({ exists: false });
+  if (!Number.isInteger(pid) || pid < 1) return Promise.resolve({ state: 'missing' });
   if (process.platform !== 'win32') {
     try {
       process.kill(pid, 0);
-      return Promise.resolve({ exists: true });
-    } catch {
-      return Promise.resolve({ exists: false });
+      return Promise.resolve({ state: 'running' });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EPERM') return Promise.resolve({ state: 'running' });
+      if (code === 'ESRCH') return Promise.resolve({ state: 'missing' });
+      return Promise.resolve({ state: 'unavailable' });
     }
   }
   const powershell = path.join(
@@ -41,21 +44,25 @@ if ($null -eq $process) { exit 0 }
       [...encodedArguments(script)],
       { encoding: 'utf8', shell: false, windowsHide: true },
       (error, stdout) => {
-        if (error !== null || stdout.trim() === '') {
-          resolve({ exists: false });
+        if (error !== null) {
+          resolve({ state: 'unavailable' });
+          return;
+        }
+        if (stdout.trim() === '') {
+          resolve({ state: 'missing' });
           return;
         }
         try {
           const value = JSON.parse(stdout) as Record<string, unknown>;
           resolve({
-            exists: true,
+            state: 'running',
             ...(typeof value.executablePath === 'string'
               ? { executablePath: value.executablePath }
               : {}),
             ...(typeof value.commandLine === 'string' ? { commandLine: value.commandLine } : {}),
           });
         } catch {
-          resolve({ exists: true });
+          resolve({ state: 'unavailable' });
         }
       },
     );

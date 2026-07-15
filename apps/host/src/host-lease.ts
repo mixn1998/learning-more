@@ -2,11 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 
-export type ObservedProcess = Readonly<{
-  exists: boolean;
-  executablePath?: string;
-  commandLine?: string;
-}>;
+export type ObservedProcess =
+  | Readonly<{ state: 'missing' }>
+  | Readonly<{ state: 'unavailable' }>
+  | Readonly<{
+      state: 'running';
+      executablePath?: string;
+      commandLine?: string;
+    }>;
 
 type HostLeaseRecord = Readonly<{
   schemaVersion: 1;
@@ -58,15 +61,16 @@ function defaultObserveProcess(pid: number): Promise<ObservedProcess> {
   try {
     process.kill(pid, 0);
     return Promise.resolve({
-      exists: true,
+      state: 'running',
       ...(pid === process.pid
         ? { executablePath: process.execPath, commandLine: process.argv.join(' ') }
         : {}),
     });
   } catch (error) {
-    return Promise.resolve({
-      exists: (error as NodeJS.ErrnoException).code === 'EPERM',
-    });
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EPERM') return Promise.resolve({ state: 'running' });
+    if (code === 'ESRCH') return Promise.resolve({ state: 'missing' });
+    return Promise.resolve({ state: 'unavailable' });
   }
 }
 
@@ -101,7 +105,10 @@ export async function acquireHostLease(options: {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       const existing = parseRecord(JSON.parse(await readFile(options.filePath, 'utf8')) as unknown);
       const observed = await observeProcess(existing.pid);
-      if (observed.exists) {
+      if (observed.state === 'unavailable') {
+        throw new Error('host_process_observation_unavailable');
+      }
+      if (observed.state === 'running') {
         const sameOwner =
           samePath(observed.executablePath, existing.executablePath) &&
           (observed.commandLine?.toLowerCase().includes(existing.releaseRoot.toLowerCase()) ??

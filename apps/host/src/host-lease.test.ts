@@ -27,7 +27,7 @@ describe('Host singleton lease', () => {
       releaseRoot: 'D:\\Learning MORE',
       pid: 43119,
       observeProcess: async () => ({
-        exists: true,
+        state: 'running',
         executablePath: 'C:\\Program Files\\nodejs\\node.exe',
         commandLine: 'node host main.js D:\\Learning MORE',
       }),
@@ -40,7 +40,7 @@ describe('Host singleton lease', () => {
         releaseRoot: 'D:\\Learning MORE',
         pid: 43120,
         observeProcess: async () => ({
-          exists: true,
+          state: 'running',
           executablePath: 'C:\\Program Files\\nodejs\\node.exe',
           commandLine: 'node host main.js D:\\Learning MORE',
         }),
@@ -54,7 +54,7 @@ describe('Host singleton lease', () => {
         executablePath: 'C:\\Program Files\\nodejs\\node.exe',
         releaseRoot: 'D:\\Learning MORE',
         pid: 43120,
-        observeProcess: async () => ({ exists: false }),
+        observeProcess: async () => ({ state: 'missing' }),
       }),
     ).resolves.toBeDefined();
   });
@@ -66,7 +66,7 @@ describe('Host singleton lease', () => {
       executablePath: 'C:\\Program Files\\nodejs\\node.exe',
       releaseRoot: 'D:\\Learning MORE',
       pid: 43119,
-      observeProcess: async () => ({ exists: false }),
+      observeProcess: async () => ({ state: 'missing' }),
     });
 
     await expect(
@@ -75,7 +75,7 @@ describe('Host singleton lease', () => {
         executablePath: 'C:\\Program Files\\nodejs\\node.exe',
         releaseRoot: 'D:\\Learning MORE',
         pid: 43120,
-        observeProcess: async () => ({ exists: false }),
+        observeProcess: async () => ({ state: 'missing' }),
       }),
     ).resolves.toBeDefined();
     await first.release();
@@ -87,11 +87,39 @@ describe('Host singleton lease', () => {
         releaseRoot: 'D:\\Learning MORE',
         pid: 43121,
         observeProcess: async () => ({
-          exists: true,
+          state: 'running',
           executablePath: 'C:\\Windows\\System32\\cmd.exe',
           commandLine: 'cmd.exe',
         }),
       }),
     ).rejects.toThrow('host_lease_foreign_owner');
+  });
+
+  it('preserves an existing lease when process observation is temporarily unavailable', async () => {
+    const filePath = await leasePath();
+    const first = await acquireHostLease({
+      filePath,
+      executablePath: 'C:\\Program Files\\nodejs\\node.exe',
+      releaseRoot: 'D:\\Learning MORE',
+      pid: 43_119,
+      observeProcess: async () => ({ state: 'missing' }),
+    });
+
+    const outcome = await acquireHostLease({
+      filePath,
+      executablePath: 'C:\\Program Files\\nodejs\\node.exe',
+      releaseRoot: 'D:\\Learning MORE',
+      pid: 43_120,
+      observeProcess: async () => ({ state: 'unavailable' }),
+    }).then(
+      (lease) => ({ lease }),
+      (error: unknown) => ({ error }),
+    );
+
+    if ('lease' in outcome) await outcome.lease.release();
+    await first.release();
+    expect('error' in outcome ? outcome.error : undefined).toEqual(
+      new Error('host_process_observation_unavailable'),
+    );
   });
 });

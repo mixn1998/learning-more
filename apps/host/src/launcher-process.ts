@@ -46,8 +46,9 @@ function adoptedProcess(options: {
     (resolve) => {
       const timer = setInterval(() => {
         void options.observeProcess(options.pid).then((observed) => {
+          if (observed.state === 'unavailable') return;
           const stillOwner =
-            observed.exists &&
+            observed.state === 'running' &&
             samePath(observed.executablePath, process.execPath) &&
             commandMatchesLauncher(observed.commandLine, options.acceptedCommandMarkers);
           if (!stillOwner) {
@@ -113,7 +114,10 @@ export async function startOrAdoptLauncher(options: {
   const existingPid = await existingLauncherPid(options.runtimeDirectory);
   if (existingPid !== undefined) {
     const observed = await options.observeProcess(existingPid);
-    if (observed.exists) {
+    if (observed.state === 'unavailable') {
+      throw new Error('launcher_process_observation_unavailable');
+    }
+    if (observed.state === 'running') {
       const verified =
         samePath(observed.executablePath, process.execPath) &&
         commandMatchesLauncher(observed.commandLine, acceptedCommandMarkers);
