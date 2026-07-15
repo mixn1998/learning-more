@@ -260,6 +260,7 @@ export async function runHost(projectRoot: string): Promise<void> {
         requestPath: activationRequestPath,
         statusPath: activationStatusPath,
         supervisor,
+        readActiveBuildId: async () => (await activation.current()).activeBuildId,
       });
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);

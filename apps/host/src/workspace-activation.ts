@@ -1,73 +1,55 @@
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { access, cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { HostSupervisor } from './supervisor.js';
-
-type WorkspaceActivationPhase =
-  'preparing' | 'unchanged' | 'building' | 'activating' | 'activated' | 'failed';
+import {
+  activationFailure,
+  createWorkspaceActivationStatusStore,
+  isTerminalActivationPhase,
+  WorkspaceActivationFailure,
+  type WorkspaceActivationPhase,
+  type WorkspaceActivationStatus,
+} from './workspace-activation-status.js';
 
 type WorkspaceActivationRequest = Readonly<{ schemaVersion: 1; requestId: string }>;
 
-type WorkspaceActivationStatus = Readonly<{
-  schemaVersion: 1;
-  requestId: string;
-  phase: WorkspaceActivationPhase;
-  sourceBuildId?: string;
-  updatedAt: string;
+export type SourceIdentity = Readonly<{
+  buildId: string;
+  sourceRevision?: string;
+  sourceFingerprint?: string;
+  files?: readonly string[];
 }>;
 
-type SourceIdentity = Readonly<{ buildId: string }>;
+export type CandidateBuildContext = Readonly<{
+  requestId: string;
+  attempt: 1 | 2;
+  outputRoot: string;
+  workRoot: string;
+}>;
+
+function validIdentifier(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/u.test(value);
+}
 
 function parseRequest(value: unknown): WorkspaceActivationRequest | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const request = value as Record<string, unknown>;
   return request.schemaVersion === 1 &&
     typeof request.requestId === 'string' &&
-    request.requestId !== ''
+    validIdentifier(request.requestId)
     ? (request as WorkspaceActivationRequest)
     : undefined;
 }
 
-function parseStatus(value: unknown): WorkspaceActivationStatus | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  const status = value as Record<string, unknown>;
-  const phases: readonly WorkspaceActivationPhase[] = [
-    'preparing',
-    'unchanged',
-    'building',
-    'activating',
-    'activated',
-    'failed',
-  ];
-  return status.schemaVersion === 1 &&
-    typeof status.requestId === 'string' &&
-    status.requestId !== '' &&
-    typeof status.phase === 'string' &&
-    phases.includes(status.phase as WorkspaceActivationPhase) &&
-    typeof status.updatedAt === 'string' &&
-    (status.sourceBuildId === undefined || typeof status.sourceBuildId === 'string')
-    ? (status as WorkspaceActivationStatus)
-    : undefined;
-}
-
-async function writeAtomically(target: string, value: unknown): Promise<void> {
-  await mkdir(path.dirname(target), { recursive: true });
-  const temporary = `${target}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, `${JSON.stringify(value)}\n`, 'utf8');
-    await rename(temporary, target);
-  } finally {
-    await rm(temporary, { force: true });
-  }
-}
-
 function execute(executable: string, arguments_: readonly string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(executable, [...arguments_], { cwd, windowsHide: true }, (error) =>
-      error === null ? resolve() : reject(error),
+    execFile(
+      executable,
+      [...arguments_],
+      { cwd, windowsHide: true, timeout: 10 * 60_000 },
+      (error) => (error === null ? resolve() : reject(error)),
     );
   });
 }
@@ -85,13 +67,10 @@ async function readWorkspaceIdentity(projectRoot: string): Promise<SourceIdentit
 
 async function buildWorkspaceCandidate(
   projectRoot: string,
+  context: CandidateBuildContext,
 ): Promise<Readonly<{ expandedRoot: string; buildId: string }>> {
   const pnpm = path.join(projectRoot, '.corepack', 'v1', 'pnpm', '10.34.3', 'bin', 'pnpm.cjs');
   await access(pnpm);
-  // The portable release builder owns the single Web build. Running the root
-  // recursive build here first would build Web twice and can change generated
-  // source artifacts between the identity checks, making a valid release look
-  // stale. Precompile only packages whose outputs are copied into the release.
   await execute(
     process.execPath,
     [
@@ -104,6 +83,8 @@ async function buildWorkspaceCandidate(
       '@learning-more/contracts',
       '--filter',
       '@learning-more/ui',
+      '--filter',
+      '@learning-more/release',
       'build',
     ],
     projectRoot,
@@ -111,9 +92,18 @@ async function buildWorkspaceCandidate(
   const module = await importReleaseModule<{
     buildPortableRelease(
       root: string,
+      options: Readonly<{
+        outputRoot: string;
+        workRoot: string;
+        writeWorkspaceManifest: false;
+      }>,
     ): Promise<Readonly<{ expandedRoot: string; buildId: string }>>;
   }>(projectRoot, path.join('tools', 'release', 'dist', 'build-portable.js'));
-  return module.buildPortableRelease(projectRoot);
+  return module.buildPortableRelease(projectRoot, {
+    outputRoot: context.outputRoot,
+    workRoot: context.workRoot,
+    writeWorkspaceManifest: false,
+  });
 }
 
 async function stageCandidate(expandedRoot: string, candidateRoot: string): Promise<void> {
@@ -123,13 +113,50 @@ async function stageCandidate(expandedRoot: string, candidateRoot: string): Prom
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  const temporary = `${candidateRoot}.${randomUUID()}.tmp`;
+  const temporary = `${candidateRoot}.staging`;
   try {
+    await rm(temporary, { recursive: true, force: true });
     await cp(expandedRoot, temporary, { recursive: true, dereference: true });
     await rename(temporary, candidateRoot);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+}
+
+async function commitWorkspaceManifest(
+  projectRoot: string,
+  identity: SourceIdentity,
+  buildId: string,
+): Promise<void> {
+  const module = await importReleaseModule<{
+    writeWorkspaceBuildManifest(
+      root: string,
+      sourceIdentity: SourceIdentity,
+      committedBuildId: string,
+    ): Promise<void>;
+  }>(projectRoot, path.join('tools', 'release', 'dist', 'source-identity.js'));
+  await module.writeWorkspaceBuildManifest(projectRoot, identity, buildId);
+}
+
+function activationAttemptRoot(releasesRoot: string, requestId: string, attempt: 1 | 2): string {
+  const requestsRoot = path.resolve(releasesRoot, '.activation-work');
+  const attemptRoot = path.resolve(requestsRoot, requestId, `attempt-${attempt}`);
+  if (!attemptRoot.startsWith(`${requestsRoot}${path.sep}`)) {
+    throw new WorkspaceActivationFailure('candidate_build_failed', 'building');
+  }
+  return attemptRoot;
+}
+
+function releaseRoot(releasesRoot: string, buildId: string): string {
+  if (!validIdentifier(buildId)) {
+    throw new WorkspaceActivationFailure('candidate_stage_failed', 'staging');
+  }
+  const root = path.resolve(releasesRoot);
+  const candidate = path.resolve(root, buildId);
+  if (!candidate.startsWith(`${root}${path.sep}`)) {
+    throw new WorkspaceActivationFailure('candidate_stage_failed', 'staging');
+  }
+  return candidate;
 }
 
 export interface WorkspaceActivationWorker {
@@ -148,16 +175,22 @@ export function createWorkspaceActivationWorker(options: {
   readActiveBuildId?(): Promise<string | undefined>;
   buildCandidate?(
     projectRoot: string,
+    context: CandidateBuildContext,
   ): Promise<Readonly<{ expandedRoot: string; buildId: string }>>;
   stageCandidate?(expandedRoot: string, candidateRoot: string): Promise<void>;
+  commitWorkspaceManifest?(identity: SourceIdentity, buildId: string): Promise<void>;
   now?(): Date;
   pollMs?: number;
 }): WorkspaceActivationWorker {
   const readIdentity = options.readSourceIdentity ?? readWorkspaceIdentity;
   const buildCandidate = options.buildCandidate ?? buildWorkspaceCandidate;
   const stage = options.stageCandidate ?? stageCandidate;
+  const commitManifest =
+    options.commitWorkspaceManifest ??
+    ((identity, buildId) => commitWorkspaceManifest(options.projectRoot, identity, buildId));
   const now = options.now ?? (() => new Date());
   const manifestPath = path.join(options.projectRoot, '.learning-more-build.json');
+  const statusStore = createWorkspaceActivationStatusStore({ statusPath: options.statusPath });
   let lastRequestId: string | undefined;
   let inFlight = false;
   let timer: NodeJS.Timeout | undefined;
@@ -174,82 +207,143 @@ export function createWorkspaceActivationWorker(options: {
       }
     });
 
-  const publish = async (
-    requestId: string,
-    phase: WorkspaceActivationPhase,
-    sourceBuildId?: string,
-  ) =>
-    writeAtomically(options.statusPath, {
-      schemaVersion: 1,
-      requestId,
-      phase,
-      ...(sourceBuildId === undefined ? {} : { sourceBuildId }),
-      updatedAt: now().toISOString(),
-    } satisfies WorkspaceActivationStatus);
-
-  const restoreManifest = async (backup: Buffer | undefined) => {
-    if (backup === undefined) {
-      await rm(manifestPath, { force: true });
-      return;
-    }
-    await writeAtomically(manifestPath, JSON.parse(backup.toString('utf8')));
-  };
-
   const processPending = async () => {
     if (inFlight) return;
     let request: WorkspaceActivationRequest | undefined;
     try {
       request = parseRequest(JSON.parse(await readFile(options.requestPath, 'utf8')) as unknown);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    } catch {
       return;
     }
     if (request === undefined || request.requestId === lastRequestId) return;
     if (lastRequestId === undefined) {
-      try {
-        const status = parseStatus(
-          JSON.parse(await readFile(options.statusPath, 'utf8')) as unknown,
-        );
-        if (
-          status?.requestId === request.requestId &&
-          ['unchanged', 'activated', 'failed'].includes(status.phase)
-        ) {
-          lastRequestId = request.requestId;
-          return;
-        }
-      } catch {
-        // Missing or damaged status is recoverable from the durable request.
-      }
-    }
-    lastRequestId = request.requestId;
-    inFlight = true;
-    let backup: Buffer | undefined;
-    try {
-      const identity = await readIdentity(options.projectRoot);
-      const activeBuildId = await readActiveBuildId();
-      if (identity.buildId === activeBuildId) {
-        await publish(request.requestId, 'unchanged', identity.buildId);
+      const previous = await statusStore.read();
+      if (previous?.requestId === request.requestId && isTerminalActivationPhase(previous.phase)) {
+        lastRequestId = request.requestId;
         return;
       }
-      await publish(request.requestId, 'preparing', identity.buildId);
+    }
+
+    lastRequestId = request.requestId;
+    inFlight = true;
+    const startedAt = now().toISOString();
+    let sourceIdentity: SourceIdentity | undefined;
+    let activeBuildId: string | undefined;
+    let targetBuildId: string | undefined;
+
+    const publish = async (
+      phase: WorkspaceActivationPhase,
+      attempt: 1 | 2,
+      fields: Partial<
+        Pick<
+          WorkspaceActivationStatus,
+          'activeBuildId' | 'targetBuildId' | 'errorCode' | 'errorStage' | 'completedAt'
+        >
+      > = {},
+    ) =>
+      statusStore.publish({
+        schemaVersion: 2,
+        requestId: request!.requestId,
+        phase,
+        ...(sourceIdentity === undefined ? {} : { sourceBuildId: sourceIdentity.buildId }),
+        ...(activeBuildId === undefined ? {} : { activeBuildId }),
+        ...(targetBuildId === undefined ? {} : { targetBuildId }),
+        attempt,
+        startedAt,
+        updatedAt: now().toISOString(),
+        ...fields,
+      });
+
+    try {
       try {
-        backup = await readFile(manifestPath);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        sourceIdentity = await readIdentity(options.projectRoot);
+        activeBuildId = await readActiveBuildId();
+      } catch {
+        const completedAt = now().toISOString();
+        await publish('failed', 1, {
+          errorCode: 'source_identity_unavailable',
+          errorStage: 'verifying',
+          completedAt,
+        });
+        return;
       }
-      await publish(request.requestId, 'building', identity.buildId);
-      const candidate = await buildCandidate(options.projectRoot);
-      const finalIdentity = await readIdentity(options.projectRoot);
-      if (candidate.buildId !== finalIdentity.buildId)
-        throw new Error('workspace_identity_changed_during_build');
-      await stage(candidate.expandedRoot, path.join(options.releasesRoot, candidate.buildId));
-      await publish(request.requestId, 'activating', candidate.buildId);
-      const result = await options.supervisor.activateCandidate(candidate.buildId);
-      if (result.state !== 'activated') throw new Error('workspace_activation_rolled_back');
-      await publish(request.requestId, 'activated', candidate.buildId);
-    } catch {
-      await restoreManifest(backup).catch(() => undefined);
-      await publish(request.requestId, 'failed').catch(() => undefined);
+
+      await publish('verifying', 1);
+      targetBuildId = sourceIdentity.buildId;
+      if (sourceIdentity.buildId === activeBuildId) {
+        const completedAt = now().toISOString();
+        await publish('activated', 1, {
+          activeBuildId,
+          targetBuildId,
+          completedAt,
+        });
+        return;
+      }
+
+      for (const attempt of [1, 2] as const) {
+        const attemptRoot = activationAttemptRoot(options.releasesRoot, request.requestId, attempt);
+        const outputRoot = path.join(attemptRoot, 'output');
+        const workRoot = path.join(attemptRoot, 'work');
+        let stageName: WorkspaceActivationPhase = 'building';
+        let candidateBuildId: string | undefined;
+        try {
+          await mkdir(outputRoot, { recursive: true });
+          await mkdir(workRoot, { recursive: true });
+          await publish('building', attempt);
+          const candidate = await buildCandidate(options.projectRoot, {
+            requestId: request.requestId,
+            attempt,
+            outputRoot,
+            workRoot,
+          });
+          candidateBuildId = candidate.buildId;
+          targetBuildId = candidate.buildId;
+          stageName = 'verifying';
+          const finalIdentity = await readIdentity(options.projectRoot);
+          if (candidate.buildId !== finalIdentity.buildId) {
+            throw new WorkspaceActivationFailure('workspace_identity_changed', 'verifying');
+          }
+          sourceIdentity = finalIdentity;
+          stageName = 'staging';
+          await publish('staging', attempt);
+          await stage(candidate.expandedRoot, releaseRoot(options.releasesRoot, candidate.buildId));
+          stageName = 'activating';
+          await publish('activating', attempt);
+          const result = await options.supervisor.activateCandidate(candidate.buildId);
+          if (result.state !== 'activated') {
+            activeBuildId = result.activeBuildId;
+            throw new WorkspaceActivationFailure('activation_rolled_back', 'activating');
+          }
+          activeBuildId = result.activeBuildId;
+          await publish('verifying-runtime', attempt);
+          await commitManifest(finalIdentity, candidate.buildId);
+          await rm(attemptRoot, { recursive: true, force: true });
+          const completedAt = now().toISOString();
+          await publish('activated', attempt, { completedAt });
+          return;
+        } catch (error) {
+          await publish('cleaning', attempt).catch(() => undefined);
+          await rm(attemptRoot, { recursive: true, force: true }).catch(() => undefined);
+          if (candidateBuildId !== undefined) {
+            const currentlyActive = await readActiveBuildId().catch(() => activeBuildId);
+            if (currentlyActive !== candidateBuildId) {
+              await rm(releaseRoot(options.releasesRoot, candidateBuildId), {
+                recursive: true,
+                force: true,
+              }).catch(() => undefined);
+            }
+          }
+          if (attempt === 1) {
+            await publish('retrying', 2);
+            continue;
+          }
+          const failure = activationFailure(error, stageName);
+          activeBuildId = await readActiveBuildId().catch(() => activeBuildId);
+          const completedAt = now().toISOString();
+          await publish('failed', 2, { ...failure, completedAt });
+          return;
+        }
+      }
     } finally {
       inFlight = false;
     }

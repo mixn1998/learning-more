@@ -23,6 +23,60 @@ afterEach(async () => {
 });
 
 describe('workspace activation worker', () => {
+  it('cleans the failed request attempt and activates the second candidate', async () => {
+    const input = await fixture();
+    const failedAttemptMarker = path.join(
+      input.root,
+      'releases',
+      '.activation-work',
+      'request-1',
+      'attempt-1',
+      'work',
+      'partial.txt',
+    );
+    const buildCandidate = vi.fn(async (_projectRoot, context) => {
+      if (context.attempt === 1) {
+        await writeFile(failedAttemptMarker, 'partial', { encoding: 'utf8', flag: 'w' });
+        throw new Error('build_failed');
+      }
+      return { expandedRoot: 'D:\\candidate', buildId: 'build-new' };
+    });
+    const commitWorkspaceManifest = vi.fn().mockResolvedValue(undefined);
+    const worker = createWorkspaceActivationWorker({
+      projectRoot: input.root,
+      releasesRoot: path.join(input.root, 'releases'),
+      requestPath: input.requestPath,
+      statusPath: input.statusPath,
+      readSourceIdentity: vi.fn().mockResolvedValue({ buildId: 'build-new' }),
+      readActiveBuildId: vi.fn().mockResolvedValue('build-old'),
+      buildCandidate,
+      stageCandidate: vi.fn().mockResolvedValue(undefined),
+      commitWorkspaceManifest,
+      supervisor: {
+        activateCandidate: vi
+          .fn()
+          .mockResolvedValue({ state: 'activated', activeBuildId: 'build-new' }),
+      },
+    });
+
+    await worker.processPending();
+
+    expect(buildCandidate).toHaveBeenCalledTimes(2);
+    await expect(readFile(failedAttemptMarker, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(commitWorkspaceManifest).toHaveBeenCalledWith(
+      expect.objectContaining({ buildId: 'build-new' }),
+      'build-new',
+    );
+    expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
+      schemaVersion: 2,
+      requestId: 'request-1',
+      phase: 'activated',
+      attempt: 2,
+      activeBuildId: 'build-new',
+      targetBuildId: 'build-new',
+    });
+  });
+
   it('builds and activates a changed workspace through Host supervision', async () => {
     const input = await fixture();
     const buildCandidate = vi
@@ -32,6 +86,7 @@ describe('workspace activation worker', () => {
     const activateCandidate = vi
       .fn()
       .mockResolvedValue({ state: 'activated', activeBuildId: 'build-new' });
+    const commitWorkspaceManifest = vi.fn().mockResolvedValue(undefined);
     const worker = createWorkspaceActivationWorker({
       projectRoot: input.root,
       releasesRoot: path.join(input.root, 'releases'),
@@ -40,21 +95,29 @@ describe('workspace activation worker', () => {
       readSourceIdentity: vi.fn().mockResolvedValue({ buildId: 'build-new' }),
       buildCandidate,
       stageCandidate,
+      commitWorkspaceManifest,
       supervisor: { activateCandidate },
     });
 
     await worker.processPending();
 
-    expect(buildCandidate).toHaveBeenCalledWith(input.root);
+    expect(buildCandidate).toHaveBeenCalledWith(
+      input.root,
+      expect.objectContaining({ requestId: 'request-1', attempt: 1 }),
+    );
     expect(stageCandidate).toHaveBeenCalledWith(
       'D:\\candidate',
       path.join(input.root, 'releases', 'build-new'),
     );
     expect(activateCandidate).toHaveBeenCalledWith('build-new');
+    expect(commitWorkspaceManifest).toHaveBeenCalledOnce();
     expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
+      schemaVersion: 2,
       requestId: 'request-1',
       phase: 'activated',
       sourceBuildId: 'build-new',
+      activeBuildId: 'build-new',
+      attempt: 1,
     });
   });
 
@@ -75,24 +138,26 @@ describe('workspace activation worker', () => {
 
     expect(buildCandidate).not.toHaveBeenCalled();
     expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
-      phase: 'unchanged',
+      schemaVersion: 2,
+      phase: 'activated',
       sourceBuildId: 'build-old',
+      activeBuildId: 'build-old',
     });
   });
 
-  it('restores the prior workspace manifest when activation rolls back', async () => {
+  it('keeps the prior workspace manifest when activation rolls back', async () => {
     const input = await fixture();
+    const commitWorkspaceManifest = vi.fn();
     const worker = createWorkspaceActivationWorker({
       projectRoot: input.root,
       releasesRoot: path.join(input.root, 'releases'),
       requestPath: input.requestPath,
       statusPath: input.statusPath,
       readSourceIdentity: vi.fn().mockResolvedValue({ buildId: 'build-new' }),
-      buildCandidate: async () => {
-        await writeFile(input.manifestPath, '{"buildId":"build-new"}\n', 'utf8');
-        return { expandedRoot: 'D:\\candidate', buildId: 'build-new' };
-      },
+      readActiveBuildId: vi.fn().mockResolvedValue('build-old'),
+      buildCandidate: async () => ({ expandedRoot: 'D:\\candidate', buildId: 'build-new' }),
       stageCandidate: vi.fn().mockResolvedValue(undefined),
+      commitWorkspaceManifest,
       supervisor: {
         activateCandidate: vi.fn().mockResolvedValue({
           state: 'rolled-back',
@@ -105,7 +170,15 @@ describe('workspace activation worker', () => {
     await worker.processPending();
 
     expect(await readFile(input.manifestPath, 'utf8')).toBe('{"buildId":"build-old"}\n');
-    expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({ phase: 'failed' });
+    expect(commitWorkspaceManifest).not.toHaveBeenCalled();
+    expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
+      schemaVersion: 2,
+      phase: 'failed',
+      attempt: 2,
+      activeBuildId: 'build-old',
+      targetBuildId: 'build-new',
+      errorCode: 'activation_rolled_back',
+    });
   });
 
   it('does not retry a terminal request after Host restarts', async () => {
