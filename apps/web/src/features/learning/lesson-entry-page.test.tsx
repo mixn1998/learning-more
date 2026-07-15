@@ -11,6 +11,7 @@ afterEach(cleanup);
 
 describe('LessonEntryPage', () => {
   it('[EQ-SCH-04] shows confirmed core knowledge before creating a learning session', async () => {
+    const navigate = vi.fn();
     const start = vi.fn().mockResolvedValue({
       lessonId: 'lesson_01',
       sessionId: 'session_01',
@@ -40,12 +41,18 @@ describe('LessonEntryPage', () => {
       }),
     } as unknown as LearningClient;
 
-    render(<LessonEntryPage lessonId="lesson_01" client={client} />);
+    render(<LessonEntryPage lessonId="lesson_01" client={client} onNavigate={navigate} />);
 
     expect(await screen.findByRole('heading', { name: 'Probability spaces' })).toBeInTheDocument();
     expect(screen.getAllByText('sample space')).toHaveLength(2);
     expect(screen.getAllByText('event algebra')).toHaveLength(2);
     expect(start).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '返回主页' }));
+    expect(navigate).toHaveBeenCalledWith('/');
+
+    fireEvent.click(screen.getByRole('button', { name: '返回课程大纲' }));
+    expect(navigate).toHaveBeenCalledWith('/courses/course_01');
 
     fireEvent.click(screen.getByRole('button', { name: '开始学习' }));
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));

@@ -35,12 +35,14 @@ describe('PortraitWorkspace settings dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '画像设置' }));
 
     const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-labelledby', 'portrait-settings-title');
     expect(dialog.querySelector('.settings-body')).toBeInTheDocument();
     expect(dialog.querySelector('.setting-row')).toBeInTheDocument();
-    expect(dialog.querySelectorAll('.setting-check')).toHaveLength(2);
+    expect(dialog.querySelector('.setting-group')).toBeInTheDocument();
+    expect(dialog.querySelectorAll('.setting-switch')).toHaveLength(2);
     expect(dialog.querySelector('.portrait-setting-card')).not.toBeInTheDocument();
-    expect(screen.queryByText('显示范围')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument();
+    expect(screen.getByText('控制画像参考学习记录的历史跨度')).toBeVisible();
+    expect(screen.getByRole('button', { name: '关闭画像设置' })).toBeVisible();
     expect(screen.getByRole('combobox', { name: '证据时间范围' })).toBeVisible();
     expect(screen.getByRole('checkbox', { name: '课节与课程 Review' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '学习对话中的有效行为证据' })).toBeChecked();

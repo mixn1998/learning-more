@@ -8,6 +8,7 @@ import type {
 import { AiContent, Button, Dialog } from '@learning-more/ui';
 
 import { courseModeDefinition } from '../../course-mode-registry.js';
+import { toBroadDisciplineLabel } from '../../discipline-label.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
 import { CourseArchiveDangerZone } from '../review/course-archive-danger-zone.js';
 import {
@@ -46,6 +47,8 @@ export function FormalCourseView(props: {
   const [selectedVersion, setSelectedVersion] = useState<CourseOutlineVersionView>();
   const [versionError, setVersionError] = useState<string>();
   const mode = courseModeDefinition(course.courseMode);
+  const disciplineLabel =
+    toBroadDisciplineLabel(props.currentOutline?.disciplineTag) ?? mode.shortLabel;
   useCourseModeTheme(course.courseMode);
 
   const lessons = course.lessons ?? [];
@@ -58,21 +61,6 @@ export function FormalCourseView(props: {
     [course.outlineMarkdown, lessons],
   );
   const courseIntroduction = resolveCourseIntroduction(outlineProjection, course.title);
-  const projectedSummaryByLessonId = useMemo(
-    () =>
-      new Map(
-        [
-          ...outlineProjection.modules.flatMap((module) => module.lessons),
-          ...outlineProjection.ungroupedLessons,
-        ]
-          .filter(
-            (lesson): lesson is typeof lesson & { lessonId: string; summary: string } =>
-              lesson.lessonId !== undefined && lesson.summary !== undefined,
-          )
-          .map((lesson) => [lesson.lessonId, lesson.summary] as const),
-      ),
-    [outlineProjection],
-  );
   const completed =
     course.status === 'closed'
       ? lessons.length
@@ -106,14 +94,13 @@ export function FormalCourseView(props: {
       <section className="lm-card course-hero">
         <div className="course-hero__copy">
           <div className="lm-kicker">
-            {course.courseMode.toUpperCase()} ·{' '}
-            {course.status === 'closed' ? '已关闭课程' : '正式课程'}
+            {disciplineLabel} · {course.status === 'closed' ? '已关闭课程' : '正式课程'}
           </div>
           <h1>{courseIntroduction.title}</h1>
           <p className="course-hero__introduction">{courseIntroduction.introductionText}</p>
           <div className="lm-chips course-hero__chips">
-            <span className="lm-mode-badge">● {mode.label}</span>
-            <span className={`lm-pill${course.status === 'closed' ? ' success' : ''}`}>
+            <span className="lm-pill">{mode.label}</span>
+            <span className="lm-pill">
               {course.status === 'closed'
                 ? `${lessons.length} 个课节已完成`
                 : `${lessons.length} 个课节`}
@@ -188,7 +175,7 @@ export function FormalCourseView(props: {
           ) : recommended === undefined ? null : (
             <section className="course-recommendation">
               <strong>{recommended.title}</strong>
-              <p>{projectedSummaryByLessonId.get(recommended.lessonId) ?? recommended.objective}</p>
+              <p>{recommended.objective}</p>
               <Button
                 type="button"
                 variant="primary"
@@ -257,7 +244,10 @@ export function FormalCourseView(props: {
               key={item.courseId}
               className="course-choice"
               type="button"
-              onClick={() => props.onNavigate(`/courses/${item.courseId}`)}
+              onClick={() => {
+                setChooserOpen(false);
+                props.onNavigate(`/courses/${item.courseId}`);
+              }}
             >
               <span>
                 <b>{item.title}</b>

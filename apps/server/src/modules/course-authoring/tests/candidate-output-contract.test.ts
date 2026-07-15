@@ -60,6 +60,9 @@ describe('candidate output protocol', () => {
     expect(prompt).toContain('What is its concise summary?');
     expect(prompt).toContain('keywords or core knowledge points');
     expect(prompt).toContain('outline.lessons[].title');
+    expect(prompt).toContain('disciplineTag must be one broad academic or domain category');
+    expect(prompt).toContain('**课程摘要：**');
+    expect(prompt).toContain('50–100 Chinese characters');
     expect(prompt).toContain('choose the module count, lesson count');
     expect(prompt).toContain('Do not force a fixed lesson template');
     expect(prompt).not.toContain('outlineSessionId');

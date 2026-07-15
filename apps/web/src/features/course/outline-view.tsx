@@ -34,14 +34,6 @@ export function OutlineView(props: {
     props.course.outlineMarkdown ?? '',
     lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
   );
-  const summaryByLessonId = new Map(
-    [...projection.modules.flatMap((module) => module.lessons), ...projection.ungroupedLessons]
-      .filter(
-        (lesson): lesson is typeof lesson & { lessonId: string; summary: string } =>
-          lesson.lessonId !== undefined && lesson.summary !== undefined,
-      )
-      .map((lesson) => [lesson.lessonId, lesson.summary] as const),
-  );
   const modules = [
     ...projection.modules,
     ...(projection.ungroupedLessons.length === 0
@@ -109,7 +101,7 @@ export function OutlineView(props: {
                     </span>
                     <div className="course-lesson__copy">
                       <b>{lesson.title}</b>
-                      <p>{summaryByLessonId.get(lesson.lessonId) ?? lesson.objective}</p>
+                      <p>{lesson.objective}</p>
                     </div>
                     <span className="course-lesson__state">
                       {lessonStateLabel(progress, closed, recommended)}

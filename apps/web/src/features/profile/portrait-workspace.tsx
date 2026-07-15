@@ -186,16 +186,36 @@ export function PortraitWorkspace(props: {
         </div>
       </section>
 
-      <dialog className="portrait-settings" ref={settingsDialog}>
-        <header>
-          <h2>画像设置</h2>
+      <dialog
+        aria-describedby="portrait-settings-description"
+        aria-labelledby="portrait-settings-title"
+        className="portrait-settings"
+        ref={settingsDialog}
+      >
+        <header className="settings-header">
+          <div className="settings-heading">
+            <span className="settings-kicker">证据筛选</span>
+            <h2 id="portrait-settings-title">画像设置</h2>
+            <p id="portrait-settings-description">调整当前画像展示所采用的学习证据。</p>
+          </div>
+          <button
+            aria-label="关闭画像设置"
+            className="settings-close"
+            onClick={() => closeDialog(settingsDialog.current)}
+            type="button"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
         </header>
         <div className="settings-body">
           <label className="setting-row">
-            <span>证据时间范围</span>
+            <span className="setting-copy">
+              <strong>证据时间范围</strong>
+              <small>控制画像参考学习记录的历史跨度</small>
+            </span>
             <select
               aria-label="证据时间范围"
-              className="lm-control"
+              className="lm-control setting-select"
               id="portrait-evidence-window"
               onChange={(event) =>
                 setDraft((value) => ({ ...value, window: event.target.value as EvidenceWindow }))
@@ -207,26 +227,40 @@ export function PortraitWorkspace(props: {
               <option value="90d">最近 90 天</option>
             </select>
           </label>
-          <label className="setting-check">
-            <input
-              checked={draft.includeReviews}
-              onChange={(event) =>
-                setDraft((value) => ({ ...value, includeReviews: event.target.checked }))
-              }
-              type="checkbox"
-            />
-            课节与课程 Review
-          </label>
-          <label className="setting-check">
-            <input
-              checked={draft.includeBehavior}
-              onChange={(event) =>
-                setDraft((value) => ({ ...value, includeBehavior: event.target.checked }))
-              }
-              type="checkbox"
-            />
-            学习对话中的有效行为证据
-          </label>
+          <fieldset className="setting-group">
+            <legend>纳入证据</legend>
+            <p>选择当前画像可以引用的证据类型。</p>
+            <label className="setting-switch">
+              <span className="setting-copy">
+                <strong>课节与课程 Review</strong>
+                <small>纳入课节复盘和课程总结中的稳定结论</small>
+              </span>
+              <input
+                aria-label="课节与课程 Review"
+                checked={draft.includeReviews}
+                onChange={(event) =>
+                  setDraft((value) => ({ ...value, includeReviews: event.target.checked }))
+                }
+                type="checkbox"
+              />
+              <span aria-hidden="true" className="setting-switch-control" />
+            </label>
+            <label className="setting-switch">
+              <span className="setting-copy">
+                <strong>学习对话中的有效行为证据</strong>
+                <small>纳入提问、修正和推理过程中形成的行为观察</small>
+              </span>
+              <input
+                aria-label="学习对话中的有效行为证据"
+                checked={draft.includeBehavior}
+                onChange={(event) =>
+                  setDraft((value) => ({ ...value, includeBehavior: event.target.checked }))
+                }
+                type="checkbox"
+              />
+              <span aria-hidden="true" className="setting-switch-control" />
+            </label>
+          </fieldset>
         </div>
         <footer>
           <button

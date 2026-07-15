@@ -92,7 +92,7 @@ describe('PlanningWorkspaceView date scheduling', () => {
         courses={[
           {
             ...courses[0]!,
-            disciplineTag: '商业与创业',
+            disciplineTag: 'AI 商业分析与创业',
             topicTags: ['市场验证', '商业模式'],
           },
           {
@@ -101,7 +101,7 @@ describe('PlanningWorkspaceView date scheduling', () => {
             status: 'active',
             courseMode: 'standard',
             outlineVersionId: 'outline_02',
-            disciplineTag: '数学',
+            disciplineTag: '数学·单变量微积分与证明基础',
             topicTags: ['微积分'],
             resourceVersion: 1,
           },
@@ -126,7 +126,7 @@ describe('PlanningWorkspaceView date scheduling', () => {
     );
 
     const disciplineSelect = screen.getByLabelText('学科/领域');
-    expect(screen.getByRole('option', { name: '商业与创业' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '商业' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '数学' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: '市场验证' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: '微积分' })).not.toBeInTheDocument();

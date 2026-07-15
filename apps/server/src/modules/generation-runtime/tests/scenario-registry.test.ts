@@ -10,4 +10,14 @@ describe('AI scenario registry', () => {
       expect.objectContaining({ code: 'unknown_ai_scenario' }),
     );
   });
+
+  it.each(['outline-candidate-intent', 'plan-flow-preview'])(
+    'rejects retired scenario %s',
+    (scenario) => {
+      expect(AI_SCENARIOS).not.toContain(scenario);
+      expect(() => assertKnownAiScenario(scenario)).toThrow(
+        expect.objectContaining({ code: 'unknown_ai_scenario', taskKind: scenario }),
+      );
+    },
+  );
 });

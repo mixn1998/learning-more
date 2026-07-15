@@ -315,62 +315,244 @@
 }
 
 .portrait-settings {
-  width: min(560px, calc(100% - 28px));
+  width: min(520px, calc(100% - 28px));
+  max-height: min(720px, calc(100dvh - 28px));
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 20px;
   background: var(--paper);
+  box-shadow: var(--lm-shadow-dialog);
   color: var(--ink);
+  overflow: hidden;
 }
 
 .portrait-settings::backdrop {
-  background: rgb(44 38 32 / 42%);
+  background: rgb(44 38 32 / 48%);
+  backdrop-filter: blur(3px);
 }
 
-.portrait-settings header,
-.portrait-settings .settings-body,
-.portrait-settings footer {
-  padding: 20px 22px;
+.portrait-settings .settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 26px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
 }
 
-.portrait-settings header {
-  border-bottom: 1px solid var(--line);
+.portrait-settings .settings-heading {
+  min-width: 0;
 }
 
 .portrait-settings h2 {
+  margin: 3px 0 5px;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.portrait-settings .settings-kicker {
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.portrait-settings .settings-heading p {
   margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.portrait-settings .settings-close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: var(--paper-2);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
   font-size: 22px;
+  line-height: 1;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.portrait-settings .settings-close:hover {
+  border-color: var(--line);
+  background: var(--tint);
+  color: var(--ink);
+}
+
+.portrait-settings .settings-close:focus-visible {
+  outline: none;
+  box-shadow: var(--lm-focus);
 }
 
 .portrait-settings .settings-body {
   display: grid;
-  gap: 14px;
+  gap: 18px;
+  max-height: calc(100dvh - 210px);
+  padding: 18px 26px 22px;
+  overflow-y: auto;
 }
 
 .portrait-settings .setting-row {
   display: grid;
-  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 184px);
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--paper-2);
 }
 
-.portrait-settings .setting-check {
+.portrait-settings .setting-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.portrait-settings .setting-copy strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.portrait-settings .setting-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.portrait-settings .setting-select {
+  width: 100%;
+  min-height: 42px;
+  border-color: color-mix(in srgb, var(--line) 84%, var(--accent));
+  border-radius: 10px;
+  background-color: var(--paper);
+  font-size: 13px;
+}
+
+.portrait-settings .setting-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.portrait-settings .setting-group legend {
+  padding: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.portrait-settings .setting-group > p {
+  margin: -3px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.portrait-settings .setting-switch {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 62px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
 }
 
-.portrait-settings .setting-check input {
+.portrait-settings .setting-switch:hover {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--tint) 38%, var(--paper));
+}
+
+.portrait-settings .setting-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.portrait-settings .setting-switch-control {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 42px;
+  border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--line));
+  border-radius: 999px;
+  background: #e8e0d7;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.portrait-settings .setting-switch-control::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
   width: 16px;
   height: 16px;
-  flex: 0 0 16px;
-  margin: 0;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 2px 5px rgb(45 34 25 / 20%);
+  content: '';
+  transition: transform 160ms ease;
+}
+
+.portrait-settings .setting-switch input:checked + .setting-switch-control {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.portrait-settings .setting-switch input:checked + .setting-switch-control::after {
+  transform: translateX(18px);
+}
+
+.portrait-settings .setting-switch input:focus-visible + .setting-switch-control {
+  box-shadow: var(--lm-focus);
 }
 
 .portrait-settings footer {
   display: flex;
   justify-content: flex-end;
-  gap: 9px;
+  gap: 10px;
+  padding: 15px 26px 18px;
   border-top: 1px solid var(--line);
-  background: var(--paper-2);
+  background: color-mix(in srgb, var(--paper-2) 76%, var(--paper));
+}
+
+.portrait-settings footer .lm-btn {
+  min-height: 42px;
+  padding-inline: 18px;
+  border-radius: 10px;
 }
 
 @media (max-width: 760px) {
@@ -416,4 +598,26 @@
     padding: 2px 16px 20px;
   }
 
+  .portrait-settings .settings-header {
+    padding: 20px 20px 16px;
+  }
+  .portrait-settings .settings-body {
+    padding: 16px 20px 20px;
+  }
+  .portrait-settings .setting-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .portrait-settings footer {
+    padding: 14px 20px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portrait-settings .settings-close,
+  .portrait-settings .setting-switch,
+  .portrait-settings .setting-switch-control,
+  .portrait-settings .setting-switch-control::after {
+    transition: none;
+  }
 }

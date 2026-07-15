@@ -350,7 +350,9 @@
   border: 1px solid #e7cfbb;
   border-radius: 14px;
   background: linear-gradient(135deg, #fffaf6 0%, #f8eee6 100%);
-  box-shadow: inset 3px 0 0 var(--accent), 0 8px 22px rgba(106, 70, 43, 0.07);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    0 8px 22px rgba(106, 70, 43, 0.07);
 }
 
 .outline-workspace-view .ow-candidate-pending-copy {

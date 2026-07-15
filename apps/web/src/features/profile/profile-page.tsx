@@ -234,11 +234,7 @@ export function ProfilePage(props: {
             : insufficientPortraitSummary
       }
       title={
-        isFailed
-          ? '学习画像暂未生成'
-          : isPending
-            ? '学习画像正在生成'
-            : insufficientPortraitTitle
+        isFailed ? '学习画像暂未生成' : isPending ? '学习画像正在生成' : insufficientPortraitTitle
       }
       updatedLabel={isPending ? '生成中' : isFailed ? '生成失败' : '尚未生成'}
     />

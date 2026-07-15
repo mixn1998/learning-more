@@ -2,6 +2,46 @@
   min-height: 100vh;
 }
 
+/* Shared geometry for seven-day rails and their companion workspace panes. */
+.week-workspace-layout {
+  height: clamp(760px, calc(100vh - 140px), 900px);
+  min-height: 760px;
+  align-items: stretch;
+  overflow: hidden;
+  contain: layout paint;
+}
+
+.week-workspace-rail,
+.week-workspace-main {
+  min-height: 0;
+  height: 100%;
+}
+
+.week-workspace-rail {
+  position: static;
+}
+
+.week-course-list {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+.week-course-item {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Home migration: approved 01-home sample structure and geometry. */
 .sr-only {
   position: absolute;
@@ -1725,7 +1765,7 @@ pre {
   .plan-flow-summary,
   .history-metric-grid,
   .history-calendar-grid,
-    .weekly-summary-grid,
+  .weekly-summary-grid,
   .runtime-status-grid {
     grid-template-columns: 1fr;
   }
@@ -1761,7 +1801,7 @@ pre {
   .authoring-workspace,
   .home-page,
   .runtime-center,
-    .history-page {
+  .history-page {
     padding-top: 12px;
   }
 

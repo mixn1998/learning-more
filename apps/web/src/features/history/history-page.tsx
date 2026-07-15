@@ -13,6 +13,7 @@ import type {
 import { Badge, Button, ContentState, Page, Stack } from '@learning-more/ui';
 
 import { historyClient, type HistoryClient } from '../../client/history-client.js';
+import { toBroadDisciplineLabel } from '../../discipline-label.js';
 import { profileClient, type ProfileClient } from '../../client/profile-client.js';
 import { useAppShellBrandSubtitle, useAppShellHeaderStatus } from '../../state/app-shell-header.js';
 import { CourseSummaryDrawer } from './course-summary-drawer.js';
@@ -129,7 +130,11 @@ export function HistoryPage(props: {
   const [weekly, setWeekly] = useState<WeeklySummary>();
   const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse>();
   const [section, setSection] = useState<HistorySection>(
-    requestedTab === 'calendar' ? 'calendar' : requestedTab === 'portrait' ? 'portrait' : 'statistics',
+    requestedTab === 'calendar'
+      ? 'calendar'
+      : requestedTab === 'portrait'
+        ? 'portrait'
+        : 'statistics',
   );
   useAppShellBrandSubtitle(
     showingWeekly
@@ -276,7 +281,9 @@ export function HistoryPage(props: {
           lessonId,
           title: lesson?.title || lessonId,
           domain:
-            (courseId === undefined ? undefined : courseById.get(courseId)?.title) ?? '学习课程',
+            toBroadDisciplineLabel(
+              courseId === undefined ? undefined : courseById.get(courseId)?.disciplineTag,
+            ) ?? '未分类领域',
           minutes: Math.max(0, Math.round(seconds / 60)),
         };
       }),
@@ -300,7 +307,8 @@ export function HistoryPage(props: {
           lessonId: fact.lessonId,
           ...(courseId === undefined ? {} : { courseId }),
           title: lesson?.title || fact.lessonId,
-          domain: fact.disciplineTag ?? course?.title ?? '未分类领域',
+          domain:
+            toBroadDisciplineLabel(fact.disciplineTag ?? course?.disciplineTag) ?? '未分类领域',
           topic: fact.topicTags[0] ?? lesson?.title ?? '未分类主题',
         },
       ];

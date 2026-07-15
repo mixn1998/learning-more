@@ -46,6 +46,7 @@ function client(): HistoryClient {
           status: 'active',
           courseMode: 'standard',
           outlineVersionId: 'outline_01',
+          disciplineTag: 'AI 商业分析与创业',
           resourceVersion: 1,
         },
       ],
@@ -149,6 +150,15 @@ function client(): HistoryClient {
 }
 
 describe('HistoryPage', () => {
+  it('builds the course domain filter from confirmed discipline tags', async () => {
+    renderHistory(client());
+
+    const domainFilter = await screen.findByRole('combobox', { name: '学科 / 领域' });
+    expect(domainFilter).toHaveValue('');
+    expect(screen.getByRole('option', { name: '商业' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '未分类领域' })).not.toBeInTheDocument();
+  });
+
   it('keeps the statistics workspace when the course catalog is unavailable', async () => {
     const api = client();
     vi.mocked(api.getDashboard).mockRejectedValue(new Error('catalog_unavailable'));
@@ -266,7 +276,6 @@ describe('HistoryPage', () => {
           courseId: 'course_01',
           lessonId: 'lesson_01',
           actualSeconds: 600,
-          disciplineTag: '产品设计',
           topicTags: ['反馈'],
         },
       ],
@@ -294,6 +303,6 @@ describe('HistoryPage', () => {
     expect(screen.getByText('冻结证据 1 条 · 本周窗口内来源已核验')).toBeVisible();
     expect(screen.getByText('已建立可追溯的判断标准。')).toBeVisible();
     expect(screen.getByText('继续验证反馈是否改变行动。')).toBeVisible();
-    expect(screen.getByRole('button', { name: /lesson_01 产品设计/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: /lesson_01 商业/ })).toBeVisible();
   });
 });

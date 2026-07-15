@@ -109,6 +109,7 @@ export function LessonEntryPage(props: {
       }
       state="not_started"
       title={preview.title}
+      onBackHome={() => props.onNavigate?.('/')}
       onBackToOutline={() => props.onNavigate?.(`/courses/${preview.courseId}`)}
       onPrimary={() => {
         if (lessonState.progress === 'completed') {

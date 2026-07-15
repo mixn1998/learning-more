@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { HomeDashboardView } from '@learning-more/contracts';
 
 import type { ScheduleItemView } from '../../client/planning-client.js';
+import { toBroadDisciplineLabel } from '../../discipline-label.js';
 
 import './planning-workspace.css';
 
@@ -110,7 +111,7 @@ export function PlanningWorkspaceView(props: {
             estimatedMinutes:
               props.metadata?.[lesson.lessonId]?.estimatedMinutes ?? lesson.estimatedMinutes ?? 45,
             objective: props.metadata?.[lesson.lessonId]?.objective ?? lesson.objective,
-            disciplineTag: course?.disciplineTag,
+            disciplineTag: toBroadDisciplineLabel(course?.disciplineTag),
             topicTags: [
               ...new Set([
                 ...(course?.topicTags ?? []),
@@ -215,18 +216,15 @@ export function PlanningWorkspaceView(props: {
         </div>
       </section>
 
-      <div className="planner-layout">
-        <aside className="lm-card planning-days" aria-label="今日起 7 天">
+      <div className="planner-layout week-workspace-layout">
+        <aside className="lm-card planning-days week-workspace-rail" aria-label="今日起 7 天">
           <header>
             <b>今日起 7 天</b>
           </header>
           {dates.map((date) => {
-            const titles = entries
-              .filter(
-                (entry) =>
-                  entry.schedule !== undefined && localDate(entry.schedule.startAt) === date,
-              )
-              .map((entry) => entry.lesson.title);
+            const dateEntries = entries.filter(
+              (entry) => entry.schedule !== undefined && localDate(entry.schedule.startAt) === date,
+            );
             return (
               <button
                 aria-pressed={selectedDate === date}
@@ -243,13 +241,27 @@ export function PlanningWorkspaceView(props: {
                   <small>{weekdayLabel(date, props.anchorDate)}</small>
                   <b>{shortDate(date)}</b>
                 </span>
-                <span>{titles.join(' · ') || '暂无安排'}</span>
+                {dateEntries.length === 0 ? (
+                  <span className="week-course-empty">暂无安排</span>
+                ) : (
+                  <span className="week-course-list" role="list">
+                    {dateEntries.map((entry) => (
+                      <span
+                        className="week-course-item"
+                        key={entry.lesson.lessonId}
+                        role="listitem"
+                      >
+                        {entry.lesson.title}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </button>
             );
           })}
         </aside>
 
-        <section className="lm-card planning-main">
+        <section className="lm-card planning-main week-workspace-main">
           <header className="planning-main-head">
             <div>
               <h2>待规划与已安排课节</h2>

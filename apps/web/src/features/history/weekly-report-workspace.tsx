@@ -80,8 +80,8 @@ export function WeeklyReportWorkspace(props: {
           返回本周课程表
         </button>
       </section>
-      <div className="weekly-report-layout">
-        <aside className="lm-card weekly-report-days">
+      <div className="weekly-report-layout week-workspace-layout">
+        <aside className="lm-card weekly-report-days week-workspace-rail">
           <header>
             <b>上周学习</b>
           </header>
@@ -103,12 +103,22 @@ export function WeeklyReportWorkspace(props: {
                   <small>{weekdayLabels[new Date(`${date}T00:00:00.000Z`).getUTCDay()]}</small>
                   <b>{monthDay(date)}</b>
                 </span>
-                <span>{dateRecords.map((record) => record.title).join(' · ') || '暂无学习'}</span>
+                {dateRecords.length === 0 ? (
+                  <span className="week-course-empty">暂无学习</span>
+                ) : (
+                  <span className="week-course-list" role="list">
+                    {dateRecords.map((record) => (
+                      <span className="week-course-item" key={record.lessonId} role="listitem">
+                        {record.title}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </button>
             );
           })}
         </aside>
-        <section className="lm-card weekly-report-main">
+        <section className="lm-card weekly-report-main week-workspace-main">
           <section className={`weekly-report-box${expanded ? ' open' : ''}`}>
             <button
               aria-expanded={expanded}

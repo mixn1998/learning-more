@@ -128,9 +128,11 @@ describe('ProfilePage', () => {
       <MemoryRouter initialEntries={['/history?tab=portrait']}>
         <ProfilePage
           client={client({
-            getPortrait: vi.fn().mockResolvedValue(
-              version({ state: 'failed', claims: [], errorCode: 'portrait_refresh_failed' }),
-            ),
+            getPortrait: vi
+              .fn()
+              .mockResolvedValue(
+                version({ state: 'failed', claims: [], errorCode: 'portrait_refresh_failed' }),
+              ),
           })}
           embedded
         />

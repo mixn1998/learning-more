@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  extractOutlineLessonSummary,
   projectOutlineMarkdown,
   resolveCourseIntroduction,
 } from './outline-markdown-projection.js';
@@ -16,10 +15,12 @@ const lessons = [
 ] as const;
 
 describe('projectOutlineMarkdown', () => {
-  it('selects one narrative course introduction and excludes display-oriented preface blocks', () => {
+  it('extracts only the explicit 50–100 character course summary after the H1', () => {
+    const summary =
+      '本课程围绕一元微积分的核心概念与推理方法展开，结合图像直觉、公式计算和严格证明，帮助学习者建立可迁移的数学思维与后续学习基础。';
     const projection = projectOutlineMarkdown(`# 微积分：从直观变化到严格推导
 
-这是一门以一元微积分为主线的系统入门课。
+**课程摘要：** ${summary}
 
 每课遵循大致相同的思维路径：
 
@@ -33,10 +34,10 @@ describe('projectOutlineMarkdown', () => {
 ### 极限是什么`);
 
     expect(projection.title).toBe('微积分：从直观变化到严格推导');
-    expect(projection.introductionText).toBe('这是一门以一元微积分为主线的系统入门课。');
+    expect(projection.introductionText).toBe(summary);
   });
 
-  it('prefers an explicitly labelled introduction and converts inline Markdown to plain text', () => {
+  it('does not treat legacy introduction labels or ordinary prose as a generated course summary', () => {
     const projection = projectOutlineMarkdown(`# 企业 AI 成本
 
 学习路径：先计量，再归因，最后优化。
@@ -46,9 +47,58 @@ describe('projectOutlineMarkdown', () => {
 ## 模块一：理解计量
 ### Token 是什么`);
 
-    expect(projection.introductionText).toBe(
-      '理解 token、模型服务 与企业账单的关系，并建立可操作的成本分析框架。',
-    );
+    expect(projection.introductionText).toBeUndefined();
+  });
+
+  it('does not guess a legacy summary from a later narrative paragraph', () => {
+    const projection = projectOutlineMarkdown(`# AI Token 会成为企业“成本硬通货”吗？
+
+这门课不预设“AI 成本管理一定值得创业”，而是检验一个更具行动价值的问题：
+
+- 企业是否真的需要独立的 AI 成本管理？
+- 这个问题能否形成可持续的产品机会？
+
+课程从企业账单、使用行为和产品决策三个层面建立可验证的 AI 成本判断。
+
+## 模块一：成本从哪里产生
+### Token 是成本单位吗？`);
+
+    expect(projection.introductionText).toBeUndefined();
+  });
+
+  it('rejects an explicitly labelled summary outside the 50–100 character range', () => {
+    expect(
+      projectOutlineMarkdown(`# 简短摘要
+
+**课程摘要：** 这段摘要太短。
+
+## 第一模块`).introductionText,
+    ).toBeUndefined();
+    expect(
+      projectOutlineMarkdown(`# 过长摘要
+
+**课程摘要：** ${'课程摘要需要保持聚焦并避免把完整大纲重新搬进课程头部。'.repeat(5)}
+
+## 第一模块`).introductionText,
+    ).toBeUndefined();
+  });
+
+  it('rejects schedule and weekly-effort copy before using the title fallback', () => {
+    const projection = projectOutlineMarkdown(`# 从哲学思维走向严格数学：微积分基础课程
+
+这是一条建议用 12 周、每周约 10 小时完成的主线，也可以按掌握情况延长到 14～16 周。课程不以赶完章节为目标，而以形成可迁移的数学能力为目标：
+
+- 理解极限与连续
+- 掌握导数和积分的严格推导
+
+## 模块一：极限与连续
+### 极限是什么？`);
+
+    expect(projection.introductionText).toBeUndefined();
+    expect(resolveCourseIntroduction(projection, '备用课程名')).toEqual({
+      title: '从哲学思维走向严格数学：微积分基础课程',
+      introductionText: '这是一门关于“从哲学思维走向严格数学：微积分基础课程”的课程。',
+    });
   });
 
   it('uses one neutral sentence when a heading-only outline has no eligible introduction', () => {
@@ -65,48 +115,6 @@ describe('projectOutlineMarkdown', () => {
       title: '微积分',
       introductionText: '这是一门关于“微积分”的课程。',
     });
-  });
-
-  it('extracts a labelled one-sentence summary without turning knowledge metadata into prose', () => {
-    expect(
-      extractOutlineLessonSummary(`### Token 是企业 AI 成本的“电表”吗？
-
-**一句话摘要：** 理解 token、模型服务、算力商品、预付额度与货币之间的区别，并拆解模型费用如何进入企业账单。
-
-**关键词：** token、模型服务、企业账单
-
-- 输入 token
-- 输出 token`),
-    ).toBe(
-      '理解 token、模型服务、算力商品、预付额度与货币之间的区别，并拆解模型费用如何进入企业账单。',
-    );
-  });
-
-  it('uses the first prose sentence when no labelled summary exists', () => {
-    expect(
-      extractOutlineLessonSummary(`### 模型服务怎样计费？
-
-先建立单位用量、模型调用与最终账单之间的成本链路。后续再比较不同厂商的价格结构。
-
-| 厂商 | 单价 |
-| --- | --- |
-| 示例 | 1 |`),
-    ).toBe('先建立单位用量、模型调用与最终账单之间的成本链路。');
-  });
-
-  it('returns no summary when the lesson only contains metadata or structured blocks', () => {
-    expect(
-      extractOutlineLessonSummary(`### 只有知识节点
-
-关键词：token、模型
-核心知识点：计量、账单
-
-> 课堂提示
-
-\`\`\`json
-{"topic":"token"}
-\`\`\``),
-    ).toBeUndefined();
   });
 
   it('preserves uneven module sizes from the saved Markdown', () => {
@@ -137,27 +145,6 @@ describe('projectOutlineMarkdown', () => {
       projection.modules.map((module) => module.lessons.map((lesson) => lesson.lessonId)),
     ).toEqual([['lesson_1'], ['lesson_2', 'lesson_3', 'lesson_4'], ['lesson_5', 'lesson_6']]);
     expect(projection.ungroupedLessons).toEqual([]);
-  });
-
-  it('projects each formal lesson summary from its own Markdown section', () => {
-    const projection = projectOutlineMarkdown(
-      `# 微积分
-
-## 变化的边界
-### 极限是什么
-
-摘要：理解无限逼近如何支持有限判断。
-
-### 连续与间断
-
-用图像和反例区分连续与间断。第二句不进入卡片。`,
-      lessons.slice(0, 2),
-    );
-
-    expect(projection.modules[0]?.lessons.map((lesson) => lesson.summary)).toEqual([
-      '理解无限逼近如何支持有限判断。',
-      '用图像和反例区分连续与间断。',
-    ]);
   });
 
   it('recognizes list lessons under their nearest Markdown module', () => {

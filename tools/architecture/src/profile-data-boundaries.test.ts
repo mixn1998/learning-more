@@ -31,11 +31,11 @@ describe('profile data architecture boundaries', () => {
       path.join(root, 'apps/web/src/features/profile/profile-page.tsx'),
       'utf8',
     );
-    const portraitView = readFileSync(
-      path.join(root, 'apps/web/src/features/profile/portrait-view.tsx'),
+    const portraitWorkspace = readFileSync(
+      path.join(root, 'apps/web/src/features/profile/portrait-workspace.tsx'),
       'utf8',
     );
-    expect(`${profilePage}\n${portraitView}`).not.toMatch(
+    expect(`${profilePage}\n${portraitWorkspace}`).not.toMatch(
       /candidate.?reject|portrait.?feedback|拒绝候选|画像反馈/iu,
     );
   });

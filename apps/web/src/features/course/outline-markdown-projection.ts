@@ -7,7 +7,6 @@ export type OutlineProjectionLesson = Readonly<{
   key: string;
   title: string;
   markdown: string;
-  summary?: string | undefined;
   lessonId?: string | undefined;
 }>;
 
@@ -46,64 +45,6 @@ function stripInlineMarkdown(value: string): string {
     .replace(/[`*_~]/gu, '')
     .replace(/\s+#+\s*$/u, '')
     .trim();
-}
-
-function firstSummarySentence(value: string): string | undefined {
-  const normalized = value.replace(/\s+/gu, ' ').trim();
-  if (normalized === '') return undefined;
-  const sentenceEnd = normalized.search(/[。！？!?]/u);
-  return sentenceEnd < 0 ? normalized : normalized.slice(0, sentenceEnd + 1);
-}
-
-export function extractOutlineLessonSummary(markdown: string): string | undefined {
-  const lines = markdown.replace(/\r\n?/gu, '\n').split('\n');
-  const proseParagraphs: string[] = [];
-  let paragraph: string[] = [];
-  let fenced = false;
-  let sawLessonHeading = false;
-
-  const flushParagraph = () => {
-    if (paragraph.length > 0) proseParagraphs.push(paragraph.join(' '));
-    paragraph = [];
-  };
-
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (/^```/u.test(trimmed)) {
-      fenced = !fenced;
-      flushParagraph();
-      continue;
-    }
-    if (fenced) continue;
-
-    if (/^#{1,6}\s+/u.test(trimmed)) {
-      flushParagraph();
-      if (sawLessonHeading) break;
-      sawLessonHeading = true;
-      continue;
-    }
-    if (trimmed === '') {
-      flushParagraph();
-      continue;
-    }
-    if (/^(?:>|\||[-+*]\s|\d+[.)、]\s|<{1,2}[A-Za-z!/]|-{3,}$)/u.test(trimmed)) {
-      flushParagraph();
-      continue;
-    }
-
-    const plain = stripInlineMarkdown(trimmed).replace(/\s+/gu, ' ').trim();
-    const labelled = /^(?:一句话摘要|本节摘要|课节摘要|摘要)\s*[:：]\s*(.+)$/u.exec(plain);
-    if (labelled?.[1] !== undefined) return firstSummarySentence(labelled[1]);
-    if (
-      /^(?:关键词|核心知识点|知识节点|前置知识|学习目标|目标|时长|预计时长)\s*[:：]/u.test(plain)
-    ) {
-      flushParagraph();
-      continue;
-    }
-    if (plain !== '') paragraph.push(plain);
-  }
-  flushParagraph();
-  return firstSummarySentence(proseParagraphs[0] ?? '');
 }
 
 export function normalizeOutlineTitle(value: string): string {
@@ -227,34 +168,6 @@ function plainParagraph(block: string): string {
     .trim();
 }
 
-function isStructuredIntroductionBlock(block: string): boolean {
-  return block
-    .split('\n')
-    .some((line) =>
-      /^(?:#{1,6}\s|>|\||[-+*]\s+|\d+[.)、]\s+|<{1,2}[A-Za-z!/]|-{3,}$)/u.test(line.trim()),
-    );
-}
-
-function isEligibleIntroductionParagraph(block: string, plain: string): boolean {
-  if (plain === '' || isStructuredIntroductionBlock(block)) return false;
-  if (
-    /^(?:每(?:一)?课(?:遵循|采用|按照)|学习(?:路径|路线|方法|节奏|周期)|教学(?:路径|路线|方法|安排)|思维路径|课程(?:组织|安排|结构说明)|哲学旁注|课程旁注|方法论旁注|预计(?:总)?(?:学习)?(?:时间|时长)|总(?:学习)?(?:时间|时长)|每周(?:安排|学习)|标准模式\b)/u.test(
-      plain,
-    )
-  ) {
-    return false;
-  }
-  if (/(?:预计总学习时间|预计学习时长|总学习时间约为|学习周期)/u.test(plain)) {
-    return false;
-  }
-  if (/^(?:共|合计)?\s*\d+\s*(?:个)?(?:模块|课节|节课)(?:\b|$)/u.test(plain)) {
-    return false;
-  }
-  const arrows = plain.match(/(?:→|⇒|->)/gu)?.length ?? 0;
-  if (arrows > 0 && !/[。！？.!?]/u.test(plain)) return false;
-  return true;
-}
-
 function courseIntroductionText(
   parsed: ReturnType<typeof parseMarkdown>,
   courseHeadingIndex: number,
@@ -268,35 +181,15 @@ function courseIntroductionText(
   const blocks = paragraphBlocks(
     parsed.lines.slice(courseHeading.lineIndex + 1, nextSection?.lineIndex ?? parsed.lines.length),
   );
-  let firstNarrative: string | undefined;
-  let labelledNarrative: string | undefined;
-  let awaitingLabelledParagraph = false;
-
   for (const block of blocks) {
     const plain = plainParagraph(block);
-    const inlineLabel = /^(?:课程介绍|课程简介|课程概述|导语)\s*[:：]\s*(.+)$/u.exec(plain);
-    if (inlineLabel?.[1] !== undefined) {
-      const candidate = inlineLabel[1].trim();
-      if (isEligibleIntroductionParagraph(candidate, candidate)) {
-        labelledNarrative ??= candidate;
-      }
-      awaitingLabelledParagraph = false;
-      continue;
-    }
-    if (/^(?:课程介绍|课程简介|课程概述|导语)\s*[:：]?$/u.test(plain)) {
-      awaitingLabelledParagraph = true;
-      continue;
-    }
-    if (!isEligibleIntroductionParagraph(block, plain)) continue;
-    if (awaitingLabelledParagraph) {
-      labelledNarrative ??= plain;
-      awaitingLabelledParagraph = false;
-      continue;
-    }
-    firstNarrative ??= plain;
+    const summary = /^课程摘要\s*[:：]\s*(.+)$/u.exec(plain)?.[1]?.trim();
+    if (summary === undefined) continue;
+    const characterCount = Array.from(summary).length;
+    if (characterCount >= 50 && characterCount <= 100) return summary;
   }
 
-  return labelledNarrative ?? firstNarrative;
+  return undefined;
 }
 
 function findModuleHeadingIndex(
@@ -346,18 +239,13 @@ function projectWithFormalLessons(
       title: lesson.title,
       markdown: nodeMarkdown(parsed, node, nodeIndex),
     } satisfies OutlineProjectionLesson;
-    const summary = extractOutlineLessonSummary(projected.markdown);
-    const lessonProjection = {
-      ...projected,
-      ...(summary === undefined ? {} : { summary }),
-    } satisfies OutlineProjectionLesson;
     const moduleIndex = findModuleHeadingIndex(parsed.nodes, node);
     if (moduleIndex === undefined) {
-      ungroupedLessons.push(lessonProjection);
+      ungroupedLessons.push(projected);
       return;
     }
     const current = grouped.get(moduleIndex) ?? [];
-    current.push(lessonProjection);
+    current.push(projected);
     grouped.set(moduleIndex, current);
   });
 
@@ -402,13 +290,10 @@ function projectCandidate(
       markdown: nodeMarkdown(parsed, node, nodeIndex),
       lessons: childIndexes.map((childIndex) => {
         const child = parsed.nodes[childIndex];
-        const markdown = child === undefined ? '' : nodeMarkdown(parsed, child, childIndex);
-        const summary = extractOutlineLessonSummary(markdown);
         return {
           key: `lesson-${child?.lineIndex ?? childIndex}-${normalizeOutlineTitle(child?.title ?? '')}`,
           title: child?.title ?? '',
-          markdown,
-          ...(summary === undefined ? {} : { summary }),
+          markdown: child === undefined ? '' : nodeMarkdown(parsed, child, childIndex),
         };
       }),
     });
@@ -421,16 +306,11 @@ function projectCandidate(
       if (node.kind === 'heading') return node.parentHeadingIndex === courseHeadingIndex;
       return node.parentHeadingIndex === undefined;
     })
-    .map(({ node, nodeIndex }) => {
-      const markdown = nodeMarkdown(parsed, node, nodeIndex);
-      const summary = extractOutlineLessonSummary(markdown);
-      return {
-        key: `lesson-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
-        title: node.title,
-        markdown,
-        ...(summary === undefined ? {} : { summary }),
-      };
-    });
+    .map(({ node, nodeIndex }) => ({
+      key: `lesson-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
+      title: node.title,
+      markdown: nodeMarkdown(parsed, node, nodeIndex),
+    }));
 
   return { modules, ungroupedLessons };
 }

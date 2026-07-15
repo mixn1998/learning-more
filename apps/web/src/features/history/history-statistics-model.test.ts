@@ -19,6 +19,7 @@ const dashboard: HomeDashboardView = {
       status: 'active',
       courseMode: 'standard',
       outlineVersionId: 'outline_a',
+      disciplineTag: '产品与设计',
       resourceVersion: 1,
     },
     {
@@ -27,6 +28,7 @@ const dashboard: HomeDashboardView = {
       status: 'closed',
       courseMode: 'brainstorm',
       outlineVersionId: 'outline_b',
+      disciplineTag: '增长与营销',
       resourceVersion: 2,
     },
   ],
@@ -137,8 +139,8 @@ describe('history statistics projection', () => {
       interactionSkipped: 0,
     });
     expect(snapshot.disciplines).toEqual([
-      { label: '增长实验', percent: 86, hours: '1.0h' },
-      { label: '产品设计', percent: 43, hours: '0.5h' },
+      { label: '增长与营销', percent: 86, hours: '1.0h' },
+      { label: '产品与设计', percent: 43, hours: '0.5h' },
     ]);
     expect(snapshot.bars).toHaveLength(12);
     expect(snapshot.bars.filter((height) => height > 0)).toHaveLength(2);
@@ -174,12 +176,12 @@ describe('history statistics projection', () => {
     });
   });
 
-  it('projects each dashboard course from all cursor facts without inventing domain metadata', () => {
+  it('projects each dashboard course with its confirmed discipline tag', () => {
     expect(buildStatisticsCourses({ dashboard, entries })).toEqual([
       {
         courseId: 'course_a',
         title: '产品设计',
-        domain: '未分类领域',
+        domain: '产品与设计',
         topics: '问题定义 / 原型验证',
         status: '学习中',
         mode: '标准模式',
@@ -192,7 +194,7 @@ describe('history statistics projection', () => {
       {
         courseId: 'course_b',
         title: '增长实验',
-        domain: '未分类领域',
+        domain: '增长与营销',
         topics: '实验设计',
         status: '已关闭',
         mode: '头脑风暴',

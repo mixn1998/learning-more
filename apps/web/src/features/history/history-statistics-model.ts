@@ -6,6 +6,7 @@ import type {
 } from '@learning-more/contracts';
 
 import { COURSE_MODE_REGISTRY } from '../../course-mode-registry.js';
+import { toBroadDisciplineLabel } from '../../discipline-label.js';
 import type {
   HistoryStatisticsCourse,
   HistoryStatisticsRange,
@@ -98,8 +99,11 @@ export function buildStatisticsSnapshot(input: {
   const lessonCourse = new Map(
     input.dashboard?.lessons.map((lesson) => [lesson.lessonId, lesson.courseId]) ?? [],
   );
-  const courseTitle = new Map(
-    input.dashboard?.courses.map((course) => [course.courseId, course.title]) ?? [],
+  const courseDiscipline = new Map(
+    input.dashboard?.courses.map((course) => [
+      course.courseId,
+      toBroadDisciplineLabel(course.disciplineTag) ?? '未分类领域',
+    ]) ?? [],
   );
   const completedCourseIds = new Set<string>();
   for (const day of selectedDays) {
@@ -146,7 +150,8 @@ export function buildStatisticsSnapshot(input: {
   for (const entry of selectedEntries) {
     if (entry.factType !== 'LessonCompletedFact') continue;
     const courseId = courseIdForEntry(entry, lessonCourse);
-    const label = (courseId === undefined ? undefined : courseTitle.get(courseId)) ?? '未分类课程';
+    const label =
+      (courseId === undefined ? undefined : courseDiscipline.get(courseId)) ?? '未分类领域';
     secondsByDiscipline.set(label, (secondsByDiscipline.get(label) ?? 0) + secondsOf(entry));
   }
   const ranked = [...secondsByDiscipline.entries()]
@@ -216,7 +221,7 @@ export function buildStatisticsCourses(input: {
     return {
       courseId: course.courseId,
       title: course.title,
-      domain: '未分类领域',
+      domain: toBroadDisciplineLabel(course.disciplineTag) ?? '未分类领域',
       topics:
         lessons
           .slice(0, 3)

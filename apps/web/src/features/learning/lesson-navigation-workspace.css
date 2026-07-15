@@ -119,6 +119,22 @@ body:has(.lesson-navigation-workspace) .runtime-write-boundary {
   color: var(--muted);
   font-size: 11px;
 }
+.lesson-navigation-workspace--not_started .nav-foot {
+  padding-top: 24px;
+  padding-bottom: 26px;
+}
+.lesson-navigation-workspace--not_started .nav-foot .lm-actions {
+  display: grid;
+  width: min(680px, 100%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.lesson-navigation-workspace--not_started .nav-foot .lm-btn {
+  min-height: 54px;
+  padding-right: 26px;
+  padding-left: 26px;
+  border-radius: 12px;
+}
 
 @media (max-width: 620px) {
   .lesson-navigation-workspace .nav-foot {
@@ -126,6 +142,13 @@ body:has(.lesson-navigation-workspace) .runtime-write-boundary {
     flex-direction: column;
   }
   .lesson-navigation-workspace .nav-foot .lm-actions {
+    width: 100%;
+  }
+  .lesson-navigation-workspace--not_started .nav-foot .lm-actions {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .lesson-navigation-workspace--not_started .nav-foot .lm-btn {
     width: 100%;
   }
   .lesson-navigation-workspace .nav-stage {

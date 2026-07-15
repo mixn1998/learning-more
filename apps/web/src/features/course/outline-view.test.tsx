@@ -9,7 +9,7 @@ import { OutlineView } from './outline-view.js';
 afterEach(cleanup);
 
 describe('OutlineView', () => {
-  it('renders the Markdown lesson summary and falls back to the lesson objective', () => {
+  it('renders the formal lesson objective without parsing a Markdown list lead-in as its summary', () => {
     render(
       <OutlineView
         course={{
@@ -24,7 +24,7 @@ describe('OutlineView', () => {
               lessonId: 'lesson_summary',
               outlineVersionId: 'outline_summary',
               title: 'Token 怎样进入企业账单？',
-              objective: '目标字段不应覆盖 Markdown 摘要',
+              objective: '理解 token、模型服务与企业账单之间的成本链路。',
               coreKnowledgePoints: ['输入 token', '输出 token', '模型单价'],
               prerequisiteLessonIds: [],
               estimatedMinutes: 20,
@@ -44,7 +44,10 @@ describe('OutlineView', () => {
 ## 计量与归因
 ### Token 怎样进入企业账单？
 
-一句话摘要：理解 token、模型服务与企业账单之间的成本链路。
+比较三类企业成本来源：
+
+1. 模型调用费用
+2. 云平台服务费用
 
 ### 账单怎样归因？
 
@@ -58,6 +61,7 @@ describe('OutlineView', () => {
 
     expect(screen.getByText('理解 token、模型服务与企业账单之间的成本链路。')).toBeInTheDocument();
     expect(screen.getByText('建立部门、任务与模型调用之间的归因关系。')).toBeInTheDocument();
+    expect(screen.queryByText('比较三类企业成本来源：')).not.toBeInTheDocument();
     expect(screen.queryByText('输入 token、输出 token、模型单价。')).not.toBeInTheDocument();
     expect(screen.queryByText('部门归因、任务归因。')).not.toBeInTheDocument();
   });

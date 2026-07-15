@@ -30,14 +30,9 @@
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 16px;
   margin-top: 16px;
-  height: calc(100vh - 220px);
-  min-height: 540px;
-  align-items: stretch;
 }
 
 .planning-days {
-  position: sticky;
-  top: 88px;
   height: 100%;
   padding: 16px;
   display: grid;
@@ -98,14 +93,10 @@
   overflow: hidden;
 }
 
-.planning-day > span:last-child {
-  display: -webkit-box;
+.planning-day > .week-course-empty {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .planning-main {
@@ -339,10 +330,10 @@
     font-size: 10px;
     line-height: 1.3;
   }
-  .planning-day > span:last-child {
+  .planning-day > .week-course-empty,
+  .planning-day > .week-course-list {
     font-size: 10px;
     line-height: 1.3;
-    -webkit-line-clamp: 1;
   }
 }
 
@@ -372,10 +363,12 @@
     align-items: flex-start;
     flex-direction: column;
   }
-  .planner-layout {
+  .planner-layout.week-workspace-layout {
     display: block;
     height: auto;
     min-height: 0;
+    overflow: visible;
+    contain: none;
   }
   .planning-days {
     position: static;

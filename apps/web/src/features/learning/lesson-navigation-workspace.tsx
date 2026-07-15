@@ -99,9 +99,14 @@ export function LessonNavigationWorkspace(props: {
             ) : null}
             <div className="lm-actions">
               {abandoned ? null : (
-                <button className="lm-btn" onClick={props.onBackToOutline} type="button">
-                  返回课程大纲
-                </button>
+                <>
+                  <button className="lm-btn" onClick={props.onBackHome} type="button">
+                    返回主页
+                  </button>
+                  <button className="lm-btn" onClick={props.onBackToOutline} type="button">
+                    返回课程大纲
+                  </button>
+                </>
               )}
               {abandoned ? (
                 <button className="lm-btn" onClick={props.onViewRecord} type="button">

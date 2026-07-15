@@ -3,7 +3,7 @@ import type { CandidatePromptInput } from './prompt-input-builder.js';
 
 export const candidateOutlineOutputExample = {
   courseGoals: ['学习完成后能够解释并运用本课程的核心内容'],
-  disciplineTag: '课程所属学科或主题领域',
+  disciplineTag: '数学',
   topicTags: ['主题标签'],
   modules: [
     {
@@ -57,6 +57,7 @@ export function buildCandidateGenerationPrompt(input: CandidatePromptInput): str
     'This section defines interface syntax only. It does not constrain the teaching ideas, structure, tone, examples, or Markdown body.',
     'Return exactly one `learning-more-outline` fenced JSON block first, followed by a natural Markdown course outline.',
     'The JSON object must contain exactly the response envelope shown below. Replace example values with this course. Every lesson must appear in exactly one module. Use only source references listed below. Do not return session identifiers, course mode, topic, source permissions, task state, or other server context as output fields.',
+    'disciplineTag must be one broad academic or domain category, such as 数学、商业、计算机科学、语言、艺术 or 自然科学. Do not use a detailed course topic, subfield, learning path, or combined description.',
     'Topic tags are descriptive metadata rather than a fixed-size teaching format; preserve all relevant concepts you identify.',
     '```learning-more-outline',
     JSON.stringify(candidateModelResponseExample),
@@ -66,6 +67,7 @@ export function buildCandidateGenerationPrompt(input: CandidatePromptInput): str
     'Compose the Markdown body freely around the learner’s real goal. Course mode is an attention preference, not a format prison. Course-adjacent exploration may be included when it supports the goal, but it must not masquerade as already completed core content.',
     '',
     '[OUTLINE READABILITY]',
+    'Start the Markdown body with exactly one level-1 course title, then one standalone paragraph in the form `**课程摘要：** 摘要内容`. The summary must contain 50–100 Chinese characters and concisely cover the learning target, core question, and expected outcome. Do not include scheduling, learning-cycle, weekly-investment, keyword, module, or lesson-list content in the summary.',
     'Help the learner scan the outline by making each module-to-lesson relationship explicit in the Markdown. For every lesson, let the Markdown naturally answer three questions: What is the lesson name? What is its concise summary? What are its keywords or core knowledge points? Keep the displayed lesson name consistent with the corresponding `outline.lessons[].title`, and place the summary and keywords near that lesson heading.',
     'This is presentation guidance only: choose the module count, lesson count, teaching sequence, wording, hierarchy depth, and Markdown expression that best fit the learner. Do not force a fixed lesson template.',
     '',
