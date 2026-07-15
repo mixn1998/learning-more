@@ -21,6 +21,15 @@ describe('planning date filter', () => {
       />,
     );
 
+    expect(screen.getByText('lesson_today')).toBeInTheDocument();
+    expect(screen.getByText('lesson_tomorrow')).toBeInTheDocument();
+    expect(screen.getByText('lesson_pending')).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-pressed') === 'true'),
+    ).toHaveLength(0);
+
     fireEvent.click(screen.getByRole('button', { name: '2026-07-14' }));
     expect(screen.getByText('lesson_today')).toBeInTheDocument();
     expect(screen.queryByText('lesson_tomorrow')).not.toBeInTheDocument();

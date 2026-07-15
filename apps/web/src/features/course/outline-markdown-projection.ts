@@ -20,9 +20,15 @@ export type OutlineProjectionModule = Readonly<{
 
 export type OutlineMarkdownProjection = Readonly<{
   title?: string | undefined;
+  introductionText?: string | undefined;
   markdown: string;
   modules: readonly OutlineProjectionModule[];
   ungroupedLessons: readonly OutlineProjectionLesson[];
+}>;
+
+export type ResolvedCourseIntroduction = Readonly<{
+  title: string;
+  introductionText: string;
 }>;
 
 type MarkdownNode = Readonly<{
@@ -184,6 +190,115 @@ function nodeMarkdown(
     .trim();
 }
 
+function paragraphBlocks(lines: readonly string[]): readonly string[] {
+  const blocks: string[] = [];
+  let paragraph: string[] = [];
+  let fenced = false;
+
+  const flush = () => {
+    if (paragraph.length > 0) blocks.push(paragraph.join('\n'));
+    paragraph = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (/^```/u.test(line)) {
+      flush();
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) continue;
+    if (line === '') {
+      flush();
+      continue;
+    }
+    paragraph.push(line);
+  }
+  flush();
+  return blocks;
+}
+
+function plainParagraph(block: string): string {
+  return block
+    .split('\n')
+    .map((line) => stripInlineMarkdown(line))
+    .join(' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function isStructuredIntroductionBlock(block: string): boolean {
+  return block
+    .split('\n')
+    .some((line) =>
+      /^(?:#{1,6}\s|>|\||[-+*]\s+|\d+[.)、]\s+|<{1,2}[A-Za-z!/]|-{3,}$)/u.test(line.trim()),
+    );
+}
+
+function isEligibleIntroductionParagraph(block: string, plain: string): boolean {
+  if (plain === '' || isStructuredIntroductionBlock(block)) return false;
+  if (
+    /^(?:每(?:一)?课(?:遵循|采用|按照)|学习(?:路径|路线|方法|节奏|周期)|教学(?:路径|路线|方法|安排)|思维路径|课程(?:组织|安排|结构说明)|哲学旁注|课程旁注|方法论旁注|预计(?:总)?(?:学习)?(?:时间|时长)|总(?:学习)?(?:时间|时长)|每周(?:安排|学习)|标准模式\b)/u.test(
+      plain,
+    )
+  ) {
+    return false;
+  }
+  if (/(?:预计总学习时间|预计学习时长|总学习时间约为|学习周期)/u.test(plain)) {
+    return false;
+  }
+  if (/^(?:共|合计)?\s*\d+\s*(?:个)?(?:模块|课节|节课)(?:\b|$)/u.test(plain)) {
+    return false;
+  }
+  const arrows = plain.match(/(?:→|⇒|->)/gu)?.length ?? 0;
+  if (arrows > 0 && !/[。！？.!?]/u.test(plain)) return false;
+  return true;
+}
+
+function courseIntroductionText(
+  parsed: ReturnType<typeof parseMarkdown>,
+  courseHeadingIndex: number,
+): string | undefined {
+  const courseHeading = parsed.nodes[courseHeadingIndex];
+  if (courseHeading?.kind !== 'heading' || courseHeading.level !== 1) return undefined;
+
+  const nextSection = parsed.nodes
+    .slice(courseHeadingIndex + 1)
+    .find((node) => node.kind === 'heading' && node.level <= 2);
+  const blocks = paragraphBlocks(
+    parsed.lines.slice(courseHeading.lineIndex + 1, nextSection?.lineIndex ?? parsed.lines.length),
+  );
+  let firstNarrative: string | undefined;
+  let labelledNarrative: string | undefined;
+  let awaitingLabelledParagraph = false;
+
+  for (const block of blocks) {
+    const plain = plainParagraph(block);
+    const inlineLabel = /^(?:课程介绍|课程简介|课程概述|导语)\s*[:：]\s*(.+)$/u.exec(plain);
+    if (inlineLabel?.[1] !== undefined) {
+      const candidate = inlineLabel[1].trim();
+      if (isEligibleIntroductionParagraph(candidate, candidate)) {
+        labelledNarrative ??= candidate;
+      }
+      awaitingLabelledParagraph = false;
+      continue;
+    }
+    if (/^(?:课程介绍|课程简介|课程概述|导语)\s*[:：]?$/u.test(plain)) {
+      awaitingLabelledParagraph = true;
+      continue;
+    }
+    if (!isEligibleIntroductionParagraph(block, plain)) continue;
+    if (awaitingLabelledParagraph) {
+      labelledNarrative ??= plain;
+      awaitingLabelledParagraph = false;
+      continue;
+    }
+    firstNarrative ??= plain;
+  }
+
+  return labelledNarrative ?? firstNarrative;
+}
+
 function findModuleHeadingIndex(
   nodes: readonly MarkdownNode[],
   lessonNode: MarkdownNode,
@@ -325,14 +440,29 @@ export function projectOutlineMarkdown(
   lessons?: readonly OutlineProjectionLessonInput[],
 ): OutlineMarkdownProjection {
   const parsed = parseMarkdown(markdown);
-  const courseTitle = parsed.nodes.find(
+  const courseHeadingIndex = parsed.nodes.findIndex(
     (node) => node.kind === 'heading' && node.level === 1,
-  )?.title;
+  );
+  const courseTitle = parsed.nodes[courseHeadingIndex]?.title;
+  const introductionText =
+    courseHeadingIndex < 0 ? undefined : courseIntroductionText(parsed, courseHeadingIndex);
   const projection =
     lessons === undefined ? projectCandidate(parsed) : projectWithFormalLessons(parsed, lessons);
   return {
     ...(courseTitle === undefined ? {} : { title: courseTitle }),
+    ...(introductionText === undefined ? {} : { introductionText }),
     markdown,
     ...projection,
+  };
+}
+
+export function resolveCourseIntroduction(
+  projection: OutlineMarkdownProjection,
+  fallbackTitle: string,
+): ResolvedCourseIntroduction {
+  const title = projection.title?.trim() || fallbackTitle.trim() || '课程';
+  return {
+    title,
+    introductionText: projection.introductionText ?? `这是一门关于“${title}”的课程。`,
   };
 }

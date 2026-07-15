@@ -1,5 +1,5 @@
-import { ProfilePage } from '../features/profile/profile-page.js';
+import { Navigate } from 'react-router-dom';
 
 export function ProfileRoute() {
-  return <ProfilePage />;
+  return <Navigate replace to="/history?tab=portrait" />;
 }

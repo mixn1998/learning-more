@@ -31,6 +31,253 @@ function observation(
 }
 
 describe('teaching state reducer', () => {
+  it('starts with a warmup before entering the first knowledge point', () => {
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1', 'knowledge:kp_2'],
+    });
+
+    expect(initial).toMatchObject({
+      lessonPhase: 'warmup',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      comprehensiveCheck: 'pending',
+      summaryStatus: 'pending',
+    });
+    expect(initial.knowledgePoints.map((point) => point.progress)).toEqual(['pending', 'pending']);
+  });
+
+  it('preserves the lesson-defined knowledge-point order while removing duplicates', () => {
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:z', 'knowledge:a', 'knowledge:z'],
+    });
+
+    expect(initial.activeKnowledgePointRef).toBe('knowledge:z');
+    expect(initial.knowledgePoints.map((point) => point.ref)).toEqual([
+      'knowledge:z',
+      'knowledge:a',
+    ]);
+  });
+
+  it('does not pass a knowledge point before it has been taught', () => {
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1'],
+    });
+
+    const next = reduceTeachingState(
+      initial,
+      observation({
+        observationId: 'observation_warmup_answer',
+        entries: [
+          {
+            entryId: 'entry_warmup_answer',
+            kind: 'learner_demonstration',
+            summary: 'The learner showed relevant prior understanding during warmup.',
+            knowledgePointRefs: ['knowledge:kp_1'],
+            sourceRefs: ['message:message_user_1'],
+            assessment: 'supports',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
+
+    expect(next).toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+    });
+    expect(next.knowledgePoints[0]).toMatchObject({
+      delivery: 'not_addressed',
+      verification: 'supporting',
+      progress: 'pending',
+    });
+  });
+
+  it('advances only after a knowledge point is passed or explicitly skipped with no open question', () => {
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1', 'knowledge:kp_2'],
+    });
+    const firstPassed = reduceTeachingState(
+      initial,
+      observation({
+        observationId: 'observation_first_passed',
+        entries: [
+          {
+            entryId: 'entry_first_taught',
+            kind: 'teaching_delivery',
+            summary: 'The assistant taught the first knowledge point.',
+            knowledgePointRefs: ['knowledge:kp_1'],
+            sourceRefs: ['message:message_ai_1'],
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+          {
+            entryId: 'entry_first_passed',
+            kind: 'learner_demonstration',
+            summary: 'The learner answered the first check correctly.',
+            knowledgePointRefs: ['knowledge:kp_1'],
+            sourceRefs: ['message:message_user_1'],
+            assessment: 'supports',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
+
+    expect(firstPassed).toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_2',
+    });
+    expect(firstPassed.knowledgePoints.map((point) => point.progress)).toEqual([
+      'passed',
+      'pending',
+    ]);
+
+    const secondSkipped = reduceTeachingState(
+      firstPassed,
+      observation({
+        observationId: 'observation_second_skipped',
+        turnSequence: 2,
+        sourceSnapshotHash: 'b'.repeat(64),
+        entries: [
+          {
+            entryId: 'entry_second_skipped',
+            kind: 'learner_intent',
+            summary: 'The learner explicitly chose to skip the second knowledge point.',
+            knowledgePointRefs: ['knowledge:kp_2'],
+            sourceRefs: ['message:message_user_1'],
+            progressionSignal: 'skip_knowledge_point',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
+
+    expect(secondSkipped).toMatchObject({
+      lessonPhase: 'comprehensive_check',
+      comprehensiveCheck: 'checking',
+    });
+    expect(secondSkipped.activeKnowledgePointRef).toBeUndefined();
+    expect(secondSkipped.knowledgePoints.map((point) => point.progress)).toEqual([
+      'passed',
+      'skipped',
+    ]);
+
+    const comprehensivePassed = reduceTeachingState(
+      secondSkipped,
+      observation({
+        observationId: 'observation_comprehensive_passed',
+        turnSequence: 3,
+        sourceSnapshotHash: 'c'.repeat(64),
+        entries: [
+          {
+            entryId: 'entry_comprehensive_passed',
+            kind: 'learner_demonstration',
+            summary: 'The learner connected the lesson knowledge in the comprehensive check.',
+            knowledgePointRefs: [],
+            sourceRefs: ['message:message_user_1'],
+            assessment: 'supports',
+            progressionSignal: 'pass_comprehensive_check',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
+    expect(comprehensivePassed).toMatchObject({
+      lessonPhase: 'summary',
+      comprehensiveCheck: 'passed',
+      summaryStatus: 'pending',
+    });
+
+    const summarized = reduceTeachingState(
+      comprehensivePassed,
+      observation({
+        observationId: 'observation_summary_delivered',
+        turnSequence: 4,
+        sourceSnapshotHash: 'd'.repeat(64),
+        entries: [
+          {
+            entryId: 'entry_summary_delivered',
+            kind: 'teaching_delivery',
+            summary: 'The assistant summarized all lesson knowledge and their relationships.',
+            knowledgePointRefs: [],
+            sourceRefs: ['message:message_ai_1'],
+            progressionSignal: 'lesson_summary_delivered',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
+    expect(summarized).toMatchObject({
+      lessonPhase: 'ready_to_close',
+      summaryStatus: 'delivered',
+    });
+  });
+
+  it('keeps the current knowledge point active while a related question remains unresolved', () => {
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1', 'knowledge:kp_2'],
+    });
+    const next = reduceTeachingState(
+      initial,
+      observation({
+        observationId: 'observation_question_after_check',
+        entries: [
+          {
+            entryId: 'entry_taught',
+            kind: 'teaching_delivery',
+            summary: 'The assistant taught the first knowledge point.',
+            knowledgePointRefs: ['knowledge:kp_1'],
+            sourceRefs: ['message:message_ai_1'],
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+          {
+            entryId: 'entry_passed',
+            kind: 'learner_demonstration',
+            summary: 'The learner passed the check.',
+            knowledgePointRefs: ['knowledge:kp_1'],
+            sourceRefs: ['message:message_user_1'],
+            assessment: 'supports',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+          {
+            entryId: 'entry_open_question',
+            kind: 'open_loop',
+            summary: 'The learner still has a related unanswered question.',
+            knowledgePointRefs: ['knowledge:kp_1'],
+            sourceRefs: ['message:message_user_1'],
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
+
+    expect(next).toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+    });
+    expect(next.knowledgePoints[0]).toMatchObject({
+      progress: 'checking',
+      unresolvedEntryRefs: ['entry_open_question'],
+    });
+  });
+
   it('records validated delivery without claiming learner mastery', () => {
     const initial = createTeachingState({
       lessonId: 'lesson_1',

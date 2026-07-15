@@ -3,12 +3,18 @@ import { useState } from 'react';
 import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface, tabId, tabPanelId, Tabs } from '@learning-more/ui';
 
+import { ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+
 import './lesson-record-view.css';
 
 type SessionRecord = Readonly<{
   sessionId: string;
   label: string;
-  messages: readonly string[];
+  messages: readonly Readonly<{
+    id: string;
+    role: 'user' | 'assistant';
+    markdown: string;
+  }>[];
   meta?: string;
 }>;
 
@@ -19,15 +25,13 @@ const lessonRecordTabs = [
 
 const lessonRecordTabsIdPrefix = 'lesson-record-content';
 
-function ReadonlyMessage({ value }: { readonly value: string }) {
-  const assistant = value.startsWith('导师：');
-  const markdown = assistant ? value.slice('导师：'.length) : value.replace(/^你：/u, '');
-  return assistant ? (
-    <div className="learn-ai">
-      <AiContent markdown={markdown} />
-    </div>
+function ReadonlyMessage(props: { readonly message: SessionRecord['messages'][number] }) {
+  return props.message.role === 'assistant' ? (
+    <article aria-label="AI 导师" className="learn-ai">
+      <AiContent markdown={props.message.markdown} />
+    </article>
   ) : (
-    <div className="learn-user">{markdown}</div>
+    <UserMessageRow messageId={props.message.id} text={props.message.markdown} />
   );
 }
 
@@ -161,11 +165,16 @@ export function LessonRecordView(props: {
                     </button>
                   ))}
                 </aside>
-                <main aria-label="只读学习对话" className="lesson-record-chat">
-                  {selected.messages.map((message, index) => (
-                    <ReadonlyMessage key={`${selected.sessionId}:${index}`} value={message} />
+                <ConversationStream
+                  as="main"
+                  className="lesson-record-chat"
+                  followKey={`${selected.sessionId}:${selected.messages.length}`}
+                  label="只读学习对话"
+                >
+                  {selected.messages.map((message) => (
+                    <ReadonlyMessage key={message.id} message={message} />
                   ))}
-                </main>
+                </ConversationStream>
               </div>
             </section>
           )}

@@ -38,12 +38,15 @@ export function PlanningDateFilter<T extends PlanningDateItem>(props: {
     const scheduled = candidates.flatMap((item) => item.plannedLocalDate ?? []);
     return [...new Set([...window, ...scheduled])].sort();
   }, [anchor, candidates]);
-  const [selection, setSelection] = useState<string>(anchor);
-  const visible = candidates.filter((item) =>
-    selection === 'pending'
-      ? item.plannedLocalDate === undefined
-      : item.plannedLocalDate === selection,
-  );
+  const [selection, setSelection] = useState('');
+  const visible =
+    selection === ''
+      ? candidates
+      : candidates.filter((item) =>
+          selection === 'pending'
+            ? item.plannedLocalDate === undefined
+            : item.plannedLocalDate === selection,
+        );
   const pendingCount = candidates.filter((item) => item.plannedLocalDate === undefined).length;
 
   return (

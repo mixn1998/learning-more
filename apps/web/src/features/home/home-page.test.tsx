@@ -33,6 +33,47 @@ function client(
 afterEach(cleanup);
 
 describe('home page', () => {
+  it('opens lesson navigation directly from the home schedule without a transition dialog', () => {
+    const navigate = vi.fn();
+    render(
+      <HomePage
+        client={client()}
+        courses={[{ courseId: 'course_01', title: '微积分' }]}
+        lessons={[
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_01',
+            title: '极限、导数与积分的整体地图',
+            progress: 'not_started',
+          },
+        ]}
+        schedule={[
+          {
+            scheduleItemId: 'schedule_01',
+            courseId: 'course_01',
+            lessonId: 'lesson_01',
+            startAt: '2026-07-15T09:00:00+08:00',
+            endAt: '2026-07-15T09:35:00+08:00',
+            source: 'plan-flow',
+            locked: false,
+          },
+        ]}
+        now={new Date('2026-07-15T08:00:00+08:00')}
+        onNavigate={navigate}
+      />,
+    );
+
+    const agenda = screen.getByRole('heading', { name: /今日学习/ }).closest('section');
+    expect(agenda).not.toBeNull();
+    fireEvent.click(within(agenda!).getByRole('button', { name: /极限、导数与积分的整体地图/ }));
+
+    expect(navigate).toHaveBeenCalledWith('/courses/course_01/lessons/lesson_01');
+    expect(
+      screen.queryByRole('dialog', { name: '极限、导数与积分的整体地图' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开始学习' })).not.toBeInTheDocument();
+  });
+
   it('deletes a draft directly from its draft card without resuming it', async () => {
     const navigate = vi.fn();
     const deleteOutlineSession = vi.fn().mockResolvedValue({

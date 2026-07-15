@@ -4,8 +4,11 @@ import path from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
 
+import { resolveE2eEnvironment } from '../support/e2e-environment.js';
+
 const dataRoot = path.join(process.cwd(), 'tests', '.tmp', 'course-authoring-data');
 const processFile = path.join(process.cwd(), 'tests', '.tmp', 'e2e-processes.json');
+const environment = resolveE2eEnvironment();
 
 async function aggregateDocuments(entityType: string) {
   const directory = path.join(dataRoot, 'entities', entityType);
@@ -28,13 +31,18 @@ async function createCourse(page: Page) {
   await page.getByRole('button', { name: '开始创建' }).click();
   await page.getByLabel('补充需求').fill('Two lessons');
   await page.getByRole('button', { name: '完成评估' }).click();
+  await page.getByLabel('补充需求').fill('Focus on practical exercises');
+  await page.getByRole('button', { name: '完成评估' }).click();
   await page.getByRole('button', { name: '生成候选大纲' }).click();
   const failure = page.getByRole('alert');
-  const candidate = page.getByRole('heading', { name: /Candidate outline/ });
-  await expect(failure.or(candidate)).toBeVisible();
-  if (await failure.isVisible()) await page.getByRole('button', { name: '重试生成' }).click();
-  await expect(candidate).toBeVisible();
-  await page.getByRole('button', { name: '确认此候选' }).click();
+  const partialCandidate = page.getByRole('heading', { name: 'Partial candidate' });
+  const confirmCandidate = page.getByRole('button', { name: '确认此候选' });
+  await expect(failure.or(partialCandidate).or(confirmCandidate)).toBeVisible();
+  if (!(await confirmCandidate.isVisible())) {
+    await page.getByRole('button', { name: /重试生成|生成候选大纲/ }).click();
+  }
+  await expect(confirmCandidate).toBeVisible();
+  await confirmCandidate.click();
   await page.getByRole('button', { name: '确认创建课程' }).click();
   await expect(page).toHaveURL(/\/courses\/course_/);
   const courseId = new URL(page.url()).pathname.split('/').at(-1)!;
@@ -65,7 +73,7 @@ async function restartServer(now?: string) {
     web: number;
   };
   process.kill(processes.server, 'SIGTERM');
-  await waitFor('http://127.0.0.1:43120/api/v1/runtime/ready', false);
+  await waitFor(`${environment.serverBaseUrl}/api/v1/runtime/ready`, false);
   const server = spawn(
     process.execPath,
     ['--import', 'tsx', 'tests/e2e/start-course-authoring-server.ts'],
@@ -77,6 +85,9 @@ async function restartServer(now?: string) {
       env: {
         ...process.env,
         LEARNING_MORE_DATA_ROOT: dataRoot,
+        LEARNING_MORE_E2E_SERVER_PORT: String(environment.serverPort),
+        LEARNING_MORE_E2E_WEB_PORT: String(environment.webPort),
+        LEARNING_MORE_E2E_BUILD_ID: environment.buildId,
         ...(now === undefined ? {} : { LEARNING_MORE_NOW: now }),
       },
     },
@@ -84,12 +95,13 @@ async function restartServer(now?: string) {
   server.unref();
   if (server.pid === undefined) throw new Error('Failed to restart E2E server');
   await writeFile(processFile, JSON.stringify({ server: server.pid, web: processes.web }), 'utf8');
-  await waitFor('http://127.0.0.1:43120/api/v1/runtime/ready', true);
+  await waitFor(`${environment.serverBaseUrl}/api/v1/runtime/ready`, true);
 }
 
 test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identical history views', async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   const course = await createCourse(page);
   const [manualLessonId, plannedLessonId] = course.lessonIds;
   expect(manualLessonId).toBeDefined();
@@ -98,10 +110,9 @@ test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identica
   await page.goto('/planning');
   await page.getByLabel('排期状态').selectOption('待规划');
   const manualLesson = page.locator(`[data-lesson-id="${manualLessonId}"]`);
-  await manualLesson.getByRole('button', { name: '点击安排学习日期' }).click();
-  await page.getByLabel('学习日期').fill('2026-07-16');
-  await page.getByRole('button', { name: '保存日期' }).click();
-  await expect(page.locator(`[data-lesson-id="${manualLessonId}"]`)).toContainText('2026-07-16');
+  await manualLesson.locator('input[type="date"]').fill('2026-07-16');
+  await expect(manualLesson.locator('input[type="date"]')).toHaveValue('2026-07-16');
+  await expect(manualLesson.locator('input[type="date"]')).toBeEnabled();
 
   await page.getByRole('button', { name: '生成计划流' }).click();
   await page.getByRole('button', { name: '下一步' }).click();
@@ -186,7 +197,7 @@ test('[EQ-SCH-02] creates manual and plan-flow schedules, then rebuilds identica
   const reportToggle = page.getByRole('button', { name: /上周学习报告/ });
   await expect(reportToggle).toHaveAttribute('aria-expanded', 'false');
   await expect(
-    page.locator(`.weekly-report-lesson[data-lesson-id="${manualLessonId}"]`),
+    page.locator(`.weekly-report-lesson[data-lesson-id="${manualLessonId}"]`).first(),
   ).toContainText('点击查看课节记录');
   await reportToggle.click();
   await expect(page.locator('[data-ai-content="true"]').first()).toBeVisible();

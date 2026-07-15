@@ -9,9 +9,11 @@ import { DataRoot } from '../../apps/server/src/persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../apps/server/src/persistence/markdown-artifact-store.js';
 import { createLocalFileReviewClosureRepositories } from '../../apps/server/src/persistence/review-closure-repositories.js';
 import { createUnitOfWork } from '../../apps/server/src/persistence/unit-of-work.js';
+import { resolveE2eEnvironment } from '../support/e2e-environment.js';
 
 const dataRoot = path.join(process.cwd(), 'tests', '.tmp', 'course-authoring-data');
 const processFile = path.join(process.cwd(), 'tests', '.tmp', 'e2e-processes.json');
+const environment = resolveE2eEnvironment();
 
 async function waitFor(url: string, expectedUp: boolean) {
   const deadline = Date.now() + 30_000;
@@ -33,7 +35,7 @@ async function restartServer() {
     web: number;
   };
   process.kill(processes.server, 'SIGTERM');
-  await waitFor('http://127.0.0.1:43120/api/v1/runtime/ready', false);
+  await waitFor(`${environment.serverBaseUrl}/api/v1/runtime/ready`, false);
   const server = spawn(
     process.execPath,
     ['--import', 'tsx', 'tests/e2e/start-course-authoring-server.ts'],
@@ -42,13 +44,19 @@ async function restartServer() {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
-      env: { ...process.env, LEARNING_MORE_DATA_ROOT: dataRoot },
+      env: {
+        ...process.env,
+        LEARNING_MORE_DATA_ROOT: dataRoot,
+        LEARNING_MORE_E2E_SERVER_PORT: String(environment.serverPort),
+        LEARNING_MORE_E2E_WEB_PORT: String(environment.webPort),
+        LEARNING_MORE_E2E_BUILD_ID: environment.buildId,
+      },
     },
   );
   server.unref();
   if (server.pid === undefined) throw new Error('Failed to restart E2E server');
   await writeFile(processFile, JSON.stringify({ server: server.pid, web: processes.web }), 'utf8');
-  await waitFor('http://127.0.0.1:43120/api/v1/runtime/ready', true);
+  await waitFor(`${environment.serverBaseUrl}/api/v1/runtime/ready`, true);
 }
 
 async function aggregateDocuments(entityType: string) {
@@ -211,12 +219,20 @@ test('[EQ-LESSON-03] completes learning lifecycle, immutable lesson Reviews, and
       courseTitle: string;
       completedAt: string;
       actualSeconds: number;
-      supplementary: Array<{ label: string; messages: string[] }>;
+      supplementary: Array<{
+        label: string;
+        messages: Array<{ id: string; role: 'user' | 'assistant'; markdown: string }>;
+      }>;
     }>;
   }, lessonIds[0]!);
   expect(record).toMatchObject({
     courseId,
-    supplementary: [{ label: '补充学习 1', messages: ['你：Explore a related example'] }],
+    supplementary: [
+      {
+        label: '补充学习 1',
+        messages: [{ role: 'user', markdown: 'Explore a related example' }],
+      },
+    ],
   });
   expect(record.title).not.toBe('');
   expect(record.courseTitle).not.toBe('');

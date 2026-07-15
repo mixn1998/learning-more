@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { HomeDashboardResponseSchema } from '@learning-more/contracts';
+
 import { createMockProvider } from '../ai-providers/mock-provider.js';
 import { DataRoot } from '../persistence/data-root.js';
 import { createLocalFileReviewClosureRepositories } from '../persistence/review-closure-repositories.js';
@@ -25,6 +27,129 @@ afterEach(async () => {
 });
 
 describe('local CourseAuthoring application', () => {
+  it('saves a schedule command without starting derived AI work', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-schedule-response-'));
+    roots.push(directory);
+    const provider = createMockProvider({
+      id: 'slow-recommendation',
+      scriptFactory: (attempt) =>
+        attempt === 1
+          ? [
+              {
+                type: 'text',
+                text: '## This week\n\nInsufficient evidence to infer a stable change.',
+              },
+            ]
+          : [
+              {
+                type: 'wait',
+                wait: () => new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
+              },
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  semanticKey: 'slow-lesson',
+                  rankedSemanticKeys: ['slow-lesson'],
+                  rationale: 'Still the only eligible lesson.',
+                  evidenceRefs: [],
+                  confidence: 0.8,
+                }),
+              },
+            ],
+    });
+    const local = await createLocalApplication({
+      dataRoot: directory,
+      csrfToken: 'test-csrf',
+      providers: [provider],
+    });
+    const dataRoot = DataRoot.create(directory);
+    const unitOfWork = createUnitOfWork({ dataRoot });
+    await unitOfWork.execute({ transactionId: 'tx_seed_slow_schedule_course' }, async (tx) => {
+      await local.courseRepositories.courses.save(
+        tx,
+        {
+          id: 'slow-course',
+          title: 'Slow recommendation course',
+          courseMode: 'standard',
+          outlineVersionId: 'slow-outline',
+          lessonIds: ['slow-lesson'],
+          recommendedLessonId: 'slow-lesson',
+          status: 'active',
+          createdAt: '2026-07-15T00:00:00.000Z',
+          resourceVersion: 0,
+        },
+        0,
+      );
+      await local.courseRepositories.lessons.save(
+        tx,
+        {
+          id: 'slow-lesson',
+          courseId: 'slow-course',
+          outlineVersionId: 'slow-outline',
+          semanticKey: 'slow-lesson',
+          title: 'Slow lesson',
+          objective: 'Verify that derived AI work does not block scheduling.',
+          coreKnowledgePoints: [],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: [],
+          resourceVersion: 0,
+        },
+        0,
+      );
+    });
+    const app = await buildApp(local.serverDependencies);
+    const before = await local.generationRuntime.getMetrics();
+    const startedAt = Date.now();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/schedule-assignments',
+      headers: { ...baseHeaders, 'idempotency-key': 'schedule_slow_01' },
+      payload: {
+        courseId: 'slow-course',
+        lessonId: 'slow-lesson',
+        startAt: '2026-07-16T11:00:00.000Z',
+        endAt: '2026-07-16T11:30:00.000Z',
+        timezoneAtCreation: 'Asia/Shanghai',
+      },
+    });
+    const responseMs = Date.now() - startedAt;
+    const previewStartedAt = Date.now();
+    const preview = await app.inject({
+      method: 'POST',
+      url: '/api/v1/plan-flow-previews',
+      headers: { ...baseHeaders, 'idempotency-key': 'preview_rules_01' },
+      payload: {
+        constraintsArtifactRef: 'constraints_manual',
+        courseRefs: ['slow-course'],
+        lessonRefs: ['slow-lesson'],
+        timeWindowRefs: [
+          'start:2026-07-16',
+          'daily:30',
+          'days:周四',
+          'preserve:false',
+          'overdue:false',
+          'strategy:balanced',
+        ],
+        existingScheduleSnapshotRef: 'schedule_1',
+      },
+    });
+    const previewMs = Date.now() - previewStartedAt;
+    const after = await local.generationRuntime.getMetrics();
+    await app.close();
+
+    expect(responseMs).toBeLessThan(500);
+    expect(response.statusCode, response.body).toBe(201);
+    expect(previewMs).toBeLessThan(500);
+    expect(preview.statusCode, preview.body).toBe(202);
+    expect(preview.json()).toMatchObject({
+      state: 'preview-ready',
+      generationTaskId: expect.stringMatching(/^rules_/),
+      suggestions: [expect.objectContaining({ lessonId: 'slow-lesson' })],
+    });
+    expect(after.total).toBe(before.total);
+  });
+
   it('[EQ-COURSE-03..06] runs confirmation, revision, closure, review, and permanent deletion through HTTP → Module → LocalFile', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-'));
     roots.push(dataRoot);
@@ -187,6 +312,30 @@ describe('local CourseAuthoring application', () => {
     expect(course).toMatchObject({
       outlineVersionId: revision.outlineVersionId,
       resourceVersion: revision.resourceVersion,
+    });
+    const confirmedOutline = await local.courseRepositories.outlineVersions.get(
+      course!.outlineVersionId,
+    );
+    const homeView = HomeDashboardResponseSchema.parse(
+      await local.serverDependencies.home!.getHome(),
+    );
+    expect(
+      homeView.courses.find((item) => item.courseId === confirmation.courseId)?.topicTags,
+    ).toEqual(confirmedOutline?.topicTags);
+    expect(
+      homeView.courses.find((item) => item.courseId === confirmation.courseId)?.disciplineTag,
+    ).toBe(confirmedOutline?.disciplineTag);
+    const home = await app.inject({ method: 'GET', url: '/api/v1/home' });
+    expect(home.statusCode, home.body).toBe(200);
+    expect(
+      home
+        .json<{
+          courses: Array<{ courseId: string; disciplineTag: string; topicTags: string[] }>;
+        }>()
+        .courses.find((item) => item.courseId === confirmation.courseId),
+    ).toMatchObject({
+      disciplineTag: confirmedOutline?.disciplineTag,
+      topicTags: confirmedOutline?.topicTags,
     });
     await expect(local.frameLog.readAfter(generation.taskId, 0)).resolves.toMatchObject({
       frames: expect.arrayContaining([expect.objectContaining({ type: 'artifact.ready' })]),

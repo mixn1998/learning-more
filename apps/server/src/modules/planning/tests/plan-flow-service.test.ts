@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   createPlanFlowService,
@@ -33,12 +33,10 @@ function fixture(existingSchedule: PlanPreviewContext['existingSchedule'] = []) 
   let scheduleVersion = 0;
   let scheduleId = 0;
   let lessonsAvailable = true;
-  const submit = vi.fn().mockResolvedValue({ taskId: 'task_plan_01' });
   const service = createPlanFlowService({
     repository: flows,
     scheduleRepository: schedules,
     unitOfWork,
-    generationRuntime: { submit },
     async assemblePreviewContext() {
       return {
         courses: [{ courseId: 'course_01', title: 'Probability' }],
@@ -89,7 +87,6 @@ function fixture(existingSchedule: PlanPreviewContext['existingSchedule'] = []) 
     service,
     flows,
     schedules,
-    submit,
     setScheduleVersion(value: number) {
       scheduleVersion = value;
     },
@@ -137,13 +134,12 @@ describe('PlanFlowService', () => {
       'preview_soft_daily_target',
     );
 
-    const ready = await service.markPreviewReady(requested.id, suggestions);
-
-    expect(ready).toMatchObject({ state: 'preview-ready', suggestions });
+    expect(requested).toMatchObject({ state: 'preview-ready' });
+    expect(requested.suggestions).toHaveLength(2);
   });
 
   it('excludes already scheduled lessons when preserving existing dates', async () => {
-    const { service, submit } = fixture([
+    const { service } = fixture([
       {
         courseId: 'course_01',
         lessonId: 'lesson_01',
@@ -163,9 +159,7 @@ describe('PlanFlowService', () => {
     );
 
     expect(requested.lessonRefs).toEqual(['lesson_02']);
-    const prompt = submit.mock.calls[0]?.[0]?.prompt as string;
-    expect(prompt).not.toContain('Foundations');
-    expect(prompt).toContain('Applications');
+    expect(requested.suggestions.map((item) => item.lessonId)).toEqual(['lesson_02']);
   });
 
   it('rejects late confirmation after a referenced course archive is permanently deleted', async () => {
@@ -182,41 +176,31 @@ describe('PlanFlowService', () => {
     expect(remaining).toEqual([]);
   });
 
-  it('[EQ-PF-01] previews without changing schedule and retains constraints plus draft on AI failure', async () => {
-    const { service, schedules, submit, flows } = fixture();
+  it('[EQ-PF-01] computes a deterministic preview without AI or schedule writes', async () => {
+    const { service, schedules } = fixture();
     const requested = await service.requestPreview(previewInput, 'preview_01');
     expect(requested).toMatchObject({
       id: 'plan_flow_01',
-      state: 'previewing',
+      state: 'preview-ready',
       baseScheduleVersion: 0,
       constraintsArtifactRef: 'artifact_constraints_01',
+      generationTaskId: expect.stringMatching(/^rules_/),
     });
-    expect(submit).toHaveBeenCalledWith(
-      expect.objectContaining({ inputSnapshotHash: expect.any(String) }),
-    );
-    const prompt = submit.mock.calls[0]?.[0]?.prompt as string;
-    expect(prompt).toContain('【机器输出契约】');
-    expect(prompt).toContain('【课程与待规划课节】');
-    expect(prompt).toContain('课节标识：lesson_01');
-    expect(prompt).toContain('Keep the existing evening commitments.');
-    expect(prompt).not.toContain('constraintsArtifactRef');
-    expect(prompt).not.toContain('existingScheduleSnapshotRef');
-    expect(prompt).not.toContain('baseScheduleVersion');
-    expect(prompt).not.toContain('materializedContext');
-    expect(prompt).not.toContain('schedule_snapshot_0');
-    const contractLine = prompt.split('\n').find((line) => line.startsWith('{"suggestions"'));
-    expect(() => JSON.parse(contractLine ?? '')).not.toThrow();
-    expect(JSON.stringify(submit.mock.calls)).not.toContain('rawConversation');
+    expect(requested.suggestions).toEqual([
+      expect.objectContaining({
+        lessonId: 'lesson_01',
+        startAt: '2026-07-14T11:00:00.000Z',
+        endAt: '2026-07-14T12:00:00.000Z',
+      }),
+      expect.objectContaining({
+        lessonId: 'lesson_02',
+        startAt: '2026-07-15T11:00:00.000Z',
+        endAt: '2026-07-15T12:00:00.000Z',
+      }),
+    ]);
     const currentItems = [];
     for await (const item of schedules.list()) currentItems.push(item);
     expect(currentItems).toEqual([]);
-
-    await service.fail(requested.id, 'provider_timeout', 'draft_plan_01');
-    await expect(flows.get(requested.id)).resolves.toMatchObject({
-      state: 'failed',
-      constraintsArtifactRef: 'artifact_constraints_01',
-      draftArtifactRef: 'draft_plan_01',
-    });
   });
 
   it('validates preview lessons, intervals, and duplicate suggestions', async () => {

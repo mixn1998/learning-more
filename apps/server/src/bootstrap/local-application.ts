@@ -5,6 +5,7 @@ import {
   type LearningEventEnvelope,
   type ProfileEvidenceCheckpointKind,
   type TeachingCheckpointSnapshot,
+  type TeachingStateSnapshot,
 } from '@learning-more/contracts';
 
 import { createMockProvider, type MockProviderStep } from '../ai-providers/mock-provider.js';
@@ -55,7 +56,6 @@ import { createProfileEvidenceAggregator } from '../modules/profile-evidence/imp
 import { packPortraitEvidence } from '../modules/learning-portrait/implementation/evidence-packer.js';
 import { createPortraitModule } from '../modules/learning-portrait/implementation/portrait-module.js';
 import { createPlanFlowService } from '../modules/planning/implementation/plan-flow-service.js';
-import type { PlanSuggestion } from '../modules/planning/model/plan-flow.js';
 import { createPlanningModule } from '../modules/planning/implementation/planning-module.js';
 import { createCourseReviewWorkflow } from '../modules/review-closure/implementation/course-review.js';
 import { createLessonClosureWorkflow } from '../modules/review-closure/implementation/lesson-closure.js';
@@ -119,28 +119,6 @@ function parseStructuredJson(markdown: string): unknown {
   const trimmed = markdown.trim();
   const fenced = /^```(?:json)?\s*\r?\n([\s\S]*?)\r?\n```$/u.exec(trimmed);
   return JSON.parse((fenced?.[1] ?? trimmed).trim()) as unknown;
-}
-
-function parsePlanSuggestions(markdown: string): readonly PlanSuggestion[] {
-  const parsed = parseStructuredJson(markdown) as { suggestions?: unknown };
-  if (!Array.isArray(parsed.suggestions)) throw new Error('plan_preview_invalid');
-  return parsed.suggestions.map((value) => {
-    if (typeof value !== 'object' || value === null) throw new Error('plan_preview_invalid');
-    const suggestion = value as Record<string, unknown>;
-    for (const key of [
-      'courseId',
-      'lessonId',
-      'startAt',
-      'endAt',
-      'timezoneAtCreation',
-      'explanation',
-    ]) {
-      if (typeof suggestion[key] !== 'string' || suggestion[key] === '') {
-        throw new Error('plan_preview_invalid');
-      }
-    }
-    return suggestion as PlanSuggestion;
-  });
 }
 
 function mockScript(
@@ -1576,7 +1554,6 @@ export async function createLocalApplication(options: {
     repository: planFlowRepository,
     scheduleRepository,
     unitOfWork,
-    generationRuntime,
     async assemblePreviewContext(input) {
       const courses = [];
       for (const courseId of input.courseRefs) {
@@ -1641,7 +1618,6 @@ export async function createLocalApplication(options: {
     nextPlanFlowId: () => `plan_flow_${randomUUID()}`,
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
-    providerId: 'current',
     async recordConfirmed(items, planFlowId, tx) {
       const timestamp = new Date().toISOString();
       await outbox.enqueue(
@@ -2054,12 +2030,17 @@ export async function createLocalApplication(options: {
         const courses = [];
         const lessons = [];
         for await (const course of courseRepositories.courses.list()) {
+          const confirmedOutline = await courseRepositories.outlineVersions.get(
+            course.outlineVersionId,
+          );
           courses.push({
             courseId: course.id,
             title: course.title,
             status: course.status,
             courseMode: course.courseMode,
             outlineVersionId: course.outlineVersionId,
+            disciplineTag: confirmedOutline?.disciplineTag,
+            topicTags: [...(confirmedOutline?.topicTags ?? [])],
             resourceVersion: course.resourceVersion,
           });
           for (const lessonId of course.lessonIds) {
@@ -2076,6 +2057,9 @@ export async function createLocalApplication(options: {
               courseId: course.id,
               lessonId,
               title: lesson.title,
+              objective: lesson.objective,
+              coreKnowledgePoints: [...lesson.coreKnowledgePoints],
+              estimatedMinutes: lesson.estimatedMinutes,
               progress: learning?.learning.progress ?? 'not_started',
               ...(learning?.learning.session?.id === undefined
                 ? {}
@@ -2172,6 +2156,50 @@ export async function createLocalApplication(options: {
       module: sessionModule,
       teaching: interactiveTeachingRuntime.module,
       resolveSession,
+      async getTeachingProgress(sessionId) {
+        const reference = await resolveSession(sessionId);
+        const facts = await teachingContextSources.getCourseAndLesson({
+          courseId: reference.courseId,
+          lessonId: reference.lessonId,
+        });
+        let state: TeachingStateSnapshot | undefined;
+        try {
+          state = await interactiveTeachingRuntime.module.getTeachingState(sessionId);
+        } catch (error) {
+          if (!(error instanceof Error) || error.message !== 'teaching_state_not_found')
+            throw error;
+        }
+        const stateByRef = new Map(state?.knowledgePoints.map((point) => [point.ref, point]));
+        return {
+          ledgerVersion: state?.ledgerVersion ?? 0,
+          observationStatus: state?.observationStatus ?? 'current',
+          lessonPhase: state?.lessonPhase ?? 'warmup',
+          ...(state?.activeKnowledgePointRef === undefined
+            ? facts.lesson.coreKnowledgePoints[0] === undefined
+              ? {}
+              : { activeKnowledgePointRef: facts.lesson.coreKnowledgePoints[0].ref }
+            : { activeKnowledgePointRef: state.activeKnowledgePointRef }),
+          comprehensiveCheck: state?.comprehensiveCheck ?? 'pending',
+          summaryStatus: state?.summaryStatus ?? 'pending',
+          knowledgePoints: facts.lesson.coreKnowledgePoints.map((knowledgePoint) => {
+            const point = stateByRef.get(knowledgePoint.ref);
+            return {
+              ref: knowledgePoint.ref,
+              title: knowledgePoint.text,
+              progress:
+                point?.progress ??
+                (point?.verification === 'supporting'
+                  ? ('passed' as const)
+                  : point?.delivery === 'explained'
+                    ? ('checking' as const)
+                    : ('pending' as const)),
+              delivery: point?.delivery ?? ('not_addressed' as const),
+              verification: point?.verification ?? ('not_observed' as const),
+              unresolvedQuestionCount: point?.unresolvedEntryRefs.length ?? 0,
+            };
+          }),
+        };
+      },
       async saveUserMessage(messageId, markdown) {
         await artifactStore.saveDraft(messageId, markdown);
         return messageId;
@@ -2226,7 +2254,11 @@ export async function createLocalApplication(options: {
             const markdown =
               (await artifactStore.read(message.contentArtifactRef))?.content ??
               (await artifactStore.readDraft(message.contentArtifactRef));
-            return `${message.role === 'user' ? '你' : '导师'}：${markdown ?? ''}`;
+            return {
+              id: message.id,
+              role: message.role,
+              markdown: markdown ?? '',
+            };
           }),
         );
         const supplementary = [];
@@ -2236,7 +2268,11 @@ export async function createLocalApplication(options: {
               const markdown =
                 (await artifactStore.read(messageId))?.content ??
                 (await artifactStore.readDraft(messageId));
-              return `你：${markdown ?? ''}`;
+              return {
+                id: messageId,
+                role: 'user' as const,
+                markdown: markdown ?? '',
+              };
             }),
           );
           supplementary.push({
@@ -2356,6 +2392,8 @@ export async function createLocalApplication(options: {
           if (
             checkpoint.observationCompleteness !== 'complete' ||
             !checkpoint.teachingState.evidenceCheckpoint ||
+            (checkpoint.teachingState.lessonPhase !== undefined &&
+              checkpoint.teachingState.lessonPhase !== 'ready_to_close') ||
             checkpoint.retentionDecision !== 'preserve'
           ) {
             throw Object.assign(new Error('lesson_not_completable'), {
@@ -2559,54 +2597,12 @@ export async function createLocalApplication(options: {
     },
     planning: {
       planning: {
-        async execute(command, context) {
-          const result = await planning.execute(command, context);
-          await refreshNextLessonRecommendation(result.scheduleItem.courseId, 'schedule-changed');
-          return result;
-        },
+        execute: planning.execute,
         list: planning.list,
       },
       planFlows: {
-        async requestPreview(input, commandId) {
-          const requested = await planFlows.requestPreview(input, commandId);
-          let task;
-          try {
-            task = await generationExecution.awaitTerminal(requested.generationTaskId);
-          } catch (error) {
-            const errorCode =
-              typeof error === 'object' && error !== null && 'code' in error
-                ? String(error.code)
-                : error instanceof Error
-                  ? error.message
-                  : 'generation_task_not_dispatchable';
-            return planFlows.fail(requested.id, errorCode, `draft_${requested.generationTaskId}`);
-          }
-          const markdown = task.draftMarkdown?.trim() ?? '';
-          if (task.status !== 'completed' || markdown === '') {
-            return planFlows.fail(
-              requested.id,
-              task.errorCode ?? 'ai_unavailable',
-              `draft_${requested.generationTaskId}`,
-            );
-          }
-          try {
-            return await planFlows.markPreviewReady(requested.id, parsePlanSuggestions(markdown));
-          } catch (error) {
-            await planFlows.fail(
-              requested.id,
-              error instanceof Error ? error.message : 'plan_preview_invalid',
-              `draft_${requested.generationTaskId}`,
-            );
-            throw error;
-          }
-        },
-        async confirm(id, context) {
-          const confirmed = await planFlows.confirm(id, context);
-          for (const courseId of confirmed.courseRefs) {
-            await refreshNextLessonRecommendation(courseId, 'schedule-changed');
-          }
-          return confirmed;
-        },
+        requestPreview: planFlows.requestPreview,
+        confirm: planFlows.confirm,
         get: planFlows.get,
         manage: planFlows.manage,
       },

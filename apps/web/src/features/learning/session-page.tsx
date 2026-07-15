@@ -1,10 +1,15 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { learningClient, type LearningClient } from '../../client/learning-client.js';
+import { ChatComposer } from '../../components/chat/chat.js';
 import { ReviewDialog } from '../review/review-dialog.js';
 import type { SessionMessageView } from './message-stream.js';
 import { LessonSessionWorkspace } from './lesson-session-workspace.js';
 import { useSessionWindowLifecycle } from './session-window-lifecycle.js';
+
+type TeachingProgress = NonNullable<
+  Awaited<ReturnType<LearningClient['getSession']>>['teachingProgress']
+>;
 
 type State = Readonly<{
   sessionId?: string;
@@ -35,6 +40,7 @@ type State = Readonly<{
   supplementaryVersion?: number;
   supplementaryInput: string;
   messages: readonly SessionMessageView[];
+  teachingProgress?: TeachingProgress;
   sessionSnapshotHash?: string;
   closurePreparation?: Readonly<{
     sessionId: string;
@@ -63,6 +69,7 @@ type Action =
       actualSeconds?: number;
       sessionSnapshotHash?: string;
       closurePreparation?: State['closurePreparation'];
+      teachingProgress?: TeachingProgress;
     }>
   | Readonly<{ type: 'input'; value: string }>
   | Readonly<{ type: 'send-started'; content: string; messageId: string }>
@@ -167,6 +174,9 @@ function reducer(state: State, action: Action): State {
       ...(action.closurePreparation === undefined
         ? {}
         : { closurePreparation: action.closurePreparation }),
+      ...(action.teachingProgress === undefined
+        ? {}
+        : { teachingProgress: action.teachingProgress }),
     };
   }
   if (action.type === 'input') return { ...state, input: action.value };
@@ -288,6 +298,106 @@ function reducer(state: State, action: Action): State {
   };
 }
 
+function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
+  const teaching = state.teachingProgress;
+  if (teaching === undefined) {
+    const points = fallbackPoints.length === 0 ? ['当前知识点'] : fallbackPoints;
+    return points.map((title, index) => ({
+      title,
+      detail:
+        state.progress === 'completed'
+          ? '本课已完成'
+          : index === 0
+            ? '等待教学状态更新'
+            : '尚未推进到此',
+      state:
+        state.progress === 'completed'
+          ? ('done' as const)
+          : index === 0
+            ? ('active' as const)
+            : ('pending' as const),
+    }));
+  }
+
+  const completed = state.progress === 'completed';
+  const phase = teaching.lessonPhase;
+  const afterWarmup = phase !== 'warmup';
+  const afterComprehensive = ['summary', 'ready_to_close'].includes(phase);
+  const path = [
+    {
+      title: '课前热身',
+      detail: completed || afterWarmup ? '已完成学习起点确认' : '正在连接目标与已有经验',
+      state: completed || afterWarmup ? ('done' as const) : ('active' as const),
+    },
+    ...teaching.knowledgePoints.map((point) => {
+      if (completed) return { title: point.title, detail: '本课已完成', state: 'done' as const };
+      const active =
+        point.ref === teaching.activeKnowledgePointRef ||
+        point.progress === 'teaching' ||
+        point.progress === 'checking';
+      if (point.unresolvedQuestionCount > 0) {
+        return {
+          title: point.title,
+          detail: `还有 ${point.unresolvedQuestionCount} 个相关疑问待处理`,
+          state: 'active' as const,
+        };
+      }
+      if (point.progress === 'passed') {
+        return { title: point.title, detail: '检测已通过', state: 'done' as const };
+      }
+      if (point.progress === 'skipped') {
+        return { title: point.title, detail: '已按你的选择跳过', state: 'done' as const };
+      }
+      if (active) {
+        const detail =
+          point.verification === 'limiting'
+            ? '仍有误解需要澄清'
+            : point.verification === 'mixed'
+              ? '理解表现仍不稳定'
+              : point.delivery === 'explained'
+                ? '已讲解，正在进行理解检测'
+                : '正在进入本知识点';
+        return { title: point.title, detail, state: 'active' as const };
+      }
+      return { title: point.title, detail: '尚未推进到此', state: 'pending' as const };
+    }),
+    {
+      title: '综合检测',
+      detail:
+        completed || afterComprehensive
+          ? teaching.comprehensiveCheck === 'skipped'
+            ? '已按你的选择跳过'
+            : '综合检测已通过'
+          : phase === 'comprehensive_check'
+            ? '正在连接本课全部知识点'
+            : '等待逐项学习完成',
+      state:
+        completed || afterComprehensive
+          ? ('done' as const)
+          : phase === 'comprehensive_check'
+            ? ('active' as const)
+            : ('pending' as const),
+    },
+    {
+      title: '本课总结',
+      detail:
+        completed || phase === 'ready_to_close'
+          ? '知识点总结已完成'
+          : phase === 'summary'
+            ? 'AI 正在整理本课知识关系'
+            : '等待综合检测完成',
+      state:
+        completed || phase === 'ready_to_close'
+          ? ('done' as const)
+          : phase === 'summary'
+            ? ('active' as const)
+            : ('pending' as const),
+    },
+  ];
+
+  return path;
+}
+
 export function SessionPage(props: {
   readonly lessonId: string;
   readonly client?: LearningClient;
@@ -303,6 +413,7 @@ export function SessionPage(props: {
   const api = props.client ?? learningClient;
   const [state, dispatch] = useReducer(reducer, initial);
   const inFlight = useRef(new Set<string>());
+  const teachingRefreshes = useRef(new Set<string>());
   const [navigationError, setNavigationError] = useState<string>();
 
   const hydrate = (snapshot: Awaited<ReturnType<LearningClient['getSession']>>) => {
@@ -323,7 +434,36 @@ export function SessionPage(props: {
       ...(snapshot.closurePreparation === undefined
         ? {}
         : { closurePreparation: snapshot.closurePreparation }),
+      ...(snapshot.teachingProgress === undefined
+        ? {}
+        : { teachingProgress: snapshot.teachingProgress }),
     });
+  };
+
+  const hydrateAndRefreshTeachingProgress = (
+    sessionId: string,
+    initialSnapshot: Awaited<ReturnType<LearningClient['getSession']>>,
+  ) => {
+    hydrate(initialSnapshot);
+    if (
+      initialSnapshot.teachingProgress?.observationStatus === 'pending' &&
+      !teachingRefreshes.current.has(sessionId)
+    ) {
+      teachingRefreshes.current.add(sessionId);
+      void (async () => {
+        try {
+          for (let attempt = 0; attempt < 120; attempt += 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+            const refreshed = await api.getSession(sessionId);
+            hydrate(refreshed);
+            if (refreshed.teachingProgress?.observationStatus !== 'pending') break;
+          }
+        } finally {
+          teachingRefreshes.current.delete(sessionId);
+        }
+      })();
+    }
+    return initialSnapshot;
   };
 
   useEffect(() => {
@@ -334,8 +474,8 @@ export function SessionPage(props: {
         resourceVersion: started.resourceVersion,
         writable: started.writable,
       });
-      const snapshot = await api.getSession(started.sessionId);
-      hydrate(snapshot);
+      const initialSnapshot = await api.getSession(started.sessionId);
+      const snapshot = hydrateAndRefreshTeachingProgress(started.sessionId, initialSnapshot);
       const activeTaskId = snapshot.learning.session?.activeGenerationTaskId;
       if (activeTaskId !== undefined) {
         dispatch({
@@ -349,7 +489,7 @@ export function SessionPage(props: {
           }
         });
         const refreshed = await api.getSession(started.sessionId);
-        hydrate(refreshed);
+        hydrateAndRefreshTeachingProgress(started.sessionId, refreshed);
         dispatch({ type: 'completed' });
       } else if (
         props.autoOpen === true &&
@@ -362,10 +502,16 @@ export function SessionPage(props: {
   }, [api, props.autoOpen, props.lessonId]);
 
   useEffect(() => {
-    if (state.activity !== 'active' || state.progress !== 'in_progress') return undefined;
+    if (
+      state.activity !== 'active' ||
+      state.phase === 'generating' ||
+      state.progress !== 'in_progress'
+    ) {
+      return undefined;
+    }
     const timer = window.setInterval(() => dispatch({ type: 'tick' }), 1_000);
     return () => window.clearInterval(timer);
-  }, [state.activity, state.progress]);
+  }, [state.activity, state.phase, state.progress]);
 
   const once = async (key: string, work: () => Promise<void>) => {
     if (inFlight.current.has(key)) return;
@@ -393,13 +539,13 @@ export function SessionPage(props: {
           }
         });
         const refreshed = await api.getSession(sessionId);
-        hydrate(refreshed);
+        hydrateAndRefreshTeachingProgress(sessionId, refreshed);
         dispatch({ type: 'completed' });
       } catch {
         try {
           const recovered = await api.getSession(sessionId);
           if (recovered.messages?.some((message) => message.role === 'assistant')) {
-            hydrate(recovered);
+            hydrateAndRefreshTeachingProgress(sessionId, recovered);
             dispatch({ type: 'completed' });
             return;
           }
@@ -429,7 +575,7 @@ export function SessionPage(props: {
         throw error;
       }
       const refreshed = await api.getSession(state.sessionId);
-      hydrate(refreshed);
+      hydrateAndRefreshTeachingProgress(state.sessionId, refreshed);
       return work(refreshed.resourceVersion, refreshed);
     }
   };
@@ -468,7 +614,7 @@ export function SessionPage(props: {
         return;
       }
       const refreshed = await api.getSession(state.sessionId);
-      hydrate(refreshed);
+      hydrateAndRefreshTeachingProgress(state.sessionId, refreshed);
       dispatch({ type: 'completed' });
     });
 
@@ -635,23 +781,23 @@ export function SessionPage(props: {
       });
     });
 
-  const sendSupplementary = () =>
+  const sendSupplementary = (markdown = state.supplementaryInput) =>
     once('send-supplementary', async () => {
       if (
         state.supplementarySessionId === undefined ||
         state.supplementaryVersion === undefined ||
-        state.supplementaryInput.trim() === ''
+        markdown.trim() === ''
       )
         return;
       const session = await api.sendSupplementary(
         state.supplementarySessionId,
-        state.supplementaryInput,
+        markdown,
         state.supplementaryVersion,
       );
       dispatch({ type: 'supplementary-sent', resourceVersion: session.resourceVersion });
     });
 
-  const pathPoints = (props.knowledgePoints ?? []).slice(0, 4);
+  const lessonPath = buildLessonPath(state, props.knowledgePoints ?? []);
   const messages = [
     ...state.messages.map((message) => ({
       id: message.id,
@@ -684,7 +830,11 @@ export function SessionPage(props: {
       <LessonSessionWorkspace
         abandoned={state.progress === 'abandoned'}
         assistantPending={state.assistantPending}
-        canComplete={state.closurePreparation !== undefined}
+        canComplete={
+          state.closurePreparation !== undefined &&
+          (state.teachingProgress === undefined ||
+            state.teachingProgress.lessonPhase === 'ready_to_close')
+        }
         canStop={state.taskId !== undefined}
         courseTitle={props.courseTitle ?? '当前课程'}
         elapsedSeconds={state.actualSeconds}
@@ -695,11 +845,7 @@ export function SessionPage(props: {
         messages={messages}
         moduleLabel={props.moduleLabel ?? '正式课程课节'}
         outlineVersionLabel={props.outlineVersionLabel ?? '大纲 v1'}
-        path={(pathPoints.length === 0 ? ['当前知识点'] : pathPoints).map((point, index) => ({
-          title: point,
-          detail: index === 0 ? '正在建立判断' : '等待继续推进',
-          state: index === 0 ? 'active' : 'pending',
-        }))}
+        path={lessonPath}
         paused={state.activity === 'paused'}
         sendError={navigationError ?? state.sendError}
         stopped={state.draftArtifactRef !== undefined}
@@ -760,17 +906,14 @@ export function SessionPage(props: {
           ) : (
             <>
               <p>补充学习会话已独立创建</p>
-              <label htmlFor="supplementary-learning-input">补充学习输入</label>
-              <textarea
-                id="supplementary-learning-input"
+              <ChatComposer
+                label="补充学习输入"
+                placeholder="继续追问或补充你的思考…"
+                sendLabel="发送补充消息"
                 value={state.supplementaryInput}
-                onChange={(event) =>
-                  dispatch({ type: 'supplementary-input', value: event.target.value })
-                }
+                onChange={(value) => dispatch({ type: 'supplementary-input', value })}
+                onSubmit={(markdown) => void sendSupplementary(markdown)}
               />
-              <button className="lm-btn" type="button" onClick={() => void sendSupplementary()}>
-                发送补充消息
-              </button>
             </>
           )}
         </section>

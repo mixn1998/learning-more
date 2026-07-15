@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { LearningClient } from '../../client/learning-client.js';
@@ -51,7 +51,10 @@ function client(overrides: Partial<LearningClient> = {}): LearningClient {
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 describe('learning SessionPage', () => {
   it('automatically starts an AI-led opening without a user message', async () => {
@@ -79,6 +82,7 @@ describe('learning SessionPage', () => {
     expect(openLesson).toHaveBeenCalledWith('session_01', 1);
     expect(screen.queryByText('开始提问后，AI 导师的回答会显示在这里。')).not.toBeInTheDocument();
     expect(screen.queryByText('先从一个关键问题开始。')).toBeInTheDocument();
+    expect(screen.queryByText('学习中 · 渐进式教学')).not.toBeInTheDocument();
   });
 
   it('offers an explicit opening retry or direct conversation fallback', async () => {
@@ -216,7 +220,15 @@ describe('learning SessionPage', () => {
     });
     render(<SessionPage lessonId="lesson_01" client={client({ getSession, resume })} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '继续学习' }));
+    const resumeButton = await screen.findByRole('button', { name: '继续学习' });
+    const endButton = screen.getByRole('button', { name: '结束本课' });
+    const returnButton = screen.getByRole('button', { name: '返回课程大纲' });
+    const timerCard = screen.getByRole('heading', { name: '实际学习时长' }).closest('section');
+    expect(timerCard).toContainElement(resumeButton);
+    expect(timerCard).toContainElement(endButton);
+    expect(timerCard).toContainElement(returnButton);
+
+    fireEvent.click(resumeButton);
 
     await waitFor(() => expect(resume).toHaveBeenCalledWith('session_01', 1));
   });
@@ -293,6 +305,85 @@ describe('learning SessionPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('projects completed lesson progress onto every visible learning-path point', async () => {
+    const api = client({
+      getSession: vi.fn().mockResolvedValue({
+        resourceVersion: 7,
+        learning: {
+          progress: 'completed',
+          session: { state: 'closed', finalReviewId: 'review_final_01' },
+        },
+        finalReview: { markdown: '# Final Review' },
+      }),
+    });
+
+    render(
+      <SessionPage
+        client={api}
+        knowledgePoints={['平均变化率', '有限求和', '极限', '微积分基本定理']}
+        lessonId="lesson_01"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        [...document.querySelectorAll('.learning-path li')].map((item) => item.className),
+      ).toEqual(['done', 'done', 'done', 'done']),
+    );
+  });
+
+  it('renders each knowledge point from the teaching ledger instead of its array position', async () => {
+    const api = client({
+      getSession: vi.fn().mockResolvedValue({
+        resourceVersion: 4,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        teachingProgress: {
+          ledgerVersion: 3,
+          observationStatus: 'current',
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'knowledge:sum',
+          comprehensiveCheck: 'pending',
+          summaryStatus: 'pending',
+          knowledgePoints: [
+            {
+              ref: 'knowledge:rate',
+              title: '平均变化率',
+              progress: 'passed',
+              delivery: 'explained',
+              verification: 'supporting',
+              unresolvedQuestionCount: 0,
+            },
+            {
+              ref: 'knowledge:sum',
+              title: '有限求和',
+              progress: 'checking',
+              delivery: 'explained',
+              verification: 'limiting',
+              unresolvedQuestionCount: 0,
+            },
+            {
+              ref: 'knowledge:limit',
+              title: '极限',
+              progress: 'pending',
+              delivery: 'not_addressed',
+              verification: 'not_observed',
+              unresolvedQuestionCount: 0,
+            },
+          ],
+        },
+      }),
+    });
+
+    render(<SessionPage client={api} lessonId="lesson_01" />);
+
+    expect(await screen.findByText('极限')).toBeInTheDocument();
+    expect(
+      [...document.querySelectorAll('.learning-path li')].map((item) => item.className),
+    ).toEqual(['done', 'done', 'active', 'pending', 'pending', 'pending']);
+    expect(screen.getByText('检测已通过')).toBeInTheDocument();
+    expect(screen.getByText('仍有误解需要澄清')).toBeInTheDocument();
+  });
+
   it('[EQ-GEN-03] restores a running generation task from the server after page refresh', async () => {
     const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
       onEvent({ type: 'message.delta', data: { markdown: '恢复后的流式内容' } });
@@ -315,6 +406,52 @@ describe('learning SessionPage', () => {
 
     expect(await screen.findByText('恢复后的流式内容')).toBeInTheDocument();
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
+  });
+
+  it('holds the visible learning timer during AI generation and resumes it after completion', async () => {
+    let releaseStream!: () => void;
+    const stream = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseStream = resolve;
+        }),
+    );
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 4,
+        actualSeconds: 12,
+        learning: {
+          progress: 'in_progress',
+          session: { state: 'active', activeGenerationTaskId: 'task_running_01' },
+        },
+      })
+      .mockResolvedValue({
+        resourceVersion: 5,
+        actualSeconds: 12,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+      });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />);
+
+    await waitFor(() => expect(stream).toHaveBeenCalledTimes(1));
+    expect(document.body).toHaveTextContent('AI 思考中 · 计时已暂停');
+    const duration = document.querySelector('.lesson-session-duration');
+    expect(duration).not.toBeNull();
+    const heldDuration = duration?.textContent;
+
+    vi.useFakeTimers();
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(duration).toHaveTextContent(heldDuration ?? '');
+
+    await act(async () => {
+      releaseStream();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getSession).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(duration?.textContent).not.toBe(heldDuration);
+    expect(document.body).not.toHaveTextContent('AI 思考中 · 计时已暂停');
   });
 
   it('shows thinking while a restored generation waits for its first stream event', async () => {

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
-import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 import type { CourseAuthoringRepositories } from '../../../persistence/course-authoring-repositories.js';
+import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import type { CourseMode } from '../model/commands.js';
 import type { OutlineMessage } from '../model/outline-message.js';
 import { createOutlineSession, decide, evolveAll } from '../model/outline-session.js';
@@ -10,24 +10,13 @@ import { compileCandidate, type CandidateInputManifest } from './outline-compile
 import { buildCandidateGenerationPrompt } from './candidate-output-contract.js';
 import type { CandidatePromptInput } from './prompt-input-builder.js';
 
+type GenerationRuntimeDependency = Pick<GenerationRuntime, 'submit'> &
+  Partial<Pick<GenerationRuntime, 'get' | 'cancel' | 'recoverExpiredLeases'>>;
+
 export function createCourseAuthoringModule(options: {
   readonly repositories: CourseAuthoringRepositories;
   readonly unitOfWork: UnitOfWork;
-  readonly generationRuntime: {
-    submit(request: {
-      taskKey: string;
-      inputSnapshotHash: string;
-      taskKind: string;
-      taskGroup: 'interactive';
-      ownerRef: string;
-      providerId: string;
-      priority: number;
-      prompt: string;
-    }): Promise<{ taskId: string }>;
-    readonly get?: (taskId: string) => Promise<GenerationTask>;
-    readonly cancel?: (taskId: string) => Promise<GenerationTask>;
-    readonly recoverExpiredLeases?: () => Promise<number>;
-  };
+  readonly generationRuntime: GenerationRuntimeDependency;
   readonly draftStore: { saveDraft(artifactRef: string, markdown: string): Promise<void> };
   readonly providerId?: string;
   readonly now?: () => Date;

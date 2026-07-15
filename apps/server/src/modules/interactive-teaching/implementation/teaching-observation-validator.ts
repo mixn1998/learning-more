@@ -49,6 +49,10 @@ export function validateTeachingObservation(
     if (!validRelationRefs.has(relationRef)) invalid('observation_relation_unknown');
   }
   for (const entry of observation.entries) {
+    const sourceMessages = entry.sourceRefs
+      .map((sourceRef) => messageIdFromRef(sourceRef))
+      .map((messageId) => (messageId === undefined ? undefined : messageById.get(messageId)))
+      .filter((message) => message !== undefined);
     for (const knowledgePointRef of entry.knowledgePointRefs) {
       if (!knowledgePointRefs.has(knowledgePointRef)) invalid('knowledge_point_reference_unknown');
     }
@@ -63,6 +67,27 @@ export function validateTeachingObservation(
       if (message.role === 'assistant' && message.completionStatus !== 'complete') {
         invalid('assistant_evidence_incomplete');
       }
+    }
+    if (
+      entry.progressionSignal === 'skip_knowledge_point' &&
+      entry.knowledgePointRefs.length === 0
+    ) {
+      invalid('skip_knowledge_point_reference_required');
+    }
+    if (
+      entry.progressionSignal !== undefined &&
+      entry.progressionSignal !== 'lesson_summary_delivered' &&
+      !sourceMessages.some((message) => message.role === 'user')
+    ) {
+      invalid('learner_progression_signal_requires_user_source');
+    }
+    if (
+      entry.progressionSignal === 'lesson_summary_delivered' &&
+      !sourceMessages.some(
+        (message) => message.role === 'assistant' && message.completionStatus === 'complete',
+      )
+    ) {
+      invalid('summary_delivery_requires_complete_assistant_source');
     }
     if (
       (observation.scope.alignment === 'unclear' || observation.scope.alignment === 'off_scope') &&

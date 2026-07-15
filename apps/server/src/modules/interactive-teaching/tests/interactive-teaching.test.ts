@@ -46,6 +46,7 @@ async function fixture(
     evidenceEffectFailsOnce?: boolean;
     reasoningSinkFailsOnce?: boolean;
     artifactSaveFails?: boolean;
+    deferredCompletion?: boolean;
   } = {},
 ) {
   const artifacts = new Map<string, string>([
@@ -152,12 +153,19 @@ async function fixture(
     },
   };
   let submittedContext: unknown;
+  let resolveAgentCompletion: ((value: Readonly<{ markdown: string }>) => void) | undefined;
+  const deferredCompletion = options.deferredCompletion
+    ? new Promise<Readonly<{ markdown: string }>>((resolve) => {
+        resolveAgentCompletion = resolve;
+      })
+    : undefined;
   const agent: TeachingAgent = {
     async submit(context) {
       submittedContext = context;
       return { taskId: 'task_1' };
     },
     async complete() {
+      if (deferredCompletion !== undefined) return deferredCompletion;
       return {
         markdown: options.adjacent
           ? 'That is a useful adjacent direction. Let us explore it briefly, then return to the denominator change.'
@@ -296,6 +304,10 @@ async function fixture(
     submittedContext: () => submittedContext,
     capturedReasoningObservations,
     frames,
+    resolveAgentCompletion(markdown: string) {
+      if (resolveAgentCompletion === undefined) throw new Error('completion_not_deferred');
+      resolveAgentCompletion({ markdown });
+    },
   };
 }
 
@@ -326,6 +338,95 @@ describe('InteractiveTeaching deep module', () => {
       }),
     ]);
     expect(capturedReasoningObservations).toEqual([]);
+  });
+
+  it('commits an opening that finishes after the learning session pauses', async () => {
+    const { module, drainObservations, sessionModule, messageLog, frames, resolveAgentCompletion } =
+      await fixture({ deferredCompletion: true });
+
+    const accepted = await module.openLesson(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      commandContext,
+    );
+    await sessionModule.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_1' },
+      {
+        ...commandContext,
+        commandId: 'pause_during_opening',
+        idempotencyKey: 'pause_during_opening',
+        expectedVersion: accepted.resourceVersion,
+      },
+    );
+    resolveAgentCompletion('Opening completed while the learner was away.');
+    await drainObservations('session_1');
+
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({
+        id: 'message_ai_1',
+        role: 'assistant',
+        completionStatus: 'complete',
+      }),
+    ]);
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_paused_opening',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(view.learning.session).toMatchObject({ state: 'paused' });
+    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
+    expect(frames.at(-1)?.type).toBe('task.completed');
+  });
+
+  it('keeps a paused turn completed when follow-up observation fails', async () => {
+    const { module, drainObservations, sessionModule, messageLog, frames, resolveAgentCompletion } =
+      await fixture({ deferredCompletion: true, observerFailsOnce: true });
+
+    const accepted = await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await sessionModule.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_1' },
+      {
+        ...commandContext,
+        commandId: 'pause_during_turn',
+        idempotencyKey: 'pause_during_turn',
+        expectedVersion: accepted.resourceVersion,
+      },
+    );
+    resolveAgentCompletion('The complete reply was generated while paused.');
+
+    await expect(drainObservations('session_1')).rejects.toThrow('simulated_observer_failure');
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+      expect.objectContaining({
+        id: 'message_ai_1',
+        role: 'assistant',
+        completionStatus: 'complete',
+      }),
+    ]);
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_paused_turn',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(view.learning.session).toMatchObject({ state: 'paused' });
+    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
+    expect(frames.at(-1)?.type).toBe('task.completed');
   });
 
   it('emits a valid failure terminal and releases the session generation slot', async () => {

@@ -11,6 +11,105 @@ const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '�
 
 type HomeCourse = HomeDashboardView['courses'][number];
 type HomeLesson = HomeDashboardView['lessons'][number];
+type PlanSuggestion = PlanFlowPreviewView['suggestions'][number];
+
+type PreviewLesson = Readonly<{
+  courseTitle: string;
+  durationMinutes: number;
+  lessonId: string;
+  lessonTitle: string;
+}>;
+
+type PreviewDay = Readonly<{
+  dateKey: string;
+  dayLabel: string;
+  lessons: readonly PreviewLesson[];
+  totalMinutes: number;
+}>;
+
+type PreviewWeek = Readonly<{
+  dateRange: string;
+  days: readonly PreviewDay[];
+  key: string;
+}>;
+
+function suggestionDateKey(suggestion: PlanSuggestion): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: suggestion.timezoneAtCreation,
+    year: 'numeric',
+  }).format(new Date(suggestion.startAt));
+}
+
+function shortDate(dateKey: string): string {
+  return dateKey.slice(5).replace('-', '/');
+}
+
+function weekKey(dateKey: string): string {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  const weekday = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() - weekday + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildPreviewWeeks(
+  suggestions: readonly PlanSuggestion[],
+  courses: readonly HomeCourse[],
+  lessons: readonly HomeLesson[],
+): readonly PreviewWeek[] {
+  const courseById = new Map(courses.map((course) => [course.courseId, course]));
+  const lessonById = new Map(lessons.map((lesson) => [lesson.lessonId, lesson]));
+  const days = new Map<string, PreviewDay>();
+
+  for (const suggestion of [...suggestions].sort(
+    (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
+  )) {
+    const dateKey = suggestionDateKey(suggestion);
+    const durationMinutes = Math.max(
+      0,
+      Math.round((Date.parse(suggestion.endAt) - Date.parse(suggestion.startAt)) / 60_000),
+    );
+    const current = days.get(dateKey);
+    const previewLesson: PreviewLesson = {
+      courseTitle: courseById.get(suggestion.courseId)?.title ?? suggestion.courseId,
+      durationMinutes,
+      lessonId: suggestion.lessonId,
+      lessonTitle: lessonById.get(suggestion.lessonId)?.title ?? suggestion.lessonId,
+    };
+    if (current === undefined) {
+      days.set(dateKey, {
+        dateKey,
+        dayLabel: new Intl.DateTimeFormat('zh-CN', {
+          timeZone: suggestion.timezoneAtCreation,
+          weekday: 'short',
+        }).format(new Date(suggestion.startAt)),
+        lessons: [previewLesson],
+        totalMinutes: durationMinutes,
+      });
+    } else {
+      days.set(dateKey, {
+        ...current,
+        lessons: [...current.lessons, previewLesson],
+        totalMinutes: current.totalMinutes + durationMinutes,
+      });
+    }
+  }
+
+  const weeks = new Map<string, PreviewDay[]>();
+  for (const day of days.values()) {
+    const key = weekKey(day.dateKey);
+    weeks.set(key, [...(weeks.get(key) ?? []), day]);
+  }
+
+  return [...weeks.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, weekDays]) => ({
+      dateRange: `${shortDate(weekDays[0]!.dateKey)} — ${shortDate(weekDays.at(-1)!.dateKey)}`,
+      days: weekDays,
+      key,
+    }));
+}
 
 export type PlanFlowWizardInput = Readonly<{
   courseIds: readonly string[];
@@ -41,16 +140,10 @@ function weeklyEstimate(minutes: number, days: number): string {
 }
 
 function previewFailureMessage(errorCode?: string): string {
-  if (errorCode === 'generation_task_not_dispatchable') {
-    return '后台生成队列暂时不可用，请重试。';
-  }
-  if (errorCode === 'generation_timeout' || errorCode === 'provider_timeout') {
-    return '计划预览生成超时，请重试。';
-  }
   if (errorCode === 'plan_preview_invalid') {
-    return 'AI 返回的排期结构未通过校验，请重试。';
+    return '当前日期、学习日或课节依赖无法形成有效排期，请调整约束后重试。';
   }
-  return '预览生成失败，输入约束已保留。';
+  return '计划预览计算失败，输入约束已保留。';
 }
 
 function courseStats(course: HomeCourse, lessons: readonly HomeLesson[]) {
@@ -94,6 +187,7 @@ export function PlanFlowPanel(props: {
   const [selectedCourseIds, setSelectedCourseIds] = useState<readonly string[]>(initialSelected);
   const [strategy, setStrategy] = useState<PlanFlowWizardInput['strategy']>('balanced');
   const [preview, setPreview] = useState<PlanFlowPreviewView>();
+  const [previewInputKey, setPreviewInputKey] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -109,6 +203,45 @@ export function PlanFlowPanel(props: {
         .map((lesson) => lesson.lessonId),
     [lessons, selectedCourseIds],
   );
+  const previewWeeks = useMemo(
+    () => (preview === undefined ? [] : buildPreviewWeeks(preview.suggestions, courses, lessons)),
+    [courses, lessons, preview],
+  );
+  const previewTotalMinutes = useMemo(
+    () =>
+      previewWeeks.reduce(
+        (weekTotal, week) =>
+          weekTotal + week.days.reduce((dayTotal, day) => dayTotal + day.totalMinutes, 0),
+        0,
+      ),
+    [previewWeeks],
+  );
+  const previewCompletionDate = previewWeeks.at(-1)?.days.at(-1)?.dateKey;
+  const currentInput = useMemo<PlanFlowWizardInput>(
+    () => ({
+      courseIds: selectedCourseIds,
+      lessonIds: selectedLessonIds,
+      startDate,
+      dailyTargetMinutes,
+      learningDays,
+      preserveExistingDates,
+      rescheduleOverdue,
+      strategy,
+    }),
+    [
+      dailyTargetMinutes,
+      learningDays,
+      preserveExistingDates,
+      rescheduleOverdue,
+      selectedCourseIds,
+      selectedLessonIds,
+      startDate,
+      strategy,
+    ],
+  );
+  const currentInputKey = useMemo(() => JSON.stringify(currentInput), [currentInput]);
+  const previewIsStale =
+    preview !== undefined && preview.state !== 'confirmed' && previewInputKey !== currentInputKey;
 
   function toggleLearningDay(day: string) {
     setLearningDays((current) =>
@@ -144,39 +277,35 @@ export function PlanFlowPanel(props: {
 
   async function generatePreview() {
     if (!validateStep()) return;
+    const requestedInput = currentInput;
+    const requestedInputKey = currentInputKey;
     setBusy(true);
     setError(undefined);
     try {
-      const result = await props.onPreview({
-        courseIds: selectedCourseIds,
-        lessonIds: selectedLessonIds,
-        startDate,
-        dailyTargetMinutes,
-        learningDays,
-        preserveExistingDates,
-        rescheduleOverdue,
-        strategy,
-      });
+      const result = await props.onPreview(requestedInput);
       if (result.state === 'failed') {
         setPreview(undefined);
+        setPreviewInputKey(undefined);
         setError(previewFailureMessage(result.errorCode));
       } else {
         setPreview(result);
+        setPreviewInputKey(requestedInputKey);
       }
     } catch {
-      setError('预览生成失败，输入约束已保留。');
+      setError('计划预览计算失败，输入约束已保留。');
     } finally {
       setBusy(false);
     }
   }
 
   async function confirm() {
-    if (preview === undefined) return;
+    if (preview === undefined || previewIsStale) return;
     setBusy(true);
     setError(undefined);
     try {
       setPreview(await props.onConfirm(preview));
     } catch {
+      setPreviewInputKey(undefined);
       setError('排期版本已变化，请重新预览。');
     } finally {
       setBusy(false);
@@ -475,16 +604,18 @@ export function PlanFlowPanel(props: {
                   <b>{startDate.slice(5).replace('-', '/')}</b>
                 </div>
                 <div className="pf-summary">
-                  <span>每日目标</span>
-                  <b>{dailyTargetMinutes} min</b>
+                  <span>预计完成</span>
+                  <b>
+                    {previewCompletionDate === undefined ? '—' : shortDate(previewCompletionDate)}
+                  </b>
                 </div>
                 <div className="pf-summary">
                   <span>待排课节</span>
                   <b>{selectedLessonIds.length} 节</b>
                 </div>
                 <div className="pf-summary">
-                  <span>包含课程</span>
-                  <b>{selectedCourseIds.length} 门</b>
+                  <span>预计总时长</span>
+                  <b>{preview === undefined ? '—' : `${previewTotalMinutes} min`}</b>
                 </div>
               </div>
               {preview === undefined ? (
@@ -492,28 +623,45 @@ export function PlanFlowPanel(props: {
               ) : (
                 <>
                   <div className="pf-preview">
-                    {preview.suggestions.map((suggestion) => (
-                      <article
-                        className="pf-day"
-                        key={`${suggestion.lessonId}:${suggestion.startAt}`}
-                      >
-                        <header>
-                          <strong>{new Date(suggestion.startAt).toLocaleDateString()}</strong>
-                          <span>
-                            {Math.round(
-                              (Date.parse(suggestion.endAt) - Date.parse(suggestion.startAt)) /
-                                60_000,
-                            )}{' '}
-                            分钟
-                          </span>
+                    {previewWeeks.map((week, weekIndex) => (
+                      <section className="pf-preview-week" key={week.key}>
+                        <header className="pf-preview-week-head">
+                          <h5>{`第 ${weekIndex + 1} 周`}</h5>
+                          <span>{`${week.dateRange} · ${week.days.length} 个学习日`}</span>
                         </header>
-                        <ul>
-                          <li>
-                            {lessons.find((lesson) => lesson.lessonId === suggestion.lessonId)
-                              ?.title ?? suggestion.lessonId}
-                          </li>
-                        </ul>
-                      </article>
+                        <div className="pf-preview-week-days">
+                          {week.days.map((day) => (
+                            <article
+                              className={`pf-day${day.totalMinutes > dailyTargetMinutes ? ' is-over-target' : ''}`}
+                              key={day.dateKey}
+                            >
+                              <header>
+                                <strong>{`${day.dayLabel} · ${shortDate(day.dateKey)}`}</strong>
+                                <span>{`${day.totalMinutes} 分钟 · ${day.lessons.length} 节`}</span>
+                              </header>
+                              <ul>
+                                {day.lessons.map((lesson) => (
+                                  <li key={lesson.lessonId}>
+                                    <span className="pf-preview-lesson-name">
+                                      <span className="pf-preview-course-title">
+                                        {lesson.courseTitle}
+                                      </span>
+                                      <span aria-hidden="true"> · </span>
+                                      <span>{lesson.lessonTitle}</span>
+                                    </span>
+                                    <span className="pf-preview-lesson-duration">
+                                      {`${lesson.durationMinutes} min`}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                              {day.totalMinutes > dailyTargetMinutes ? (
+                                <span className="pf-day-warning">超过每日目标</span>
+                              ) : null}
+                            </article>
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                   <div
@@ -525,6 +673,11 @@ export function PlanFlowPanel(props: {
                       ? '未发现排期冲突。'
                       : `冲突：${preview.conflicts.join('、')}`}
                   </div>
+                  {previewIsStale ? (
+                    <div className="pf-note" role="status">
+                      排期条件已改变，当前内容是上一次预览。请重新生成后再确认。
+                    </div>
+                  ) : null}
                 </>
               )}
               {error === undefined ? null : (
@@ -571,6 +724,15 @@ export function PlanFlowPanel(props: {
                       删除计划
                     </button>
                   </div>
+                ) : previewIsStale ? (
+                  <button
+                    className="pf-btn primary"
+                    disabled={busy}
+                    type="button"
+                    onClick={() => void generatePreview()}
+                  >
+                    {busy ? '正在重新排期…' : '重新生成排期'}
+                  </button>
                 ) : (
                   <button
                     className="pf-btn primary"
@@ -625,7 +787,7 @@ export function PlanFlowPanel(props: {
         <div className="pf-top">
           <div className="pf-brand">
             <strong>Learning MORE</strong>
-            <span>学习即生活｜用 AI 重塑学习方式</span>
+            <span>学习即生活｜让计划真正落地</span>
           </div>
           <div className="pf-runtime">
             <span>● 课程规划</span>

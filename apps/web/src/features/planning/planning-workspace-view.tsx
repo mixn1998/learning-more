@@ -11,15 +11,24 @@ type HomeLesson = HomeDashboardView['lessons'][number];
 
 export type PlanningLessonMetadata = Readonly<{
   estimatedMinutes?: number;
+  objective?: string;
   topic?: string;
   points?: readonly string[];
+}>;
+
+type ResolvedPlanningLessonMetadata = Readonly<{
+  estimatedMinutes: number;
+  objective: string | undefined;
+  disciplineTag: string | undefined;
+  topicTags: readonly string[];
+  points: readonly string[] | undefined;
 }>;
 
 type PlanningEntry = Readonly<{
   course: HomeCourse | undefined;
   lesson: HomeLesson;
   schedule: ScheduleItemView | undefined;
-  metadata: PlanningLessonMetadata;
+  metadata: ResolvedPlanningLessonMetadata;
 }>;
 
 function localDate(instant: string): string {
@@ -73,14 +82,13 @@ export function PlanningWorkspaceView(props: {
   readonly onGeneratePlanFlow: () => void;
   readonly onReturn: () => void;
 }) {
-  const [selectedDate, setSelectedDate] = useState(props.anchorDate);
+  const [selectedDate, setSelectedDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [topicFilter, setTopicFilter] = useState('');
-  const [scheduleTarget, setScheduleTarget] = useState<PlanningEntry>();
-  const [draftDate, setDraftDate] = useState(props.anchorDate);
+  const [disciplineFilter, setDisciplineFilter] = useState('');
   const [previewTarget, setPreviewTarget] = useState<PlanningEntry>();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
+  const [pendingDates, setPendingDates] = useState<Readonly<Record<string, string>>>({});
+  const [savingLessonIds, setSavingLessonIds] = useState<ReadonlySet<string>>(new Set());
+  const [scheduleErrors, setScheduleErrors] = useState<Readonly<Record<string, string>>>({});
 
   const entries = useMemo<readonly PlanningEntry[]>(() => {
     const courseById = new Map(props.courses.map((course) => [course.courseId, course]));
@@ -91,18 +99,38 @@ export function PlanningWorkspaceView(props: {
     );
     return props.lessons
       .filter((lesson) => lesson.progress !== 'completed' && lesson.progress !== 'abandoned')
-      .map((lesson) => ({
-        course: courseById.get(lesson.courseId),
-        lesson,
-        schedule: scheduleByLesson.get(lesson.lessonId),
-        metadata: props.metadata?.[lesson.lessonId] ?? {},
-      }));
+      .map((lesson) => {
+        const course = courseById.get(lesson.courseId);
+        const fallbackTopic = props.metadata?.[lesson.lessonId]?.topic;
+        return {
+          course,
+          lesson,
+          schedule: scheduleByLesson.get(lesson.lessonId),
+          metadata: {
+            estimatedMinutes:
+              props.metadata?.[lesson.lessonId]?.estimatedMinutes ?? lesson.estimatedMinutes ?? 45,
+            objective: props.metadata?.[lesson.lessonId]?.objective ?? lesson.objective,
+            disciplineTag: course?.disciplineTag,
+            topicTags: [
+              ...new Set([
+                ...(course?.topicTags ?? []),
+                ...(fallbackTopic === undefined ? [] : [fallbackTopic]),
+              ]),
+            ],
+            points: props.metadata?.[lesson.lessonId]?.points ?? lesson.coreKnowledgePoints,
+          },
+        };
+      });
   }, [props.courses, props.items, props.lessons, props.metadata]);
 
   const dates = useMemo(() => sevenDates(props.anchorDate), [props.anchorDate]);
-  const topics = [
-    ...new Set(entries.map((entry) => entry.metadata.topic).filter(Boolean)),
-  ] as string[];
+  const disciplines = [
+    ...new Set(
+      entries.flatMap((entry) =>
+        entry.metadata.disciplineTag === undefined ? [] : [entry.metadata.disciplineTag],
+      ),
+    ),
+  ];
   const visibleEntries = entries.filter((entry) => {
     const scheduledDate =
       entry.schedule === undefined ? undefined : localDate(entry.schedule.startAt);
@@ -115,47 +143,53 @@ export function PlanningWorkspaceView(props: {
           : '已安排';
     return (
       (statusFilter === '' || statusFilter === status) &&
-      (topicFilter === '' || topicFilter === entry.metadata.topic)
+      (disciplineFilter === '' || entry.metadata.disciplineTag === disciplineFilter)
     );
   });
 
-  function openSchedule(entry: PlanningEntry) {
-    setScheduleTarget(entry);
-    setDraftDate(
-      entry.schedule === undefined
-        ? selectedDate || props.anchorDate
-        : localDate(entry.schedule.startAt),
-    );
-    setError(undefined);
-  }
-
-  async function saveSchedule() {
-    if (scheduleTarget === undefined) return;
-    setBusy(true);
-    setError(undefined);
-    const minutes = scheduleTarget.metadata.estimatedMinutes ?? 45;
-    const startAt = atLocalTime(draftDate, 19, 0);
+  async function saveSchedule(entry: PlanningEntry, date: string) {
+    const lessonId = entry.lesson.lessonId;
+    if (date === '' || savingLessonIds.has(lessonId)) return;
+    setPendingDates((current) => ({ ...current, [lessonId]: date }));
+    setSavingLessonIds((current) => new Set([...current, lessonId]));
+    setScheduleErrors((current) => {
+      const next = { ...current };
+      delete next[lessonId];
+      return next;
+    });
+    const minutes = entry.metadata.estimatedMinutes ?? 45;
+    const startAt = atLocalTime(date, 19, 0);
     const endAt = new Date(Date.parse(startAt) + minutes * 60_000).toISOString();
     try {
-      if (scheduleTarget.schedule === undefined) {
+      if (entry.schedule === undefined) {
         await props.onCreate({
-          courseId: scheduleTarget.lesson.courseId,
-          lessonId: scheduleTarget.lesson.lessonId,
+          courseId: entry.lesson.courseId,
+          lessonId,
           startAt,
           endAt,
           timezoneAtCreation: Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
       } else {
-        await props.onMove(scheduleTarget.schedule, { startAt, endAt });
+        await props.onMove(entry.schedule, { startAt, endAt });
       }
-      setSelectedDate(draftDate);
       setStatusFilter('');
-      setTopicFilter('');
-      setScheduleTarget(undefined);
+      setDisciplineFilter('');
     } catch {
-      setError('排期版本已变化或日期未保存，请刷新后重试。');
+      setScheduleErrors((current) => ({
+        ...current,
+        [lessonId]: '排期版本已变化或日期未保存，请刷新后重试。',
+      }));
     } finally {
-      setBusy(false);
+      setPendingDates((current) => {
+        const next = { ...current };
+        delete next[lessonId];
+        return next;
+      });
+      setSavingLessonIds((current) => {
+        const next = new Set(current);
+        next.delete(lessonId);
+        return next;
+      });
     }
   }
 
@@ -167,7 +201,12 @@ export function PlanningWorkspaceView(props: {
           <h1>安排课节学习日期</h1>
         </div>
         <div className="lm-actions">
-          <button className="lm-btn primary" type="button" onClick={props.onGeneratePlanFlow}>
+          <button
+            className="lm-btn primary"
+            disabled={savingLessonIds.size > 0}
+            type="button"
+            onClick={props.onGeneratePlanFlow}
+          >
             生成计划流
           </button>
           <button className="lm-btn" type="button" onClick={props.onReturn}>
@@ -197,7 +236,7 @@ export function PlanningWorkspaceView(props: {
                 onClick={() => {
                   setSelectedDate(date);
                   setStatusFilter('');
-                  setTopicFilter('');
+                  setDisciplineFilter('');
                 }}
               >
                 <span className="planning-day-date">
@@ -235,17 +274,17 @@ export function PlanningWorkspaceView(props: {
               <option value="已逾期">已逾期</option>
             </select>
             <select
-              aria-label="主题标签"
+              aria-label="学科/领域"
               className="lm-control"
-              value={topicFilter}
+              value={disciplineFilter}
               onChange={(event) => {
                 setSelectedDate('');
-                setTopicFilter(event.target.value);
+                setDisciplineFilter(event.target.value);
               }}
             >
-              <option value="">全部主题标签</option>
-              {topics.map((topic) => (
-                <option key={topic}>{topic}</option>
+              <option value="">全部学科/领域</option>
+              {disciplines.map((discipline) => (
+                <option key={discipline}>{discipline}</option>
               ))}
             </select>
             <button
@@ -254,7 +293,7 @@ export function PlanningWorkspaceView(props: {
               onClick={() => {
                 setSelectedDate('');
                 setStatusFilter('');
-                setTopicFilter('');
+                setDisciplineFilter('');
               }}
             >
               清除筛选
@@ -286,19 +325,36 @@ export function PlanningWorkspaceView(props: {
                       <span className={`lm-pill${status === '已逾期' ? ' schedule-overdue' : ''}`}>
                         {status}
                       </span>
-                      {entry.metadata.topic === undefined ? null : (
-                        <span className="lm-pill">{entry.metadata.topic}</span>
+                      {entry.metadata.topicTags[0] === undefined ? null : (
+                        <span className="lm-pill">{entry.metadata.topicTags[0]}</span>
                       )}
                     </div>
                   </div>
                   <div className="planning-lesson-actions">
-                    <button
-                      className="planning-date-trigger"
-                      type="button"
-                      onClick={() => openSchedule(entry)}
-                    >
-                      {scheduledDate ?? '点击安排学习日期'}
-                    </button>
+                    <div className="planning-date-field">
+                      <label className="sr-only" htmlFor={`planning-date-${entry.lesson.lessonId}`}>
+                        安排学习日期：{entry.lesson.title}
+                      </label>
+                      <input
+                        aria-describedby={
+                          scheduleErrors[entry.lesson.lessonId] === undefined
+                            ? undefined
+                            : `planning-date-error-${entry.lesson.lessonId}`
+                        }
+                        className="planning-date-input"
+                        disabled={savingLessonIds.has(entry.lesson.lessonId)}
+                        id={`planning-date-${entry.lesson.lessonId}`}
+                        min={props.anchorDate}
+                        type="date"
+                        value={pendingDates[entry.lesson.lessonId] ?? scheduledDate ?? ''}
+                        onChange={(event) => void saveSchedule(entry, event.currentTarget.value)}
+                      />
+                      {scheduleErrors[entry.lesson.lessonId] === undefined ? null : (
+                        <small id={`planning-date-error-${entry.lesson.lessonId}`} role="alert">
+                          {scheduleErrors[entry.lesson.lessonId]}
+                        </small>
+                      )}
+                    </div>
                     {entry.schedule === undefined ? null : (
                       <button
                         className="lm-btn"
@@ -323,47 +379,6 @@ export function PlanningWorkspaceView(props: {
         </section>
       </div>
 
-      {scheduleTarget === undefined ? null : (
-        <div className="planning-dialog-backdrop" role="presentation">
-          <section
-            aria-labelledby="planning-date-title"
-            aria-modal="true"
-            className="planning-dialog"
-            role="dialog"
-          >
-            <header>
-              <div className="lm-kicker">学习日期</div>
-              <h2 id="planning-date-title">{scheduleTarget.lesson.title}</h2>
-            </header>
-            <div className="planning-dialog-body">
-              <label className="lm-field">
-                <span>学习日期</span>
-                <input
-                  min={props.anchorDate}
-                  type="date"
-                  value={draftDate}
-                  onChange={(event) => setDraftDate(event.target.value)}
-                />
-              </label>
-              {error === undefined ? null : <p role="alert">{error}</p>}
-            </div>
-            <footer>
-              <button className="lm-btn" type="button" onClick={() => setScheduleTarget(undefined)}>
-                取消
-              </button>
-              <button
-                className="lm-btn primary"
-                disabled={busy}
-                type="button"
-                onClick={() => void saveSchedule()}
-              >
-                保存日期
-              </button>
-            </footer>
-          </section>
-        </div>
-      )}
-
       {previewTarget === undefined ? null : (
         <div className="planning-dialog-backdrop" role="presentation">
           <section
@@ -373,17 +388,30 @@ export function PlanningWorkspaceView(props: {
             role="dialog"
           >
             <header>
-              <div className="lm-kicker">核心知识点</div>
+              <div className="lm-kicker">课节内容</div>
               <h2 id="planning-preview-title">{previewTarget.lesson.title}</h2>
             </header>
             <div className="planning-dialog-body">
-              {(previewTarget.metadata.points ?? ['学习目标', '关键判断', '应用练习']).map(
-                (point) => (
-                  <div className="planning-knowledge-point" key={point}>
-                    <b>{point}</b>
-                  </div>
-                ),
-              )}
+              <div className="planning-knowledge-point">
+                <b>学习目标</b>
+                <p>{previewTarget.metadata.objective ?? '课程导航暂未提供学习目标。'}</p>
+              </div>
+              <div className="planning-knowledge-point">
+                <b>核心知识点</b>
+                {previewTarget.metadata.points?.length ? (
+                  <ul>
+                    {previewTarget.metadata.points.map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>课程导航暂未提供核心知识点。</p>
+                )}
+              </div>
+              <div className="planning-knowledge-point planning-duration-point">
+                <b>预计学习时间</b>
+                <span>{previewTarget.metadata.estimatedMinutes ?? 45} 分钟</span>
+              </div>
             </div>
             <footer>
               <button className="lm-btn" type="button" onClick={() => setPreviewTarget(undefined)}>

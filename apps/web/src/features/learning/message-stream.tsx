@@ -1,4 +1,6 @@
-import { AiContent, Badge, Stack } from '@learning-more/ui';
+import { AiContent } from '@learning-more/ui';
+
+import { ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
 
 export type SessionMessageView = Readonly<{
   id: string;
@@ -12,30 +14,44 @@ export function MessageStream(props: {
   readonly assistantMarkdown: string;
 }) {
   const messages = props.messages ?? [];
+  const followKey = `${messages.at(-1)?.id ?? 'empty'}:${props.assistantMarkdown.length}`;
   return (
-    <section aria-live="polite" aria-label="学习对话" className="authoring-panel message-stream">
+    <ConversationStream
+      as="section"
+      className="authoring-panel message-stream"
+      followKey={followKey}
+      generating={props.assistantMarkdown !== ''}
+      label="学习对话"
+    >
       {messages.length === 0 && props.assistantMarkdown === '' ? (
         <p className="lm-content-state">AI 导师的回复会显示在这里。</p>
       ) : (
-        <Stack>
-          {messages.map((message) => (
-            <article className="session-message" data-role={message.role} key={message.id}>
-              <Badge>{message.role === 'user' ? '你' : 'AI 导师'}</Badge>
-              {message.role === 'assistant' ? (
+        <>
+          {messages.map((message) =>
+            message.role === 'assistant' ? (
+              <article
+                aria-label="AI 导师"
+                className="session-message"
+                data-role="assistant"
+                key={message.id}
+              >
                 <AiContent markdown={message.markdown} />
-              ) : (
-                <p>{message.markdown}</p>
-              )}
-            </article>
-          ))}
+              </article>
+            ) : (
+              <UserMessageRow key={message.id} messageId={message.id} text={message.markdown} />
+            ),
+          )}
           {props.assistantMarkdown === '' ? null : (
-            <article className="session-message" data-role="assistant">
-              <Badge>AI 导师 · 生成中</Badge>
+            <article
+              aria-label="AI 导师 · 生成中"
+              className="session-message"
+              data-role="assistant"
+            >
               <AiContent markdown={props.assistantMarkdown} />
             </article>
           )}
-        </Stack>
+        </>
       )}
-    </section>
+    </ConversationStream>
   );
 }

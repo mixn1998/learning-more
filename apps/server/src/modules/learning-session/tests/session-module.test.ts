@@ -177,12 +177,17 @@ describe('LearningSession module', () => {
     };
     await module.execute(user, context('user', 'page_a'));
     await module.execute(user, context('user', 'page_a'));
+    await module.execute(
+      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      context('start_generation', 'page_a'),
+    );
 
     expect(module).not.toHaveProperty('appendAssistantDelta');
     await module.execute(
       {
         type: 'CommitAssistantMessage',
         lessonId: 'lesson_01',
+        sessionId: 'session_01',
         messageId: 'message_assistant',
         contentArtifactRef: 'artifact:assistant',
         generationTaskId: 'task_01',
@@ -194,6 +199,223 @@ describe('LearningSession module', () => {
       ['message_user', 'user'],
       ['message_assistant', 'assistant'],
     ]);
+  });
+
+  it('commits the matching in-flight assistant reply after background pause without resuming time', async () => {
+    const { module, messageLog, advance } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_paused_completion', 'page_a'),
+    );
+    advance(10_000);
+    await module.execute(
+      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      { ...context('generate_before_pause', 'page_a'), expectedVersion: 1 },
+    );
+    await module.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_01' },
+      { ...context('pause_during_generation', 'page_a'), expectedVersion: 2 },
+    );
+    advance(20_000);
+
+    await module.execute(
+      {
+        type: 'CommitAssistantMessage',
+        lessonId: 'lesson_01',
+        sessionId: 'session_01',
+        messageId: 'message_assistant',
+        contentArtifactRef: 'artifact:assistant',
+        generationTaskId: 'task_01',
+      },
+      context('complete_while_paused', 'page_a'),
+    );
+
+    await expect(messageLog.list('session_01')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_assistant', role: 'assistant' }),
+    ]);
+    const view = await module.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+      {
+        correlationId: 'query_paused_completion',
+        actor: 'local-user',
+        requestedAt: nowIso(),
+        receivedAt: nowIso(),
+      },
+    );
+    expect(view.actualSeconds).toBe(10);
+    expect(view.learning.session).toMatchObject({
+      id: 'session_01',
+      state: 'paused',
+      messageIds: ['message_assistant'],
+    });
+    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
+  });
+
+  it('excludes AI generation wait time and resumes timing after an active reply completes', async () => {
+    const { module, repositories, advance } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_generation_hold', 'page_a'),
+    );
+    advance(10_000);
+    await module.execute(
+      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      { ...context('start_generation_hold_task', 'page_a'), expectedVersion: 1 },
+    );
+    advance(20_000);
+    await module.execute(
+      {
+        type: 'CommitAssistantMessage',
+        lessonId: 'lesson_01',
+        sessionId: 'session_01',
+        messageId: 'message_assistant',
+        contentArtifactRef: 'artifact:assistant',
+        generationTaskId: 'task_01',
+      },
+      { ...context('complete_generation_hold_task', 'page_a'), expectedVersion: 2 },
+    );
+    advance(5_000);
+    await module.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_01' },
+      { ...context('pause_after_generation_hold', 'page_a'), expectedVersion: 3 },
+    );
+
+    const view = await module.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+      {
+        correlationId: 'query_generation_hold',
+        actor: 'local-user',
+        requestedAt: nowIso(),
+        receivedAt: nowIso(),
+      },
+    );
+    expect(view.actualSeconds).toBe(15);
+    await expect(repositories.get('lesson_01')).resolves.toMatchObject({
+      intervals: [{ endReason: 'ai_generation' }, { endReason: 'paused' }],
+    });
+  });
+
+  it('resumes active timing after generation is stopped', async () => {
+    const { module, advance } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_stopped_generation_hold', 'page_a'),
+    );
+    advance(7_000);
+    await module.execute(
+      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      { ...context('start_stopped_generation_task', 'page_a'), expectedVersion: 1 },
+    );
+    advance(30_000);
+    await module.execute(
+      { type: 'StopSessionGeneration', lessonId: 'lesson_01' },
+      { ...context('stop_generation_task', 'page_a'), expectedVersion: 2 },
+    );
+    advance(3_000);
+    await module.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_01' },
+      { ...context('pause_after_stopped_generation', 'page_a'), expectedVersion: 3 },
+    );
+
+    const view = await module.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+      {
+        correlationId: 'query_stopped_generation_hold',
+        actor: 'local-user',
+        requestedAt: nowIso(),
+        receivedAt: nowIso(),
+      },
+    );
+    expect(view.actualSeconds).toBe(10);
+  });
+
+  it('does not resume timing while an AI task remains active', async () => {
+    const { module, advance } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_resumed_generation_hold', 'page_a'),
+    );
+    advance(10_000);
+    await module.execute(
+      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      { ...context('start_resumed_generation_task', 'page_a'), expectedVersion: 1 },
+    );
+    await module.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_01' },
+      { ...context('pause_resumed_generation_task', 'page_a'), expectedVersion: 2 },
+    );
+    await module.execute(
+      { type: 'ResumeLesson', lessonId: 'lesson_01' },
+      { ...context('resume_generation_task', 'page_a'), expectedVersion: 3 },
+    );
+    advance(20_000);
+    await module.execute(
+      {
+        type: 'CommitAssistantMessage',
+        lessonId: 'lesson_01',
+        sessionId: 'session_01',
+        messageId: 'message_assistant',
+        contentArtifactRef: 'artifact:assistant',
+        generationTaskId: 'task_01',
+      },
+      { ...context('complete_resumed_generation_task', 'page_a'), expectedVersion: 4 },
+    );
+    advance(5_000);
+    await module.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_01' },
+      { ...context('pause_completed_generation_task', 'page_a'), expectedVersion: 5 },
+    );
+
+    const view = await module.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+      {
+        correlationId: 'query_resumed_generation_hold',
+        actor: 'local-user',
+        requestedAt: nowIso(),
+        receivedAt: nowIso(),
+      },
+    );
+    expect(view.actualSeconds).toBe(15);
+  });
+
+  it('rejects paused assistant completion from a different session, task, or lease owner', async () => {
+    const { module, messageLog } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_guarded_completion', 'page_a'),
+    );
+    await module.execute(
+      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      { ...context('generate_guarded_completion', 'page_a'), expectedVersion: 1 },
+    );
+    await module.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_01' },
+      { ...context('pause_guarded_completion', 'page_a'), expectedVersion: 2 },
+    );
+    const completion = (sessionId: string, generationTaskId: string) => ({
+      type: 'CommitAssistantMessage' as const,
+      lessonId: 'lesson_01',
+      sessionId,
+      messageId: 'message_assistant',
+      contentArtifactRef: 'artifact:assistant',
+      generationTaskId,
+    });
+
+    await expect(
+      module.execute(completion('session_other', 'task_01'), context('wrong_session', 'page_a')),
+    ).rejects.toMatchObject({ code: 'session_conflict' });
+    await expect(
+      module.execute(completion('session_01', 'task_other'), context('wrong_task', 'page_a')),
+    ).rejects.toMatchObject({ code: 'session_conflict' });
+
+    await module.execute(
+      { type: 'TransferSessionLease', lessonId: 'lesson_01' },
+      { ...context('transfer_during_generation', 'page_b'), expectedVersion: 3 },
+    );
+    await expect(
+      module.execute(completion('session_01', 'task_01'), context('old_lease', 'page_a')),
+    ).rejects.toMatchObject({ code: 'write_lease_lost' });
+    await expect(messageLog.list('session_01')).resolves.toEqual([]);
   });
 
   it('gives a second tab a read-only view without creating another original session', async () => {

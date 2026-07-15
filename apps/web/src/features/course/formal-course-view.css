@@ -18,7 +18,17 @@
 }
 
 .course-hero__copy {
+  flex: 1;
   min-width: 0;
+}
+
+.formal-course-page--active .course-hero {
+  gap: 32px;
+  padding: 34px 38px;
+}
+
+.formal-course-page--active .course-hero__copy > .lm-kicker {
+  margin-bottom: 14px;
 }
 
 .course-hero h1 {
@@ -27,9 +37,35 @@
   line-height: 1.65;
 }
 
-.course-hero p {
+.formal-course-page--active .course-hero h1 {
+  margin: 0 0 16px;
+  font-size: clamp(30px, 2.4vw, 38px);
+  line-height: 1.3;
+  letter-spacing: -0.035em;
+}
+
+.course-hero .course-hero__introduction {
+  margin: 0;
+  max-width: 1100px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.formal-course-page--active .course-hero__introduction {
+  max-width: 1040px;
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.formal-course-page--active .course-hero__chips {
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.formal-course-page--active .course-hero__chips .lm-mode-badge,
+.formal-course-page--active .course-hero__chips .lm-pill {
+  padding: 9px 14px;
 }
 
 .course-hero__actions {
@@ -670,9 +706,29 @@
     padding: 20px;
   }
 
+  .formal-course-page--active .course-hero {
+    gap: 24px;
+    padding: 24px 22px;
+  }
+
   .course-hero h1 {
     font-size: 24px;
     line-height: 1.35;
+  }
+
+  .formal-course-page--active .course-hero h1 {
+    margin-bottom: 12px;
+    font-size: 27px;
+    line-height: 1.35;
+  }
+
+  .formal-course-page--active .course-hero__introduction {
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  .formal-course-page--active .course-hero__chips {
+    margin-top: 18px;
   }
 
   .course-hero__actions,

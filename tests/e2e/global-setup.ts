@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { resolveE2eEnvironment } from '../support/e2e-environment.js';
+
 const root = process.cwd();
 const temporaryRoot = path.join(root, 'tests', '.tmp');
 const dataRoot = path.join(temporaryRoot, 'course-authoring-data');
@@ -22,6 +24,7 @@ async function waitFor(url: string): Promise<void> {
 }
 
 export default async function globalSetup() {
+  const environment = resolveE2eEnvironment();
   await rm(dataRoot, { recursive: true, force: true });
   await mkdir(temporaryRoot, { recursive: true });
   const server = spawn(
@@ -32,13 +35,30 @@ export default async function globalSetup() {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
-      env: { ...process.env, LEARNING_MORE_DATA_ROOT: dataRoot },
+      env: {
+        ...process.env,
+        LEARNING_MORE_DATA_ROOT: dataRoot,
+        LEARNING_MORE_E2E_SERVER_PORT: String(environment.serverPort),
+        LEARNING_MORE_E2E_WEB_PORT: String(environment.webPort),
+        LEARNING_MORE_E2E_BUILD_ID: environment.buildId,
+      },
     },
   );
   const web = spawn(
     process.execPath,
     ['apps/web/node_modules/vite/bin/vite.js', 'apps/web', '--config', 'apps/web/vite.config.ts'],
-    { cwd: root, detached: true, stdio: 'ignore', windowsHide: true, env: process.env },
+    {
+      cwd: root,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: {
+        ...process.env,
+        LEARNING_MORE_E2E_SERVER_PORT: String(environment.serverPort),
+        LEARNING_MORE_E2E_WEB_PORT: String(environment.webPort),
+        VITE_BUILD_ID: environment.buildId,
+      },
+    },
   );
   server.unref();
   web.unref();
@@ -46,7 +66,7 @@ export default async function globalSetup() {
     throw new Error('Failed to start E2E services');
   await writeFile(processFile, JSON.stringify({ server: server.pid, web: web.pid }), 'utf8');
   await Promise.all([
-    waitFor('http://127.0.0.1:43120/api/v1/runtime/ready'),
-    waitFor('http://127.0.0.1:5173'),
+    waitFor(`${environment.serverBaseUrl}/api/v1/runtime/ready`),
+    waitFor(environment.webBaseUrl),
   ]);
 }

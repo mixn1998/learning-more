@@ -188,7 +188,6 @@ export function HomePage(props: {
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
-  const [selectedLesson, setSelectedLesson] = useState<HomeScheduleItem>();
   const [draftToDelete, setDraftToDelete] = useState<HomeDraft>();
   const [deletedDraftIds, setDeletedDraftIds] = useState<ReadonlySet<string>>(() => new Set());
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -410,7 +409,9 @@ export function HomePage(props: {
                     key={item.scheduleItemId}
                     className="agenda-item"
                     type="button"
-                    onClick={() => setSelectedLesson(item)}
+                    onClick={() =>
+                      props.onNavigate(`/courses/${item.courseId}/lessons/${item.lessonId}`)
+                    }
                   >
                     <b>{scheduleTitle(item, lessons)}</b>
                     <span>
@@ -599,34 +600,6 @@ export function HomePage(props: {
         }}
         onConfirm={() => void deleteDraft()}
       />
-
-      <Dialog
-        footer={
-          <>
-            <Button type="button" onClick={() => setSelectedLesson(undefined)}>
-              关闭
-            </Button>
-            {selectedLesson === undefined ? null : (
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() =>
-                  props.onNavigate(
-                    `/courses/${selectedLesson.courseId}/lessons/${selectedLesson.lessonId}`,
-                  )
-                }
-              >
-                开始学习
-              </Button>
-            )}
-          </>
-        }
-        open={selectedLesson !== undefined}
-        title={selectedLesson === undefined ? '' : scheduleTitle(selectedLesson, lessons)}
-        onClose={() => setSelectedLesson(undefined)}
-      >
-        <p>进入课节前可查看确认后的核心知识点、学习目标和预计时间。</p>
-      </Dialog>
     </main>
   );
 }

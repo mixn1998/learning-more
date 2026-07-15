@@ -68,9 +68,10 @@ function client(overrides: Partial<ProfileClient> = {}): ProfileClient {
 
 describe('ProfilePage', () => {
   it('projects the completed portrait into the approved workspace and opens traceable evidence inline', async () => {
+    const api = client();
     render(
       <MemoryRouter initialEntries={['/profile']}>
-        <ProfilePage client={client()} />
+        <ProfilePage client={api} />
       </MemoryRouter>,
     );
 
@@ -120,5 +121,27 @@ describe('ProfilePage', () => {
     expect(screen.getByText(/当前冻结的证据尚不足以形成可独立验证的学习观察/)).toBeVisible();
     expect(document.body).not.toHaveTextContent('Learning Portrait V2');
     expect(document.body).not.toHaveTextContent('The frozen evidence pack');
+  });
+
+  it('keeps the approved portrait workspace when generation failed instead of falling back to the legacy page', async () => {
+    render(
+      <MemoryRouter initialEntries={['/history?tab=portrait']}>
+        <ProfilePage
+          client={client({
+            getPortrait: vi.fn().mockResolvedValue(
+              version({ state: 'failed', claims: [], errorCode: 'portrait_refresh_failed' }),
+            ),
+          })}
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('LEARNING PORTRAIT')).toBeVisible();
+    expect(document.querySelector('.portrait-workspace')).toBeInTheDocument();
+    expect(document.querySelector('.portrait-board')).toBeInTheDocument();
+    expect(document.querySelector('.portrait-summary')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('画像生成失败');
+    expect(document.body).not.toHaveTextContent('portrait_refresh_failed');
   });
 });

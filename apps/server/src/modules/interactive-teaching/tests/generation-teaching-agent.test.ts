@@ -108,6 +108,8 @@ describe('GenerationTeachingAgent', () => {
     await agent.submit(opening);
 
     expect(fake.request()?.prompt).toContain('主动导入语境');
+    expect(fake.request()?.prompt).toContain('当前阶段是课前热身');
+    expect(fake.request()?.prompt).toContain('不要开始连续讲解全部知识点');
     expect(fake.request()?.prompt).toContain('【本课知识责任与现有证据】');
     expect(fake.request()?.prompt).not.toContain('【当前诉求｜用户原话】');
   });
@@ -129,6 +131,8 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).not.toContain('modeWeight');
     expect(fake.request()?.prompt).toContain('【已知学习背景】');
     expect(fake.request()?.prompt).toContain('【当前诉求｜用户原话】');
+    expect(fake.request()?.prompt).toContain('学习者正在回答课前热身');
+    expect(fake.request()?.prompt).toContain('本回合最多完成“Sample-space change.”');
     expect(fake.request()?.prompt).toContain(
       'Prefer concrete situations when they create a useful learning opportunity.',
     );

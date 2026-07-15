@@ -106,4 +106,78 @@ describe('GenerationTeachingObserver', () => {
     expect(request?.prompt).toContain('observationLens');
     expect(request?.prompt).toContain('不要求每一轮都体现该观察重心');
   });
+
+  it('projects no evidence when generated observation JSON violates the contract', async () => {
+    const task: GenerationTask = {
+      id: 'task_invalid_observer',
+      taskKey: 'invalid-observer',
+      status: 'completed',
+      createdAt: '2026-07-14T00:00:00.000Z',
+      updatedAt: '2026-07-14T00:00:01.000Z',
+      resourceVersion: 1,
+      draftMarkdown: JSON.stringify({
+        scope: { alignment: 'aligned', relationRefs: [], rationale: 'Invalid enum.' },
+        entries: [
+          {
+            entryId: 'entry_invalid',
+            kind: 'learner_reasoning_behavior',
+            summary: 'Untrusted generated observation.',
+            knowledgePointRefs: [],
+            sourceRefs: ['message:message_user_1'],
+            explicitness: 'explicit',
+            resolvesEntryRefs: [],
+            qualityFlags: ['untrusted_flag'],
+          },
+        ],
+      }),
+    };
+    const runtime: GenerationRuntime = {
+      async submit() {
+        return { taskId: task.id };
+      },
+      async runNext() {
+        return task.id;
+      },
+      async get() {
+        return task;
+      },
+      async cancel() {
+        return task;
+      },
+      async recoverExpiredLeases() {
+        return 0;
+      },
+      async getMetrics() {
+        return { total: 1, byStatus: { completed: 1 }, byErrorCode: {} };
+      },
+    };
+    const observer = createGenerationTeachingObserver({ runtime, providerId: 'mock' });
+
+    const result = await observer.observe({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      turnSequence: 1,
+      sourceSnapshotHash: 'b'.repeat(64),
+      knowledgePointRefs: ['knowledge:kp_1'],
+      courseRelationRefs: ['course-topic:probability'],
+      observationLens: teachingObservationLens('standard'),
+      previousState: createTeachingState({
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        knowledgePointRefs: ['knowledge:kp_1'],
+      }),
+      messages: [
+        {
+          messageId: 'message_user_1',
+          role: 'user',
+          completionStatus: 'complete',
+          markdown: 'Please explain this again.',
+          sourceRef: 'message:message_user_1',
+        },
+      ],
+    });
+
+    expect(result.scope).toMatchObject({ alignment: 'unclear', relationRefs: [] });
+    expect(result.entries).toEqual([]);
+  });
 });

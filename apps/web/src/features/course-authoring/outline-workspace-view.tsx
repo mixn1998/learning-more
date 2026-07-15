@@ -1,9 +1,10 @@
-import type { FormEvent, ReactNode, Ref } from 'react';
+import type { ReactNode, Ref } from 'react';
 
 import type { CourseMode } from '@learning-more/contracts';
 import { AiContent, AiSurface, Button, Card } from '@learning-more/ui';
 
 import { courseModeDefinition } from '../../course-mode-registry.js';
+import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
 
 import './outline-workspace-view.css';
 
@@ -116,10 +117,9 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
   const completedAssessmentRounds =
     data.completedAssessmentRounds ?? (data.user === undefined ? 0 : 1);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    props.onSend?.();
-  };
+  const lastMessage = messages.at(-1);
+  const lastUserMessage = messages.findLast((message) => message.role === 'user');
+  const followKey = `${messages.length}:${lastMessage?.messageId ?? 'opening'}:${lastMessage?.content.length ?? 0}:${props.assistantPending === true}`;
 
   return (
     <main className="ow-page outline-workspace-view" data-course-mode={data.mode}>
@@ -168,7 +168,13 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
             <strong>学习起点评估</strong>
             <span>{data.status}</span>
           </header>
-          <div aria-label="对话记录" className="ow-chat" role="log">
+          <ConversationStream
+            className="ow-chat"
+            followKey={followKey}
+            forceFollowKey={lastUserMessage?.messageId}
+            generating={props.assistantPending}
+            label="对话记录"
+          >
             <AiContent
               className="ow-ai ow-opening-guidance"
               markdown="开始前，我会先了解你的学习目标与当前基础，再与你一起形成课程大纲。"
@@ -177,18 +183,13 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
               message.role === 'assistant' ? (
                 <AiContent key={message.messageId} className="ow-ai" markdown={message.content} />
               ) : (
-                <div
+                <UserMessageRow
                   key={message.messageId}
-                  className="ow-user"
-                  data-message-status={message.status}
-                >
-                  <div>
-                    <div className="ow-bubble">{message.content}</div>
-                    {message.status === 'failed' ? (
-                      <small className="ow-message-failure">发送失败 · 内容已恢复到输入框</small>
-                    ) : null}
-                  </div>
-                </div>
+                  errorText="发送失败 · 内容已恢复到输入框"
+                  messageId={message.messageId}
+                  status={message.status}
+                  text={message.content}
+                />
               ),
             )}
             {props.assistantPending ? (
@@ -206,28 +207,20 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
                 ? `已完成 ${completedAssessmentRounds}/3 轮基础评估`
                 : `已完成 ${completedAssessmentRounds} 轮对话，可生成候选大纲或继续澄清`}
             </p>
-          </div>
-          <form aria-label="对话交互" className="ow-composer" onSubmit={submit}>
-            <div className="ow-composer-box">
-              <textarea
-                ref={props.composerRef}
-                aria-label={props.composerLabel ?? '继续回答或调整候选大纲'}
-                disabled={props.composerDisabled}
-                placeholder="继续回答、纠正理解，或要求调整候选大纲……"
-                value={props.composerValue ?? ''}
-                onChange={(event) => props.onComposerChange?.(event.currentTarget.value)}
-              />
-              <button
-                aria-label={props.sendLabel ?? '发送'}
-                aria-busy={props.sendBusy}
-                className="ow-send"
-                disabled={props.composerDisabled || props.sendDisabled || props.sendBusy}
-                type="submit"
-              >
-                {props.sendBusy ? '…' : '↑'}
-              </button>
-            </div>
-          </form>
+          </ConversationStream>
+          <ChatComposer
+            busy={props.sendBusy}
+            className="ow-composer"
+            disabled={props.composerDisabled}
+            inputRef={props.composerRef}
+            label={props.composerLabel ?? '继续回答或调整候选大纲'}
+            placeholder="继续回答、纠正理解，或要求调整候选大纲……"
+            sendLabel={props.sendLabel ?? '发送'}
+            submitDisabled={props.sendDisabled}
+            value={props.composerValue ?? ''}
+            onChange={(value) => props.onComposerChange?.(value)}
+            onSubmit={() => props.onSend?.()}
+          />
           <footer className="ow-conversation-actions">
             {props.secondaryActionVisible === false ? null : (
               <Button type="button" onClick={props.onAdjust}>
@@ -255,9 +248,16 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
           </header>
           {props.candidatePending ? (
             <div aria-label="候选大纲生成状态" className="ow-candidate-pending" role="status">
-              <span>正在生成候选大纲…</span>
+              <div className="ow-candidate-pending-copy">
+                <span aria-hidden="true" className="ow-candidate-pending-indicator" />
+                <span>
+                  <strong>正在生成候选大纲</strong>
+                  <small>AI 正在整理对话并组织课程结构，请稍候</small>
+                </span>
+              </div>
               <Button
                 busy={props.generationCancelBusy === true}
+                className="ow-candidate-cancel"
                 disabled={props.generationCancelBusy === true}
                 type="button"
                 onClick={props.onCancelGeneration}

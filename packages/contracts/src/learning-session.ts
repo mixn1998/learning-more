@@ -51,6 +51,31 @@ export const LearningSessionCommandResponseSchema = z.looseObject({
   leaseToken: identifier.optional(),
 });
 
+export const LessonTeachingProgressSchema = z.strictObject({
+  ledgerVersion: z.number().int().nonnegative(),
+  observationStatus: z.enum(['current', 'pending', 'failed']),
+  lessonPhase: z.enum([
+    'warmup',
+    'knowledge_point',
+    'comprehensive_check',
+    'summary',
+    'ready_to_close',
+  ]),
+  activeKnowledgePointRef: z.string().trim().min(1).max(2_000).optional(),
+  comprehensiveCheck: z.enum(['pending', 'checking', 'passed', 'skipped']),
+  summaryStatus: z.enum(['pending', 'delivered']),
+  knowledgePoints: z.array(
+    z.strictObject({
+      ref: z.string().trim().min(1).max(2_000),
+      title: z.string().trim().min(1).max(2_000),
+      progress: z.enum(['pending', 'teaching', 'checking', 'passed', 'skipped']),
+      delivery: z.enum(['not_addressed', 'explained']),
+      verification: z.enum(['not_observed', 'supporting', 'limiting', 'mixed']),
+      unresolvedQuestionCount: z.number().int().nonnegative(),
+    }),
+  ),
+});
+
 export const LearningSessionViewResponseSchema = z.strictObject({
   learning: z.strictObject({
     lessonId: identifier,
@@ -74,6 +99,7 @@ export const LearningSessionViewResponseSchema = z.strictObject({
     .string()
     .regex(/^[a-f0-9]{64}$/)
     .optional(),
+  teachingProgress: LessonTeachingProgressSchema.optional(),
   messages: z
     .array(
       z.strictObject({
@@ -107,6 +133,12 @@ export const LearningSessionViewResponseSchema = z.strictObject({
     .optional(),
 });
 
+export const LessonRecordMessageSchema = z.strictObject({
+  id: identifier,
+  role: z.enum(['user', 'assistant']),
+  markdown: z.string(),
+});
+
 export const LessonRecordResponseSchema = z.strictObject({
   lessonId: identifier,
   courseId: identifier,
@@ -117,14 +149,14 @@ export const LessonRecordResponseSchema = z.strictObject({
   original: z.strictObject({
     sessionId: identifier,
     label: z.string(),
-    messages: z.array(z.string()),
+    messages: z.array(LessonRecordMessageSchema),
   }),
   supplementary: z.array(
     z.strictObject({
       sessionId: identifier,
       label: z.string(),
       createdAt: z.iso.datetime({ offset: true }),
-      messages: z.array(z.string()),
+      messages: z.array(LessonRecordMessageSchema),
     }),
   ),
   finalReviewMarkdown: z.string(),
@@ -139,6 +171,7 @@ export const LessonEntryStateResponseSchema = z.strictObject({
 });
 
 export type LearningSessionView = Readonly<z.infer<typeof LearningSessionViewResponseSchema>>;
+export type LessonTeachingProgress = Readonly<z.infer<typeof LessonTeachingProgressSchema>>;
 export type LearningSessionCommandView = Readonly<
   z.infer<typeof LearningSessionCommandResponseSchema>
 >;

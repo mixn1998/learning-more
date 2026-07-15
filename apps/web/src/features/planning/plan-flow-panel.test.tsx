@@ -9,7 +9,190 @@ import { PlanFlowPanel } from './plan-flow-panel.js';
 afterEach(cleanup);
 
 describe('PlanFlowPanel', () => {
-  it('keeps retry available when the durable preview reaches a failed state', async () => {
+  it('requires a regenerated preview after the scheduling strategy changes', async () => {
+    const course = {
+      courseId: 'course_1',
+      title: '计划测试课程',
+      status: 'active' as const,
+      courseMode: 'standard' as const,
+      outlineVersionId: 'outline_1',
+      resourceVersion: 1,
+    };
+    const lesson = {
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      title: '计划测试课节',
+      progress: 'not_started' as const,
+      recommended: true,
+    };
+    const preview = {
+      id: 'plan_flow_preview',
+      state: 'preview-ready' as const,
+      constraintsArtifactRef: 'constraints_manual',
+      courseRefs: [course.courseId],
+      lessonRefs: [lesson.lessonId],
+      timeWindowRefs: ['strategy:balanced'],
+      existingScheduleSnapshotRef: 'schedule_0',
+      baseScheduleVersion: 0,
+      generationTaskId: 'rules_1',
+      suggestions: [
+        {
+          courseId: course.courseId,
+          lessonId: lesson.lessonId,
+          startAt: '2026-07-15T11:00:00.000Z',
+          endAt: '2026-07-15T11:45:00.000Z',
+          timezoneAtCreation: 'Asia/Shanghai',
+          explanation: '测试排期',
+        },
+      ],
+      conflicts: [],
+      confirmationReceipts: {},
+      confirmedScheduleItemIds: [],
+      source: 'plan-flow' as const,
+      createdAt: '2026-07-15T00:00:00.000Z',
+      updatedAt: '2026-07-15T00:00:00.000Z',
+      resourceVersion: 1,
+    };
+    const onPreview = vi.fn().mockResolvedValue(preview);
+    const onConfirm = vi.fn();
+    render(
+      <PlanFlowPanel
+        courses={[course]}
+        initialStartDate="2026-07-15"
+        lessons={[lesson]}
+        onConfirm={onConfirm}
+        onManage={vi.fn()}
+        onPreview={onPreview}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成计划预览' }));
+    expect(await screen.findByRole('button', { name: '确认计划流' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '上一步' }));
+    fireEvent.click(screen.getByRole('button', { name: /专注完成/u }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+
+    expect(screen.getByRole('button', { name: '重新生成排期' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '确认计划流' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新生成排期' }));
+    expect(onPreview).toHaveBeenCalledTimes(2);
+    expect(onPreview).toHaveBeenLastCalledWith(expect.objectContaining({ strategy: 'focus' }));
+  });
+
+  it('groups the confirmation preview by week and summarizes daily lesson load', async () => {
+    const courses = [
+      {
+        courseId: 'course_1',
+        title: '微积分',
+        status: 'active' as const,
+        courseMode: 'standard' as const,
+        outlineVersionId: 'outline_1',
+        resourceVersion: 1,
+      },
+      {
+        courseId: 'course_2',
+        title: '数据结构',
+        status: 'active' as const,
+        courseMode: 'standard' as const,
+        outlineVersionId: 'outline_2',
+        resourceVersion: 1,
+      },
+    ];
+    const lessons = [
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        title: '极限的直觉',
+        progress: 'not_started' as const,
+        recommended: true,
+      },
+      {
+        courseId: 'course_2',
+        lessonId: 'lesson_2',
+        title: '栈与队列',
+        progress: 'not_started' as const,
+        recommended: true,
+      },
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_3',
+        title: '导数定义',
+        progress: 'not_started' as const,
+        recommended: true,
+      },
+      {
+        courseId: 'course_2',
+        lessonId: 'lesson_4',
+        title: '树的层次关系',
+        progress: 'not_started' as const,
+        recommended: true,
+      },
+    ];
+    const suggestions = [
+      ['course_1', 'lesson_1', '2026-07-13T01:00:00.000Z', '2026-07-13T01:30:00.000Z'],
+      ['course_2', 'lesson_2', '2026-07-13T02:00:00.000Z', '2026-07-13T02:20:00.000Z'],
+      ['course_1', 'lesson_3', '2026-07-17T01:00:00.000Z', '2026-07-17T01:45:00.000Z'],
+      ['course_2', 'lesson_4', '2026-07-20T01:00:00.000Z', '2026-07-20T02:00:00.000Z'],
+    ].map(([courseId, lessonId, startAt, endAt]) => ({
+      courseId: courseId!,
+      lessonId: lessonId!,
+      startAt: startAt!,
+      endAt: endAt!,
+      timezoneAtCreation: 'Asia/Shanghai',
+      explanation: '测试排期',
+    }));
+    const onPreview = vi.fn().mockResolvedValue({
+      id: 'plan_flow_preview',
+      state: 'preview-ready',
+      constraintsArtifactRef: 'constraints_manual',
+      courseRefs: courses.map((course) => course.courseId),
+      lessonRefs: lessons.map((lesson) => lesson.lessonId),
+      timeWindowRefs: ['daily:45'],
+      existingScheduleSnapshotRef: 'schedule_0',
+      baseScheduleVersion: 0,
+      generationTaskId: 'rules_1',
+      suggestions,
+      conflicts: [],
+      confirmationReceipts: {},
+      confirmedScheduleItemIds: [],
+      source: 'plan-flow',
+      createdAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+      resourceVersion: 1,
+    });
+
+    render(
+      <PlanFlowPanel
+        courses={courses}
+        initialStartDate="2026-07-13"
+        lessons={lessons}
+        onConfirm={vi.fn()}
+        onManage={vi.fn()}
+        onPreview={onPreview}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成计划预览' }));
+
+    expect(await screen.findByRole('heading', { name: '第 1 周' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '第 2 周' })).toBeVisible();
+    expect(screen.getByText('07/13 — 07/17 · 2 个学习日')).toBeVisible();
+    expect(screen.getByText('07/20 — 07/20 · 1 个学习日')).toBeVisible();
+    expect(screen.getByText('50 分钟 · 2 节')).toBeVisible();
+    expect(screen.getAllByText('微积分')).toHaveLength(2);
+    expect(screen.getByText('极限的直觉')).toBeVisible();
+    expect(screen.getByText('155 min')).toBeVisible();
+    expect(screen.getAllByText('超过每日目标')).toHaveLength(2);
+  });
+
+  it('keeps retry available when structured constraints cannot produce a preview', async () => {
     const onPreview = vi.fn().mockResolvedValue({
       id: 'plan_flow_failed',
       state: 'failed',
@@ -19,13 +202,13 @@ describe('PlanFlowPanel', () => {
       timeWindowRefs: ['daily:45'],
       existingScheduleSnapshotRef: 'schedule_0',
       baseScheduleVersion: 0,
-      generationTaskId: 'task_1',
+      generationTaskId: 'rules_1',
       suggestions: [],
       conflicts: [],
       confirmationReceipts: {},
       confirmedScheduleItemIds: [],
       source: 'plan-flow',
-      errorCode: 'generation_task_not_dispatchable',
+      errorCode: 'plan_preview_invalid',
       createdAt: '2026-07-15T00:00:00.000Z',
       updatedAt: '2026-07-15T00:00:00.000Z',
       resourceVersion: 1,
@@ -63,7 +246,9 @@ describe('PlanFlowPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '下一步' }));
     fireEvent.click(screen.getByRole('button', { name: '生成计划预览' }));
 
-    expect(await screen.findByText('后台生成队列暂时不可用，请重试。')).toBeInTheDocument();
+    expect(
+      await screen.findByText('当前日期、学习日或课节依赖无法形成有效排期，请调整约束后重试。'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '生成计划预览' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: '确认计划流' })).not.toBeInTheDocument();
   });

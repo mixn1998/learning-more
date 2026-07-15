@@ -17,7 +17,7 @@ import {
   StopLessonGenerationBodySchema,
   SupplementarySessionResponseSchema,
 } from '@learning-more/contracts';
-import type { LessonRecordView } from '@learning-more/contracts';
+import type { LessonRecordView, LessonTeachingProgress } from '@learning-more/contracts';
 
 import type { LearningSessionModule } from '../../modules/learning-session/interface.js';
 import type { InteractiveTeaching } from '../../modules/interactive-teaching/interface.js';
@@ -46,6 +46,7 @@ export type LearningSessionRouteOptions = Readonly<{
     }>[]
   >;
   getLessonRecord?(lessonId: string): Promise<LessonRecordView>;
+  getTeachingProgress?(sessionId: string): Promise<LessonTeachingProgress>;
   getLessonEntryState?(lessonId: string): Promise<{
     lessonId: string;
     progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
@@ -369,6 +370,7 @@ export async function registerLearningSessionRoutes(
           options.listSessionMessages === undefined
             ? undefined
             : await options.listSessionMessages(request.params.sessionId);
+        const teachingProgress = await options.getTeachingProgress?.(request.params.sessionId);
         const messages =
           storedMessages === undefined
             ? undefined
@@ -413,6 +415,7 @@ export async function registerLearningSessionRoutes(
         const response = LearningSessionViewResponseSchema.parse({
           ...view,
           ...(sessionSnapshotHash === undefined ? {} : { sessionSnapshotHash }),
+          ...(teachingProgress === undefined ? {} : { teachingProgress }),
           ...(messages === undefined ? {} : { messages }),
           ...(closurePreparation === undefined ? {} : { closurePreparation }),
           ...(view.finalReview === undefined

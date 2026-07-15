@@ -10,9 +10,10 @@ import type {
   WeeklyReportResponse,
   WeeklySummary,
 } from '@learning-more/contracts';
-import { Badge, Button, ContentState, Page, Panel, SectionHeader, Stack } from '@learning-more/ui';
+import { Badge, Button, ContentState, Page, Stack } from '@learning-more/ui';
 
 import { historyClient, type HistoryClient } from '../../client/history-client.js';
+import { profileClient, type ProfileClient } from '../../client/profile-client.js';
 import { useAppShellBrandSubtitle, useAppShellHeaderStatus } from '../../state/app-shell-header.js';
 import { CourseSummaryDrawer } from './course-summary-drawer.js';
 import {
@@ -31,6 +32,7 @@ import {
   type HistoryStatisticsRange,
 } from './history-statistics-workspace.js';
 import { HistoryTimeline } from './history-timeline.js';
+import { ProfilePage } from '../profile/profile-page.js';
 import { StatisticsPanel } from './statistics-panel.js';
 import { WeeklyReportView } from './weekly-report-view.js';
 import { WeeklyReportWorkspace, type WeeklyReportRecord } from './weekly-report-workspace.js';
@@ -101,8 +103,12 @@ type LoadErrors = Partial<
   Record<'catalog' | 'history' | 'statistics' | 'calendar' | 'weekly', string>
 >;
 
-export function HistoryPage(props: { readonly client?: HistoryClient }) {
+export function HistoryPage(props: {
+  readonly client?: HistoryClient;
+  readonly portraitClient?: ProfileClient;
+}) {
   const api = props.client ?? historyClient;
+  const portraitApi = props.portraitClient ?? profileClient;
   const location = useLocation();
   const navigate = useNavigate();
   const requestedTab = new URLSearchParams(location.search).get('tab');
@@ -123,7 +129,7 @@ export function HistoryPage(props: { readonly client?: HistoryClient }) {
   const [weekly, setWeekly] = useState<WeeklySummary>();
   const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse>();
   const [section, setSection] = useState<HistorySection>(
-    requestedTab === 'calendar' ? 'calendar' : 'statistics',
+    requestedTab === 'calendar' ? 'calendar' : requestedTab === 'portrait' ? 'portrait' : 'statistics',
   );
   useAppShellBrandSubtitle(
     showingWeekly
@@ -340,12 +346,15 @@ export function HistoryPage(props: { readonly client?: HistoryClient }) {
     );
   };
   const changeHistorySection = (next: HistorySection) => {
-    if (next === 'portrait') {
-      navigate('/profile');
-      return;
-    }
     setSection(next);
-    navigate(next === 'calendar' ? '/history?tab=calendar' : '/history', { replace: true });
+    navigate(
+      next === 'calendar'
+        ? '/history?tab=calendar'
+        : next === 'portrait'
+          ? '/history?tab=portrait'
+          : '/history',
+      { replace: true },
+    );
   };
 
   if (loadState === 'loading') {
@@ -439,6 +448,10 @@ export function HistoryPage(props: { readonly client?: HistoryClient }) {
     );
   }
 
+  if (section === 'portrait') {
+    return <ProfilePage client={portraitApi} onSectionChange={changeHistorySection} />;
+  }
+
   return (
     <Page className="history-page">
       <Stack>
@@ -517,17 +530,6 @@ export function HistoryPage(props: { readonly client?: HistoryClient }) {
           ) : null}
           {section === 'calendar' ? (
             <ContentState role="alert" title="学习日历暂不可用" description={errors.calendar} />
-          ) : null}
-          {section === 'portrait' ? (
-            <Panel>
-              <SectionHeader
-                title="学习画像"
-                description="只从可追溯的复合证据形成局部观察，并保留适用边界。"
-              />
-              <a className="lm-button" href="/profile">
-                打开当前画像与证据链
-              </a>
-            </Panel>
           ) : null}
         </Stack>
       </Stack>

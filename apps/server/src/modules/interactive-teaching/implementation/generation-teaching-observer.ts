@@ -12,7 +12,9 @@ const OBSERVATION_CAPABILITY = [
   '可以记录用户实际表现出的具体思维行为，但行为类型和摘要保持开放语义，不使用固定维度表。',
   '被中断的助手输出可以留作过程记录，但不能作为完整教学或学习效果证据。',
   '与课程相关但不属于本课的探索记为 adjacent；不确定时使用 unclear；没有可靠变化时返回空 entries。',
-  'JSON 形状：scope={alignment,relationRefs,rationale}；entries 每项={entryId,kind,summary,knowledgePointRefs,sourceRefs,resolvesEntryRefs,qualityFlags}，assessment、explicitness、elicitation 可按证据选填。',
+  'JSON 形状：scope={alignment,relationRefs,rationale}；entries 每项={entryId,kind,summary,knowledgePointRefs,sourceRefs,resolvesEntryRefs,qualityFlags}，assessment、explicitness、elicitation、progressionSignal 可按证据选填。',
+  'progressionSignal 只记录明确可验证的流程事实：skip_knowledge_point 表示用户明确跳过当前知识点；pass_comprehensive_check 表示综合检测回答已通过；skip_comprehensive_check 表示用户明确跳过综合检测；lesson_summary_delivered 表示助手已经完成本课总结。不得仅凭对话顺畅推断这些信号。',
+  '知识点检测通过使用 learner_demonstration + assessment=supports；未通过或仍不稳定使用 assessment=limits/uncertain。用户提出且尚未被回答的相关疑问还要记录为 open_loop；疑问被解决时用 resolvesEntryRefs 关闭，未关闭前不得推进知识点。',
   'learner_reasoning_behavior 的 elicitation 用 spontaneous、elicited、mixed 或 unknown，表示该行为是否由教学任务直接引出；它不改变行为事实本身。',
   '只返回 scope 与 entries 的 JSON 数据，不输出 Markdown 说明。',
 ].join('\n');
@@ -76,11 +78,7 @@ export function createGenerationTeachingObserver(options: {
             })()
           : await options.execution.awaitTerminal(handle.taskId);
       if (task.status !== 'completed') throw new Error('teaching_observation_generation_failed');
-      const raw = parseJson(task.draftMarkdown ?? '') as {
-        scope?: unknown;
-        entries?: unknown;
-      };
-      return TeachingObservationSchema.parse({
+      const observationBase = {
         observationId:
           options.nextObservationId?.(input.sourceSnapshotHash) ??
           `observation_${sha256(`${input.sessionId}:${input.sourceSnapshotHash}:${observerVersion}`).slice(0, 32)}`,
@@ -90,12 +88,31 @@ export function createGenerationTeachingObserver(options: {
         turnSequence: input.turnSequence,
         sourceMessageIds: input.messages.map((message) => message.messageId),
         sourceSnapshotHash: input.sourceSnapshotHash,
-        scope: raw.scope,
-        entries: raw.entries,
         observerVersion,
         observedAt: (options.now?.() ?? new Date()).toISOString(),
         status: 'active',
-      });
+      } as const;
+      try {
+        const raw = parseJson(task.draftMarkdown ?? '') as {
+          scope?: unknown;
+          entries?: unknown;
+        };
+        return TeachingObservationSchema.parse({
+          ...observationBase,
+          scope: raw.scope,
+          entries: raw.entries,
+        });
+      } catch {
+        return TeachingObservationSchema.parse({
+          ...observationBase,
+          scope: {
+            alignment: 'unclear',
+            relationRefs: [],
+            rationale: 'Generated observation was invalid; no evidence was projected.',
+          },
+          entries: [],
+        });
+      }
     },
   };
 }

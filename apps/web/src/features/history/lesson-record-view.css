@@ -110,12 +110,11 @@ body:has(.lesson-record-workspace) .runtime-write-boundary {
 .lesson-record-chat {
   padding: 28px;
 }
-.lesson-record-chat .learn-ai,
-.lesson-record-chat .learn-user {
+.lesson-record-chat .learn-ai {
   max-width: 760px;
 }
 .lesson-record-workspace .learn-ai {
-  margin-bottom: 24px;
+  margin: 0;
 }
 .lesson-record-workspace .learn-ai .lm-ai-content {
   font-size: inherit;
@@ -123,16 +122,6 @@ body:has(.lesson-record-workspace) .runtime-write-boundary {
 }
 .lesson-record-workspace .learn-ai .lm-ai-content > :last-child {
   margin-bottom: 0;
-}
-.lesson-record-workspace .learn-user {
-  max-width: 760px;
-  margin: 0 0 24px auto;
-  padding: 13px 15px;
-  border-radius: 15px 15px 4px 15px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 13px;
-  line-height: 1.7;
 }
 .lesson-record-review {
   max-width: 920px;

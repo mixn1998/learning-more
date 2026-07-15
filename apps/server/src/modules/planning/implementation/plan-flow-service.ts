@@ -14,6 +14,7 @@ import {
 import type { PlanFlowRepository } from '../ports/plan-flow-repository.js';
 import type { ScheduleRepository } from '../ports/schedule-repository.js';
 import { applyPlanFlowAction, type PlanFlowAction } from './plan-flow-policy.js';
+import { buildPlanSuggestions } from './plan-flow-scheduler.js';
 
 class PlanFlowError extends Error {
   constructor(
@@ -73,72 +74,6 @@ export type PlanPreviewContext = Readonly<{
   }>[];
 }>;
 
-const PLAN_PREVIEW_OUTPUT_EXAMPLE = {
-  suggestions: [
-    {
-      courseId: 'course-reference',
-      lessonId: 'lesson-reference',
-      startAt: '2026-07-14T11:00:00.000Z',
-      endAt: '2026-07-14T12:00:00.000Z',
-      timezoneAtCreation: 'Asia/Shanghai',
-      explanation: '为什么这个时段与顺序适合当前约束',
-    },
-  ],
-} as const;
-
-function renderPlanPreviewPrompt(context: PlanPreviewContext): string {
-  const courses = context.courses.map(
-    (course) => `- ${course.title}（课程标识：${course.courseId}）`,
-  );
-  const lessons = context.lessons.map((lesson) => {
-    const prerequisites =
-      lesson.prerequisiteLessonIds.length === 0
-        ? '无前置课节'
-        : `前置课节标识：${lesson.prerequisiteLessonIds.join('、')}`;
-    return `- ${lesson.title}（课节标识：${lesson.lessonId}；课程标识：${lesson.courseId}）：${lesson.objective}；预计 ${lesson.estimatedMinutes} 分钟；${prerequisites}`;
-  });
-  const existing = context.existingSchedule
-    .filter((item) => item.status !== 'removed')
-    .map(
-      (item) =>
-        `- 课节标识 ${item.lessonId}：${item.startAt} 至 ${item.endAt}（${item.timezoneAtCreation}）${item.locked === true ? '；不可移动' : ''}`,
-    );
-  const availability = [
-    context.availability.startLocalDate === undefined
-      ? undefined
-      : `最早开始日期：${context.availability.startLocalDate}`,
-    context.availability.dailyTargetMinutes === undefined
-      ? undefined
-      : `单日目标时长（软目标；课节不可拆分时可略超）：${context.availability.dailyTargetMinutes} 分钟`,
-    context.availability.learningDays.length === 0
-      ? undefined
-      : `可学习日期：${context.availability.learningDays.join('、')}`,
-    `时区：${context.timezone}`,
-    `安排策略：${context.userPreferences.strategy}`,
-    `保留已有日期：${context.userPreferences.preserveExistingDates ? '是' : '否'}`,
-    `重新安排逾期任务：${context.userPreferences.rescheduleOverdue ? '是' : '否'}`,
-  ].filter((value): value is string => value !== undefined);
-  return [
-    '只根据下面已物化的课程、课节、时间约束和现有安排提出可行学习计划。保持课节依赖，不要声称计划已经由用户确认。',
-    '',
-    '【机器输出契约】',
-    '只返回一个 JSON 对象；suggestions 必须覆盖每个待规划课节，实体标识只能使用背景中提供的值。',
-    JSON.stringify(PLAN_PREVIEW_OUTPUT_EXAMPLE),
-    '',
-    '【课程与待规划课节】',
-    [...courses, ...lessons].join('\n'),
-    '',
-    '【可用时间与安排偏好】',
-    availability.join('\n'),
-    '',
-    '【用户补充约束】',
-    context.constraintsMarkdown?.trim() || '没有额外补充约束。',
-    '',
-    '【现有日程】',
-    existing.length === 0 ? '当前没有需要避让的日程。' : existing.join('\n'),
-  ].join('\n');
-}
-
 function hash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
 }
@@ -162,18 +97,6 @@ export function createPlanFlowService(options: {
   repository: PlanFlowRepository;
   scheduleRepository: ScheduleRepository;
   unitOfWork: UnitOfWork;
-  generationRuntime: {
-    submit(request: {
-      taskKey: string;
-      inputSnapshotHash: string;
-      taskKind: string;
-      taskGroup: 'background';
-      ownerRef: string;
-      providerId: string;
-      priority: number;
-      prompt: string;
-    }): Promise<{ taskId: string }>;
-  };
   assemblePreviewContext(input: PreviewInput): Promise<PlanPreviewContext>;
   getScheduleVersion(): Promise<number>;
   lessonIsPlannable(lessonId: string): Promise<boolean>;
@@ -181,7 +104,6 @@ export function createPlanFlowService(options: {
   nextPlanFlowId(): string;
   nextScheduleItemId(): string;
   now(): Date;
-  providerId?: string;
   recordConfirmed?: (
     items: readonly ScheduleItem[],
     planFlowId: string,
@@ -273,6 +195,7 @@ export function createPlanFlowService(options: {
 
   return {
     async requestPreview(input: PreviewInput, commandId: string) {
+      void commandId;
       const id = options.nextPlanFlowId();
       const baseScheduleVersion = await options.getScheduleVersion();
       const materializedContext = await options.assemblePreviewContext(input);
@@ -299,27 +222,22 @@ export function createPlanFlowService(options: {
         materializedContext: effectiveContext,
       };
       const inputSnapshotHash = hash(inputManifest);
-      const prompt = renderPlanPreviewPrompt(effectiveContext);
-      const task = await options.generationRuntime.submit({
-        taskKey: `plan-flow-preview:${id}:${commandId}`,
-        inputSnapshotHash,
-        taskKind: 'plan-flow-preview',
-        taskGroup: 'background',
-        ownerRef: id,
-        providerId: options.providerId ?? 'current',
-        priority: 30,
-        prompt,
-      });
       const timestamp = options.now().toISOString();
-      return save({
+      let suggestions: readonly PlanSuggestion[];
+      try {
+        suggestions = buildPlanSuggestions(effectiveContext, effectiveInput.lessonRefs);
+      } catch {
+        throw new PlanFlowError('plan_preview_invalid');
+      }
+      const preview: PlanFlow = {
         id,
-        state: 'previewing',
+        state: 'preview-ready',
         ...effectiveInput,
         baseScheduleVersion,
         inputSnapshotHash,
         warnings: [],
-        generationTaskId: task.taskId,
-        suggestions: [],
+        generationTaskId: `rules_${inputSnapshotHash.slice(0, 24)}`,
+        suggestions,
         conflicts: [],
         confirmationReceipts: {},
         confirmedScheduleItemIds: [],
@@ -327,7 +245,16 @@ export function createPlanFlowService(options: {
         createdAt: timestamp,
         updatedAt: timestamp,
         resourceVersion: 0,
-      });
+      };
+      await validateSuggestions(preview, suggestions);
+      const scheduled: ScheduleItem[] = [];
+      for await (const item of options.scheduleRepository.list()) {
+        if (item.status === 'scheduled') scheduled.push(item);
+      }
+      const conflicts = suggestions.flatMap((suggestion) =>
+        scheduled.filter((item) => overlaps(item, suggestion)).map((item) => item.id),
+      );
+      return save({ ...preview, conflicts: [...new Set(conflicts)].sort() });
     },
 
     async fail(id: string, errorCode: string, draftArtifactRef: string) {

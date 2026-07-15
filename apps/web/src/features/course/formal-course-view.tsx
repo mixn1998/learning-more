@@ -10,7 +10,10 @@ import { AiContent, Button, Dialog } from '@learning-more/ui';
 import { courseModeDefinition } from '../../course-mode-registry.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
 import { CourseArchiveDangerZone } from '../review/course-archive-danger-zone.js';
-import { projectOutlineMarkdown } from './outline-markdown-projection.js';
+import {
+  projectOutlineMarkdown,
+  resolveCourseIntroduction,
+} from './outline-markdown-projection.js';
 import { OutlineView, type CourseLessonRuntimeState } from './outline-view.js';
 import { OutlineVersionHistory } from './outline-version-history.js';
 
@@ -46,20 +49,30 @@ export function FormalCourseView(props: {
   useCourseModeTheme(course.courseMode);
 
   const lessons = course.lessons ?? [];
-  const projectedSummaryByLessonId = useMemo(() => {
-    const projection = projectOutlineMarkdown(
-      course.outlineMarkdown ?? '',
-      lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
-    );
-    return new Map(
-      [...projection.modules.flatMap((module) => module.lessons), ...projection.ungroupedLessons]
-        .filter(
-          (lesson): lesson is typeof lesson & { lessonId: string; summary: string } =>
-            lesson.lessonId !== undefined && lesson.summary !== undefined,
-        )
-        .map((lesson) => [lesson.lessonId, lesson.summary] as const),
-    );
-  }, [course.outlineMarkdown, lessons]);
+  const outlineProjection = useMemo(
+    () =>
+      projectOutlineMarkdown(
+        course.outlineMarkdown ?? '',
+        lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+      ),
+    [course.outlineMarkdown, lessons],
+  );
+  const courseIntroduction = resolveCourseIntroduction(outlineProjection, course.title);
+  const projectedSummaryByLessonId = useMemo(
+    () =>
+      new Map(
+        [
+          ...outlineProjection.modules.flatMap((module) => module.lessons),
+          ...outlineProjection.ungroupedLessons,
+        ]
+          .filter(
+            (lesson): lesson is typeof lesson & { lessonId: string; summary: string } =>
+              lesson.lessonId !== undefined && lesson.summary !== undefined,
+          )
+          .map((lesson) => [lesson.lessonId, lesson.summary] as const),
+      ),
+    [outlineProjection],
+  );
   const completed =
     course.status === 'closed'
       ? lessons.length
@@ -75,15 +88,6 @@ export function FormalCourseView(props: {
   const otherCourses = (props.availableCourses ?? []).filter(
     (item) => item.courseId !== course.courseId,
   );
-  const versionNumber = Math.max(
-    1,
-    (course.outlineVersions ?? []).findIndex((version) => version.current) + 1,
-  );
-  const discipline = props.currentOutline?.disciplineTag ?? '课程主题';
-  const tags = props.currentOutline?.topicTags ?? [];
-  const meta = [discipline, tags.join('、'), `大纲 v${versionNumber}`]
-    .filter((part) => part !== '')
-    .join(' · ');
   const progressPercent = lessons.length === 0 ? 0 : Math.round((completed / lessons.length) * 100);
   const versionRows = useMemo(() => course.outlineVersions ?? [], [course.outlineVersions]);
 
@@ -105,8 +109,8 @@ export function FormalCourseView(props: {
             {course.courseMode.toUpperCase()} ·{' '}
             {course.status === 'closed' ? '已关闭课程' : '正式课程'}
           </div>
-          <h1>{course.title}</h1>
-          <p>{meta}</p>
+          <h1>{courseIntroduction.title}</h1>
+          <p className="course-hero__introduction">{courseIntroduction.introductionText}</p>
           <div className="lm-chips course-hero__chips">
             <span className="lm-mode-badge">● {mode.label}</span>
             <span className={`lm-pill${course.status === 'closed' ? ' success' : ''}`}>

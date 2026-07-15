@@ -29,12 +29,18 @@ function renderWorkspace() {
 }
 
 describe('PortraitWorkspace settings dialog', () => {
-  it('exposes grouped settings with accessible controls', () => {
+  it('matches the approved compact settings dialog structure', () => {
     renderWorkspace();
 
     fireEvent.click(screen.getByRole('button', { name: '画像设置' }));
 
-    expect(screen.getByRole('dialog')).toHaveTextContent('显示范围');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelector('.settings-body')).toBeInTheDocument();
+    expect(dialog.querySelector('.setting-row')).toBeInTheDocument();
+    expect(dialog.querySelectorAll('.setting-check')).toHaveLength(2);
+    expect(dialog.querySelector('.portrait-setting-card')).not.toBeInTheDocument();
+    expect(screen.queryByText('显示范围')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: '证据时间范围' })).toBeVisible();
     expect(screen.getByRole('checkbox', { name: '课节与课程 Review' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: '学习对话中的有效行为证据' })).toBeChecked();

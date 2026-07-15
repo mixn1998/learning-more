@@ -1,33 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import type {
-  GlobalLearningProfile,
-  PortraitCurrent,
-  PortraitEvidence,
-  PortraitVersion,
-} from '@learning-more/contracts';
-import { Button, ContentState, Page, Stack } from '@learning-more/ui';
+import type { PortraitCurrent, PortraitEvidence, PortraitVersion } from '@learning-more/contracts';
 
 import { profileClient, type ProfileClient } from '../../client/profile-client.js';
 import { useAppShellBrandSubtitle } from '../../state/app-shell-header.js';
 import { useCommandAttempts } from '../../state/use-command-attempt.js';
-import { GlobalProfilePanel } from './global-profile-panel.js';
-import { PortraitView } from './portrait-view.js';
 import { PortraitWorkspace } from './portrait-workspace.js';
 import { buildPortraitInsights, portraitUpdatedLabel } from './portrait-workspace-model.js';
 
 const insufficientPortraitTitle = '学习画像：证据尚不足';
 const insufficientPortraitSummary =
-  '当前冻结的证据尚不足以形成可独立验证的学习观察，因此暂不生成稳定结论。后续学习、复盘或补充对话积累到足够的可追溯证据后，画像会再更新；这不会改写全局用户档案中的长期事实。';
+  '当前冻结的证据尚不足以形成可独立验证的学习观察，因此暂不生成稳定结论。后续学习、复盘或补充对话积累到足够的可追溯证据后，画像会继续更新。';
 
-export function ProfilePage(props: { readonly client?: ProfileClient }) {
+export function ProfilePage(props: {
+  readonly client?: ProfileClient;
+  readonly embedded?: boolean;
+  readonly onSectionChange?: (section: 'statistics' | 'calendar' | 'portrait') => void;
+}) {
   const api = props.client ?? profileClient;
   const navigate = useNavigate();
   const commands = useCommandAttempts();
   useAppShellBrandSubtitle('学习画像');
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [profile, setProfile] = useState<GlobalLearningProfile>();
   const [evidence, setEvidence] = useState<readonly PortraitEvidence[]>([]);
   const [portrait, setPortrait] = useState<PortraitCurrent>();
   const [pendingVersion, setPendingVersion] = useState<PortraitVersion>();
@@ -38,10 +33,9 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
   useEffect(() => {
     let current = true;
     setLoadState('loading');
-    void Promise.all([api.getProfile(), api.getEvidence(), api.getPortrait()]).then(
-      ([profileView, evidenceView, portraitView]) => {
+    void Promise.all([api.getEvidence(), api.getPortrait()]).then(
+      ([evidenceView, portraitView]) => {
         if (!current) return;
-        setProfile(profileView);
         setEvidence(evidenceView);
         setPortrait(portraitView);
         if (
@@ -107,26 +101,6 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
     };
   }, [api, pendingVersion?.versionId]);
 
-  if (loadState === 'loading') {
-    return (
-      <Page className="profile-page">
-        <ContentState title="正在加载学习画像" description="正在同步全局档案与证据链。" />
-      </Page>
-    );
-  }
-  if (loadState === 'error' || profile === undefined) {
-    return (
-      <Page className="profile-page">
-        <ContentState
-          role="alert"
-          title="学习画像暂不可用"
-          description="档案或画像接口未能通过契约校验。"
-          action={<Button onClick={() => setLoadAttempt((value) => value + 1)}>重新加载</Button>}
-        />
-      </Page>
-    );
-  }
-
   const refresh = async () => {
     const commandKey = 'portrait-refresh';
     setRefreshing(true);
@@ -134,8 +108,15 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
     try {
       const version = await api.refresh(undefined, commands.attemptFor(commandKey));
       commands.complete(commandKey);
-      if (version.state === 'completed' || version.state === 'failed') {
+      if (version.state === 'completed') {
         setPortrait(version);
+      } else if (version.state === 'failed') {
+        setPortrait((current) =>
+          current !== undefined && 'versionId' in current && current.state === 'completed'
+            ? current
+            : version,
+        );
+        setRefreshError('画像生成失败，请稍后重试；当前成功版本保持不变。');
       } else {
         setPendingVersion(version);
         setPortrait((current) =>
@@ -151,6 +132,50 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
     }
   };
 
+  const changeSection = (section: 'statistics' | 'calendar' | 'portrait') => {
+    if (props.onSectionChange !== undefined) {
+      props.onSectionChange(section);
+      return;
+    }
+    navigate(
+      section === 'calendar'
+        ? '/history?tab=calendar'
+        : section === 'portrait'
+          ? '/history?tab=portrait'
+          : '/history',
+    );
+  };
+
+  if (loadState === 'loading') {
+    return (
+      <PortraitWorkspace
+        embedded={props.embedded}
+        insights={[]}
+        onRefresh={() => setLoadAttempt((value) => value + 1)}
+        onSectionChange={changeSection}
+        pendingMessage="正在同步画像与复合证据链。"
+        refreshing
+        summary="正在读取当前证据窗口，请稍候。"
+        title="正在加载学习画像"
+        updatedLabel="同步中"
+      />
+    );
+  }
+  if (loadState === 'error') {
+    return (
+      <PortraitWorkspace
+        embedded={props.embedded}
+        errorMessage="学习画像暂不可用，请稍后重试。"
+        insights={[]}
+        onRefresh={() => setLoadAttempt((value) => value + 1)}
+        onSectionChange={changeSection}
+        summary="画像或证据接口暂时无法读取，当前页面没有改写任何学习事实。"
+        title="学习画像暂不可用"
+        updatedLabel="读取失败"
+      />
+    );
+  }
+
   if ('versionId' in (portrait ?? {}) && portrait?.state === 'completed') {
     const completedPortrait = portrait as PortraitVersion;
     const hasInsights = completedPortrait.claims.length > 0;
@@ -164,10 +189,9 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
             })}
         insights={buildPortraitInsights({ portrait: completedPortrait, evidence })}
         onRefresh={() => void refresh()}
-        onSectionChange={(section) =>
-          navigate(section === 'calendar' ? '/history?tab=calendar' : '/history')
-        }
+        onSectionChange={changeSection}
         refreshing={refreshing}
+        embedded={props.embedded}
         summary={
           hasInsights
             ? (completedPortrait.summary ?? '当前成功版本未生成摘要。')
@@ -183,29 +207,40 @@ export function ProfilePage(props: { readonly client?: ProfileClient }) {
     );
   }
 
+  const isPending =
+    portrait !== undefined &&
+    'versionId' in portrait &&
+    (portrait.state === 'preparing' || portrait.state === 'generating');
+  const isFailed = portrait?.state === 'failed';
+
   return (
-    <Page className="profile-page">
-      <Stack>
-        <header className="profile-page-header">
-          <p className="eyebrow">有边界的学习观察</p>
-          <h1>学习画像</h1>
-          <p>画像只使用当前证据窗口内的复合证据，不生成稳定人格或能力标签。</p>
-        </header>
-        <GlobalProfilePanel profile={profile} />
-        <div>
-          <Button variant="primary" busy={refreshing} onClick={() => void refresh()}>
-            {refreshing ? '正在刷新画像' : '刷新学习画像'}
-          </Button>
-          {refreshError === undefined ? null : <p role="alert">{refreshError}</p>}
-        </div>
-        {pendingVersion === undefined ? null : (
-          <ContentState
-            title="画像生成中"
-            description={`正在核验版本 ${pendingVersion.versionId}；当前成功版本保持可见。`}
-          />
-        )}
-        <PortraitView {...(portrait === undefined ? {} : { portrait })} evidence={evidence} />
-      </Stack>
-    </Page>
+    <PortraitWorkspace
+      embedded={props.embedded}
+      {...(isFailed || refreshError !== undefined
+        ? { errorMessage: refreshError ?? '画像生成失败，请稍后重试。' }
+        : {})}
+      insights={[]}
+      onRefresh={() => void refresh()}
+      onSectionChange={changeSection}
+      {...(isPending || pendingVersion !== undefined
+        ? { pendingMessage: '正在核验复合证据与反向证据。' }
+        : {})}
+      refreshing={refreshing}
+      summary={
+        isFailed
+          ? '本次画像生成未成功。你可以稍后重试；已冻结的证据不会被改写。'
+          : isPending
+            ? '正在根据当前证据窗口生成有边界的学习观察，完成后会自动更新此页面。'
+            : insufficientPortraitSummary
+      }
+      title={
+        isFailed
+          ? '学习画像暂未生成'
+          : isPending
+            ? '学习画像正在生成'
+            : insufficientPortraitTitle
+      }
+      updatedLabel={isPending ? '生成中' : isFailed ? '生成失败' : '尚未生成'}
+    />
   );
 }

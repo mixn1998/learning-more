@@ -18,6 +18,7 @@ export type LearningSessionCommand =
   | (LessonCommand &
       Readonly<{
         type: 'CommitAssistantMessage';
+        sessionId: string;
         messageId: string;
         contentArtifactRef: string;
         generationTaskId: string;

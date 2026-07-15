@@ -101,18 +101,26 @@ export function decide(
     if (session.state !== 'paused') throw new LearningSessionError('session_not_writable');
     return [event(commandId, { type: 'OriginalSessionResumed' })];
   }
-  if (command.type === 'appendUserMessage' || command.type === 'commitAssistantMessage') {
+  if (command.type === 'appendUserMessage') {
     if (session.state !== 'active') throw new LearningSessionError('session_not_writable');
     if (session.messageIds.includes(command.messageId)) return [];
     return [
       event(commandId, {
-        type:
-          command.type === 'appendUserMessage'
-            ? 'UserMessageAppended'
-            : 'AssistantMessageCommitted',
+        type: 'UserMessageAppended',
         messageId: command.messageId,
       }),
     ];
+  }
+  if (command.type === 'commitAssistantMessage') {
+    if (session.id !== command.sessionId) throw new LearningSessionError('session_conflict');
+    if (session.state !== 'active' && session.state !== 'paused') {
+      throw new LearningSessionError('session_not_writable');
+    }
+    if (session.messageIds.includes(command.messageId)) return [];
+    if (session.activeGenerationTaskId !== command.generationTaskId) {
+      throw new LearningSessionError('session_conflict');
+    }
+    return [event(commandId, { type: 'AssistantMessageCommitted', messageId: command.messageId })];
   }
   if (command.type === 'establishEvidenceCheckpoint') {
     return session.evidenceCheckpoint

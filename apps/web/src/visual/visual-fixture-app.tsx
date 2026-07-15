@@ -6,6 +6,7 @@ import { AppShellView } from '../layouts/app-shell.js';
 import type { RuntimeUiState } from '../state/version-guard.js';
 import { AuthoringFixture } from './authoring-fixture.js';
 import { isAuthoringFixtureId } from './authoring-fixture-data.js';
+import { ChatFixture } from './chat-fixture.js';
 import { CourseModesFixture, UiComponentsFixture } from './design-system-fixtures.js';
 import { CourseFixture, isCourseFixtureId } from './course-fixture.js';
 import {
@@ -144,6 +145,9 @@ export function VisualFixtureApp(props: { readonly fixtureId: string }) {
         break;
       case 'course-modes':
         content = <CourseModesFixture />;
+        break;
+      case 'chat-components':
+        content = <ChatFixture />;
         break;
       case 'home-ready':
         content = <HomeFixture />;

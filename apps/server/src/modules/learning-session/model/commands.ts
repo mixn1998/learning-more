@@ -8,6 +8,8 @@ export type LearningSessionCommand =
     }>
   | Readonly<{
       type: 'commitAssistantMessage';
+      sessionId: string;
+      generationTaskId: string;
       messageId: string;
     }>
   | Readonly<{ type: 'establishEvidenceCheckpoint' }>

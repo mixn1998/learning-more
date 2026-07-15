@@ -29,7 +29,11 @@ import {
   validateTeachingObservation,
   type TeachingObservationValidationContext,
 } from './teaching-observation-validator.js';
-import { createTeachingState, reduceTeachingState } from './teaching-state-reducer.js';
+import {
+  alignTeachingState,
+  createTeachingState,
+  reduceTeachingState,
+} from './teaching-state-reducer.js';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -132,6 +136,7 @@ export function createInteractiveTeaching(options: {
       commandContext: input.context,
     });
     const completion = (async () => {
+      let replyCommitted = false;
       try {
         const result = await options.agent.complete(accepted.taskId);
         const assistantMessageId = options.nextAssistantMessageId();
@@ -154,6 +159,7 @@ export function createInteractiveTeaching(options: {
           {
             type: 'CommitAssistantMessage',
             lessonId: input.lessonId,
+            sessionId: input.sessionId,
             messageId: assistantMessageId,
             contentArtifactRef: artifactRef,
             generationTaskId: accepted.taskId,
@@ -161,6 +167,7 @@ export function createInteractiveTeaching(options: {
           },
           backgroundContext(input.context, `${input.context.commandId}:assistant-complete`),
         );
+        replyCommitted = true;
         taskContext.delete(accepted.taskId);
         await options.frameLog?.append(accepted.taskId, 'message.completed', {
           messageId: assistantMessageId,
@@ -170,6 +177,9 @@ export function createInteractiveTeaching(options: {
           artifactId: artifactRef,
           kind: 'assistant-message',
           contentSha256: sha256(result.markdown),
+        });
+        await options.frameLog?.append(accepted.taskId, 'task.completed', {
+          resultRef: artifactRef,
         });
         if (input.observe) {
           await observationQueue.enqueue(input.sessionId, () =>
@@ -181,11 +191,9 @@ export function createInteractiveTeaching(options: {
             }),
           );
         }
-        await options.frameLog?.append(accepted.taskId, 'task.completed', {
-          resultRef: artifactRef,
-        });
       } catch (error) {
         taskContext.delete(accepted.taskId);
+        if (replyCommitted) throw error;
         try {
           await options.sessionModule.execute(
             { type: 'StopSessionGeneration', lessonId: input.lessonId },
@@ -221,18 +229,19 @@ export function createInteractiveTeaching(options: {
   }
 
   async function initialState(courseId: string, lessonId: string, sessionId: string) {
+    const facts = await options.contextSources.getCourseAndLesson({ courseId, lessonId });
+    const knowledgePointRefs = facts.lesson.coreKnowledgePoints.map((point) => point.ref);
     const current = await options.ledgerRepository.get(sessionId);
     if (current !== undefined) {
       if (current.courseId !== courseId || current.lessonId !== lessonId) {
         throw new Error('teaching_ledger_identity_mismatch');
       }
-      return current.state;
+      return alignTeachingState(current.state, knowledgePointRefs);
     }
-    const facts = await options.contextSources.getCourseAndLesson({ courseId, lessonId });
     return createTeachingState({
       lessonId,
       sessionId,
-      knowledgePointRefs: facts.lesson.coreKnowledgePoints.map((point) => point.ref),
+      knowledgePointRefs,
     });
   }
 
@@ -243,12 +252,17 @@ export function createInteractiveTeaching(options: {
     context: CommandContext;
   }): Promise<void> {
     const current = await options.ledgerRepository.get(input.sessionId);
-    const previousState =
-      current?.state ?? (await initialState(input.courseId, input.lessonId, input.sessionId));
     const facts = await options.contextSources.getCourseAndLesson({
       courseId: input.courseId,
       lessonId: input.lessonId,
     });
+    const previousState =
+      current === undefined
+        ? await initialState(input.courseId, input.lessonId, input.sessionId)
+        : alignTeachingState(
+            current.state,
+            facts.lesson.coreKnowledgePoints.map((point) => point.ref),
+          );
     const allMessages = await options.contextSources.listMessages(input.sessionId);
     const observedIndex =
       previousState.observedThroughMessageId === undefined
@@ -337,7 +351,14 @@ export function createInteractiveTeaching(options: {
 
   async function markObservationPending(courseId: string, lessonId: string, sessionId: string) {
     const current = await options.ledgerRepository.get(sessionId);
-    const state = current?.state ?? (await initialState(courseId, lessonId, sessionId));
+    const facts = await options.contextSources.getCourseAndLesson({ courseId, lessonId });
+    const state =
+      current === undefined
+        ? await initialState(courseId, lessonId, sessionId)
+        : alignTeachingState(
+            current.state,
+            facts.lesson.coreKnowledgePoints.map((point) => point.ref),
+          );
     if (state.observationStatus === 'pending') return state;
     const pendingState = { ...state, observationStatus: 'pending' as const };
     await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
@@ -460,6 +481,7 @@ export function createInteractiveTeaching(options: {
         {
           type: 'CommitAssistantMessage',
           lessonId: owner.lessonId,
+          sessionId: owner.sessionId,
           messageId: assistantMessageId,
           contentArtifactRef: artifactRef,
           generationTaskId: input.taskId,
@@ -589,6 +611,7 @@ export function createInteractiveTeaching(options: {
             {
               type: 'CommitAssistantMessage',
               lessonId: input.lessonId,
+              sessionId: input.sessionId,
               messageId: assistantMessageId,
               contentArtifactRef: artifactRef,
               generationTaskId: activeTaskId,

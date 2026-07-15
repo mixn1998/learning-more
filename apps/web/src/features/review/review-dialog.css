@@ -159,6 +159,12 @@ body:has([data-visual-ready='true']) .lesson-review-overlay {
   font-size: 12px;
 }
 
+.lesson-supplementary-controls .chat-composer {
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+
 @media (max-width: 620px) {
   .lesson-review-stage {
     padding: 8px;

@@ -3,7 +3,8 @@ export type LearningTimeInterval = Readonly<{
   sessionId: string;
   startedAt: string;
   endedAt?: string;
-  endReason?: 'paused' | 'hidden' | 'lease_lost' | 'abandoned' | 'completed' | 'recovered';
+  endReason?:
+    'paused' | 'hidden' | 'lease_lost' | 'ai_generation' | 'abandoned' | 'completed' | 'recovered';
   recovered: boolean;
 }>;
 

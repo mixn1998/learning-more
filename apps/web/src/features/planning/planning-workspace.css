@@ -202,13 +202,16 @@
   flex-wrap: wrap;
 }
 
-.planning-date-trigger {
+.planning-date-field {
+  display: grid;
+  gap: 4px;
+}
+
+.planning-date-input {
   position: relative;
-  display: inline-grid;
-  place-items: center;
   min-width: 168px;
   min-height: 42px;
-  padding: 0 14px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: #fff;
@@ -219,13 +222,25 @@
   cursor: pointer;
 }
 
-.planned .planning-date-trigger {
+.planning-date-input:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.planning-date-field small[role='alert'] {
+  max-width: 220px;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.planned .planning-date-input {
   border-color: var(--accent);
   color: var(--accent-dark);
   background: var(--tint);
 }
 
-.overdue .planning-date-trigger {
+.overdue .planning-date-input {
   border-color: #d9906b;
   color: #9a4d2d;
   background: #fff1e9;
@@ -277,6 +292,27 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
+}
+.planning-knowledge-point p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.planning-knowledge-point ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.planning-duration-point {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.planning-duration-point span {
+  color: var(--accent-dark);
+  font-weight: 800;
 }
 
 @media (max-width: 1100px) and (min-width: 721px) {
@@ -976,16 +1012,44 @@
   margin-top: 4px;
 }
 .pf-preview {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
   margin-top: 12px;
 }
+.pf-preview-week + .pf-preview-week {
+  margin-top: 20px;
+}
+.pf-preview-week-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid #e8dacb;
+}
+.pf-preview-week-head h5 {
+  margin: 0;
+  font-size: 13px;
+}
+.pf-preview-week-head span {
+  color: #877b70;
+  font-size: 10px;
+}
+.pf-preview-week-days {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 10px;
+}
 .pf-day {
+  position: relative;
+  min-height: 128px;
   padding: 12px;
   border: 1px solid #e5dacb;
   border-radius: 10px;
   background: #fff;
+}
+.pf-day.is-over-target {
+  border-color: #dfa77d;
+  background: #fff8f1;
 }
 .pf-day header {
   display: flex;
@@ -1007,9 +1071,38 @@
   padding: 0;
 }
 .pf-day li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
   padding: 7px 0;
+  border-bottom: 1px solid #f1e7dd;
   font-size: 8px;
   line-height: 1.45;
+}
+.pf-day li:last-child {
+  border-bottom: 0;
+}
+.pf-preview-lesson-name {
+  min-width: 0;
+}
+.pf-preview-course-title {
+  color: #72503c;
+  font-weight: 700;
+}
+.pf-preview-lesson-duration {
+  flex: 0 0 auto;
+  color: #9a6544;
+}
+.pf-day-warning {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: #f4dfcd;
+  color: #9a5833;
+  font-size: 8px;
 }
 .pf-preview-action {
   display: flex;
@@ -1028,7 +1121,7 @@
   .pf-strategy:last-child {
     grid-column: 1/-1;
   }
-  .pf-preview {
+  .pf-preview-week-days {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -1067,7 +1160,7 @@
   .pf-course-grid,
   .pf-strategies,
   .pf-summary-grid,
-  .pf-preview {
+  .pf-preview-week-days {
     grid-template-columns: 1fr;
   }
   .pf-strategy:last-child {

@@ -51,6 +51,14 @@ export const TeachingObservationEntrySchema = z.strictObject({
   assessment: z.enum(['supports', 'limits', 'uncertain']).optional(),
   explicitness: z.enum(['user_declared', 'ai_observed']).optional(),
   elicitation: z.enum(['spontaneous', 'elicited', 'mixed', 'unknown']).optional(),
+  progressionSignal: z
+    .enum([
+      'skip_knowledge_point',
+      'pass_comprehensive_check',
+      'skip_comprehensive_check',
+      'lesson_summary_delivered',
+    ])
+    .optional(),
   resolvesEntryRefs: z.array(IdentifierSchema),
   qualityFlags: z.array(z.enum(['direct', 'complete', 'ambiguous'])),
 });
@@ -72,6 +80,7 @@ export const TeachingObservationSchema = z.strictObject({
 
 export const TeachingKnowledgePointStateSchema = z.strictObject({
   ref: SourceRefSchema,
+  progress: z.enum(['pending', 'teaching', 'checking', 'passed', 'skipped']).optional(),
   delivery: z.enum(['not_addressed', 'explained']),
   verification: z.enum(['not_observed', 'supporting', 'limiting', 'mixed']),
   teachingEvidenceRefs: z.array(SourceRefSchema),
@@ -112,6 +121,12 @@ export const TeachingStateSnapshotSchema = z.strictObject({
   observationStatus: z.enum(['current', 'pending', 'failed']),
   scopeStatus: z.enum(['aligned', 'needs_return']),
   evidenceCheckpoint: z.boolean(),
+  lessonPhase: z
+    .enum(['warmup', 'knowledge_point', 'comprehensive_check', 'summary', 'ready_to_close'])
+    .optional(),
+  activeKnowledgePointRef: SourceRefSchema.optional(),
+  comprehensiveCheck: z.enum(['pending', 'checking', 'passed', 'skipped']).optional(),
+  summaryStatus: z.enum(['pending', 'delivered']).optional(),
   knowledgePoints: z.array(TeachingKnowledgePointStateSchema),
   openLoops: z.array(TeachingOpenLoopSchema),
   explorationBranches: z.array(TeachingExplorationBranchSchema),

@@ -1323,16 +1323,14 @@ a {
 }
 
 .plan-flow-summary,
-.weekly-summary-grid,
-.profile-metric-grid {
+.weekly-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
 .plan-flow-summary p,
-.weekly-summary-grid p,
-.profile-metric-grid p {
+.weekly-summary-grid p {
   display: grid;
   gap: 4px;
   margin: 0;
@@ -1370,15 +1368,13 @@ a {
   background: var(--lm-paper);
 }
 
-.history-page,
-.profile-page {
+.history-page {
   width: min(1120px, 100%);
   margin: 0 auto;
   padding: 22px 0 48px;
 }
 
-.history-page-header,
-.profile-page-header {
+.history-page-header {
   max-width: 760px;
 }
 
@@ -1433,9 +1429,7 @@ a {
   background: var(--lm-tint);
 }
 
-.history-timeline-list,
-.portrait-claim-list,
-.portrait-evidence-list {
+.history-timeline-list {
   display: grid;
   gap: 10px;
   margin: 0;
@@ -1443,9 +1437,7 @@ a {
   list-style: none;
 }
 
-.history-timeline-list li,
-.portrait-claim-list > li,
-.portrait-evidence-list > li {
+.history-timeline-list li {
   padding: 14px;
   border-left: 3px solid var(--lm-accent);
   border-radius: 0 var(--lm-radius-sm) var(--lm-radius-sm) 0;
@@ -1458,25 +1450,16 @@ a {
 }
 
 .weekly-summary-grid strong,
-.weekly-summary-grid small,
-.profile-metric-grid strong,
-.profile-metric-grid small {
+.weekly-summary-grid small {
   display: block;
 }
 
-.weekly-summary-grid strong,
-.profile-metric-grid strong {
+.weekly-summary-grid strong {
   font-size: 24px;
 }
 
-.weekly-summary-grid small,
-.profile-metric-grid small,
-.profile-as-of {
+.weekly-summary-grid small {
   color: var(--lm-muted);
-}
-
-.portrait-version-panel > .lm-ai-content {
-  margin-bottom: 16px;
 }
 
 .course-page > .lm-stack,
@@ -1742,8 +1725,7 @@ pre {
   .plan-flow-summary,
   .history-metric-grid,
   .history-calendar-grid,
-  .weekly-summary-grid,
-  .profile-metric-grid,
+    .weekly-summary-grid,
   .runtime-status-grid {
     grid-template-columns: 1fr;
   }
@@ -1779,8 +1761,7 @@ pre {
   .authoring-workspace,
   .home-page,
   .runtime-center,
-  .history-page,
-  .profile-page {
+    .history-page {
     padding-top: 12px;
   }
 

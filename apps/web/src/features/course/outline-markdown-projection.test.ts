@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractOutlineLessonSummary,
   projectOutlineMarkdown,
+  resolveCourseIntroduction,
 } from './outline-markdown-projection.js';
 
 const lessons = [
@@ -15,6 +16,57 @@ const lessons = [
 ] as const;
 
 describe('projectOutlineMarkdown', () => {
+  it('selects one narrative course introduction and excludes display-oriented preface blocks', () => {
+    const projection = projectOutlineMarkdown(`# 微积分：从直观变化到严格推导
+
+这是一门以一元微积分为主线的系统入门课。
+
+每课遵循大致相同的思维路径：
+
+**直观问题 → 数学定义 → 公式推导 → 典型例题 → 理解检查**
+
+哲学旁注只在“无限与有限”这样的关键处出现。
+
+预计总学习时间约为 **38—45 小时**。
+
+## 模块一：总地图
+### 极限是什么`);
+
+    expect(projection.title).toBe('微积分：从直观变化到严格推导');
+    expect(projection.introductionText).toBe('这是一门以一元微积分为主线的系统入门课。');
+  });
+
+  it('prefers an explicitly labelled introduction and converts inline Markdown to plain text', () => {
+    const projection = projectOutlineMarkdown(`# 企业 AI 成本
+
+学习路径：先计量，再归因，最后优化。
+
+课程介绍：理解 **token**、[模型服务](https://example.com/model) 与企业账单的关系，并建立可操作的成本分析框架。
+
+## 模块一：理解计量
+### Token 是什么`);
+
+    expect(projection.introductionText).toBe(
+      '理解 token、模型服务 与企业账单的关系，并建立可操作的成本分析框架。',
+    );
+  });
+
+  it('uses one neutral sentence when a heading-only outline has no eligible introduction', () => {
+    const projection = projectOutlineMarkdown(`# 微积分
+
+## 极限与连续
+### 极限是什么
+
+## 导数与应用
+### 导数的定义`);
+
+    expect(projection.introductionText).toBeUndefined();
+    expect(resolveCourseIntroduction(projection, '备用课程名')).toEqual({
+      title: '微积分',
+      introductionText: '这是一门关于“微积分”的课程。',
+    });
+  });
+
   it('extracts a labelled one-sentence summary without turning knowledge metadata into prose', () => {
     expect(
       extractOutlineLessonSummary(`### Token 是企业 AI 成本的“电表”吗？

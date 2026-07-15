@@ -9,6 +9,121 @@ import { FormalCourseView } from './formal-course-view.js';
 afterEach(cleanup);
 
 describe('FormalCourseView outline history', () => {
+  it('renders only the saved outline title and selected introduction paragraph', () => {
+    const outlineMarkdown = `# 微积分：从直观变化到严格推导
+
+这是一门以一元微积分为主线的系统入门课。
+
+每课遵循大致相同的思维路径：
+
+**直观问题 → 数学定义 → 公式推导 → 典型例题 → 理解检查**
+
+哲学旁注只在“无限与有限”这样的关键处出现。
+
+预计总学习时间约为 **38—45 小时**。
+
+## 模块一：总地图
+### 极限是什么`;
+    render(
+      <FormalCourseView
+        course={{
+          courseId: 'course_calculus',
+          title: '微积分',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_calculus',
+          lessonIds: [],
+          outlineMarkdown,
+          resourceVersion: 1,
+        }}
+        currentOutline={{
+          courseId: 'course_calculus',
+          outlineVersionId: 'outline_calculus',
+          sourceCandidateVersionId: 'candidate_calculus',
+          outlineMarkdown,
+          disciplineTag: '数学·一元微积分',
+          topicTags: ['函数', '极限', '连续性', '导数', '积分'],
+          createdAt: '2026-07-15T00:00:00.000Z',
+          resourceVersion: 1,
+          current: true,
+        }}
+        lessonStates={{}}
+        onCloseCourse={vi.fn()}
+        onDeleteCourse={vi.fn()}
+        onModifyOutline={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenReview={vi.fn()}
+        onSelectVersion={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('heading', { name: '微积分：从直观变化到严格推导' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('这是一门以一元微积分为主线的系统入门课。').tagName).toBe('P');
+    expect(screen.queryByText('每课遵循大致相同的思维路径：')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('直观问题 → 数学定义 → 公式推导 → 典型例题 → 理解检查'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/哲学旁注/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/38—45 小时/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/函数、极限、连续性、导数、积分/u)).not.toBeInTheDocument();
+  });
+
+  it('renders a deterministic introduction when the saved outline has no introductory prose', () => {
+    render(
+      <FormalCourseView
+        course={{
+          courseId: 'course_legacy',
+          title: '数据分析',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_legacy',
+          lessonIds: ['lesson_metrics', 'lesson_diagnosis'],
+          lessons: [
+            {
+              lessonId: 'lesson_metrics',
+              outlineVersionId: 'outline_legacy',
+              title: '建立指标',
+              objective: '理解指标结构。',
+              coreKnowledgePoints: [],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+            {
+              lessonId: 'lesson_diagnosis',
+              outlineVersionId: 'outline_legacy',
+              title: '定位变化',
+              objective: '诊断数据变化。',
+              coreKnowledgePoints: [],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+          ],
+          outlineMarkdown: `# 数据分析进阶
+
+## 数据基础
+### 建立指标
+
+## 诊断方法
+### 定位变化`,
+          resourceVersion: 1,
+        }}
+        lessonStates={{}}
+        onCloseCourse={vi.fn()}
+        onDeleteCourse={vi.fn()}
+        onModifyOutline={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenReview={vi.fn()}
+        onSelectVersion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '数据分析进阶' })).toBeInTheDocument();
+    expect(screen.getByText('这是一门关于“数据分析进阶”的课程。')).toBeInTheDocument();
+    expect(screen.queryByText('数据基础 → 诊断方法')).not.toBeInTheDocument();
+  });
+
   it('uses the saved-outline summary for the recommended lesson card', () => {
     render(
       <FormalCourseView

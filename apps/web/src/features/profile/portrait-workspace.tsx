@@ -54,6 +54,7 @@ export function PortraitWorkspace(props: {
   readonly errorMessage?: string;
   readonly onRefresh: () => void;
   readonly onSectionChange: (section: 'statistics' | 'calendar' | 'portrait') => void;
+  readonly embedded?: boolean | undefined;
 }) {
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const [settings, setSettings] = useState<PortraitSettings>({
@@ -89,8 +90,8 @@ export function PortraitWorkspace(props: {
     else settingsDialog.current?.setAttribute('open', '');
   };
 
-  return (
-    <Page className="portrait-workspace">
+  const content = (
+    <>
       <section className="lm-card portrait-hero">
         <div>
           <div className="lm-kicker">LEARNING PORTRAIT</div>
@@ -186,27 +187,12 @@ export function PortraitWorkspace(props: {
       </section>
 
       <dialog className="portrait-settings" ref={settingsDialog}>
-        <header className="portrait-settings__header">
-          <div>
-            <div className="portrait-settings__kicker">显示范围</div>
-            <h2>画像设置</h2>
-            <p>只调整当前页面可见的证据范围，不改写已冻结画像。</p>
-          </div>
-          <button
-            aria-label="关闭"
-            className="portrait-settings__close"
-            onClick={() => closeDialog(settingsDialog.current)}
-            type="button"
-          >
-            ×
-          </button>
+        <header>
+          <h2>画像设置</h2>
         </header>
-        <div className="portrait-settings__content">
-          <section className="portrait-settings__section">
-            <div className="portrait-settings__section-heading">
-              <h3>证据时间范围</h3>
-              <p>选择用于当前画像页面的学习记录窗口。</p>
-            </div>
+        <div className="settings-body">
+          <label className="setting-row">
+            <span>证据时间范围</span>
             <select
               aria-label="证据时间范围"
               className="lm-control"
@@ -220,51 +206,29 @@ export function PortraitWorkspace(props: {
               <option value="year">最近 12 个月</option>
               <option value="90d">最近 90 天</option>
             </select>
-          </section>
-          <section className="portrait-settings__section">
-            <div className="portrait-settings__section-heading">
-              <h3>证据类型</h3>
-              <p>控制哪些来源可以在洞察卡片中展开查看。</p>
-            </div>
-            <div className="portrait-setting-options">
-              <label
-                className={`portrait-setting-card${draft.includeReviews ? ' is-selected' : ''}`}
-              >
-                <input
-                  aria-label="课节与课程 Review"
-                  checked={draft.includeReviews}
-                  onChange={(event) =>
-                    setDraft((value) => ({ ...value, includeReviews: event.target.checked }))
-                  }
-                  type="checkbox"
-                />
-                <span aria-hidden="true" className="portrait-setting-card__indicator" />
-                <span className="portrait-setting-card__copy">
-                  <strong>课节与课程 Review</strong>
-                  <small>包含学习复盘与课程总结中的有效证据。</small>
-                </span>
-              </label>
-              <label
-                className={`portrait-setting-card${draft.includeBehavior ? ' is-selected' : ''}`}
-              >
-                <input
-                  aria-label="学习对话中的有效行为证据"
-                  checked={draft.includeBehavior}
-                  onChange={(event) =>
-                    setDraft((value) => ({ ...value, includeBehavior: event.target.checked }))
-                  }
-                  type="checkbox"
-                />
-                <span aria-hidden="true" className="portrait-setting-card__indicator" />
-                <span className="portrait-setting-card__copy">
-                  <strong>学习对话中的有效行为证据</strong>
-                  <small>包含对话中可追溯、与学习行为相关的观察。</small>
-                </span>
-              </label>
-            </div>
-          </section>
+          </label>
+          <label className="setting-check">
+            <input
+              checked={draft.includeReviews}
+              onChange={(event) =>
+                setDraft((value) => ({ ...value, includeReviews: event.target.checked }))
+              }
+              type="checkbox"
+            />
+            课节与课程 Review
+          </label>
+          <label className="setting-check">
+            <input
+              checked={draft.includeBehavior}
+              onChange={(event) =>
+                setDraft((value) => ({ ...value, includeBehavior: event.target.checked }))
+              }
+              type="checkbox"
+            />
+            学习对话中的有效行为证据
+          </label>
         </div>
-        <footer className="portrait-settings__footer">
+        <footer>
           <button
             className="lm-btn"
             onClick={() => closeDialog(settingsDialog.current)}
@@ -285,6 +249,11 @@ export function PortraitWorkspace(props: {
           </button>
         </footer>
       </dialog>
-    </Page>
+    </>
+  );
+  return props.embedded ? (
+    <div className="portrait-workspace portrait-workspace--embedded">{content}</div>
+  ) : (
+    <Page className="portrait-workspace">{content}</Page>
   );
 }

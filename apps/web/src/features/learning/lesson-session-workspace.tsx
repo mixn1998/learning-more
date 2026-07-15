@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface } from '@learning-more/ui';
 
+import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+
 import './lesson-session-workspace.css';
 
 export type LessonSessionMessage = Readonly<{
@@ -26,6 +28,11 @@ function formatTimer(totalSeconds: number) {
     clock: `${minutes}:${String(seconds % 60).padStart(2, '0')}`,
     duration: `${minutes} 分 ${String(seconds % 60).padStart(2, '0')} 秒`,
   };
+}
+
+function messageText(message: LessonSessionMessage): string {
+  if (typeof message.content === 'string') return message.content;
+  return message.markdown ?? '';
 }
 
 export function LessonSessionWorkspace(props: {
@@ -63,7 +70,9 @@ export function LessonSessionWorkspace(props: {
 }) {
   const [endOpen, setEndOpen] = useState(false);
   const timer = formatTimer(props.elapsedSeconds);
-  const disabled = !props.writable || props.paused || props.abandoned || props.generating;
+  const lastMessage = props.messages.at(-1);
+  const lastUserMessage = props.messages.findLast((message) => message.role === 'user');
+  const followKey = `${props.messages.length}:${lastMessage?.id ?? 'opening'}:${lastMessage === undefined ? 0 : messageText(lastMessage).length}:${props.assistantPending}`;
 
   useEffect(() => {
     if (!endOpen) return undefined;
@@ -98,8 +107,13 @@ export function LessonSessionWorkspace(props: {
               </span>
             </a>
           </div>
-          <span className={`lm-pill ${props.paused ? 'warning' : 'success'}`}>
-            ● {props.paused ? '学习已暂停' : `正在计时 ${timer.clock}`}
+          <span className={`lm-pill ${props.paused || props.generating ? 'warning' : 'success'}`}>
+            ●{' '}
+            {props.paused
+              ? '学习已暂停'
+              : props.generating
+                ? 'AI 思考中 · 计时已暂停'
+                : `正在计时 ${timer.clock}`}
           </span>
         </div>
       </header>
@@ -113,37 +127,10 @@ export function LessonSessionWorkspace(props: {
               {props.outlineVersionLabel ?? '大纲 v1'}
             </p>
           </div>
-          <div className="lm-actions">
-            {props.abandoned ? (
-              <button className="lm-btn primary" type="button" onClick={props.onRestore}>
-                恢复学习
-              </button>
-            ) : !props.writable ? (
-              <button className="lm-btn" type="button" onClick={props.onTransfer}>
-                接管写入权
-              </button>
-            ) : props.paused ? (
-              <button className="lm-btn" type="button" onClick={props.onResume}>
-                继续学习
-              </button>
-            ) : null}
-            <button
-              className="lm-btn danger"
-              disabled={!props.writable || props.abandoned}
-              type="button"
-              onClick={() => setEndOpen(true)}
-            >
-              结束本课
-            </button>
-            <button className="lm-btn" type="button" onClick={props.onBackToOutline}>
-              返回课程大纲
-            </button>
-          </div>
         </section>
         <div className="lesson-session-layout">
           <section className="lm-card lesson-session-main">
             <header className="lesson-session-head">
-              <strong>学习中 · 渐进式教学</strong>
               <div className="lm-actions">
                 <span
                   className={`lm-pill ${props.generating ? 'warning' : props.stopped ? 'readonly' : 'success'}`}
@@ -167,7 +154,13 @@ export function LessonSessionWorkspace(props: {
                 ) : null}
               </div>
             </header>
-            <div aria-label="学习对话" aria-live="polite" className="lesson-session-stream">
+            <ConversationStream
+              className="lesson-session-stream"
+              followKey={followKey}
+              forceFollowKey={lastUserMessage?.id}
+              generating={props.assistantPending}
+              label="学习对话"
+            >
               {props.messages.length === 0 && !props.assistantPending ? (
                 <div className="learn-ai">
                   {props.openingError ? (
@@ -203,16 +196,13 @@ export function LessonSessionWorkspace(props: {
                       )}
                     </article>
                   ) : (
-                    <div
-                      className="learn-user"
-                      data-message-status={message.status}
+                    <UserMessageRow
+                      errorText="发送失败 · 内容已恢复到输入框"
                       key={message.id}
-                    >
-                      <span>{message.content ?? message.markdown}</span>
-                      {message.status === 'failed' ? (
-                        <small>发送失败 · 内容已恢复到输入框</small>
-                      ) : null}
-                    </div>
+                      messageId={message.id}
+                      status={message.status}
+                      text={messageText(message)}
+                    />
                   ),
                 )
               )}
@@ -225,40 +215,19 @@ export function LessonSessionWorkspace(props: {
                   正在思考中…
                 </article>
               ) : null}
-            </div>
-            {props.sendError === undefined ? null : (
-              <p className="lesson-send-error" role="alert">
-                {props.sendError}
-              </p>
-            )}
-            <div className="lesson-session-composer">
-              <div className="lesson-session-input">
-                <label className="sr-only" htmlFor="learning-session-input">
-                  学习输入
-                </label>
-                <textarea
-                  disabled={disabled}
-                  id="learning-session-input"
-                  placeholder="回答问题、追问，或要求换一种解释方式……"
-                  value={props.input}
-                  onChange={(event) => props.onInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault();
-                      props.onSend();
-                    }
-                  }}
-                />
-                <button
-                  className="lm-btn primary"
-                  disabled={disabled}
-                  type="button"
-                  onClick={props.onSend}
-                >
-                  发送
-                </button>
-              </div>
-            </div>
+            </ConversationStream>
+            <ChatComposer
+              busy={props.generating}
+              className="lesson-session-composer"
+              disabled={!props.writable || props.paused || props.abandoned}
+              error={props.sendError}
+              label="学习输入"
+              placeholder="回答问题、追问，或要求换一种解释方式……"
+              sendLabel="发送"
+              value={props.input}
+              onChange={props.onInput}
+              onSubmit={() => props.onSend()}
+            />
           </section>
           <aside className="lesson-session-side">
             <section className="lm-card">
@@ -275,9 +244,54 @@ export function LessonSessionWorkspace(props: {
                 ))}
               </ol>
             </section>
-            <section className="lm-card">
-              <h3>实际学习时长</h3>
-              <strong>{timer.duration}</strong>
+            <section className="lm-card lesson-session-timer">
+              <div className="lesson-session-timer-head">
+                <h3>实际学习时长</h3>
+                <span
+                  className={`lesson-session-timer-status ${
+                    props.abandoned || props.paused || props.generating ? 'paused' : 'active'
+                  }`}
+                >
+                  {props.abandoned
+                    ? '已结束'
+                    : props.paused
+                      ? '已暂停'
+                      : props.generating
+                        ? 'AI 思考中'
+                        : '计时中'}
+                </span>
+              </div>
+              <strong className="lesson-session-duration">{timer.duration}</strong>
+              <div className="lesson-session-timer-actions">
+                {props.abandoned ? (
+                  <button className="lm-btn primary" type="button" onClick={props.onRestore}>
+                    恢复学习
+                  </button>
+                ) : !props.writable ? (
+                  <button className="lm-btn" type="button" onClick={props.onTransfer}>
+                    接管写入权
+                  </button>
+                ) : props.paused ? (
+                  <button className="lm-btn" type="button" onClick={props.onResume}>
+                    继续学习
+                  </button>
+                ) : null}
+                <button
+                  className="lm-btn danger"
+                  disabled={!props.writable || props.abandoned}
+                  type="button"
+                  onClick={() => setEndOpen(true)}
+                >
+                  结束本课
+                </button>
+              </div>
+              <button
+                className="lm-btn lesson-session-timer-back"
+                type="button"
+                onClick={props.onBackToOutline}
+              >
+                返回课程大纲
+              </button>
             </section>
           </aside>
         </div>

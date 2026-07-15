@@ -205,6 +205,32 @@ describe('LearningSession HTTP contract', () => {
         },
       ]),
       loadArtifactMarkdown: vi.fn().mockResolvedValue('Why?'),
+      getTeachingProgress: vi.fn().mockResolvedValue({
+        ledgerVersion: 3,
+        observationStatus: 'current',
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_2',
+        comprehensiveCheck: 'pending',
+        summaryStatus: 'pending',
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '平均变化率',
+            progress: 'passed',
+            delivery: 'explained',
+            verification: 'supporting',
+            unresolvedQuestionCount: 0,
+          },
+          {
+            ref: 'knowledge:kp_2',
+            title: '有限求和',
+            progress: 'checking',
+            delivery: 'explained',
+            verification: 'limiting',
+            unresolvedQuestionCount: 1,
+          },
+        ],
+      }),
     });
     const response = await app.inject({
       method: 'GET',
@@ -218,7 +244,49 @@ describe('LearningSession HTTP contract', () => {
         sessionId: 'session_01',
         sourceMessageIds: ['message_01'],
       },
+      teachingProgress: {
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_2',
+        knowledgePoints: [
+          { title: '平均变化率', progress: 'passed' },
+          { title: '有限求和', progress: 'checking', unresolvedQuestionCount: 1 },
+        ],
+      },
     });
     expect(response.json().sessionSnapshotHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('returns lesson-record messages with explicit roles instead of visible-text prefixes', async () => {
+    const { app } = fixture({
+      getLessonRecord: vi.fn().mockResolvedValue({
+        lessonId: 'lesson_01',
+        courseId: 'course_01',
+        title: '课时',
+        courseTitle: '课程',
+        completedAt: '2026-07-13T00:00:00.000Z',
+        actualSeconds: 120,
+        original: {
+          sessionId: 'session_01',
+          label: '原始学习',
+          messages: [
+            { id: 'message_user_01', role: 'user', markdown: '导师：只是用户正文' },
+            { id: 'message_ai_01', role: 'assistant', markdown: '你：只是导师正文' },
+          ],
+        },
+        supplementary: [],
+        finalReviewMarkdown: 'Review',
+      }),
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/lessons/lesson_01/record',
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().original.messages).toEqual([
+      { id: 'message_user_01', role: 'user', markdown: '导师：只是用户正文' },
+      { id: 'message_ai_01', role: 'assistant', markdown: '你：只是导师正文' },
+    ]);
   });
 });

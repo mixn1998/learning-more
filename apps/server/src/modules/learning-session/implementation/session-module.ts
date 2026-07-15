@@ -50,6 +50,8 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
   if (command.type === 'CommitAssistantMessage') {
     return {
       type: 'commitAssistantMessage',
+      sessionId: command.sessionId,
+      generationTaskId: command.generationTaskId,
       messageId: command.messageId,
     };
   }
@@ -145,7 +147,10 @@ export function createSessionModule(options: {
           now,
         });
         let intervals = closeLearningIntervals(current.intervals, now, 'lease_lost');
-        if (current.learning.session.state === 'active') {
+        if (
+          current.learning.session.state === 'active' &&
+          current.learning.session.activeGenerationTaskId === undefined
+        ) {
           intervals = openLearningInterval(intervals, {
             id: options.nextIntervalId(),
             sessionId: current.learning.session.id,
@@ -207,7 +212,23 @@ export function createSessionModule(options: {
         });
       } else if (command.type === 'PauseLesson') {
         intervals = closeLearningIntervals(intervals, now, 'paused');
-      } else if (command.type === 'ResumeLesson' && learning.session !== undefined) {
+      } else if (
+        command.type === 'ResumeLesson' &&
+        learning.session !== undefined &&
+        learning.session.activeGenerationTaskId === undefined
+      ) {
+        intervals = openLearningInterval(intervals, {
+          id: options.nextIntervalId(),
+          sessionId: learning.session.id,
+          now,
+        });
+      } else if (command.type === 'StartSessionGeneration') {
+        intervals = closeLearningIntervals(intervals, now, 'ai_generation');
+      } else if (
+        (command.type === 'CommitAssistantMessage' || command.type === 'StopSessionGeneration') &&
+        learning.session?.state === 'active' &&
+        learning.session.activeGenerationTaskId === undefined
+      ) {
         intervals = openLearningInterval(intervals, {
           id: options.nextIntervalId(),
           sessionId: learning.session.id,
@@ -216,7 +237,11 @@ export function createSessionModule(options: {
       } else if (command.type === 'AbandonLesson') {
         intervals =
           learning.session === undefined ? [] : closeLearningIntervals(intervals, now, 'abandoned');
-      } else if (command.type === 'RestoreLesson' && learning.session !== undefined) {
+      } else if (
+        command.type === 'RestoreLesson' &&
+        learning.session !== undefined &&
+        learning.session.activeGenerationTaskId === undefined
+      ) {
         intervals = openLearningInterval(intervals, {
           id: options.nextIntervalId(),
           sessionId: learning.session.id,

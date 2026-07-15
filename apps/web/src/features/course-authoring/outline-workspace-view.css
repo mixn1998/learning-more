@@ -192,29 +192,6 @@
   color: var(--muted);
 }
 
-.outline-workspace-view .ow-user {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.outline-workspace-view .ow-bubble {
-  max-width: 80%;
-  padding: 12px 14px;
-  border-radius: 14px 14px 4px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.outline-workspace-view .ow-message-failure {
-  display: block;
-  margin-top: 6px;
-  color: var(--danger);
-  font-size: 11px;
-  text-align: right;
-}
-
 .outline-workspace-view .ow-turn-error {
   margin: 0;
   color: var(--danger);
@@ -231,14 +208,6 @@
   line-height: 1.65;
 }
 
-.outline-workspace-view .ow-composer {
-  display: block;
-  margin: 0;
-  padding: 13px 15px;
-  border-top: 1px solid var(--line);
-  background: var(--paper-2);
-}
-
 .outline-workspace-view .ow-conversation-actions {
   display: flex;
   justify-content: flex-end;
@@ -246,49 +215,6 @@
   padding: 13px 15px;
   border-top: 1px solid var(--line);
   background: var(--paper-2);
-}
-
-.outline-workspace-view .ow-composer-box {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid #d9c8b5;
-  border-radius: 11px;
-  background: #fff;
-}
-
-.outline-workspace-view .ow-composer textarea {
-  width: 100%;
-  min-height: 48px;
-  padding: 5px;
-  border: 0;
-  border-radius: 0;
-  outline: 0;
-  background: transparent;
-  box-shadow: none;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.65;
-  resize: none;
-}
-
-.outline-workspace-view .ow-send,
-.outline-workspace-view button.ow-send {
-  align-self: end;
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  min-height: 40px;
-  padding: 1px 6px;
-  border: 0;
-  border-radius: 9px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 17px;
-  font-weight: 400;
-  line-height: normal;
-  cursor: pointer;
 }
 
 .outline-workspace-view .ow-outline {
@@ -415,13 +341,85 @@
 }
 
 .outline-workspace-view .ow-candidate-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin: 12px 17px 0;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--tint);
-  color: var(--accent-dark);
-  font-size: 12px;
+  padding: 13px 14px;
+  border: 1px solid #e7cfbb;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffaf6 0%, #f8eee6 100%);
+  box-shadow: inset 3px 0 0 var(--accent), 0 8px 22px rgba(106, 70, 43, 0.07);
+}
+
+.outline-workspace-view .ow-candidate-pending-copy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 11px;
+}
+
+.outline-workspace-view .ow-candidate-pending-copy > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.outline-workspace-view .ow-candidate-pending-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.outline-workspace-view .ow-candidate-pending-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.outline-workspace-view .ow-candidate-pending-indicator {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(183, 105, 61, 0.12);
+}
+
+.outline-workspace-view .ow-candidate-pending-indicator::after {
+  position: absolute;
+  inset: 7px;
+  border: 2px solid rgba(183, 105, 61, 0.24);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  content: '';
+  animation: ow-candidate-spin 0.9s linear infinite;
+}
+
+.outline-workspace-view .ow-candidate-cancel {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding-inline: 13px;
+  border-color: #dfc8b4;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+}
+
+.outline-workspace-view .ow-candidate-cancel:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #fff;
+}
+
+@keyframes ow-candidate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outline-workspace-view .ow-candidate-pending-indicator::after {
+    animation: none;
+  }
 }
 
 .authoring-workspace-notice {

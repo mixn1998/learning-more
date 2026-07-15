@@ -33,7 +33,6 @@ describe('PlanFlow confirmation recovery', () => {
     const dependencies = {
       repository: flows,
       scheduleRepository: schedules,
-      generationRuntime: { submit: async () => ({ taskId: 'task_plan_01' }) },
       assemblePreviewContext: async () => ({
         courses: [{ courseId: 'course_01', title: 'Recovery course' }],
         lessons: [

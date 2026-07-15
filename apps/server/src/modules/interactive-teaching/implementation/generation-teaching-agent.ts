@@ -7,11 +7,13 @@ import type { TeachingContextPackage } from '../ports/teaching-context-sources.j
 
 const TEACHING_CAPABILITY = [
   '依据提供的真实上下文继续当前互动式教学。',
-  '核心知识点是教学责任而不是固定顺序；根据学习者最新表达自由决定讲解、提问、案例、教学支线和节奏。',
+  '课程定义中的知识点顺序是本课教学主线；在当前知识点内，根据学习者最新表达自由决定讲解、提问、案例、教学支线和节奏。',
   '玩法意图只在出现自然教学机会时影响下一步选择，不必每回合显式呈现，也不规定输出形式。',
   '与课程相关但不属于本课的问题属于课程邻接探索：可以自然展开，但不要冒充本课责任已经完成，也不要把未来课节自动记为已学习。',
   '当课程邻接探索正在成为新的主要目标时，把选择权交给学习者：继续探索、暂存后回到本课，或以后补充学习。',
   '对明显与课程无关的请求简短说明并邀请回到相关主题；不要用固定边界模板压制与课程有关的联想。',
+  '教学表达保持自由，但一次只承担当前教学阶段：不要重复已经通过或跳过的检测，也不要越过账本一次倾倒后续全部知识点。',
+  '只有当前知识点检测通过或学习者明确选择跳过，并且相关疑问已经处理完，才进入下一知识点。',
   '不要把缺少证据的掌握状态当作事实。只输出学习者可见的 Markdown。',
 ].join('\n');
 
@@ -39,8 +41,59 @@ function knowledgeBackground(context: TeachingContextPackage): string[] {
           : point.verification === 'mixed'
             ? '现有表现相互混合，尚不能下结论'
             : '尚未观察到足够的学习者证据';
-    return `- ${text}：${delivery}；${evidence}`;
+    const progress =
+      point.progress === 'passed'
+        ? '本课检测已通过'
+        : point.progress === 'skipped'
+          ? '学习者已选择跳过'
+          : point.progress === 'checking'
+            ? '正在讲解或检测'
+            : point.progress === 'teaching'
+              ? '正在讲解'
+              : '尚未进入';
+    return `- ${text}：${progress}；${delivery}；${evidence}`;
   });
+}
+
+function teachingFlowBackground(context: TeachingContextPackage): string[] {
+  const state = context.teachingState;
+  const phase = state.lessonPhase ?? 'warmup';
+  const activePoint = context.lesson.coreKnowledgePoints.find(
+    (point) => point.ref === state.activeKnowledgePointRef,
+  );
+  if (phase === 'warmup') {
+    return context.turnKind === 'opening'
+      ? [
+          '当前阶段是课前热身。主动连接学习目标与已有经验，用一个容易回应的问题了解学习起点。',
+          '本回合不展开整课，也不把热身问题写成整套知识检测。',
+        ]
+      : [
+          '学习者正在回答课前热身。先自然回应其学习起点，然后进入账本标记的第一个知识点。',
+          `本回合最多完成“${activePoint?.text ?? '第一个知识点'}”的讲解并提出一次理解检测，不要继续倾倒后续知识点。`,
+        ];
+  }
+  if (phase === 'knowledge_point') {
+    return [
+      `当前只负责知识点：${activePoint?.text ?? '账本标记的当前知识点'}。`,
+      '可以自由选择解释、案例、类比、反驳或讨论方式；自然完成讲解后进行理解检测。',
+      '如果当前用户原话是在回答检测，就在本回合判断并反馈：通过且没有新疑问时可自然引入下一个知识点；未通过时换一种方式继续，不机械重复同一个问题。',
+      '如果当前用户原话提出相关疑问，先解决疑问并留在当前知识点；如果用户明确跳过，则尊重选择并进入下一节点。',
+    ];
+  }
+  if (phase === 'comprehensive_check') {
+    return [
+      '全部知识点已经逐项通过或由学习者明确跳过。当前进行跨知识点的综合检测。',
+      '若尚未提出综合任务，只提出一个能够连接本课核心关系的任务；若用户正在回答，则完成判断与反馈。',
+      '综合回答通过或用户明确跳过且没有其他疑问时，直接进入本课总结；否则处理疑问或补充检测。',
+    ];
+  }
+  if (phase === 'summary') {
+    return [
+      '综合检测已经通过或被学习者明确跳过。当前由教学助手总结本课知识点及其关系。',
+      '总结完成后告知学习者可以结束本课，不再开启新的检测循环。',
+    ];
+  }
+  return ['本课教学流程已经完成。简短回应当前诉求，并提示学习者可点击“结束本课”生成最终 Review。'];
 }
 
 function currentUserMessage(context: TeachingContextPackage): string {
@@ -95,7 +148,7 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
     TEACHING_CAPABILITY,
     '下面是以学习者为中心整理的自然语言背景。它不是要展示给学习者的状态报告或字段清单。',
     opening
-      ? '这是学习者刚进入本课的开场回合。请由教学助手主动导入语境，连接学习目标，选择一个合适的核心知识点开始讲解，并在自然收束处提出一个容易回应的互动问题。不要要求学习者先提问，也不要一次讲完全部知识点。'
+      ? '这是学习者刚进入本课的课前热身。请由教学助手主动导入语境，连接学习目标与已有经验，并提出一个容易回应的热身问题。不要要求学习者先提问，不要开始连续讲解全部知识点。'
       : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
     opening
       ? '直接面向学习者输出自然的开场教学，不复述栏目名或内部状态。'
@@ -109,6 +162,7 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
     context.learningStartSummary === undefined
       ? undefined
       : `【学习起点】\n${context.learningStartSummary.trim()}`,
+    section('当前教学推进', teachingFlowBackground(context)),
     section('本课知识责任与现有证据', knowledgeBackground(context)),
     section(
       '尚待处理的问题',

@@ -18,13 +18,17 @@ describe('lesson record route', () => {
       courseTitle: '真实课程标题',
       completedAt: '2026-07-13T01:02:03.000Z',
       actualSeconds: 1260,
-      original: { sessionId: 'session_01', label: '原始学习', messages: ['原始对话'] },
+      original: {
+        sessionId: 'session_01',
+        label: '原始学习',
+        messages: [{ id: 'message_01', role: 'assistant', markdown: '原始对话' }],
+      },
       supplementary: [
         {
           sessionId: 'supplementary_01',
           label: '补充学习 1',
           createdAt: '2026-07-14T01:02:03.000Z',
-          messages: ['你：补充内容'],
+          messages: [{ id: 'message_02', role: 'user', markdown: '补充内容' }],
         },
       ],
       finalReviewMarkdown: '权威最终 Review',

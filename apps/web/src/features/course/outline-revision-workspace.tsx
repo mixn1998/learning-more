@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { CourseArchiveView, CourseOutlineVersionView } from '@learning-more/contracts';
 import { AiContent, AiSurface, Button, Card, Dialog } from '@learning-more/ui';
 
+import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
 import type { OutlineMarkdownDiff, OutlineChangeStatus } from './outline-markdown-diff.js';
 import '../course-authoring/outline-workspace-view.css';
@@ -52,12 +53,16 @@ export function OutlineRevisionWorkspace(props: {
   );
   const nextVersionNumber = currentVersionNumber + 1;
 
-  const send = () => {
-    const message = composer.trim();
-    if (message === '' || props.busy === true) return;
+  const send = (message: string) => {
+    if (props.busy === true) return;
     setComposer('');
     void props.onSend(message);
   };
+
+  const messages = props.initialMessages ?? [];
+  const lastMessage = messages.at(-1);
+  const lastUserMessageIndex = messages.findLastIndex((message) => message.role === 'user');
+  const followKey = `${messages.length}:${lastMessage?.markdown.length ?? 0}:${props.busy === true}`;
 
   const publish = () => {
     if (props.candidate === undefined || publishing) return;
@@ -95,12 +100,20 @@ export function OutlineRevisionWorkspace(props: {
             <strong>大纲调整对话</strong>
             <span>继承起点评估、当前大纲和已完成 Review</span>
           </header>
-          <div aria-live="polite" className="ow-chat">
-            {(props.initialMessages ?? []).map((message, index) =>
+          <ConversationStream
+            className="ow-chat"
+            followKey={followKey}
+            forceFollowKey={lastUserMessageIndex < 0 ? undefined : lastUserMessageIndex}
+            generating={props.busy}
+            label="大纲调整对话"
+          >
+            {messages.map((message, index) =>
               message.role === 'user' ? (
-                <div key={`${index}-${message.markdown}`} className="ow-user">
-                  <div className="ow-bubble">{message.markdown}</div>
-                </div>
+                <UserMessageRow
+                  key={`${index}-${message.markdown}`}
+                  messageId={`revision-user-${index}`}
+                  text={message.markdown}
+                />
               ) : (
                 <AiContent
                   key={`${index}-${message.markdown}`}
@@ -115,38 +128,17 @@ export function OutlineRevisionWorkspace(props: {
               </p>
             ) : null}
             {props.error === undefined ? null : <p role="alert">{props.error}</p>}
-          </div>
-          <form
+          </ConversationStream>
+          <ChatComposer
             className="ow-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              send();
-            }}
-          >
-            <div className="ow-composer-box">
-              <textarea
-                aria-label="继续说明希望怎样调整大纲"
-                disabled={props.busy === true}
-                placeholder="继续说明希望怎样调整大纲……"
-                value={composer}
-                onChange={(event) => setComposer(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    send();
-                  }
-                }}
-              />
-              <button
-                aria-label="发送调整要求"
-                className="ow-send"
-                disabled={props.busy === true || composer.trim() === ''}
-                type="submit"
-              >
-                {props.busy === true ? '…' : '↑'}
-              </button>
-            </div>
-          </form>
+            busy={props.busy}
+            label="继续说明希望怎样调整大纲"
+            placeholder="继续说明希望怎样调整大纲……"
+            sendLabel="发送调整要求"
+            value={composer}
+            onChange={setComposer}
+            onSubmit={send}
+          />
         </Card>
 
         <Card className="ow-panel">

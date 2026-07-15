@@ -11,9 +11,17 @@ afterEach(cleanup);
 function renderRecord() {
   render(
     <LessonRecordView
-      original={{ sessionId: 'original', label: '原始学习', messages: ['原始内容不可修改'] }}
+      original={{
+        sessionId: 'original',
+        label: '原始学习',
+        messages: [{ id: 'original-user', role: 'user', markdown: '原始内容不可修改' }],
+      }}
       supplementary={[
-        { sessionId: 'supplement-1', label: '7 月 14 日补充学习', messages: ['独立补充内容'] },
+        {
+          sessionId: 'supplement-1',
+          label: '7 月 14 日补充学习',
+          messages: [{ id: 'supplement-user', role: 'user', markdown: '独立补充内容' }],
+        },
       ]}
       finalReviewMarkdown="权威最终 Review"
     />,
@@ -46,6 +54,26 @@ describe('lesson history record', () => {
     expect(screen.getByLabelText('只读学习对话')).toHaveTextContent('原始内容不可修改');
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '开始补充学习' })).not.toBeInTheDocument();
+  });
+
+  it('renders message roles from structured data instead of parsing visible prefixes', () => {
+    render(
+      <LessonRecordView
+        original={{
+          sessionId: 'original',
+          label: '原始学习',
+          messages: [
+            { id: 'user-prefix', role: 'user', markdown: '导师：这是用户输入的一部分' },
+            { id: 'assistant-prefix', role: 'assistant', markdown: '你：这是导师回复的一部分' },
+          ],
+        }}
+        supplementary={[]}
+        finalReviewMarkdown="Review"
+      />,
+    );
+
+    expect(screen.getByLabelText('你的消息')).toHaveTextContent('导师：这是用户输入的一部分');
+    expect(screen.getByLabelText('AI 导师')).toHaveTextContent('你：这是导师回复的一部分');
   });
 
   it('[EQ-HIS-04] switches between original learning dialogue and the authoritative Review using two top tabs', () => {

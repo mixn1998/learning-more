@@ -3,9 +3,10 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import type { HistoryClient } from '../../client/history-client.js';
+import type { ProfileClient } from '../../client/profile-client.js';
 import { HistoryPage } from './history-page.js';
 
 afterEach(cleanup);
@@ -16,6 +17,21 @@ function renderHistory(api: HistoryClient, initialEntry = '/') {
       <HistoryPage client={api} />
     </MemoryRouter>,
   );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="current-path">{location.pathname + location.search}</output>;
+}
+
+function portraitClient(): ProfileClient {
+  return {
+    getProfile: vi.fn().mockResolvedValue({ profileSchemaVersion: 1 }),
+    getEvidence: vi.fn().mockResolvedValue([]),
+    getPortrait: vi.fn().mockResolvedValue(undefined),
+    getPortraitVersion: vi.fn().mockResolvedValue(undefined),
+    refresh: vi.fn(),
+  };
 }
 
 function client(): HistoryClient {
@@ -154,6 +170,33 @@ describe('HistoryPage', () => {
       '学习画像',
     ]);
     expect(screen.queryByRole('tab', { name: /课程回顾|课程聚合/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps learning portrait inside the history tab and never opens the global profile route', async () => {
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage client={client()} portraitClient={portraitClient()} />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: '历史统计' });
+    fireEvent.click(screen.getByRole('tab', { name: '学习画像' }));
+
+    expect(await screen.findByRole('heading', { name: '学习画像' })).toBeVisible();
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/history?tab=portrait');
+    expect(screen.queryByText('全局学习档案')).not.toBeInTheDocument();
+    expect(screen.getByText('LEARNING PORTRAIT')).toBeVisible();
+    expect(document.querySelector('.portrait-workspace')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole('tab', { name: '学习日历' }));
+    expect(await screen.findByRole('heading', { level: 1, name: '学习日历' })).toBeVisible();
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/history?tab=calendar');
+
+    fireEvent.click(screen.getByRole('tab', { name: '历史统计' }));
+    expect(await screen.findByRole('heading', { level: 1, name: '历史统计' })).toBeVisible();
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/history');
   });
 
   it('[EQ-HIS-05] shows stale/asOf context and switches dates without retaining old results', async () => {

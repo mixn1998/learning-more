@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { HomeDashboardView } from '@learning-more/contracts';
+import { ApplicationProblemSchema, type HomeDashboardView } from '@learning-more/contracts';
 import { ContentState } from '@learning-more/ui';
 
 import {
@@ -8,12 +8,37 @@ import {
   type PlanningClient,
   type ScheduleItemView,
 } from '../../client/planning-client.js';
-import { useCommandAttempts } from '../../state/use-command-attempt.js';
+import {
+  useCommandAttempts,
+  type CommandAttemptRegistry,
+} from '../../state/use-command-attempt.js';
 import { PlanFlowPanel } from './plan-flow-panel.js';
 import { PlanningWorkspaceView, type PlanningLessonMetadata } from './planning-workspace-view.js';
 
 function today(now: Date): string {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+type PlanFlowPreviewRequest = Parameters<PlanningClient['requestPreview']>[0];
+
+export async function requestPlanFlowPreview(
+  client: Pick<PlanningClient, 'requestPreview'>,
+  request: PlanFlowPreviewRequest,
+  commands: CommandAttemptRegistry,
+  commandKey: string,
+) {
+  for (let attemptIndex = 0; attemptIndex < 2; attemptIndex += 1) {
+    try {
+      const preview = await client.requestPreview(request, commands.attemptFor(commandKey));
+      commands.complete(commandKey);
+      return preview;
+    } catch (error) {
+      const problem = ApplicationProblemSchema.safeParse(error);
+      if (attemptIndex > 0 || !problem.success || !problem.data.retryable) throw error;
+      commands.complete(commandKey);
+    }
+  }
+  throw new Error('Plan-flow preview retry loop exited unexpectedly');
 }
 
 export function PlanningPage(props: {
@@ -105,10 +130,7 @@ export function PlanningPage(props: {
           existingScheduleSnapshotRef: `schedule_${version}`,
         };
         const key = `plan-flow-preview:${JSON.stringify(request)}`;
-        return api.requestPreview(request, commands.attemptFor(key)).then((preview) => {
-          commands.complete(key);
-          return preview;
-        });
+        return requestPlanFlowPreview(api, request, commands, key);
       }}
     />
   );
@@ -185,9 +207,7 @@ export function PlanningPage(props: {
           );
           commands.complete(key);
           setItems((current) =>
-            current.map((candidate) =>
-              candidate.id === removed.scheduleItem.id ? removed.scheduleItem : candidate,
-            ),
+            current.filter((candidate) => candidate.id !== removed.scheduleItem.id),
           );
           setVersion((current) => current + 1);
         }}

@@ -79,7 +79,15 @@ const IntervalSchema = z.strictObject({
   startedAt: z.iso.datetime({ offset: true }),
   endedAt: z.iso.datetime({ offset: true }).optional(),
   endReason: z
-    .enum(['paused', 'hidden', 'lease_lost', 'abandoned', 'completed', 'recovered'])
+    .enum([
+      'paused',
+      'hidden',
+      'lease_lost',
+      'ai_generation',
+      'abandoned',
+      'completed',
+      'recovered',
+    ])
     .optional(),
   recovered: z.boolean(),
 });

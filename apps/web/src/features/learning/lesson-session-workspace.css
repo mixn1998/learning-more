@@ -46,41 +46,23 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   padding: 13px 17px;
   border-bottom: 1px solid var(--line);
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   background: var(--paper-2);
 }
 .lesson-session-stream {
   padding: 25px;
   overflow: auto;
 }
-.lesson-session-composer {
-  padding: 13px;
-  border-top: 1px solid var(--line);
-  background: var(--paper-2);
-}
-.lesson-session-input {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: #fff;
-}
-.lesson-session-input textarea {
-  height: 55px;
-  min-height: 55px;
-  padding: 5px;
-  border: 0;
-  border-radius: 0;
-  outline: 0;
-  resize: none;
-  box-shadow: none;
-}
 .lesson-session-side {
+  position: sticky;
+  top: 86px;
   display: grid;
   gap: 12px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
   align-content: start;
+  align-self: start;
+  overscroll-behavior: contain;
 }
 .lesson-session-side section {
   padding: 15px;
@@ -94,6 +76,81 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.65;
+}
+.lesson-session-side .lesson-session-timer {
+  padding: 18px;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 88%), rgb(250 242 235 / 92%)),
+    var(--paper);
+}
+.lesson-session-timer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lesson-session-timer-head h3 {
+  margin: 0;
+}
+.lesson-session-timer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.lesson-session-timer-status::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 0 4px rgb(75 139 116 / 12%);
+  content: '';
+}
+.lesson-session-timer-status.paused {
+  color: var(--accent-dark);
+}
+.lesson-session-timer-status.paused::before {
+  box-shadow: 0 0 0 4px rgb(184 105 61 / 12%);
+}
+.lesson-session-duration {
+  display: block;
+  margin-top: 8px;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+.lesson-session-timer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+.lesson-session-timer-actions .lm-btn {
+  min-width: 0;
+  padding-inline: 10px;
+}
+.lesson-session-timer-actions .lm-btn:only-child {
+  grid-column: 1 / -1;
+}
+.lesson-session-timer-back {
+  width: 100%;
+  margin-top: 9px;
+  border-color: transparent;
+  background: rgb(255 255 255 / 55%);
+  color: var(--muted);
+  box-shadow: none;
+}
+.lesson-session-timer-back:hover {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--ink);
 }
 .lesson-session-workspace .learning-path {
   display: grid;
@@ -176,7 +233,7 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   color: #8e857b;
 }
 .lesson-session-workspace .learn-ai {
-  margin-bottom: 24px;
+  margin: 0;
 }
 .lesson-session-workspace .learn-ai-thinking {
   color: var(--muted);
@@ -203,29 +260,6 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   border-radius: 0 10px 10px 0;
   background: var(--tint);
   color: var(--ink);
-}
-.lesson-session-workspace .learn-user {
-  max-width: 72%;
-  margin: 0 0 24px auto;
-  padding: 13px 15px;
-  border-radius: 15px 15px 4px 15px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 13px;
-  line-height: 1.7;
-}
-.lesson-session-workspace .learn-user small {
-  display: block;
-  margin-top: 4px;
-  opacity: 0.82;
-}
-.lesson-session-workspace .learn-user[data-message-status='failed'] {
-  background: var(--danger);
-}
-.lesson-session-workspace .lesson-send-error {
-  margin: 0 0 12px;
-  color: var(--danger);
-  font-size: 12px;
 }
 .lesson-session-workspace .lm-btn.primary {
   border-color: var(--accent);
@@ -279,7 +313,10 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
     grid-template-columns: 1fr;
   }
   .lesson-session-side {
+    position: static;
     grid-template-columns: 1fr 1fr;
+    max-height: none;
+    overflow: visible;
   }
 }
 @media (max-width: 600px) {
