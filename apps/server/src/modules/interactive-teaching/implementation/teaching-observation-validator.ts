@@ -74,6 +74,9 @@ export function validateTeachingObservation(
     ) {
       invalid('skip_knowledge_point_reference_required');
     }
+    if (entry.kind === 'open_loop' && !sourceMessages.some((message) => message.role === 'user')) {
+      invalid('open_loop_requires_user_source');
+    }
     if (
       entry.progressionSignal !== undefined &&
       entry.progressionSignal !== 'lesson_summary_delivered' &&

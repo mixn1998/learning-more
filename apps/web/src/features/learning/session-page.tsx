@@ -384,7 +384,11 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
         completed || phase === 'ready_to_close'
           ? '知识点总结已完成'
           : phase === 'summary'
-            ? 'AI 正在整理本课知识关系'
+            ? teaching.closureInquiry === 'awaiting_confirmation'
+              ? '等待你确认是否还有疑问或讲解需求'
+              : teaching.closureInquiry === 'confirmed_no_questions'
+                ? 'AI 正在整理本课最终总结'
+                : '正在进入课末疑问确认'
             : '等待综合检测完成',
       state:
         completed || phase === 'ready_to_close'
@@ -394,6 +398,20 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
             : ('pending' as const),
     },
   ];
+
+  if (teaching.observationStatus !== 'current') {
+    const activeIndex = path.findIndex((point) => point.state === 'active');
+    if (activeIndex !== -1) {
+      const active = path[activeIndex]!;
+      path[activeIndex] = {
+        ...active,
+        detail:
+          teaching.observationStatus === 'failed'
+            ? '教学进度同步失败，系统将在下一轮重试'
+            : '正在同步真实讲解进度',
+      };
+    }
+  }
 
   return path;
 }

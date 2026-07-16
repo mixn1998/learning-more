@@ -56,6 +56,7 @@ export const TeachingObservationEntrySchema = z.strictObject({
       'skip_knowledge_point',
       'pass_comprehensive_check',
       'skip_comprehensive_check',
+      'confirm_no_further_questions',
       'lesson_summary_delivered',
     ])
     .optional(),
@@ -126,6 +127,7 @@ export const TeachingStateSnapshotSchema = z.strictObject({
     .optional(),
   activeKnowledgePointRef: SourceRefSchema.optional(),
   comprehensiveCheck: z.enum(['pending', 'checking', 'passed', 'skipped']).optional(),
+  closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']).optional(),
   summaryStatus: z.enum(['pending', 'delivered']).optional(),
   knowledgePoints: z.array(TeachingKnowledgePointStateSchema),
   openLoops: z.array(TeachingOpenLoopSchema),

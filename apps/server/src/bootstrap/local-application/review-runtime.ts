@@ -372,6 +372,16 @@ export function createLocalReviewRuntime(
         if (current === undefined || sessionId === undefined || sessionId !== body.sessionId) {
           throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
         }
+        const lesson = await input.course.access.getLesson(lessonId);
+        if (lesson === undefined) {
+          throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+        }
+        await teachingRuntime.recoverSession({
+          courseId: lesson.courseId,
+          lessonId,
+          sessionId,
+          context,
+        });
         await teachingRuntime.drainObservations(sessionId);
         const checkpoint = await teachingRuntime.module.freezeCheckpoint({
           sessionId,
@@ -416,18 +426,15 @@ export function createLocalReviewRuntime(
           contentSha256: generated.contentSha256,
         });
         const committed = await lessonClosures.commit(closure.transactionId, checksum, context);
-        const lesson = await input.course.access.getLesson(lessonId);
-        if (lesson !== undefined) {
-          await captureReviewProfileCheckpoint({
-            checkpointKind: 'lesson_review_finalized',
-            sourceRef: `review:${reviewIdForLesson(lessonId)}`,
-            markdown: generated.markdown,
-            courseId: lesson.courseId,
-            lessonId,
-            observedAt: input.now().toISOString(),
-          });
-          await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lessonId);
-        }
+        await captureReviewProfileCheckpoint({
+          checkpointKind: 'lesson_review_finalized',
+          sourceRef: `review:${reviewIdForLesson(lessonId)}`,
+          markdown: generated.markdown,
+          courseId: lesson.courseId,
+          lessonId,
+          observedAt: input.now().toISOString(),
+        });
+        await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lessonId);
         return committed;
       },
       async closeCourse(courseId, confirmAbandoned, context) {

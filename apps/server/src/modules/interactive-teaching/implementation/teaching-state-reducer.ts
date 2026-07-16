@@ -30,6 +30,7 @@ export function createTeachingState(input: {
       ? {}
       : { activeKnowledgePointRef: orderedKnowledgePointRefs[0] }),
     comprehensiveCheck: 'pending',
+    closureInquiry: 'pending',
     summaryStatus: 'pending',
     knowledgePoints: orderedKnowledgePointRefs.map((ref) => ({
       ref,
@@ -66,13 +67,28 @@ export function alignTeachingState(
     ? current.activeKnowledgePointRef
     : knowledgePoints.find((point) => point.progress !== 'passed' && point.progress !== 'skipped')
         ?.ref;
+  const { activeKnowledgePointRef: _previousActiveKnowledgePointRef, ...currentWithoutActive } =
+    current;
+  void _previousActiveKnowledgePointRef;
+  const comprehensiveCheck = current.comprehensiveCheck ?? 'pending';
+  const closureInquiry =
+    current.closureInquiry ??
+    (current.lessonPhase === 'ready_to_close'
+      ? 'confirmed_no_questions'
+      : comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped'
+        ? 'awaiting_confirmation'
+        : 'pending');
   return {
-    ...current,
+    ...currentWithoutActive,
     lessonPhase: current.lessonPhase ?? 'warmup',
-    comprehensiveCheck: current.comprehensiveCheck ?? 'pending',
-    summaryStatus: current.summaryStatus ?? 'pending',
+    comprehensiveCheck,
+    closureInquiry,
+    summaryStatus:
+      closureInquiry === 'confirmed_no_questions'
+        ? (current.summaryStatus ?? 'pending')
+        : 'pending',
     knowledgePoints,
-    activeKnowledgePointRef,
+    ...(activeKnowledgePointRef === undefined ? {} : { activeKnowledgePointRef }),
   };
 }
 
@@ -121,6 +137,11 @@ export function reduceTeachingState(
   const resolvedEntryRefs = new Set(
     observation.entries.flatMap((entry) => [...entry.resolvesEntryRefs]),
   );
+  if (
+    observation.entries.some((entry) => entry.progressionSignal === 'confirm_no_further_questions')
+  ) {
+    for (const loop of current.openLoops) resolvedEntryRefs.add(loop.entryId);
+  }
   const openLoops = current.openLoops.filter((loop) => !resolvedEntryRefs.has(loop.entryId));
   const explorationBranches = current.explorationBranches.map((branch) =>
     resolvedEntryRefs.has(branch.entryId) ? { ...branch, status: 'returned' as const } : branch,
@@ -141,7 +162,35 @@ export function reduceTeachingState(
   const recentLearnerSignals = [...current.recentLearnerSignals];
   let evidenceCheckpoint = current.evidenceCheckpoint;
   let comprehensiveCheck = current.comprehensiveCheck ?? 'pending';
-  let summaryStatus = current.summaryStatus ?? 'pending';
+  let closureInquiry =
+    current.closureInquiry ??
+    (current.lessonPhase === 'ready_to_close'
+      ? 'confirmed_no_questions'
+      : comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped'
+        ? 'awaiting_confirmation'
+        : 'pending');
+  let summaryStatus =
+    closureInquiry === 'confirmed_no_questions' ? (current.summaryStatus ?? 'pending') : 'pending';
+
+  for (const entry of observation.entries) {
+    if (entry.progressionSignal === 'pass_comprehensive_check') {
+      comprehensiveCheck = 'passed';
+    }
+    if (entry.progressionSignal === 'skip_comprehensive_check') {
+      comprehensiveCheck = 'skipped';
+    }
+  }
+  if (comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped') {
+    if (
+      observation.entries.some(
+        (entry) => entry.progressionSignal === 'confirm_no_further_questions',
+      )
+    ) {
+      closureInquiry = 'confirmed_no_questions';
+    } else if (closureInquiry === 'pending') {
+      closureInquiry = 'awaiting_confirmation';
+    }
+  }
 
   for (const entry of observation.entries) {
     if (establishesCheckpoint(observation, entry)) evidenceCheckpoint = true;
@@ -242,13 +291,10 @@ export function reduceTeachingState(
         }
       }
     }
-    if (entry.progressionSignal === 'pass_comprehensive_check') {
-      comprehensiveCheck = 'passed';
-    }
-    if (entry.progressionSignal === 'skip_comprehensive_check') {
-      comprehensiveCheck = 'skipped';
-    }
-    if (entry.progressionSignal === 'lesson_summary_delivered') {
+    if (
+      entry.progressionSignal === 'lesson_summary_delivered' &&
+      closureInquiry === 'confirmed_no_questions'
+    ) {
       summaryStatus = 'delivered';
     }
     if (isLearnerSignal(entry)) {
@@ -274,7 +320,7 @@ export function reduceTeachingState(
     observation.scope.alignment === 'off_scope';
 
   const normalizedKnowledgePoints = knowledgePoints.map((point) => {
-    if (point.progress === 'skipped') return point;
+    if (point.progress === 'skipped' || point.progress === 'passed') return point;
     if (point.delivery !== 'explained') return { ...point, progress: 'pending' as const };
     if (point.unresolvedEntryRefs.length > 0) {
       return { ...point, progress: 'checking' as const };
@@ -284,10 +330,12 @@ export function reduceTeachingState(
       progress: point.verification === 'supporting' ? ('passed' as const) : ('checking' as const),
     };
   });
+  const comprehensiveCheckSettled =
+    comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped';
   const unsettledKnowledgePoint = normalizedKnowledgePoints.find(
     (point) =>
       (point.progress !== 'passed' && point.progress !== 'skipped') ||
-      point.unresolvedEntryRefs.length > 0,
+      (!comprehensiveCheckSettled && point.unresolvedEntryRefs.length > 0),
   );
   const mayAdvanceWarmup =
     (observation.scope.alignment === 'direct' || observation.scope.alignment === 'supporting') &&
@@ -304,14 +352,15 @@ export function reduceTeachingState(
   if (unsettledKnowledgePoint !== undefined) {
     if (lessonPhase !== 'warmup' || mayAdvanceWarmup) lessonPhase = 'knowledge_point';
     activeKnowledgePointRef = unsettledKnowledgePoint.ref;
-  } else if (openLoops.length > 0) {
-    lessonPhase = current.lessonPhase ?? 'knowledge_point';
-    activeKnowledgePointRef = current.activeKnowledgePointRef;
   } else if (comprehensiveCheck === 'pending' || comprehensiveCheck === 'checking') {
     lessonPhase = 'comprehensive_check';
     comprehensiveCheck = 'checking';
     activeKnowledgePointRef = undefined;
-  } else if (summaryStatus !== 'delivered') {
+  } else if (
+    openLoops.length > 0 ||
+    closureInquiry !== 'confirmed_no_questions' ||
+    summaryStatus !== 'delivered'
+  ) {
     lessonPhase = 'summary';
     activeKnowledgePointRef = undefined;
   } else {
@@ -319,8 +368,11 @@ export function reduceTeachingState(
     activeKnowledgePointRef = undefined;
   }
 
+  const { activeKnowledgePointRef: _previousActiveKnowledgePointRef, ...currentWithoutActive } =
+    current;
+  void _previousActiveKnowledgePointRef;
   return {
-    ...current,
+    ...currentWithoutActive,
     ledgerVersion: current.ledgerVersion + 1,
     observedThroughMessageId: observation.sourceMessageIds.at(-1),
     sourceSnapshotHash: observation.sourceSnapshotHash,
@@ -328,8 +380,9 @@ export function reduceTeachingState(
     scopeStatus: needsReturn ? 'needs_return' : 'aligned',
     evidenceCheckpoint,
     lessonPhase,
-    activeKnowledgePointRef,
+    ...(activeKnowledgePointRef === undefined ? {} : { activeKnowledgePointRef }),
     comprehensiveCheck,
+    closureInquiry,
     summaryStatus,
     knowledgePoints: normalizedKnowledgePoints,
     openLoops: openLoops.sort((left, right) => left.entryId.localeCompare(right.entryId)),

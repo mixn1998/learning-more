@@ -63,6 +63,7 @@ export const LessonTeachingProgressSchema = z.strictObject({
   ]),
   activeKnowledgePointRef: z.string().trim().min(1).max(2_000).optional(),
   comprehensiveCheck: z.enum(['pending', 'checking', 'passed', 'skipped']),
+  closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),
   summaryStatus: z.enum(['pending', 'delivered']),
   knowledgePoints: z.array(
     z.strictObject({

@@ -428,6 +428,7 @@ export function createLocalLearningRuntime(
             : { activeKnowledgePointRef: facts.lesson.coreKnowledgePoints[0].ref }
           : { activeKnowledgePointRef: state.activeKnowledgePointRef }),
         comprehensiveCheck: state?.comprehensiveCheck ?? 'pending',
+        closureInquiry: state?.closureInquiry ?? 'pending',
         summaryStatus: state?.summaryStatus ?? 'pending',
         knowledgePoints: facts.lesson.coreKnowledgePoints.map((knowledgePoint) => {
           const point = stateByRef.get(knowledgePoint.ref);

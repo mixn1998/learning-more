@@ -72,6 +72,7 @@ export function LessonSessionWorkspace(props: {
   const timer = formatTimer(props.elapsedSeconds);
   const lastMessage = props.messages.at(-1);
   const lastUserMessage = props.messages.findLast((message) => message.role === 'user');
+  const unfinishedPath = props.path.filter((point) => point.state !== 'done');
   const followKey = `${props.messages.length}:${lastMessage?.id ?? 'opening'}:${lastMessage === undefined ? 0 : messageText(lastMessage).length}:${props.assistantPending}`;
 
   useEffect(() => {
@@ -297,53 +298,62 @@ export function LessonSessionWorkspace(props: {
         </div>
       </main>
       <div aria-hidden={!endOpen} className={`lesson-end-layer ${endOpen ? 'open' : ''}`}>
-        <section
-          aria-labelledby="lesson-end-title"
-          aria-modal="true"
-          className="lm-card lesson-end-card"
-          role="dialog"
-        >
-          <div className="lm-kicker">教学尚未闭环</div>
-          <h2 id="lesson-end-title">现在结束将放弃本课</h2>
-          <p>原始会话冻结并生成阶段 Review；之后仍可恢复同一会话。</p>
-          <div className="lesson-end-pending">
-            <b>待完成</b>
-            <br />
-            <small>把状态、能力和目标反馈连接成可持续行动循环。</small>
-          </div>
-          <div className="lesson-end-pending">
-            <b>待验证</b>
-            <br />
-            <small>用修改后的原型判断反馈是否改变下一步行为。</small>
-          </div>
-          <div className="lm-actions lesson-end-actions">
-            <button className="lm-btn" type="button" onClick={() => setEndOpen(false)}>
-              继续学习
-            </button>
-            {props.canComplete ? (
-              <button
-                className="lm-btn primary"
-                type="button"
-                onClick={() => {
-                  setEndOpen(false);
-                  props.onComplete();
-                }}
-              >
-                完成本课
+        {endOpen ? (
+          <section
+            aria-labelledby="lesson-end-title"
+            aria-modal="true"
+            className="lm-card lesson-end-card"
+            role="dialog"
+          >
+            <div className="lm-kicker">{props.canComplete ? '教学已闭环' : '教学尚未闭环'}</div>
+            <h2 id="lesson-end-title">
+              {props.canComplete ? '完成本课并生成 Review' : '现在结束将放弃本课'}
+            </h2>
+            <p>
+              {props.canComplete
+                ? '本课最终总结已经完成，可以结束学习并生成完整课时 Review。'
+                : '原始会话将冻结并生成阶段 Review；之后仍可恢复同一会话。'}
+            </p>
+            {!props.canComplete
+              ? unfinishedPath.map((point) => (
+                  <div className="lesson-end-pending" key={`${point.title}:${point.detail}`}>
+                    <b>{point.title}</b>
+                    <br />
+                    <small>{point.detail}</small>
+                  </div>
+                ))
+              : null}
+            <div className="lm-actions lesson-end-actions">
+              <button className="lm-btn" type="button" onClick={() => setEndOpen(false)}>
+                继续学习
               </button>
-            ) : null}
-            <button
-              className="lm-btn danger"
-              type="button"
-              onClick={() => {
-                setEndOpen(false);
-                props.onAbandon();
-              }}
-            >
-              确认放弃课节
-            </button>
-          </div>
-        </section>
+              {props.canComplete ? (
+                <button
+                  className="lm-btn primary"
+                  type="button"
+                  onClick={() => {
+                    setEndOpen(false);
+                    props.onComplete();
+                  }}
+                >
+                  完成本课
+                </button>
+              ) : null}
+              {!props.canComplete ? (
+                <button
+                  className="lm-btn danger"
+                  type="button"
+                  onClick={() => {
+                    setEndOpen(false);
+                    props.onAbandon();
+                  }}
+                >
+                  确认放弃课节
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   );

@@ -19,8 +19,10 @@ const OBSERVATION_CAPABILITY = [
   'JSON 形状：scope={alignment,relationRefs,rationale}；entries 每项={entryId,kind,summary,knowledgePointRefs,sourceRefs,resolvesEntryRefs,qualityFlags}，assessment、explicitness、elicitation、progressionSignal 可按证据选填。',
   '只使用以下枚举：scope.alignment=direct|supporting|adjacent|unclear|off_scope；kind=teaching_delivery|learner_demonstration|learner_misconception|learner_question|learner_intent|learner_reasoning_behavior|adjacent_exploration|open_loop。',
   'assessment=supports|limits|uncertain；explicitness=user_declared|ai_observed；elicitation=spontaneous|elicited|mixed|unknown；qualityFlags 只能使用 direct|complete|ambiguous。不要创造 aligned、current、explicit、teaching_clarification 等新值。',
-  'progressionSignal 只记录明确可验证的流程事实：skip_knowledge_point 表示用户明确跳过当前知识点；pass_comprehensive_check 表示综合检测回答已通过；skip_comprehensive_check 表示用户明确跳过综合检测；lesson_summary_delivered 表示助手已经完成本课总结。不得仅凭对话顺畅推断这些信号。',
-  '知识点检测通过使用 learner_demonstration + assessment=supports；未通过或仍不稳定使用 assessment=limits/uncertain。用户提出且尚未被回答的相关疑问还要记录为 open_loop；疑问被解决时用 resolvesEntryRefs 关闭，未关闭前不得推进知识点。',
+  'progressionSignal 只记录明确可验证的流程事实：skip_knowledge_point 表示用户明确跳过当前知识点；pass_comprehensive_check 表示综合检测回答已通过；skip_comprehensive_check 表示用户明确跳过综合检测；confirm_no_further_questions 表示用户明确表示没有本课疑问或其他讲解需求；lesson_summary_delivered 表示助手在该确认之后已经完成最终课程总结。不得仅凭对话顺畅推断这些信号。',
+  '知识点检测通过使用 learner_demonstration + assessment=supports；未通过或仍不稳定使用 assessment=limits/uncertain。用户提出且尚未被回答的相关疑问还要记录为 open_loop；open_loop 必须引用用户消息，绝不能把助手提出的教学问题、检测题或“还有疑问吗”记为 open_loop。疑问被解决时用 resolvesEntryRefs 关闭，未关闭前不得推进知识点。',
+  '综合检测回答充分时，即使助手没有明说“通过”，也要基于用户回答和助手的接受性反馈记录 pass_comprehensive_check；用户明确跳过则只记录 skip_comprehensive_check，保持 skipped 事实，不得改写成 passed。',
+  '用户明确表示没有疑问时记录 confirm_no_further_questions；如果同一轮助手随后输出了最终课程总结，再同时记录 lesson_summary_delivered。仅有阶段性小结、知识点小结或询问是否有疑问，不算最终课程总结。',
   'learner_reasoning_behavior 的 elicitation 用 spontaneous、elicited、mixed 或 unknown，表示该行为是否由教学任务直接引出；它不改变行为事实本身。',
   '只返回 scope 与 entries 的 JSON 数据，不输出 Markdown 说明。',
 ].join('\n');
@@ -58,6 +60,7 @@ const progressionSignals = new Set([
   'skip_knowledge_point',
   'pass_comprehensive_check',
   'skip_comprehensive_check',
+  'confirm_no_further_questions',
   'lesson_summary_delivered',
 ]);
 const qualityFlags = new Set(['direct', 'complete', 'ambiguous']);
@@ -130,7 +133,7 @@ export function createGenerationTeachingObserver(options: {
   nextObservationId?: (sourceSnapshotHash: string) => string;
   now?: () => Date;
 }): TeachingObserver {
-  const observerVersion = options.observerVersion ?? 'teaching-observer@1';
+  const observerVersion = options.observerVersion ?? 'teaching-observer@2';
   return {
     async observe(input) {
       const serializedInput = JSON.stringify(input);

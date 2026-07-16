@@ -233,6 +233,38 @@ describe('learning SessionPage', () => {
     await waitFor(() => expect(resume).toHaveBeenCalledWith('session_01', 1));
   });
 
+  it('presents a completed closure after the final summary instead of an abandonment warning', async () => {
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 8,
+      learning: { progress: 'in_progress', session: { id: 'session_01', state: 'active' } },
+      closurePreparation: {
+        sessionId: 'session_01',
+        sourceSessionIds: ['session_01'],
+        sourceMessageIds: ['message_ai_final'],
+        messageRangeChecksum: 'a'.repeat(64),
+        endIntent: 'complete_lesson',
+      },
+      teachingProgress: {
+        ledgerVersion: 7,
+        observationStatus: 'current',
+        lessonPhase: 'ready_to_close',
+        comprehensiveCheck: 'skipped',
+        closureInquiry: 'confirmed_no_questions',
+        summaryStatus: 'delivered',
+        knowledgePoints: [],
+      },
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
+
+    expect(screen.getByText('教学已闭环')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '完成本课并生成 Review' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '完成本课' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '确认放弃课节' })).not.toBeInTheDocument();
+    expect(screen.queryByText('现在结束将放弃本课')).not.toBeInTheDocument();
+  });
+
   it('reconciles a background version advance before retrying a session command', async () => {
     const getSession = vi
       .fn()
@@ -343,6 +375,7 @@ describe('learning SessionPage', () => {
           lessonPhase: 'knowledge_point',
           activeKnowledgePointRef: 'knowledge:sum',
           comprehensiveCheck: 'pending',
+          closureInquiry: 'pending',
           summaryStatus: 'pending',
           knowledgePoints: [
             {
@@ -397,6 +430,7 @@ describe('learning SessionPage', () => {
           lessonPhase: 'warmup',
           activeKnowledgePointRef: 'knowledge:fantasy',
           comprehensiveCheck: 'pending',
+          closureInquiry: 'pending',
           summaryStatus: 'pending',
           knowledgePoints: [
             {
@@ -427,6 +461,7 @@ describe('learning SessionPage', () => {
           lessonPhase: 'knowledge_point',
           activeKnowledgePointRef: 'knowledge:experience',
           comprehensiveCheck: 'pending',
+          closureInquiry: 'pending',
           summaryStatus: 'pending',
           knowledgePoints: [
             {

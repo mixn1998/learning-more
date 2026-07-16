@@ -42,6 +42,7 @@ describe('teaching state reducer', () => {
       lessonPhase: 'warmup',
       activeKnowledgePointRef: 'knowledge:kp_1',
       comprehensiveCheck: 'pending',
+      closureInquiry: 'pending',
       summaryStatus: 'pending',
     });
     expect(initial.knowledgePoints.map((point) => point.progress)).toEqual(['pending', 'pending']);
@@ -167,6 +168,7 @@ describe('teaching state reducer', () => {
       comprehensiveCheck: 'checking',
     });
     expect(secondSkipped.activeKnowledgePointRef).toBeUndefined();
+    expect(Object.hasOwn(secondSkipped, 'activeKnowledgePointRef')).toBe(false);
     expect(secondSkipped.knowledgePoints.map((point) => point.progress)).toEqual([
       'passed',
       'skipped',
@@ -196,10 +198,11 @@ describe('teaching state reducer', () => {
     expect(comprehensivePassed).toMatchObject({
       lessonPhase: 'summary',
       comprehensiveCheck: 'passed',
+      closureInquiry: 'awaiting_confirmation',
       summaryStatus: 'pending',
     });
 
-    const summarized = reduceTeachingState(
+    const prematureSummary = reduceTeachingState(
       comprehensivePassed,
       observation({
         observationId: 'observation_summary_delivered',
@@ -219,9 +222,79 @@ describe('teaching state reducer', () => {
         ],
       }),
     );
+    expect(prematureSummary).toMatchObject({
+      lessonPhase: 'summary',
+      closureInquiry: 'awaiting_confirmation',
+      summaryStatus: 'pending',
+    });
+
+    const summarized = reduceTeachingState(
+      prematureSummary,
+      observation({
+        observationId: 'observation_no_questions_and_summary',
+        turnSequence: 5,
+        sourceSnapshotHash: 'e'.repeat(64),
+        entries: [
+          {
+            entryId: 'entry_no_questions',
+            kind: 'learner_intent',
+            summary: 'The learner explicitly said there are no remaining questions.',
+            knowledgePointRefs: [],
+            sourceRefs: ['message:message_user_1'],
+            progressionSignal: 'confirm_no_further_questions',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+          {
+            entryId: 'entry_final_summary',
+            kind: 'teaching_delivery',
+            summary: 'The assistant delivered the final lesson summary.',
+            knowledgePointRefs: [],
+            sourceRefs: ['message:message_ai_1'],
+            progressionSignal: 'lesson_summary_delivered',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
     expect(summarized).toMatchObject({
       lessonPhase: 'ready_to_close',
+      closureInquiry: 'confirmed_no_questions',
       summaryStatus: 'delivered',
+    });
+  });
+
+  it('allows an explicitly skipped comprehensive check to use the same closure inquiry', () => {
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: [],
+    });
+    const skipped = reduceTeachingState(
+      initial,
+      observation({
+        observationId: 'observation_comprehensive_skipped',
+        entries: [
+          {
+            entryId: 'entry_comprehensive_skipped',
+            kind: 'learner_intent',
+            summary: 'The learner explicitly skipped the comprehensive check.',
+            knowledgePointRefs: [],
+            sourceRefs: ['message:message_user_1'],
+            progressionSignal: 'skip_comprehensive_check',
+            resolvesEntryRefs: [],
+            qualityFlags: ['direct', 'complete'],
+          },
+        ],
+      }),
+    );
+
+    expect(skipped).toMatchObject({
+      lessonPhase: 'summary',
+      comprehensiveCheck: 'skipped',
+      closureInquiry: 'awaiting_confirmation',
+      summaryStatus: 'pending',
     });
   });
 

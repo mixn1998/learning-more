@@ -211,6 +211,7 @@ describe('LearningSession HTTP contract', () => {
         lessonPhase: 'knowledge_point',
         activeKnowledgePointRef: 'knowledge:kp_2',
         comprehensiveCheck: 'pending',
+        closureInquiry: 'pending',
         summaryStatus: 'pending',
         knowledgePoints: [
           {

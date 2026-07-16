@@ -193,7 +193,14 @@ export function createInteractiveTeaching(options: {
         }
       } catch (error) {
         taskContext.delete(accepted.taskId);
-        if (replyCommitted) throw error;
+        if (replyCommitted) {
+          try {
+            await markObservationFailed(input.courseId, input.lessonId, input.sessionId);
+          } catch {
+            // Preserve the original observation failure; startup recovery still detects stale state.
+          }
+          throw error;
+        }
         try {
           await options.sessionModule.execute(
             { type: 'StopSessionGeneration', lessonId: input.lessonId },
@@ -377,6 +384,24 @@ export function createInteractiveTeaching(options: {
       ),
     );
     return pendingState;
+  }
+
+  async function markObservationFailed(courseId: string, lessonId: string, sessionId: string) {
+    const current = await options.ledgerRepository.get(sessionId);
+    if (current === undefined || current.state.observationStatus !== 'pending') return;
+    const failedState = { ...current.state, observationStatus: 'failed' as const };
+    await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
+      options.ledgerRepository.save(
+        tx,
+        {
+          ...current,
+          courseId,
+          lessonId,
+          state: failedState,
+        },
+        current.resourceVersion,
+      ),
+    );
   }
 
   async function recoverEvidenceEffect(input: {

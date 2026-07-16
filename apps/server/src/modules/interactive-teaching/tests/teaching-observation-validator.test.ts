@@ -71,4 +71,25 @@ describe('teaching observation validator', () => {
 
     expect(() => validateTeachingObservation(invalid, validationContext)).toThrow();
   });
+
+  it('rejects an assistant teaching prompt misclassified as an open learner question', () => {
+    const invalid: TeachingObservation = {
+      ...observation(),
+      entries: [
+        {
+          entryId: 'entry_open_loop',
+          kind: 'open_loop',
+          summary: 'The assistant asked the learner a teaching question.',
+          knowledgePointRefs: ['knowledge:kp_1'],
+          sourceRefs: ['message:message_ai_1'],
+          resolvesEntryRefs: [],
+          qualityFlags: ['direct', 'complete'],
+        },
+      ],
+    };
+
+    expect(() => validateTeachingObservation(invalid, validationContext)).toThrowError(
+      'open_loop_requires_user_source',
+    );
+  });
 });

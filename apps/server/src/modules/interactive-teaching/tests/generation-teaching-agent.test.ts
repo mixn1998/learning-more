@@ -141,6 +141,9 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('不要向学习者播报正在检测或已经通过检测');
     expect(fake.request()?.prompt).toContain('用一至两句小结当前知识点');
     expect(fake.request()?.prompt).toContain('综合检测通过后也不播报通过状态');
+    expect(fake.request()?.prompt).toContain('是否还有疑惑或其他讲解需求');
+    expect(fake.request()?.prompt).toContain('每一轮回复都必须以一个自然、容易回应');
+    expect(fake.request()?.prompt).toContain('最终课程总结是唯一不再提出问题');
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
     expect(fake.request()?.prompt).not.toContain('off_scope');
     expect(fake.request()?.prompt?.match(/Explain this systematically\./gu)).toHaveLength(1);
@@ -162,6 +165,38 @@ describe('GenerationTeachingAgent', () => {
     await expect(agent.complete('task_1')).resolves.toEqual({
       markdown: 'A free-form explanation.',
     });
+  });
+
+  it('requires explicit no-further-questions confirmation before the final summary', async () => {
+    const fake = runtime();
+    const base = context();
+    const summaryContext: TeachingContextPackage = {
+      ...base,
+      teachingState: {
+        ...base.teachingState,
+        lessonPhase: 'summary',
+        comprehensiveCheck: 'skipped',
+        closureInquiry: 'awaiting_confirmation',
+      },
+      recentMessages: [
+        {
+          messageId: 'message_current',
+          role: 'user',
+          completionStatus: 'complete',
+          markdown: '这个概念能再解释一下吗？',
+          sourceRef: 'message:message_current',
+        },
+      ],
+    };
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(summaryContext);
+
+    expect(fake.request()?.prompt).toContain('等待学习者确认是否还有本课疑问');
+    expect(fake.request()?.prompt).toContain('如果学习者提出疑问，完整回应');
+    expect(fake.request()?.prompt).toContain('不要提前输出最终课程总结');
+    expect(fake.request()?.prompt).toContain('如果学习者明确表示没有疑问');
+    expect(fake.request()?.prompt).toContain('最终总结后不要再提出问题');
   });
 
   it('preserves interrupted Markdown without treating it as a complete reply', async () => {

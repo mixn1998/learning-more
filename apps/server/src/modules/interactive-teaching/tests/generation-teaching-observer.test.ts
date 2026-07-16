@@ -109,6 +109,11 @@ describe('GenerationTeachingObserver', () => {
       'scope.alignment=direct|supporting|adjacent|unclear|off_scope',
     );
     expect(request?.prompt).toContain('qualityFlags 只能使用 direct|complete|ambiguous');
+    expect(request?.prompt).toContain('confirm_no_further_questions');
+    expect(request?.prompt).toContain('open_loop 必须引用用户消息');
+    expect(request?.prompt).toContain('绝不能把助手提出的教学问题');
+    expect(request?.prompt).toContain('保持 skipped 事实');
+    expect(result.observerVersion).toBe('teaching-observer@2');
   });
 
   it('keeps valid evidence when generated observation contains known aliases and invalid optional metadata', async () => {

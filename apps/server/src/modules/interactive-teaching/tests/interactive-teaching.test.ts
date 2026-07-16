@@ -562,7 +562,7 @@ describe('InteractiveTeaching deep module', () => {
     );
     await expect(drainObservations('session_1')).rejects.toThrow('simulated_observer_failure');
     await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
-      observationStatus: 'pending',
+      observationStatus: 'failed',
       ledgerVersion: 0,
     });
 

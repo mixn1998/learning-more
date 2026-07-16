@@ -149,6 +149,49 @@ function contract(
         ),
       ).rejects.toMatchObject({ code: 'version_conflict', currentVersion: 1 });
     });
+
+    it('persists a phase transition after the active knowledge-point reference is removed', async () => {
+      const { repository, unitOfWork } = await fixture();
+      const phaseObservation: TeachingObservation = {
+        ...observation,
+        observationId: 'observation_phase_transition',
+        scope: {
+          alignment: 'direct',
+          relationRefs: ['lesson:lesson_1'],
+          rationale: 'The lesson is ready for its comprehensive check.',
+        },
+        entries: [],
+      };
+      const state = reduceTeachingState(
+        createTeachingState({
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          knowledgePointRefs: [],
+        }),
+        phaseObservation,
+      );
+
+      expect(Object.hasOwn(state, 'activeKnowledgePointRef')).toBe(false);
+      await unitOfWork.execute({ transactionId: 'tx_teaching_phase_transition' }, (tx) =>
+        repository.save(
+          tx,
+          {
+            courseId: 'course_1',
+            lessonId: 'lesson_1',
+            sessionId: 'session_1',
+            observations: [phaseObservation],
+            checkpoints: [],
+            state,
+            resourceVersion: 0,
+          },
+          0,
+        ),
+      );
+
+      await expect(repository.get('session_1')).resolves.toMatchObject({
+        state: { lessonPhase: 'comprehensive_check', comprehensiveCheck: 'checking' },
+      });
+    });
   });
 }
 
