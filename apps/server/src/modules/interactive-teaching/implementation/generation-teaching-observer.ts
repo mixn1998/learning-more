@@ -68,7 +68,7 @@ function normalizeScope(value: unknown) {
   const alignment =
     rawAlignment === 'aligned' || rawAlignment === 'current'
       ? 'direct'
-      : optionalEnum(rawAlignment, scopeAlignments) ?? 'unclear';
+      : (optionalEnum(rawAlignment, scopeAlignments) ?? 'unclear');
   const relationRefs = Array.isArray(candidate?.relationRefs)
     ? candidate.relationRefs.filter((item): item is string => typeof item === 'string')
     : [];
