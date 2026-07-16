@@ -138,6 +138,9 @@ describe('GenerationTeachingAgent', () => {
     );
     expect(fake.request()?.prompt).toContain('课程邻接探索');
     expect(fake.request()?.prompt).toContain('把选择权交给学习者');
+    expect(fake.request()?.prompt).toContain('不要向学习者播报正在检测或已经通过检测');
+    expect(fake.request()?.prompt).toContain('用一至两句小结当前知识点');
+    expect(fake.request()?.prompt).toContain('综合检测通过后也不播报通过状态');
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
     expect(fake.request()?.prompt).not.toContain('off_scope');
     expect(fake.request()?.prompt?.match(/Explain this systematically\./gu)).toHaveLength(1);

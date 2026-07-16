@@ -384,6 +384,82 @@ describe('learning SessionPage', () => {
     expect(screen.getByText('仍有误解需要澄清')).toBeInTheDocument();
   });
 
+  it('refreshes the visible learning path when pending teaching observation becomes current', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 4,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        teachingProgress: {
+          ledgerVersion: 3,
+          observationStatus: 'pending',
+          lessonPhase: 'warmup',
+          activeKnowledgePointRef: 'knowledge:fantasy',
+          comprehensiveCheck: 'pending',
+          summaryStatus: 'pending',
+          knowledgePoints: [
+            {
+              ref: 'knowledge:fantasy',
+              title: '玩家幻想',
+              progress: 'checking',
+              delivery: 'explained',
+              verification: 'not_observed',
+              unresolvedQuestionCount: 0,
+            },
+            {
+              ref: 'knowledge:experience',
+              title: '体验目标',
+              progress: 'pending',
+              delivery: 'not_addressed',
+              verification: 'not_observed',
+              unresolvedQuestionCount: 0,
+            },
+          ],
+        },
+      })
+      .mockResolvedValue({
+        resourceVersion: 5,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        teachingProgress: {
+          ledgerVersion: 4,
+          observationStatus: 'current',
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'knowledge:experience',
+          comprehensiveCheck: 'pending',
+          summaryStatus: 'pending',
+          knowledgePoints: [
+            {
+              ref: 'knowledge:fantasy',
+              title: '玩家幻想',
+              progress: 'passed',
+              delivery: 'explained',
+              verification: 'supporting',
+              unresolvedQuestionCount: 0,
+            },
+            {
+              ref: 'knowledge:experience',
+              title: '体验目标',
+              progress: 'teaching',
+              delivery: 'not_addressed',
+              verification: 'not_observed',
+              unresolvedQuestionCount: 0,
+            },
+          ],
+        },
+      });
+
+    render(<SessionPage client={client({ getSession })} lessonId="lesson_01" />);
+    await waitFor(() => expect(getSession).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    await waitFor(() => expect(screen.getByText('体验目标').closest('li')).toHaveClass('active'));
+    expect(screen.getByText('玩家幻想').closest('li')).toHaveClass('done');
+  });
+
   it('[EQ-GEN-03] restores a running generation task from the server after page refresh', async () => {
     const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
       onEvent({ type: 'message.delta', data: { markdown: '恢复后的流式内容' } });
