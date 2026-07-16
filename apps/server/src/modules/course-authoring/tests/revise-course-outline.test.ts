@@ -112,6 +112,7 @@ describe('reviseCourseOutline', () => {
     );
 
     await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
+      title: 'v2',
       outlineVersionId: 'outline_v2',
       lessonIds: ['lesson_stable'],
       resourceVersion: 2,

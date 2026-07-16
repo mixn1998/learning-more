@@ -44,8 +44,8 @@ describe('LessonEntryPage', () => {
     render(<LessonEntryPage lessonId="lesson_01" client={client} onNavigate={navigate} />);
 
     expect(await screen.findByRole('heading', { name: 'Probability spaces' })).toBeInTheDocument();
-    expect(screen.getAllByText('sample space')).toHaveLength(2);
-    expect(screen.getAllByText('event algebra')).toHaveLength(2);
+    expect(screen.getAllByText('sample space')).toHaveLength(1);
+    expect(screen.getAllByText('event algebra')).toHaveLength(1);
     expect(start).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '返回主页' }));

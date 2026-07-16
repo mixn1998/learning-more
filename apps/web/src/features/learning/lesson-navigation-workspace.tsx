@@ -3,7 +3,8 @@ import './lesson-navigation-workspace.css';
 export type LessonNavigationPoint = Readonly<{
   marker: string;
   title: string;
-  description: string;
+  /** Legacy fixture/input compatibility; navigation intentionally does not render descriptions. */
+  description?: string;
 }>;
 
 export function LessonNavigationWorkspace(props: {
@@ -77,10 +78,7 @@ export function LessonNavigationWorkspace(props: {
               {props.points.map((point, index) => (
                 <div className="nav-point" key={`${point.marker}:${point.title}:${index}`}>
                   <b>{point.marker}</b>
-                  <div>
-                    <strong>{point.title}</strong>
-                    <span>{point.description}</span>
-                  </div>
+                  <strong>{point.title}</strong>
                 </div>
               ))}
             </div>

@@ -23,12 +23,10 @@ export function AbandonedLessonRecord(props: {
         ...props.learnedPoints.map((point) => ({
           ...toKnowledgePointPresentation(point),
           marker: '✓',
-          description: `已学习：${toKnowledgePointPresentation(point).summary}`,
         })),
         ...props.remainingPoints.map((point) => ({
           ...toKnowledgePointPresentation(point),
           marker: '→',
-          description: `待完成：${toKnowledgePointPresentation(point).summary}`,
         })),
       ]}
       state="abandoned"

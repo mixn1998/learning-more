@@ -124,7 +124,7 @@ describe('CourseAuthoring public facade', () => {
       tx,
       {
         id: 'course_1',
-        title: '微积分',
+        title: '我想系统学习从直观变化到严格推导的完整路径',
         courseMode: 'standard',
         outlineVersionId: 'outline_v1',
         lessonIds: [],
@@ -154,6 +154,9 @@ describe('CourseAuthoring public facade', () => {
       candidateVersionId: 'candidate_v1',
       candidateMarkdown: '# 微积分\n\n## 极限\n### 极限是什么',
       messages: [],
+    });
+    await expect(facade.getCourse?.('course_1', queryContext)).resolves.toMatchObject({
+      title: '微积分',
     });
   });
 

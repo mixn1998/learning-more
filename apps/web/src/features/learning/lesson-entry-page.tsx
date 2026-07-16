@@ -97,7 +97,6 @@ export function LessonEntryPage(props: {
         return {
           marker: String(index + 1).padStart(2, '0'),
           title: presentation.title,
-          description: presentation.summary,
         };
       })}
       primaryLabel={

@@ -7,6 +7,7 @@ import type { Outbox } from '../../../persistence/outbox.js';
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
 import { CourseAuthoringError } from '../model/errors.js';
+import { resolveCourseTitle } from '../model/course-title.js';
 import { decide, evolveAll } from '../model/outline-session.js';
 import {
   resolveNextLessonRecommendation,
@@ -92,7 +93,7 @@ export async function confirmCourse(
   }
   const course = {
     id: command.courseId,
-    title: record.session.topic,
+    title: resolveCourseTitle(candidate.candidate.outlineMarkdown, record.session.topic),
     courseMode: record.session.courseMode,
     outlineVersionId,
     lessonIds,

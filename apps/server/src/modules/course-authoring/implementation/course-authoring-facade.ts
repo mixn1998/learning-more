@@ -32,6 +32,7 @@ import type { NextLessonRecommender } from '../../next-lesson/interface.js';
 import { confirmCourse } from './confirm-course.js';
 import { createAuthoringContextAssembler } from './authoring-context-assembler.js';
 import { reviseCourseOutline } from './revise-course-outline.js';
+import { resolveCourseTitle } from '../model/course-title.js';
 
 export interface CandidateGenerationCoordinator {
   generate(input: { readonly commandId: string; readonly outlineSessionId: string }): Promise<{
@@ -312,7 +313,7 @@ export function createCourseAuthoringFacade(options: {
         const started: OutlineSessionRecord = {
           session: createOutlineAdjustmentSession({
             outlineSessionId,
-            topic: course.title,
+            topic: resolveCourseTitle(outline.outlineMarkdown, course.title),
             courseMode: course.courseMode,
             baselineCandidateVersionId: baselineCandidate.id,
           }),
@@ -722,7 +723,7 @@ export function createCourseAuthoringFacade(options: {
       }
       return {
         courseId: course.id,
-        title: course.title,
+        title: resolveCourseTitle(outline.outlineMarkdown, course.title),
         status: course.status,
         courseMode: course.courseMode,
         outlineVersionId: course.outlineVersionId,

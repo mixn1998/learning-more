@@ -140,6 +140,7 @@ describe('confirmCourse', () => {
 
     expect(result).toEqual({ courseId: 'course_01', repeated: false });
     await expect(courses.courses.get('course_01')).resolves.toMatchObject({
+      title: '概率论',
       outlineVersionId: expect.stringContaining('outline_'),
       lessonIds: [expect.stringContaining('lesson_'), expect.stringContaining('lesson_')],
     });
