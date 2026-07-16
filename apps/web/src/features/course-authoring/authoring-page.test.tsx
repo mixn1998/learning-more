@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -80,6 +80,7 @@ function client(overrides: Partial<CourseAuthoringClient> = {}): CourseAuthoring
 afterEach(() => {
   cleanup();
   sessionStorage.clear();
+  vi.useRealTimers();
 });
 
 describe('CourseAuthoring page', () => {
@@ -443,6 +444,73 @@ describe('CourseAuthoring page', () => {
       ),
     );
     expect(await screen.findByRole('heading', { name: 'restored candidate' })).toBeVisible();
+  });
+
+  it('keeps listening when candidate generation exceeds 120 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let completeStream!: () => void;
+    let streamHandlers!: Parameters<CourseAuthoringClient['streamGeneration']>[1];
+    let streamSignal: AbortSignal | undefined;
+    const getOutlineSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_long',
+        resourceVersion: 2,
+        state: 'generating-candidates',
+        generationTaskId: 'task_long',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: false,
+        candidateVersionIds: [],
+        messages: [],
+        materials: [],
+      })
+      .mockResolvedValue({
+        outlineSessionId: 'session_long',
+        resourceVersion: 3,
+        state: 'candidate-ready',
+        topic: 'probability',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: true,
+        candidateVersionIds: ['candidate_long'],
+        candidateVersionId: 'candidate_long',
+        candidateMarkdown: '# long-running candidate',
+        messages: [],
+        materials: [],
+      });
+    const streamGeneration = vi.fn().mockImplementation((_taskId, handlers, signal) => {
+      streamHandlers = handlers;
+      streamSignal = signal;
+      return new Promise<void>((resolve) => {
+        completeStream = resolve;
+      });
+    });
+
+    render(
+      <AuthoringPage
+        client={client({ getOutlineSession, streamGeneration })}
+        initialOutlineSessionId="session_long"
+      />,
+    );
+    await waitFor(() => expect(streamGeneration).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_001);
+    });
+    expect(streamSignal?.aborted).toBe(false);
+
+    await act(async () => {
+      streamHandlers.onEvent({
+        type: 'artifact.ready',
+        data: { artifactId: 'candidate_long', kind: 'outline-candidate' },
+      });
+      streamHandlers.onEvent({ type: 'task.completed', data: {} });
+      completeStream();
+    });
+
+    expect(await screen.findByRole('heading', { name: 'long-running candidate' })).toBeVisible();
   });
 
   it('connects to an adjustment generation task returned through the refreshed session', async () => {

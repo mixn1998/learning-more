@@ -498,7 +498,6 @@ export function AuthoringPage(props: {
     const resourceVersion = state.resourceVersion ?? 0;
     const controller = new AbortController();
     generationAbortController.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 120_000);
     let terminalRefresh: Promise<void> | undefined;
 
     void api
@@ -543,14 +542,12 @@ export function AuthoringPage(props: {
         });
       })
       .finally(() => {
-        window.clearTimeout(timeout);
         if (generationAbortController.current === controller) {
           generationAbortController.current = undefined;
         }
       });
 
     return () => {
-      window.clearTimeout(timeout);
       controller.abort();
       if (generationAbortController.current === controller) {
         generationAbortController.current = undefined;
