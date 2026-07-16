@@ -70,6 +70,7 @@ export function createLocalLearningRuntime(
   const supplementaryRepository = createLocalFileSupplementarySessionRepository(input.dataRoot);
   const teachingLedgerRepository = createLocalFileTeachingLedgerRepository(input.dataRoot);
   let projectionStatus: 'ready' | 'degraded' = 'ready';
+  const teachingRecoveryBySession = new Map<string, Promise<void>>();
 
   const sessionModule = createSessionModule({
     repositories: learningRepositories,
@@ -597,11 +598,12 @@ export function createLocalLearningRuntime(
       for await (const record of learningRepositories.list()) {
         const sessionId = record.learning.session?.id;
         if (sessionId === undefined || (await messageLog.list(sessionId)).length === 0) continue;
+        if (teachingRecoveryBySession.has(sessionId)) continue;
         const lesson = await input.course.access.getLesson(record.lessonId);
         if (lesson === undefined) continue;
         const timestamp = input.now().toISOString();
-        try {
-          await interactiveTeachingRuntime.recoverSession({
+        const recovery = interactiveTeachingRuntime
+          .recoverSession({
             courseId: lesson.courseId,
             lessonId: lesson.id,
             sessionId,
@@ -616,10 +618,14 @@ export function createLocalLearningRuntime(
                 ? {}
                 : { pageInstanceId: record.writeLease.pageInstanceId }),
             },
+          })
+          .catch(() => {
+            projectionStatus = 'degraded';
+          })
+          .finally(() => {
+            teachingRecoveryBySession.delete(sessionId);
           });
-        } catch {
-          projectionStatus = 'degraded';
-        }
+        teachingRecoveryBySession.set(sessionId, recovery);
       }
     },
     getProjectionStatus: () => projectionStatus,
