@@ -93,6 +93,8 @@ type Action =
   | Readonly<{ type: 'activity'; activity: State['activity']; resourceVersion: number }>
   | Readonly<{ type: 'review'; markdown: string; resourceVersion: number }>
   | Readonly<{ type: 'review-dismissed' }>
+  | Readonly<{ type: 'closure-requested' }>
+  | Readonly<{ type: 'closure-request-failed'; error: string }>
   | Readonly<{
       type: 'closure';
       transactionId: string;
@@ -187,6 +189,23 @@ function reducer(state: State, action: Action): State {
   }
   if (action.type === 'input') return { ...state, input: action.value };
   if (action.type === 'review-dismissed') return { ...state, reviewDismissed: true };
+  if (action.type === 'closure-requested') {
+    const { closureError: _closureError, ...withoutClosureError } = state;
+    void _closureError;
+    return {
+      ...withoutClosureError,
+      writable: false,
+      closureState: 'requesting',
+    };
+  }
+  if (action.type === 'closure-request-failed') {
+    return {
+      ...state,
+      writable: true,
+      closureState: 'request-failed',
+      closureError: action.error,
+    };
+  }
   if (action.type === 'send-started') {
     return {
       ...state,
@@ -306,6 +325,8 @@ function reducer(state: State, action: Action): State {
   return {
     ...state,
     progress: 'completed',
+    writable: false,
+    closureState: 'completed',
     reviewMarkdown: action.markdown,
     reviewDismissed: false,
     resourceVersion: action.resourceVersion,
@@ -504,13 +525,49 @@ export function SessionPage(props: {
     if (
       state.activity !== 'active' ||
       state.phase === 'generating' ||
+      state.closureState !== undefined ||
       state.progress !== 'in_progress'
     ) {
       return undefined;
     }
     const timer = window.setInterval(() => dispatch({ type: 'tick' }), 1_000);
     return () => window.clearInterval(timer);
-  }, [state.activity, state.phase, state.progress]);
+  }, [state.activity, state.closureState, state.phase, state.progress]);
+
+  useEffect(() => {
+    if (state.closureTransactionId === undefined) return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      for (let attempt = 0; attempt < 300 && !cancelled; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        if (cancelled) return;
+        try {
+          const result = await api.getClosure(state.closureTransactionId!);
+          if (result.review?.markdown !== undefined && result.state === 'completed') {
+            dispatch({
+              type: 'review',
+              markdown: result.review.markdown,
+              resourceVersion: result.resourceVersion,
+            });
+            return;
+          }
+          dispatch({
+            type: 'closure',
+            transactionId: result.transactionId,
+            ...(result.state === undefined ? {} : { state: result.state }),
+            resourceVersion: result.resourceVersion,
+          });
+          if (result.state === 'generating-failed' || result.state === 'cancelled') return;
+        } catch {
+          // A transient read failure must not roll the lesson back to an active editing state.
+        }
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, state.closureTransactionId]);
 
   const once = async (key: string, work: () => Promise<void>) => {
     if (inFlight.current.has(key)) return;
@@ -745,39 +802,49 @@ export function SessionPage(props: {
   const finish = () =>
     once('finish', async () => {
       if (state.closurePreparation === undefined) return;
-      const result = await withLatestSessionVersion((resourceVersion, refreshed) =>
-        api.closeLesson(
-          props.lessonId,
-          resourceVersion,
-          refreshed?.closurePreparation ?? state.closurePreparation!,
-        ),
-      );
-      if (result.review?.markdown !== undefined) {
-        dispatch({
-          type: 'review',
-          markdown: result.review.markdown,
-          resourceVersion: result.resourceVersion,
-        });
-      } else {
-        dispatch({
-          type: 'closure',
-          transactionId: result.transactionId,
-          ...(result.state === undefined ? {} : { state: result.state }),
-          resourceVersion: result.resourceVersion,
-        });
+      dispatch({ type: 'closure-requested' });
+      try {
+        const result = await withLatestSessionVersion((resourceVersion, refreshed) =>
+          api.closeLesson(
+            props.lessonId,
+            resourceVersion,
+            refreshed?.closurePreparation ?? state.closurePreparation!,
+          ),
+        );
+        if (result.review?.markdown !== undefined) {
+          dispatch({
+            type: 'review',
+            markdown: result.review.markdown,
+            resourceVersion: result.resourceVersion,
+          });
+        } else {
+          dispatch({
+            type: 'closure',
+            transactionId: result.transactionId,
+            ...(result.state === undefined ? {} : { state: result.state }),
+            resourceVersion: result.resourceVersion,
+          });
+        }
+      } catch {
+        dispatch({ type: 'closure-request-failed', error: '完成本课失败，请重试。' });
       }
     });
 
   const retryClosure = () =>
     once('retry-closure', async () => {
       if (state.closureTransactionId === undefined) return;
-      const result = await api.retryClosure(state.closureTransactionId, state.resourceVersion);
-      dispatch({
-        type: 'closure',
-        transactionId: result.transactionId,
-        ...(result.state === undefined ? {} : { state: result.state }),
-        resourceVersion: result.resourceVersion,
-      });
+      dispatch({ type: 'closure-requested' });
+      try {
+        const result = await api.retryClosure(state.closureTransactionId, state.resourceVersion);
+        dispatch({
+          type: 'closure',
+          transactionId: result.transactionId,
+          ...(result.state === undefined ? {} : { state: result.state }),
+          resourceVersion: result.resourceVersion,
+        });
+      } catch {
+        dispatch({ type: 'closure-request-failed', error: '重试生成最终 Review 失败。' });
+      }
     });
 
   const startSupplementary = () =>
@@ -888,16 +955,26 @@ export function SessionPage(props: {
           生成已停止，未完成内容已安全保留。
         </p>
       )}
-      {state.closureTransactionId === undefined ? null : (
+      {['requesting', 'open', 'generating', 'review-ready', 'committing'].includes(
+        state.closureState ?? '',
+      ) ? (
         <div className="lesson-closure-status" role="status">
-          <span>课时 Review 状态：{state.closureState ?? '处理中'}</span>
-          {state.closureState === 'generating-failed' ? (
-            <button className="lm-btn" type="button" onClick={() => void retryClosure()}>
-              重试生成 Review
-            </button>
-          ) : null}
+          本课已结束，最终 Review 正在生成中，可稍后返回课程页面查看。
         </div>
-      )}
+      ) : null}
+      {state.closureState === 'generating-failed' ? (
+        <div className="lesson-closure-status" role="alert">
+          <span>本课结束状态已保存，但最终 Review 生成失败。</span>
+          <button className="lm-btn" type="button" onClick={() => void retryClosure()}>
+            重试生成 Review
+          </button>
+        </div>
+      ) : null}
+      {state.closureState === 'request-failed' ? (
+        <div className="lesson-closure-status" role="alert">
+          {state.closureError ?? '完成本课失败，请重试。'}
+        </div>
+      ) : null}
       <ReviewDialog
         courseTitle={props.courseTitle ?? '当前课程'}
         markdown={state.reviewMarkdown ?? ''}

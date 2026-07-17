@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { ProfileEvidenceCheckpointKind } from '@learning-more/contracts';
+import type { CommandContext, ProfileEvidenceCheckpointKind } from '@learning-more/contracts';
 
 import type { ReviewClosureRouteOptions } from '../../http/routes/review-closure.js';
 import { closeCourse as closeCourseAggregate } from '../../modules/course-authoring/implementation/close-course.js';
@@ -9,6 +9,7 @@ import { abandonLesson } from '../../modules/learning-session/implementation/aba
 import { createCourseReviewWorkflow } from '../../modules/review-closure/implementation/course-review.js';
 import { createGenerationReviewWriter } from '../../modules/review-closure/implementation/generation-review-writer.js';
 import { createLessonClosureWorkflow } from '../../modules/review-closure/implementation/lesson-closure.js';
+import type { LessonClosureRecord } from '../../modules/review-closure/model/review-state.js';
 import {
   createStageReviewWorkflow,
   reviewIdForLesson,
@@ -281,6 +282,78 @@ export function createLocalReviewRuntime(
     now: () => new Date(),
     assertLessonWritable: input.course.access.assertLessonWritable,
   });
+  const activeLessonClosureFinalizations = new Map<string, Promise<void>>();
+
+  function scheduleLessonClosureFinalization(
+    closure: LessonClosureRecord,
+    context: CommandContext,
+  ): Promise<void> {
+    const active = activeLessonClosureFinalizations.get(closure.transactionId);
+    if (active !== undefined) return active;
+    const finalization = (async () => {
+      try {
+        let current = await lessonClosureRepository.get(closure.transactionId);
+        if (current === undefined) throw new Error('lesson_closure_not_found');
+        if (current.state === 'generating') {
+          const generated = await reviewWriter.complete(current.generationTaskId);
+          const artifactRef = `lesson_review_${reviewIdForLesson(current.lessonId)}`;
+          await input.artifactStore.finalize({
+            artifactId: artifactRef,
+            kind: 'lesson-final-review',
+            content: generated.markdown,
+            immutable: true,
+          });
+          current = await lessonClosures.markReviewReady(current.transactionId, {
+            artifactRef,
+            markdown: generated.markdown,
+            sourceSessionIds: current.sourceSessionIds,
+            messageRangeChecksum: current.messageRangeChecksum,
+            contentSha256: generated.contentSha256,
+          });
+        }
+        const committed =
+          current.state === 'committing'
+            ? await lessonClosures.recover(
+                current.transactionId,
+                current.messageRangeChecksum,
+                context,
+              )
+            : current.state === 'review-ready'
+              ? await lessonClosures.commit(
+                  current.transactionId,
+                  current.messageRangeChecksum,
+                  context,
+                )
+              : current;
+        if (committed.state !== 'completed' || committed.review === undefined) return;
+        const lesson = await input.course.access.getLesson(committed.lessonId);
+        if (lesson === undefined) return;
+        await captureReviewProfileCheckpoint({
+          checkpointKind: 'lesson_review_finalized',
+          sourceRef: `review:${reviewIdForLesson(committed.lessonId)}`,
+          markdown: committed.review.markdown,
+          courseId: lesson.courseId,
+          lessonId: committed.lessonId,
+          observedAt: input.now().toISOString(),
+        });
+        await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lesson.id);
+      } catch (error) {
+        const current = await lessonClosureRepository.get(closure.transactionId);
+        if (current?.state !== 'generating') return;
+        await lessonClosures.fail(
+          current.transactionId,
+          error instanceof Error && error.message.trim() !== ''
+            ? error.message.slice(0, 200)
+            : 'lesson_review_generation_failed',
+          current.draftArtifactRef ?? `draft_${current.generationTaskId}`,
+        );
+      }
+    })()
+      .catch(() => undefined)
+      .finally(() => activeLessonClosureFinalizations.delete(closure.transactionId));
+    activeLessonClosureFinalizations.set(closure.transactionId, finalization);
+    return finalization;
+  }
   const courseReviews = createCourseReviewWorkflow({
     repository: reviewClosureRepositories.courseReviews,
     unitOfWork: input.unitOfWork,
@@ -439,33 +512,8 @@ export function createLocalReviewRuntime(
           endIntent: body.endIntent,
           expectedSessionVersion: current.resourceVersion,
         });
-        const generated = await reviewWriter.complete(closure.generationTaskId);
-        const checksum = checkpoint.sourceSnapshotHash;
-        const artifactRef = `lesson_review_${reviewIdForLesson(lessonId)}`;
-        await input.artifactStore.finalize({
-          artifactId: artifactRef,
-          kind: 'lesson-final-review',
-          content: generated.markdown,
-          immutable: true,
-        });
-        await lessonClosures.markReviewReady(closure.transactionId, {
-          artifactRef,
-          markdown: generated.markdown,
-          sourceSessionIds: [sessionId],
-          messageRangeChecksum: checksum,
-          contentSha256: generated.contentSha256,
-        });
-        const committed = await lessonClosures.commit(closure.transactionId, checksum, context);
-        await captureReviewProfileCheckpoint({
-          checkpointKind: 'lesson_review_finalized',
-          sourceRef: `review:${reviewIdForLesson(lessonId)}`,
-          markdown: generated.markdown,
-          courseId: lesson.courseId,
-          lessonId,
-          observedAt: input.now().toISOString(),
-        });
-        await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lessonId);
-        return committed;
+        void scheduleLessonClosureFinalization(closure, context);
+        return closure;
       },
       async closeCourse(courseId, confirmAbandoned, context) {
         const course = await input.course.access.getCourse(courseId);
@@ -571,43 +619,8 @@ export function createLocalReviewRuntime(
       },
       async retryClosure(transactionId, context) {
         const retried = await lessonClosures.retry(transactionId, context.commandId);
-        const generated = await reviewWriter.complete(retried.generationTaskId);
-        const artifactRef = `lesson_review_${reviewIdForLesson(retried.lessonId)}`;
-        await input.artifactStore.finalize({
-          artifactId: artifactRef,
-          kind: 'lesson-final-review',
-          content: generated.markdown,
-          immutable: true,
-        });
-        await lessonClosures.markReviewReady(retried.transactionId, {
-          artifactRef,
-          markdown: generated.markdown,
-          sourceSessionIds: retried.sourceSessionIds,
-          messageRangeChecksum: retried.messageRangeChecksum,
-          contentSha256: generated.contentSha256,
-        });
-        const committed = await lessonClosures.commit(
-          retried.transactionId,
-          retried.messageRangeChecksum,
-          context,
-        );
-        const lesson = await input.course.access.getLesson(retried.lessonId);
-        if (lesson !== undefined) {
-          await captureReviewProfileCheckpoint({
-            checkpointKind: 'lesson_review_finalized',
-            sourceRef: `review:${reviewIdForLesson(retried.lessonId)}`,
-            markdown: generated.markdown,
-            courseId: lesson.courseId,
-            lessonId: retried.lessonId,
-            observedAt: input.now().toISOString(),
-          });
-          await refreshNextLessonRecommendation(
-            lesson.courseId,
-            'lesson-completed',
-            retried.lessonId,
-          );
-        }
-        return committed;
+        void scheduleLessonClosureFinalization(retried, context);
+        return retried;
       },
       async getCourseReview(courseId) {
         const review = await reviewClosureRepositories.courseReviews.get(courseId);
@@ -636,14 +649,14 @@ export function createLocalReviewRuntime(
         });
       }
       for await (const closure of lessonClosureRepository.list()) {
-        if (closure.state !== 'committing') continue;
+        if (!['generating', 'review-ready', 'committing'].includes(closure.state)) continue;
         const learning = await input.learning.access.getRecord(closure.lessonId);
         const pageInstanceId = learning?.writeLease?.pageInstanceId;
         if (learning === undefined || pageInstanceId === undefined) {
           throw new Error(`LESSON_CLOSURE_RECOVERY_CONTEXT_MISSING:${closure.transactionId}`);
         }
         const recoveredAt = new Date().toISOString();
-        await lessonClosures.recover(closure.transactionId, closure.messageRangeChecksum, {
+        const recoveryContext: CommandContext = {
           commandId: `recover_${closure.transactionId}`,
           correlationId: `recover_${closure.transactionId}`,
           idempotencyKey: `recover_${closure.transactionId}`,
@@ -652,7 +665,16 @@ export function createLocalReviewRuntime(
           receivedAt: recoveredAt,
           expectedVersion: learning.resourceVersion,
           pageInstanceId,
-        });
+        };
+        if (closure.state === 'committing') {
+          await lessonClosures.recover(
+            closure.transactionId,
+            closure.messageRangeChecksum,
+            recoveryContext,
+          );
+          continue;
+        }
+        await scheduleLessonClosureFinalization(closure, recoveryContext);
       }
     },
   };

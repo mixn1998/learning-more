@@ -310,6 +310,93 @@ describe('learning SessionPage', () => {
     expect(screen.queryByText('现在结束将放弃本课')).not.toBeInTheDocument();
   });
 
+  it('immediately reports final Review generation while lesson closure continues in background', async () => {
+    const closeLesson = vi.fn(() => new Promise<never>(() => undefined));
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 8,
+      learning: { progress: 'in_progress', session: { id: 'session_01', state: 'active' } },
+      closurePreparation: {
+        sessionId: 'session_01',
+        sourceSessionIds: ['session_01'],
+        sourceMessageIds: ['message_ai_final'],
+        messageRangeChecksum: 'a'.repeat(64),
+        endIntent: 'complete_lesson',
+      },
+      teachingProgress: {
+        ledgerVersion: 7,
+        observationStatus: 'current',
+        lessonPhase: 'ready_to_close',
+        comprehensiveCheck: 'completed',
+        closureInquiry: 'confirmed_no_questions',
+        summaryStatus: 'delivered',
+        knowledgePoints: [],
+      },
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, closeLesson })} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
+    fireEvent.click(screen.getByRole('button', { name: '完成本课' }));
+
+    await waitFor(() => expect(closeLesson).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByText('本课已结束，最终 Review 正在生成中，可稍后返回课程页面查看。'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('学习输入')).toBeDisabled();
+  });
+
+  it('polls a background lesson closure and opens the completed final Review', async () => {
+    const closeLesson = vi.fn().mockResolvedValue({
+      transactionId: 'closure_01',
+      lessonId: 'lesson_01',
+      state: 'generating',
+      generationTaskId: 'task_review_01',
+      resourceVersion: 2,
+    });
+    const getClosure = vi.fn().mockResolvedValue({
+      transactionId: 'closure_01',
+      lessonId: 'lesson_01',
+      state: 'completed',
+      finalReviewId: 'review_final_01',
+      review: { artifactRef: 'artifact_review_01', markdown: '# 最终 Review\n\n完成。' },
+      resourceVersion: 5,
+    });
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 8,
+      learning: { progress: 'in_progress', session: { id: 'session_01', state: 'active' } },
+      closurePreparation: {
+        sessionId: 'session_01',
+        sourceSessionIds: ['session_01'],
+        sourceMessageIds: ['message_ai_final'],
+        messageRangeChecksum: 'a'.repeat(64),
+        endIntent: 'complete_lesson',
+      },
+      teachingProgress: {
+        ledgerVersion: 7,
+        observationStatus: 'current',
+        lessonPhase: 'ready_to_close',
+        comprehensiveCheck: 'completed',
+        closureInquiry: 'confirmed_no_questions',
+        summaryStatus: 'delivered',
+        knowledgePoints: [],
+      },
+    });
+    render(
+      <SessionPage lessonId="lesson_01" client={client({ getSession, closeLesson, getClosure })} />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
+    fireEvent.click(screen.getByRole('button', { name: '完成本课' }));
+
+    expect(
+      await screen.findByText('本课已结束，最终 Review 正在生成中，可稍后返回课程页面查看。'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('最终 Review', {}, { timeout: 2_500 })).toBeInTheDocument();
+    expect(getClosure).toHaveBeenCalledWith('closure_01');
+    expect(
+      screen.queryByText('本课已结束，最终 Review 正在生成中，可稍后返回课程页面查看。'),
+    ).not.toBeInTheDocument();
+  });
+
   it('reconciles a background version advance before retrying a session command', async () => {
     const getSession = vi
       .fn()
