@@ -29,6 +29,25 @@ export type CandidateEvidence = Readonly<{
   resourceVersion: number;
 }>;
 
+export const REASONING_SESSION_DIMENSION_PROJECTION = 'reasoning-session-dimension@2';
+
+export function isGlobalReasoningDimensionEvidence(candidate: CandidateEvidence): boolean {
+  return (
+    candidate.sourceGroup === 'behavior' &&
+    candidate.extractorVersion.endsWith(`:${REASONING_SESSION_DIMENSION_PROJECTION}`)
+  );
+}
+
+export function isGovernedBehaviorDetail(candidate: CandidateEvidence): boolean {
+  const kind = candidate.governance?.candidateKind;
+  return kind === 'learning_behavior' || kind === 'thinking_behavior';
+}
+
+export function isGlobalProfileEvidence(candidate: CandidateEvidence): boolean {
+  if (isGovernedBehaviorDetail(candidate)) return false;
+  return candidate.sourceGroup !== 'behavior' || isGlobalReasoningDimensionEvidence(candidate);
+}
+
 export type SourceCheckpoint = Readonly<{
   checkpointId: string;
   sourceGroup: EvidenceSourceGroup;

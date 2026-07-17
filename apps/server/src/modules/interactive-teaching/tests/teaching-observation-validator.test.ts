@@ -63,13 +63,16 @@ describe('teaching observation validator', () => {
 
   it('rejects interrupted assistant output as teaching evidence', () => {
     expect(() =>
-      validateTeachingObservation({ ...observation(), interactions: [] }, {
-        ...validationContext,
-        messages: [
-          { messageId: 'message_ai_1', role: 'assistant', completionStatus: 'interrupted' },
-          validationContext.messages[1],
-        ],
-      }),
+      validateTeachingObservation(
+        { ...observation(), interactions: [] },
+        {
+          ...validationContext,
+          messages: [
+            { messageId: 'message_ai_1', role: 'assistant', completionStatus: 'interrupted' },
+            validationContext.messages[1],
+          ],
+        },
+      ),
     ).toThrowError('assistant_evidence_incomplete');
   });
 

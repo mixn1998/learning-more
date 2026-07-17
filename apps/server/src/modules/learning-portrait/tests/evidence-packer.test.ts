@@ -22,7 +22,7 @@ function evidence(
     observedAt: '2026-07-10T00:00:00.000Z',
     strength: { score: 2, rationale: 'A committed fact with bounded local interpretation.' },
     polarity: 'supporting',
-    extractorVersion: 'facts@1',
+    extractorVersion: 'reasoning-analyzer@2:reasoning-session-dimension@2',
     dedupKey: id.padEnd(64, 'a').slice(0, 64),
     status: 'active',
     resourceVersion: 1,
@@ -31,6 +31,24 @@ function evidence(
 }
 
 describe('EvidencePacker', () => {
+  it('excludes raw lifecycle behavior, including pause facts, from portrait input', () => {
+    const packed = packPortraitEvidence({
+      evidence: [
+        evidence('legacy_pause', 'learning.session_regulation', 'lesson:01', {
+          sourceFactType: 'LessonPausedFact',
+          extractorVersion: 'facts@1',
+        }),
+      ],
+      tokenBudget: 1_000,
+      dimensionPriority: [],
+    });
+
+    expect(packed.includedEvidenceIds).toEqual([]);
+    expect(packed.excluded).toEqual([
+      { evidenceId: 'legacy_pause', reason: 'not_global_profile_evidence' },
+    ]);
+  });
+
   it('[EQ-POR-07] collapses conversation/Review and other derived evidence onto the same underlying source group', () => {
     const packed = packPortraitEvidence({
       evidence: [

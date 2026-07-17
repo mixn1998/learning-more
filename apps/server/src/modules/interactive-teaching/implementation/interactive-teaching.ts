@@ -826,8 +826,7 @@ export function createInteractiveTeaching(options: {
       const observedThrough = ledger?.state.observedThroughMessageId;
       const lastMessage = messages.at(-1)?.messageId;
       const interactionBackfillRequired = ledger?.observations.some(
-        (observation) =>
-          observation.status === 'active' && observation.interactions === undefined,
+        (observation) => observation.status === 'active' && observation.interactions === undefined,
       );
       if (
         ledger === undefined ||

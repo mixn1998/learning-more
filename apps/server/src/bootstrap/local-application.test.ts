@@ -8,6 +8,7 @@ import { HomeDashboardResponseSchema } from '@learning-more/contracts';
 
 import { createMockProvider } from '../ai-providers/mock-provider.js';
 import { reviewIdForLesson } from '../modules/review-closure/implementation/stage-review.js';
+import { stagePortraitRefreshState } from '../persistence/course-archive-store.js';
 import { DataRoot } from '../persistence/data-root.js';
 import { createLocalFileCourseCreationRepositories } from '../persistence/course-creation-repositories.js';
 import { createLocalFileLearningSessionRepositories } from '../persistence/learning-session-repositories.js';
@@ -27,7 +28,11 @@ const baseHeaders = {
 };
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })),
+  );
 });
 
 describe('local CourseAuthoring application', () => {
@@ -373,6 +378,30 @@ describe('local CourseAuthoring application', () => {
     });
     expect(after.total).toBe(before.total);
   }, 15_000);
+
+  it('does not expose a failed course-deletion refresh as the current learning portrait', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-portrait-state-'));
+    roots.push(directory);
+    const local = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
+    const app = await buildApp(local.serverDependencies);
+    const unitOfWork = createUnitOfWork({ dataRoot: DataRoot.create(directory) });
+    await unitOfWork.execute({ transactionId: 'tx_stale_portrait_refresh' }, (tx) =>
+      stagePortraitRefreshState(tx, {
+        schemaVersion: 1,
+        state: 'failed',
+        reason: 'course_deleted',
+        courseId: 'course_deleted',
+        updatedAt: '2026-07-17T00:00:00.000Z',
+        errorCode: 'portrait_refresh_failed',
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/portrait' });
+
+    expect(response.statusCode).toBe(404);
+    await app.close();
+    await local.close();
+  });
 
   it('[EQ-COURSE-03..06] runs confirmation, revision, closure, review, and permanent deletion through HTTP → Module → LocalFile', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-'));

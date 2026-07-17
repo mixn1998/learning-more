@@ -26,6 +26,8 @@ export interface StoreWriteLeaseOwner {
 
 export interface StoreWriteLeaseOptions {
   readonly isProcessAlive?: (processId: number) => boolean;
+  readonly waitTimeoutMs?: number;
+  readonly retryIntervalMs?: number;
 }
 
 function processIsAlive(processId: number): boolean {
@@ -86,15 +88,23 @@ export async function acquireStoreWriteLease(
   owner: StoreWriteLeaseOwner = { instanceId: randomUUID(), processId: process.pid },
   options: StoreWriteLeaseOptions = {},
 ): Promise<StoreWriteLease> {
+  const waitTimeoutMs = options.waitTimeoutMs ?? 0;
+  const retryIntervalMs = options.retryIntervalMs ?? 10;
+  if (!Number.isFinite(waitTimeoutMs) || waitTimeoutMs < 0) {
+    throw new RangeError('store_write_lease_wait_timeout_invalid');
+  }
+  if (!Number.isFinite(retryIntervalMs) || retryIntervalMs <= 0) {
+    throw new RangeError('store_write_lease_retry_interval_invalid');
+  }
   const locksDirectory = dataRoot.resolve('locks');
   const leasePath = path.join(locksDirectory, 'store-write.lock');
   const token = randomUUID();
+  const waitStartedAt = Date.now();
   await mkdir(locksDirectory, { recursive: true });
   let handle;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  while (handle === undefined) {
     try {
       handle = await open(leasePath, 'wx');
-      break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       const retired = await retireDeadLease(
@@ -102,10 +112,14 @@ export async function acquireStoreWriteLease(
         token,
         options.isProcessAlive ?? processIsAlive,
       );
-      if (!retired || attempt === 1) throw new StoreWriteLeaseError();
+      if (retired) continue;
+      const elapsed = Date.now() - waitStartedAt;
+      if (elapsed >= waitTimeoutMs) throw new StoreWriteLeaseError();
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(retryIntervalMs, waitTimeoutMs - elapsed)),
+      );
     }
   }
-  if (handle === undefined) throw new StoreWriteLeaseError();
   try {
     await handle.writeFile(
       encodeJson({

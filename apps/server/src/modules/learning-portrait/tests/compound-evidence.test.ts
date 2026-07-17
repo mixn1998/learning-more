@@ -18,7 +18,7 @@ function evidence(id: string, group: string, polarity: CandidateEvidence['polari
     observedAt: '2026-07-10T00:00:00.000Z',
     strength: { score: 2 as const, rationale: 'A committed but context-bounded source fact.' },
     polarity,
-    extractorVersion: 'facts@1',
+    extractorVersion: 'reasoning-analyzer@2:reasoning-session-dimension@2',
     dedupKey: id.padEnd(64, 'a').slice(0, 64),
     status: 'active' as const,
     resourceVersion: 1,

@@ -238,6 +238,7 @@ describe('GenerationTeachingAgent', () => {
 
     expect(fake.request()?.prompt).toContain('当前处于讨论答疑阶段');
     expect(fake.request()?.prompt).toContain('如果学习者提出疑问，完整回应');
+    expect(fake.request()?.prompt).toContain('在回复末尾再次自然询问是否还有其他疑惑或讲解需求');
     expect(fake.request()?.prompt).toContain('不要提前输出最终课程总结');
     expect(fake.request()?.prompt).toContain('用户可以连续追问任意轮次');
     expect(fake.request()?.prompt).toContain('才输出结构完整、简洁连贯的最终课程总结');

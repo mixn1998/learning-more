@@ -14,6 +14,7 @@ import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/
 import { createProfileEvidencePipeline } from '../../modules/profile-evidence/implementation/pipeline.js';
 import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
 import { createReasoningEvidenceProjector } from '../../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
+import { isGovernedBehaviorDetail } from '../../modules/profile-evidence/interface.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createLocalFilePortraitRepository } from '../../persistence/portrait-repositories.js';
 import { createLocalFileEvidenceRepositories } from '../../persistence/profile-evidence-repositories.js';
@@ -29,7 +30,7 @@ function parseStructuredJson(markdown: string): unknown {
 }
 
 export type LocalProfileRuntime = Readonly<{
-  checkpointSink: Readonly<{ capture(input: unknown): void }>;
+  checkpointSink: Readonly<{ capture(input: unknown): Promise<void> }>;
   reasoningBehaviorSink: ReturnType<typeof createReasoningBehaviorModule>;
   profileRoutes: ProfileRouteOptions;
   portraitRoutes: PortraitRouteOptions;
@@ -59,7 +60,7 @@ export function createLocalProfileRuntime(
       runtime: input.generation.runtime,
       execution: input.generation.execution,
       providerId: 'current',
-      analyzerVersion: 'reasoning-analyzer@1',
+      analyzerVersion: 'reasoning-global-analyzer@2',
     }),
     now: input.now,
     nextTransactionId: () => `tx_reasoning_${randomUUID()}`,
@@ -88,7 +89,7 @@ export function createLocalProfileRuntime(
   let profileEvidenceBarrier: Promise<void> = Promise.resolve();
   let projectionStatus: 'ready' | 'degraded' = 'ready';
 
-  function enqueueProfileEvidenceCheckpoint(checkpoint: unknown): void {
+  async function enqueueProfileEvidenceCheckpoint(checkpoint: unknown): Promise<void> {
     const queued = profileEvidenceBarrier.then(async () => {
       if (typeof checkpoint !== 'object' || checkpoint === null || Array.isArray(checkpoint)) {
         throw new Error('profile_checkpoint_invalid');
@@ -129,14 +130,48 @@ export function createLocalProfileRuntime(
           candidates: extracted.candidates,
         });
       }
+      if (
+        (extracted.checkpoint.checkpointKind === 'stage_review_finalized' ||
+          extracted.checkpoint.checkpointKind === 'lesson_review_finalized') &&
+        extracted.checkpoint.courseId !== undefined &&
+        extracted.checkpoint.courseMode !== undefined
+      ) {
+        const sessionSource = extracted.checkpoint.dependentSourceGroupIds
+          .map((sourceGroupId) => /^lesson:([^:]+):session:(.+)$/u.exec(sourceGroupId))
+          .find((match): match is RegExpExecArray => match !== null);
+        if (sessionSource !== undefined) {
+          await reasoningBehaviorModule.captureFromReview({
+            courseId: extracted.checkpoint.courseId,
+            courseMode: extracted.checkpoint.courseMode,
+            lessonId: sessionSource[1]!,
+            sessionId: sessionSource[2]!,
+            checkpointId: extracted.checkpoint.checkpointId,
+            sourceSnapshotHash: extracted.sourceSnapshotHash,
+            extractedAt: extracted.extractedAt,
+            observedAt: extracted.checkpoint.sources
+              .map((source) => source.observedAt)
+              .sort()
+              .at(-1)!,
+            candidates: extracted.candidates,
+          });
+        }
+      }
     });
-    profileEvidenceBarrier = queued.catch(() => undefined);
+    profileEvidenceBarrier = queued.catch(() => {
+      projectionStatus = 'degraded';
+    });
+    await profileEvidenceBarrier;
   }
 
   async function latestUsableReasoningAnalysis() {
     let latest: ReasoningBehaviorAnalysisRecord | undefined;
     for await (const analysis of reasoningBehaviorRepository.listAnalyses()) {
-      if (analysis.snapshot.status !== 'usable') continue;
+      if (
+        analysis.snapshot.status !== 'usable' ||
+        analysis.snapshot.analyzerVersion !== 'reasoning-global-analyzer@2'
+      ) {
+        continue;
+      }
       const filter = analysis.snapshot.filter;
       if (
         filter.windowStart !== undefined ||
@@ -155,6 +190,16 @@ export function createLocalProfileRuntime(
     return latest;
   }
 
+  function stableReasoningDimensions(analysis: ReasoningBehaviorAnalysisRecord | undefined) {
+    if (analysis === undefined) return [];
+    const stableIds = new Set(
+      analysis.snapshot.dimensions
+        .filter((dimension) => dimension.independentSourceGroupCount >= 2)
+        .map((dimension) => dimension.dimensionId),
+    );
+    return analysis.dimensions.filter((dimension) => stableIds.has(dimension.dimensionId));
+  }
+
   async function refreshAndProjectReasoningAnalysis(
     filter?: Parameters<typeof reasoningBehaviorModule.refreshAnalysis>[0],
   ) {
@@ -165,7 +210,8 @@ export function createLocalProfileRuntime(
 
   async function recoverReasoningAnalysis(): Promise<void> {
     try {
-      await refreshAndProjectReasoningAnalysis();
+      const analysis = await refreshAndProjectReasoningAnalysis();
+      if (analysis !== undefined) projectionStatus = 'ready';
     } catch {
       projectionStatus = 'degraded';
     }
@@ -175,7 +221,7 @@ export function createLocalProfileRuntime(
     factRepository: input.events.factRepository,
     repositories: evidenceRepositories,
     unitOfWork: input.unitOfWork,
-    extractorVersion: 'facts@1',
+    extractorVersion: 'facts@2',
     now: input.now,
     nextTransactionId: () => `tx_evidence_${randomUUID()}`,
   });
@@ -249,6 +295,7 @@ export function createLocalProfileRuntime(
       globalProfile(),
       latestUsableReasoningAnalysis(),
     ]);
+    const stableReasoning = stableReasoningDimensions(reasoningBehaviorAnalysis);
     const candidates = [];
     for await (const candidate of evidenceRepositories.evidence.list()) candidates.push(candidate);
     const packedEvidence = packPortraitEvidence({
@@ -262,7 +309,7 @@ export function createLocalProfileRuntime(
       window: profile.window,
       promptTemplateVersion: 'portrait@1',
       providerConfigFingerprint: createHash('sha256').update('mock').digest('hex'),
-      ...(reasoningBehaviorAnalysis === undefined
+      ...(reasoningBehaviorAnalysis === undefined || stableReasoning.length === 0
         ? {}
         : {
             reasoningBehaviorInput: {
@@ -308,13 +355,7 @@ export function createLocalProfileRuntime(
   }) => {
     const reasoning = await latestUsableReasoningAnalysis();
     const createdAt = input.now().toISOString();
-    const counts = new Map(
-      reasoning?.snapshot.dimensions.map((count) => [count.dimensionId, count]) ?? [],
-    );
-    const reasoningSignals = (reasoning?.dimensions ?? [])
-      .filter(
-        (dimension) => (counts.get(dimension.dimensionId)?.independentSourceGroupCount ?? 0) >= 2,
-      )
+    const reasoningSignals = stableReasoningDimensions(reasoning)
       .slice(0, 8)
       .map((dimension) => ({
         evidenceId: dimension.dimensionId,
@@ -334,6 +375,7 @@ export function createLocalProfileRuntime(
       if (
         candidate.status !== 'active' ||
         governance === undefined ||
+        isGovernedBehaviorDetail(candidate) ||
         governance.safetyStatus === 'blocked' ||
         governance.confidence < 0.65 ||
         (governance.explicitness === 'ai_observed' && governance.observedCount < 2)
@@ -410,16 +452,23 @@ export function createLocalProfileRuntime(
       portraitRepository.getVersion(versionId),
       latestUsableReasoningAnalysis(),
     ]);
+    const stableDimensions = stableReasoningDimensions(reasoningBehaviorAnalysis);
+    const stableIds = new Set(stableDimensions.map((dimension) => dimension.dimensionId));
     return portrait === undefined
       ? undefined
       : {
           ...portrait,
-          ...(reasoningBehaviorAnalysis === undefined
+          ...(reasoningBehaviorAnalysis === undefined || stableDimensions.length === 0
             ? {}
             : {
                 reasoningBehaviorAnalysis: {
-                  snapshot: reasoningBehaviorAnalysis.snapshot,
-                  dimensions: reasoningBehaviorAnalysis.dimensions,
+                  snapshot: {
+                    ...reasoningBehaviorAnalysis.snapshot,
+                    dimensions: reasoningBehaviorAnalysis.snapshot.dimensions.filter((dimension) =>
+                      stableIds.has(dimension.dimensionId),
+                    ),
+                  },
+                  dimensions: stableDimensions,
                 },
               }),
         };
@@ -445,7 +494,12 @@ export function createLocalProfileRuntime(
     async listWeeklyReasoningEvidence() {
       const evidence: AdditionalWeeklyEvidence[] = [];
       for await (const episode of reasoningBehaviorRepository.listEpisodes()) {
-        if (episode.status !== 'active') continue;
+        if (
+          episode.status !== 'active' ||
+          episode.extractorVersion !== 'reasoning-episode-extractor@1'
+        ) {
+          continue;
+        }
         evidence.push({
           factId: `reasoning:${episode.episodeId}`,
           sourceRef: `reasoning:${episode.episodeId}`,

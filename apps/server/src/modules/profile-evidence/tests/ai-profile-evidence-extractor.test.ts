@@ -82,6 +82,28 @@ function draft(overrides: Record<string, unknown> = {}) {
 }
 
 describe('AI profile evidence extractor', () => {
+  it('drops pause lifecycle facts instead of turning them into behavior evidence', async () => {
+    const fake = runtimeWith({
+      candidates: [
+        draft({
+          claimDimension: 'learning.session_regulation',
+          label: '暂停学习',
+          summary: '用户在本次学习中暂停了计时。',
+        }),
+      ],
+    });
+    const extractor = createAiProfileEvidenceExtractor({
+      runtime: fake.runtime,
+      providerId: 'mock',
+      analyzerVersion: 'profile-evidence-analyzer@1',
+      extractorVersion: 'profile-evidence@1',
+      now: () => new Date('2026-07-14T00:00:01.000Z'),
+    });
+
+    await expect(extractor.extract(checkpoint())).resolves.toMatchObject({ candidates: [] });
+    expect(fake.request()?.prompt).toContain('不得生成 learning_behavior 或 thinking_behavior');
+  });
+
   it('accepts an evidence-derived dimension that is not part of a fixed taxonomy', async () => {
     const fake = runtimeWith({ candidates: [draft()] });
     const extractor = createAiProfileEvidenceExtractor({

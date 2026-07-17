@@ -96,7 +96,7 @@ export function isExplicitNoFurtherQuestions(message: string | undefined): boole
   const normalized = raw.replace(/[。！!，,、\s]+/gu, '');
   return [
     /^(?:暂时)?(?:没有|没)(?:其他|别的|更多)?(?:问题|疑问|疑惑)?(?:了)?(?:(?:(?:本课)?(?:可以)?(?:结束本课|结束|结课))|(?:(?:请|你可以)?(?:总结一下|进行总结|总结)(?:了|吧)?))?(?:谢谢|感谢)?$/u,
-    /^(?:都)?(?:清楚|明白|理解)(?:了)?(?:谢谢|感谢)?$/u,
+    /^(?:(?:这个|当前|刚才)(?:问题|概念|内容))?(?:我)?(?:都|已经|完全)?(?:清楚|明白|理解)(?:了)?(?:谢谢|感谢)?$/u,
     /^(?:不需要|无需)(?:继续|更多|其他)?(?:讲解|说明)?(?:了)?(?:谢谢|感谢)?$/u,
     /^(?:可以|请)?(?:结束|结课|结束本课)(?:了)?(?:谢谢|感谢)?$/u,
   ].some((pattern) => pattern.test(normalized));
@@ -202,8 +202,7 @@ export function applyTeachingDirective(
   }
   if (
     directive.lessonPhase === 'discussion' &&
-    (directive.closureInquiry !== 'awaiting_confirmation' ||
-      directive.summaryStatus !== 'pending')
+    (directive.closureInquiry !== 'awaiting_confirmation' || directive.summaryStatus !== 'pending')
   ) {
     invalid('teaching_directive_discussion_confirmation_required');
   }

@@ -122,6 +122,25 @@ export function createProfileEvidencePipeline(options: {
         const updates = new Map<string, CandidateEvidence>();
         const additions: CandidateEvidence[] = [];
         for (const { fact, drafts } of preparedFacts) {
+          const factRef = `fact:${fact.factId}`;
+          for (const item of existing) {
+            if (
+              item.status !== 'active' ||
+              item.sourceGroup !== extractor.sourceGroup ||
+              item.extractorVersion === options.extractorVersion ||
+              !item.sourceRefs.includes(factRef)
+            ) {
+              continue;
+            }
+            const stillProduced = drafts.some(
+              (draft) =>
+                draft.claimDimension === item.claimDimension &&
+                draft.sourceGroupId === item.sourceGroupId &&
+                JSON.stringify([...draft.sourceRefs].sort()) ===
+                  JSON.stringify([...item.sourceRefs].sort()),
+            );
+            if (!stillProduced) updates.set(item.evidenceId, { ...item, status: 'retracted' });
+          }
           const supersedesFactId =
             typeof fact.payload.supersedesFactId === 'string'
               ? fact.payload.supersedesFactId

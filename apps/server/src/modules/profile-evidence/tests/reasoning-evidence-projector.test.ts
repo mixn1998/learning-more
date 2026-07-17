@@ -158,4 +158,112 @@ describe('reasoning evidence projector', () => {
       }),
     ).resolves.toEqual({ created: 0 });
   });
+
+  it('projects one abstract candidate per learning session and global dimension', async () => {
+    const evidenceRepositories = createInMemoryEvidenceRepositories();
+    const episodes = new Map(
+      [
+        ['episode_1', 'session_1', 'message_1', '2026-07-13T00:00:00.000Z'],
+        ['episode_2', 'session_1', 'message_2', '2026-07-13T00:01:00.000Z'],
+        ['episode_3', 'session_2', 'message_3', '2026-07-13T00:02:00.000Z'],
+      ].map(([episodeId, sessionId, messageId, observedAt]) => [
+        episodeId!,
+        {
+          episodeId: episodeId!,
+          schemaVersion: 1 as const,
+          courseId: 'course_01',
+          lessonId: `lesson_${sessionId!.at(-1)}`,
+          sessionId: sessionId!,
+          courseMode: 'standard' as const,
+          behaviorSummary: 'A Review-produced session dimension.',
+          sourceObservationRef: `review:${sessionId}`,
+          sourceRefs: [`message:${messageId}`],
+          sourceGroupId: `legacy:${episodeId}`,
+          elicitation: 'unknown' as const,
+          observedAt: observedAt!,
+          sourceSnapshotHash: episodeId!.at(-1)!.repeat(64),
+          extractorVersion: 'review-session-dimension@1',
+          extractedAt: '2026-07-13T00:03:00.000Z',
+          status: 'active' as const,
+          resourceVersion: 1,
+        },
+      ]),
+    );
+    const projector = createReasoningEvidenceProjector({
+      reasoningRepository: { getEpisode: async (episodeId) => episodes.get(episodeId) },
+      evidenceRepositories,
+      unitOfWork: {
+        execute: async (_request, work) =>
+          work({
+            stageJson: async () => undefined,
+            stageText: async () => undefined,
+            deleteOnCommit: async () => undefined,
+          }),
+      },
+      now: () => new Date('2026-07-14T00:00:00.000Z'),
+      nextTransactionId: () => 'tx_session_projection',
+    });
+
+    await expect(
+      projector.project({
+        snapshot: {
+          snapshotId: 'snapshot_sessions',
+          schemaVersion: 1,
+          dimensionSetVersion: 'set_sessions',
+          analyzerVersion: 'reasoning-global-analyzer@2',
+          sourceEpisodeIds: [...episodes.keys()],
+          filter: { courseIds: [], lessonIds: [], courseModes: [], elicitations: [] },
+          eligibleEpisodeCount: 3,
+          independentSourceGroupCount: 2,
+          dimensions: [],
+          limitations: [],
+          sourceSnapshotHash: 'f'.repeat(64),
+          createdAt: '2026-07-14T00:00:00.000Z',
+          status: 'usable',
+        },
+        dimensions: [
+          {
+            dimensionId: 'dimension_condition_checking',
+            dimensionSetVersion: 'set_sessions',
+            label: '前提核查',
+            description: '在形成判断前主动确认约束、规则和信息完整性。',
+            inclusionSignals: [],
+            exclusionSignals: [],
+            derivedFromEpisodeIds: [...episodes.keys()],
+            analyzerVersion: 'reasoning-global-analyzer@2',
+            createdAt: '2026-07-14T00:00:00.000Z',
+            status: 'active',
+          },
+        ],
+        classifications: [...episodes.keys()].map((episodeId, index) => ({
+          classificationId: `classification_${index}`,
+          episodeId,
+          dimensionSetVersion: 'set_sessions',
+          labels: [
+            {
+              dimensionId: 'dimension_condition_checking',
+              rationale: `Concrete rationale ${index} must not enter the global candidate.`,
+              confidence: 0.9,
+            },
+          ],
+          analyzerVersion: 'reasoning-global-analyzer@2',
+          sourceSnapshotHash: 'e'.repeat(64),
+          classifiedAt: '2026-07-14T00:00:00.000Z',
+          status: 'active' as const,
+        })),
+        resourceVersion: 1,
+      }),
+    ).resolves.toEqual({ created: 2 });
+
+    const stored = [];
+    for await (const evidence of evidenceRepositories.evidence.list()) stored.push(evidence);
+    expect(stored).toHaveLength(2);
+    expect(stored.find((evidence) => evidence.sourceGroupId === 'session:session_1')).toMatchObject(
+      {
+        summary: '前提核查：在形成判断前主动确认约束、规则和信息完整性。',
+        sourceRefs: ['message:message_1', 'message:message_2'],
+      },
+    );
+    expect(stored.every((evidence) => !evidence.summary.includes('Concrete rationale'))).toBe(true);
+  });
 });

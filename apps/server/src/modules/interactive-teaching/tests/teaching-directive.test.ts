@@ -155,6 +155,10 @@ describe('teaching directive', () => {
     expect(isExplicitNoFurtherQuestions('暂时没有其他疑问了，谢谢。')).toBe(true);
     expect(isExplicitNoFurtherQuestions('可以结束本课')).toBe(true);
     expect(isExplicitNoFurtherQuestions('没有其他问题了，你可以总结一下吧。')).toBe(true);
+    expect(isExplicitNoFurtherQuestions('明白了')).toBe(true);
+    expect(isExplicitNoFurtherQuestions('这个问题我理解了')).toBe(true);
+    expect(isExplicitNoFurtherQuestions('明白了，我还想继续讨论应用场景')).toBe(false);
+    expect(isExplicitNoFurtherQuestions('这个问题我理解了，不过还有一个例外')).toBe(false);
     expect(isExplicitNoFurtherQuestions('没有了，但是这个概念为什么成立？')).toBe(false);
     expect(isExplicitNoFurtherQuestions('这个概念能再解释一下吗？')).toBe(false);
   });

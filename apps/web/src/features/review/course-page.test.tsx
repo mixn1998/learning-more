@@ -575,7 +575,11 @@ describe('CoursePage', () => {
       target: { value: 'Strengthen the evidence loop' },
     });
     fireEvent.click(screen.getByRole('button', { name: '发送调整要求' }));
-    await screen.findByRole('heading', { name: 'Revised Probability', level: 2 });
+    await screen.findByRole(
+      'heading',
+      { name: 'Revised Probability', level: 2 },
+      { timeout: 3_000 },
+    );
     fireEvent.click(screen.getByRole('button', { name: '确认并发布 v2' }));
     fireEvent.click(screen.getByRole('button', { name: '确认发布' }));
 

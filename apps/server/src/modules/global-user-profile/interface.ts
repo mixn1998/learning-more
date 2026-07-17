@@ -39,6 +39,25 @@ export interface ReasoningBehaviorModule {
       safetyStatus: string;
     }>[];
   }): Promise<{ createdEpisodeIds: readonly string[] }>;
+  captureFromReview(input: {
+    courseId: string;
+    courseMode: CourseMode;
+    lessonId: string;
+    sessionId: string;
+    checkpointId: string;
+    sourceSnapshotHash: string;
+    extractedAt: string;
+    observedAt: string;
+    candidates: readonly Readonly<{
+      candidateKind: string;
+      claimDimension: string;
+      label: string;
+      summary: string;
+      sourceRefs: readonly string[];
+      confidence: number;
+      safetyStatus: string;
+    }>[];
+  }): Promise<{ createdEpisodeIds: readonly string[] }>;
   refreshAnalysis(
     filter?: Partial<ReasoningAnalysisFilter>,
   ): Promise<ReasoningBehaviorAnalysisRecord | undefined>;

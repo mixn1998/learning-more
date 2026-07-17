@@ -48,25 +48,5 @@ export function extractBehaviorEvidence(fact: LearningFact): readonly EvidenceDr
       },
     ];
   }
-  if (fact.factType === 'LessonPausedFact') {
-    return [
-      {
-        claimDimension: 'learning.session_regulation',
-        summary: 'This learning session was explicitly paused in its recorded context.',
-        sourceGroup: 'behavior',
-        sourceGroupId: lessonGroup(fact),
-        dependentSourceGroupIds: [],
-        sourceFactType: fact.factType,
-        sourceRefs: [`fact:${fact.factId}`],
-        dataKeys: fact.dataKeys,
-        observedAt: fact.occurredAt,
-        strength: {
-          score: 1,
-          rationale: 'A single pause cannot establish a stable global preference.',
-        },
-        polarity: 'supporting',
-      },
-    ];
-  }
   return [];
 }

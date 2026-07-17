@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import {
   type LearningEventEnvelope,
@@ -28,6 +28,7 @@ import type { UnitOfWork } from '../../persistence/unit-of-work.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalGenerationRuntime } from './generation-runtime.js';
+import { createLearningInteractionFactSink } from './learning-interaction-facts.js';
 import { createLearningTeachingContext } from './learning-teaching-context.js';
 import type { LocalProfileRuntime } from './profile-runtime.js';
 
@@ -166,55 +167,12 @@ export function createLocalLearningRuntime(
       providerId: 'current',
       now: input.now,
     }),
-    interactionSink: {
-      async captureFromObservation({ courseId, lessonId, sessionId, observation }) {
-        const events: LearningEventEnvelope[] = [];
-        const append = (
-          type: 'InteractionPrompted' | 'InteractionResponded' | 'InteractionSkipped',
-          interactionId: string,
-        ) => {
-          const eventId = `event_interaction_${createHash('sha256')
-            .update(`${sessionId}\0${interactionId}\0${type}`, 'utf8')
-            .digest('hex')
-            .slice(0, 40)}`;
-          events.push({
-            id: eventId,
-            schema_version: 1,
-            type,
-            occurred_at: observation.observedAt,
-            recorded_at: input.now().toISOString(),
-            source: 'TeachingObservation',
-            target_refs: { courseId, lessonId, sessionId, interactionId },
-            payload: {
-              interactionId,
-              conversationInteractionId: interactionId,
-              ...(type === 'InteractionPrompted'
-                ? { promptedAt: observation.observedAt }
-                : type === 'InteractionResponded'
-                  ? { respondedAt: observation.observedAt }
-                  : { skippedAt: observation.observedAt }),
-              observationId: observation.observationId,
-              sourceSnapshotHash: observation.sourceSnapshotHash,
-            },
-            idempotency_key: eventId,
-            correlation_id: eventId,
-          });
-        };
-        for (const interaction of observation.interactions ?? []) {
-          append('InteractionPrompted', interaction.interactionId);
-          if (interaction.outcome === 'responded') {
-            append('InteractionResponded', interaction.interactionId);
-          } else if (interaction.outcome === 'skipped') {
-            append('InteractionSkipped', interaction.interactionId);
-          }
-        }
-        if (events.length === 0) return;
-        await input.unitOfWork.execute(
-          { transactionId: `tx_interaction_facts_${randomUUID()}` },
-          (tx) => input.events.outbox.enqueue(tx, events),
-        );
-      },
-    },
+    interactionSink: createLearningInteractionFactSink({
+      listMessages: messageLog.list,
+      outbox: input.events.outbox,
+      unitOfWork: input.unitOfWork,
+      now: input.now,
+    }),
     reasoningBehaviorSink: input.profile.reasoningBehaviorSink,
     ledgerRepository: teachingLedgerRepository,
     unitOfWork: input.unitOfWork,
@@ -275,7 +233,7 @@ export function createLocalLearningRuntime(
     const lesson = await input.course.access.getLesson(checkpoint.lessonId);
     const course =
       lesson === undefined ? undefined : await input.course.access.getCourse(lesson.courseId);
-    input.profile.checkpointSink.capture({
+    void input.profile.checkpointSink.capture({
       checkpointId: `profile:${checkpoint.checkpointId}:teaching`,
       checkpointKind: 'teaching_session_closed',
       sourceType: 'lesson',
@@ -318,7 +276,7 @@ export function createLocalLearningRuntime(
       learning?.learning.session?.id === undefined
         ? []
         : [`lesson:${session.lessonId}:session:${learning.learning.session.id}`];
-    input.profile.checkpointSink.capture({
+    void input.profile.checkpointSink.capture({
       checkpointId: `profile:${session.id}:closed`,
       checkpointKind: 'supplementary_session_closed',
       sourceType: 'supplementary',

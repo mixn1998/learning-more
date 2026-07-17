@@ -69,6 +69,30 @@ describe('UnitOfWork [EQ-DATA-02]', () => {
     await first.release();
   });
 
+  it('allows a bounded waiter to acquire the lease after the active writer releases it', async () => {
+    const root = await temporaryDataRoot();
+    const first = await acquireStoreWriteLease(root, {
+      instanceId: 'instance-a',
+      processId: 101,
+    });
+
+    const waiting = acquireStoreWriteLease(
+      root,
+      { instanceId: 'instance-b', processId: 202 },
+      {
+        isProcessAlive: (processId) => processId === 101,
+        waitTimeoutMs: 500,
+        retryIntervalMs: 5,
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await first.release();
+
+    const second = await waiting;
+    await expect(readFile(second.leasePath, 'utf8')).resolves.toContain('instance-b');
+    await second.release();
+  });
+
   it('atomically replaces a lease whose owning process is no longer alive', async () => {
     const root = await temporaryDataRoot();
     const abandoned = await acquireStoreWriteLease(root, {

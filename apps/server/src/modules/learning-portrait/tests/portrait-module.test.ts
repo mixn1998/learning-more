@@ -34,7 +34,7 @@ function evidence(
     observedAt: '2026-07-10T00:00:00.000Z',
     strength: { score: 2, rationale: 'Committed fact in a bounded local learning context.' },
     polarity: 'supporting',
-    extractorVersion: 'facts@1',
+    extractorVersion: 'reasoning-analyzer@2:reasoning-session-dimension@2',
     dedupKey: id.padEnd(64, 'a').slice(0, 64),
     status: 'active',
     resourceVersion: 1,

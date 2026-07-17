@@ -63,7 +63,7 @@ describe('GenerationReasoningBehaviorAnalyzer', () => {
     const analyzer = createGenerationReasoningBehaviorAnalyzer({
       runtime,
       providerId: 'mock',
-      analyzerVersion: 'reasoning-analyzer@1',
+      analyzerVersion: 'reasoning-analyzer@2',
     });
     const result = await analyzer.analyze({
       episodes: [
@@ -95,6 +95,8 @@ describe('GenerationReasoningBehaviorAnalyzer', () => {
     expect(request?.prompt).not.toMatch(/逻辑型|关联型|发散型|结构型|隐喻型/u);
     expect(request?.prompt).not.toContain('radar');
     expect(request?.prompt).toContain('priorDimensions');
-    expect(request?.prompt).toContain('不是固定分类表');
+    expect(request?.prompt).toContain('第二次语义归并');
+    expect(request?.prompt).toContain('全局用户档案此前形成的再抽象维度');
+    expect(request?.prompt).toContain('"sourceGroupId":"session:session_1"');
   });
 });

@@ -88,7 +88,10 @@ export function createEventLog(dataRoot: DataRoot): EventLog {
   return {
     async append(event) {
       const parsed = LearningEventEnvelopeSchema.parse(event);
-      const lease = await acquireStoreWriteLease(dataRoot);
+      const lease = await acquireStoreWriteLease(dataRoot, undefined, {
+        waitTimeoutMs: 5_000,
+        retryIntervalMs: 10,
+      });
       try {
         const existing = await readRecords(dataRoot);
         if (existing.some((candidate) => candidate.id === parsed.id)) return 'duplicate';

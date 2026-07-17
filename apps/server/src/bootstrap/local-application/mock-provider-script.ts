@@ -108,13 +108,17 @@ function mockScript(
   if (prompt.startsWith('PROFILE_EVIDENCE_EXTRACTION_V1')) {
     const input = JSON.parse(prompt.slice(prompt.lastIndexOf('\n\n') + 2)) as {
       checkpoint?: {
+        checkpointKind?: string;
         sources?: { sourceRef: string; role: string; observedAt: string }[];
       };
     };
-    const userSources = (input.checkpoint?.sources ?? []).filter(
-      (source) => source.role === 'user',
+    const reviewCheckpoint =
+      input.checkpoint?.checkpointKind === 'stage_review_finalized' ||
+      input.checkpoint?.checkpointKind === 'lesson_review_finalized';
+    const eligibleSources = (input.checkpoint?.sources ?? []).filter((source) =>
+      reviewCheckpoint ? source.role === 'review' : source.role === 'user',
     );
-    const latest = userSources.at(-1);
+    const latest = eligibleSources.at(-1);
     const expiresAt = new Date(
       Date.parse(latest?.observedAt ?? '2026-07-14T00:00:00.000Z') + 90 * 86_400_000,
     ).toISOString();
@@ -128,9 +132,13 @@ function mockScript(
               : [
                   {
                     candidateKind: 'thinking_behavior',
-                    claimDimension: 'thinking_tendency.contextual_relation_exploration',
-                    label: '当前证据中的情境关系探索',
-                    summary: '在当前受控检查点中，用户通过提出对象关系或条件变化推进学习问题。',
+                    claimDimension: reviewCheckpoint
+                      ? 'thinking_tendency.conditional_revision'
+                      : 'thinking_tendency.contextual_relation_exploration',
+                    label: reviewCheckpoint ? '依据条件变化修正判断' : '当前证据中的情境关系探索',
+                    summary: reviewCheckpoint
+                      ? '该学习会话中，学习者会比较条件变化，并据此修正当前判断。'
+                      : '在当前受控检查点中，用户通过提出对象关系或条件变化推进学习问题。',
                     explicitness: 'ai_observed',
                     sourceRefs: [latest.sourceRef],
                     confidence: 0.68,
@@ -240,16 +248,49 @@ function mockScript(
                     qualityFlags: ['direct', 'complete'],
                   },
                 ],
+          interactions: [],
         }),
       },
     ];
   }
   if (prompt.startsWith('依据提供的真实上下文继续当前互动式教学')) {
+    const serializedState = /当前机器状态：(\{[^\r\n]+\})/u.exec(prompt)?.[1];
+    const state = JSON.parse(serializedState ?? '{}') as {
+      schemaVersion?: number;
+      lessonPhase?: string;
+      activeKnowledgePointRef?: string;
+      knowledgePoints?: Array<{
+        ref: string;
+        title?: string;
+        status: string;
+        interactionStatus: string;
+      }>;
+      comprehensiveCheck?: string;
+      closureInquiry?: string;
+      summaryStatus?: string;
+    };
+    const currentUserTurn = prompt.includes('【当前诉求｜用户原话】');
+    const nextState =
+      currentUserTurn && state.lessonPhase === 'warmup'
+        ? {
+            ...state,
+            lessonPhase: 'knowledge_point',
+            knowledgePoints: (state.knowledgePoints ?? []).map((point, index) =>
+              index === 0 ? { ...point, status: 'learning' } : point,
+            ),
+          }
+        : state;
     return [
-      { type: 'text', text: '我们从你刚才的问题继续，先把关键关系讲清，再根据你的理解推进。' },
+      {
+        type: 'text',
+        text: `<learning-more-control>${JSON.stringify(nextState)}</learning-more-control><learning-more-reply>我们从你刚才的问题继续，先把条件变化与判断修正之间的关系讲清。你会先检查哪个条件发生了变化，为什么？</learning-more-reply>`,
+      },
     ];
   }
-  if (prompt.startsWith('根据给定的局部思维行为证据')) {
+  if (
+    prompt.startsWith('根据给定的局部思维行为证据') ||
+    prompt.startsWith('输入 Episode 是课时或阶段 Review')
+  ) {
     const separator = prompt.lastIndexOf('\n\n');
     const input = JSON.parse(prompt.slice(separator + 2)) as {
       episodes?: { episodeId: string }[];

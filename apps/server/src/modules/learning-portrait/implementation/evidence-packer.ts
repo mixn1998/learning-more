@@ -1,4 +1,7 @@
-import type { CandidateEvidence } from '../../profile-evidence/interface.js';
+import {
+  isGlobalProfileEvidence,
+  type CandidateEvidence,
+} from '../../profile-evidence/interface.js';
 import type { EvidenceExclusionReason, PackedPortraitEvidence } from '../interface.js';
 import {
   EVIDENCE_POLICY_VERSION,
@@ -51,7 +54,9 @@ export function packPortraitEvidence(input: {
   for (const candidate of latest.values()) {
     if (candidate.status === 'retracted') exclusions.set(candidate.evidenceId, 'retracted');
     else if (candidate.status === 'superseded') exclusions.set(candidate.evidenceId, 'superseded');
-    else active.push(candidate);
+    else if (!isGlobalProfileEvidence(candidate)) {
+      exclusions.set(candidate.evidenceId, 'not_global_profile_evidence');
+    } else active.push(candidate);
   }
   const dimensions = new Map<string, CandidateEvidence[]>();
   for (const candidate of active) {

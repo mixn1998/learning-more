@@ -17,7 +17,9 @@ const PROFILE_EVIDENCE_CAPABILITY = [
   'PROFILE_EVIDENCE_EXTRACTION_V1',
   '只分析给定受控检查点中的净化片段，提取中性、局部、可撤回的候选证据。',
   'claimDimension 与 label 必须从本次行为证据中开放生成；逻辑、关联、发散、结构、隐喻只是可能示例，不是固定维度表。',
+  '当 checkpointKind 为 stage_review_finalized 或 lesson_review_finalized 时，thinking_behavior 必须按该学习会话的抽象维度聚合：合并本质相同的具体表现，label 与 summary 不得携带题目答案、课程专名或单次案例细节。',
   '每项必须引用输入中真实存在的 sourceRefs，并说明限制；证据不足时返回空 candidates。',
+  '暂停学习、页面进入后台、计时暂停或会话技术中断只是生命周期事实，任何情况下都不得生成 learning_behavior 或 thinking_behavior 候选。',
   '不得推断人格、智力或能力等级、敏感属性、医学结论、政治宗教倾向，也不得把局部表现写成永久学习风格。',
   '不得确认或改写全局用户档案；只返回 JSON：{candidates:[{candidateKind,claimDimension,label,summary,explicitness,sourceRefs,confidence,qualityFlags,limitations,safetyStatus,blockedReason?,polarity,contradictionEvidenceIds,expiryPolicy}]}。',
 ].join('\n');
@@ -28,6 +30,19 @@ const ExtractionResultSchema = z.strictObject({
 
 const FORBIDDEN_INFERENCE =
   /(?:人格|性格|智商|IQ|永久|天生|固定学习风格|能力等级|政治倾向|宗教|种族|民族|性取向|医学诊断|精神疾病|personality|intelligence|political|religion|ethnicity|sexual orientation|medical diagnosis)/iu;
+
+const PAUSED_LEARNING_BEHAVIOR =
+  /(?:暂停学习|学习暂停|页面进入后台|计时暂停|会话技术中断|learning\.session_regulation|session[_ .-]?pause)/iu;
+
+function isPausedLearningBehavior(candidate: ProfileEvidenceExtractionDraft): boolean {
+  return (
+    (candidate.candidateKind === 'learning_behavior' ||
+      candidate.candidateKind === 'thinking_behavior') &&
+    PAUSED_LEARNING_BEHAVIOR.test(
+      `${candidate.claimDimension}\n${candidate.label}\n${candidate.summary}`,
+    )
+  );
+}
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -140,14 +155,17 @@ export function createAiProfileEvidenceExtractor(options: {
       const task = await awaitTerminal(options.runtime, options.execution, handle.taskId);
       if (task.status !== 'completed') throw new Error('profile_evidence_generation_failed');
       const parsed = ExtractionResultSchema.parse(parseJson(task.draftMarkdown ?? ''));
-      validateDrafts(context, parsed.candidates);
+      const candidates = parsed.candidates.filter(
+        (candidate) => !isPausedLearningBehavior(candidate),
+      );
+      validateDrafts(context, candidates);
       return {
         checkpoint: context.checkpoint,
         sourceSnapshotHash: context.sourceSnapshotHash,
         analyzerVersion: options.analyzerVersion,
         extractorVersion: options.extractorVersion,
         extractedAt: options.now().toISOString(),
-        candidates: parsed.candidates,
+        candidates,
       };
     },
   };

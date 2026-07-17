@@ -55,6 +55,30 @@ function observation(input: {
   };
 }
 
+function reviewAggregate(input: { sessionId: string; checkpointId: string; summary: string }) {
+  return {
+    courseId: 'course_1',
+    courseMode: 'case_study' as const,
+    lessonId: 'lesson_1',
+    sessionId: input.sessionId,
+    checkpointId: input.checkpointId,
+    sourceSnapshotHash: 'c'.repeat(64),
+    extractedAt: '2026-07-14T00:02:00.000Z',
+    observedAt: '2026-07-14T00:01:00.000Z',
+    candidates: [
+      {
+        candidateKind: 'thinking_behavior',
+        claimDimension: 'thinking.session_pattern',
+        label: '会话内关系推演',
+        summary: input.summary,
+        sourceRefs: [`review:${input.checkpointId}`],
+        confidence: 0.82,
+        safetyStatus: 'usable',
+      },
+    ],
+  };
+}
+
 describe('ReasoningBehaviorModule', () => {
   it('captures open-semantic episodes idempotently and builds dynamic multi-label statistics', async () => {
     const repository = createInMemoryReasoningBehaviorRepository();
@@ -144,11 +168,28 @@ describe('ReasoningBehaviorModule', () => {
       courseMode: 'case_study',
       observation: second,
     });
+    await module.captureFromReview(
+      reviewAggregate({
+        sessionId: 'session_1',
+        checkpointId: 'review_1',
+        summary: 'The session repeatedly connected conclusions to their mechanisms.',
+      }),
+    );
+    await module.captureFromReview(
+      reviewAggregate({
+        sessionId: 'session_2',
+        checkpointId: 'review_2',
+        summary: 'The session connected changing state to the next decision.',
+      }),
+    );
 
     const episodes = [];
     for await (const episode of repository.listEpisodes()) episodes.push(episode);
-    expect(episodes).toHaveLength(2);
+    expect(episodes).toHaveLength(4);
     expect(episodes[0]).not.toHaveProperty('behaviorType');
+    expect(
+      episodes.filter((episode) => episode.extractorVersion === 'review-session-dimension@1'),
+    ).toHaveLength(2);
 
     const analysis = await module.refreshAnalysis({
       courseIds: ['course_1'],
@@ -176,8 +217,9 @@ describe('ReasoningBehaviorModule', () => {
         expect.objectContaining({
           episodeCount: 2,
           independentSourceGroupCount: 2,
-          spontaneousCount: 1,
-          elicitedCount: 1,
+          spontaneousCount: 0,
+          elicitedCount: 0,
+          unknownCount: 2,
         }),
         expect.objectContaining({ episodeCount: 1 }),
       ],
@@ -211,6 +253,14 @@ describe('ReasoningBehaviorModule', () => {
         summary: 'The learner reformulated the relationship.',
         elicitation: 'spontaneous',
       }),
+    });
+    await module.captureFromReview({
+      ...reviewAggregate({
+        sessionId: 'session_filter',
+        checkpointId: 'review_filter',
+        summary: 'The session reformulated a relationship.',
+      }),
+      courseMode: 'standard',
     });
 
     await module.refreshAnalysis({
@@ -265,6 +315,14 @@ describe('ReasoningBehaviorModule', () => {
         elicitation: 'spontaneous',
       }),
     });
+    await module.captureFromReview({
+      ...reviewAggregate({
+        sessionId: 'session_continuity_1',
+        checkpointId: 'review_continuity_1',
+        summary: 'The session explained a relationship mechanism.',
+      }),
+      courseMode: 'standard',
+    });
     const first = await module.refreshAnalysis();
     await module.captureFromObservation({
       courseId: 'course_1',
@@ -278,10 +336,59 @@ describe('ReasoningBehaviorModule', () => {
         elicitation: 'spontaneous',
       }),
     });
+    await module.captureFromReview({
+      ...reviewAggregate({
+        sessionId: 'session_continuity_2',
+        checkpointId: 'review_continuity_2',
+        summary: 'The session reused the same mechanism in a new case.',
+      }),
+      courseMode: 'standard',
+    });
     const second = await module.refreshAnalysis();
 
     expect(priorDimensionLabels).toEqual([[], ['关系机制推演']]);
     expect(second?.dimensions[0]?.dimensionId).toBe(first?.dimensions[0]?.dimensionId);
+  });
+
+  it('keeps one authoritative Review-produced dimension set per learning session', async () => {
+    const repository = createInMemoryReasoningBehaviorRepository();
+    const module = createReasoningBehaviorModule({
+      repository,
+      unitOfWork,
+      analyzer: {
+        version: 'reasoning-global-analyzer@2',
+        async analyze() {
+          return { dimensions: [], classifications: [] };
+        },
+      },
+      now: () => new Date('2026-07-14T00:03:00.000Z'),
+      nextTransactionId: () => 'tx_reasoning_review_replace',
+    });
+    await module.captureFromReview(
+      reviewAggregate({
+        sessionId: 'session_review_replace',
+        checkpointId: 'stage_review_1',
+        summary: 'The stage Review identified a condition-checking pattern.',
+      }),
+    );
+    await module.captureFromReview(
+      reviewAggregate({
+        sessionId: 'session_review_replace',
+        checkpointId: 'lesson_review_1',
+        summary: 'The final Review consolidated the pattern at lesson closure.',
+      }),
+    );
+
+    const episodes = [];
+    for await (const episode of repository.listEpisodes()) episodes.push(episode);
+    expect(episodes.filter((episode) => episode.status === 'active')).toEqual([
+      expect.objectContaining({
+        sourceGroupId: 'session:session_review_replace',
+        sourceObservationRef: 'review-checkpoint:lesson_review_1',
+        extractorVersion: 'review-session-dimension@1',
+      }),
+    ]);
+    expect(episodes.filter((episode) => episode.status === 'superseded')).toHaveLength(1);
   });
 
   it('captures a confirmed authoring conversation only after it has become a course', async () => {

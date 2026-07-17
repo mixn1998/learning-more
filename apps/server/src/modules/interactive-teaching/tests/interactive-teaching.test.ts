@@ -270,7 +270,10 @@ async function fixture(
             ],
         interactions: input.messages
           .map((message, index) => ({ message, index }))
-          .filter(({ message }) => message.role === 'assistant' && message.completionStatus === 'complete')
+          .filter(
+            ({ message }) =>
+              message.role === 'assistant' && message.completionStatus === 'complete',
+          )
           .map(({ message, index }) => {
             const response = input.messages
               .slice(index + 1)
@@ -610,12 +613,8 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('rebuilds each teaching observation from the complete session history', async () => {
-    const {
-      module,
-      drainObservations,
-      observedMessageBatches,
-      capturedInteractionObservations,
-    } = await fixture();
+    const { module, drainObservations, observedMessageBatches, capturedInteractionObservations } =
+      await fixture();
     await module.advanceTurn(
       {
         courseId: 'course_1',

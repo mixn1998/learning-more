@@ -1,5 +1,9 @@
 export type EvidenceExclusionReason =
-  'retracted' | 'superseded' | 'insufficient_composite_support' | 'budget_exceeded';
+  | 'retracted'
+  | 'superseded'
+  | 'not_global_profile_evidence'
+  | 'insufficient_composite_support'
+  | 'budget_exceeded';
 
 export type PackedPortraitEvidence = Readonly<{
   includedEvidenceIds: readonly string[];

@@ -1,17 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import type {
-  CommandContext,
-  ProfileEvidenceCheckpointKind,
-  ReviewDocument,
-  ReviewTextBlock,
-} from '@learning-more/contracts';
+import type { CommandContext } from '@learning-more/contracts';
 
 import type { ReviewClosureRouteOptions } from '../../http/routes/review-closure.js';
 import { closeCourse as closeCourseAggregate } from '../../modules/course-authoring/implementation/close-course.js';
-import { teachingPlayIntent } from '../../modules/interactive-teaching/implementation/teaching-play-intent.js';
 import { abandonLesson } from '../../modules/learning-session/implementation/abandon-lesson.js';
-import { createCourseReviewWorkflow } from '../../modules/review-closure/implementation/course-review.js';
 import { createGenerationReviewWriter } from '../../modules/review-closure/implementation/generation-review-writer.js';
 import { createLessonClosureWorkflow } from '../../modules/review-closure/implementation/lesson-closure.js';
 import type { LessonClosureRecord } from '../../modules/review-closure/model/review-state.js';
@@ -19,7 +12,6 @@ import {
   createStageReviewWorkflow,
   reviewIdForLesson,
 } from '../../modules/review-closure/implementation/stage-review.js';
-import type { CourseReviewInputManifest } from '../../modules/review-closure/interface.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import { createLocalFileReviewClosureRepositories } from '../../persistence/review-closure-repositories.js';
@@ -31,6 +23,9 @@ import type { LocalLearningRuntime } from './learning-runtime.js';
 import { createNextLessonRefresh } from './next-lesson-refresh.js';
 import type { LocalPlanningRuntime } from './planning-runtime.js';
 import type { LocalProfileRuntime } from './profile-runtime.js';
+import { createLocalCourseReviewRuntime } from './course-review-runtime.js';
+import { createReviewEvidence } from './review-evidence.js';
+import { createReviewProfileCheckpointCapture } from './review-profile-checkpoints.js';
 
 export type LocalReviewRuntime = Readonly<{
   routes: ReviewClosureRouteOptions;
@@ -54,7 +49,6 @@ export function createLocalReviewRuntime(
   const reviewClosureRepositories = createLocalFileReviewClosureRepositories(input.dataRoot);
   const sessionModule = input.learning.access.sessionModule;
   const teachingRuntime = input.learning.access.teachingRuntime;
-  const teachingContextSources = input.learning.access.teachingContextSources;
   const refreshNextLessonRecommendation = createNextLessonRefresh({
     unitOfWork: input.unitOfWork,
     artifactStore: input.artifactStore,
@@ -65,146 +59,14 @@ export function createLocalReviewRuntime(
     generation: input.generation,
   });
 
-  async function captureReviewProfileCheckpoint(checkpointInput: {
-    checkpointKind: Extract<
-      ProfileEvidenceCheckpointKind,
-      'stage_review_finalized' | 'lesson_review_finalized' | 'course_review_finalized'
-    >;
-    sourceRef: string;
-    markdown: string;
-    courseId: string;
-    lessonId?: string;
-    observedAt: string;
-  }): Promise<void> {
-    if (checkpointInput.markdown.trim() === '') return;
-    const sourceGroupId = `review:${checkpointInput.sourceRef}`;
-    const [course, lesson] = await Promise.all([
-      input.course.access.getCourse(checkpointInput.courseId),
-      checkpointInput.lessonId === undefined
-        ? Promise.resolve(undefined)
-        : input.course.access.getLesson(checkpointInput.lessonId),
-    ]);
-    const dependentSourceGroupIds: string[] = [];
-    if (checkpointInput.lessonId !== undefined) {
-      const learning = await input.learning.access.getRecord(checkpointInput.lessonId);
-      if (learning?.learning.session?.id !== undefined) {
-        dependentSourceGroupIds.push(
-          `lesson:${checkpointInput.lessonId}:session:${learning.learning.session.id}`,
-        );
-      }
-    } else if (course !== undefined) {
-      for (const lessonId of course.lessonIds) {
-        const learning = await input.learning.access.getRecord(lessonId);
-        if (learning?.finalReview !== undefined) {
-          dependentSourceGroupIds.push(`review:review:${learning.finalReview.id}`);
-        }
-      }
-    }
-    input.profile.checkpointSink.capture({
-      checkpointId: `profile:${checkpointInput.sourceRef}:${checkpointInput.checkpointKind}`,
-      checkpointKind: checkpointInput.checkpointKind,
-      sourceType: 'review',
-      sourceGroupId,
-      dependentSourceGroupIds,
-      ...(course === undefined ? {} : { courseContext: course.title }),
-      ...(lesson === undefined ? {} : { lessonContext: `${lesson.title}｜${lesson.objective}` }),
-      completeness: 'complete',
-      sources: [
-        {
-          sourceRef: checkpointInput.sourceRef,
-          sourceGroupId,
-          sourceType: 'review',
-          role: 'review',
-          excerpt: checkpointInput.markdown,
-          observedAt: checkpointInput.observedAt,
-        },
-      ],
-    });
-  }
+  const captureReviewProfileCheckpoint = createReviewProfileCheckpointCapture(input);
 
   const reviewWriter = createGenerationReviewWriter({
     runtime: input.generation.runtime,
     execution: input.generation.execution,
     providerId: 'current',
   });
-
-  function documentBlocks(document: ReviewDocument): readonly ReviewTextBlock[] {
-    if (document.kind === 'lesson-final') {
-      return [
-        document.knowledgeMap,
-        ...document.performance,
-        ...(document.additionalSections ?? []),
-      ];
-    }
-    if (document.kind === 'lesson-stage') {
-      return [
-        ...document.establishedUnderstanding,
-        ...document.pendingValidation,
-        document.knowledgeMap,
-        ...document.performance,
-        ...(document.additionalSections ?? []),
-      ];
-    }
-    return [
-      ...document.knowledgeThreads,
-      ...document.strengths,
-      ...document.development,
-      ...document.boundaries,
-      ...document.extensions,
-      ...(document.additionalSections ?? []),
-    ];
-  }
-
-  function assertReviewEvidenceRefs(
-    document: ReviewDocument | undefined,
-    expectedKind: ReviewDocument['kind'],
-    allowedRefs: ReadonlySet<string>,
-  ): void {
-    if (document === undefined) return;
-    if (document.kind !== expectedKind) throw new Error('review_document_kind_mismatch');
-    const refs = documentBlocks(document).flatMap((block) => block.evidenceRefs ?? []);
-    if (refs.some((ref) => !allowedRefs.has(ref))) {
-      throw new Error('review_document_evidence_ref_invalid');
-    }
-  }
-  async function buildReviewEvidencePack(
-    kind: 'stage' | 'final',
-    sessionId: string,
-    sourceSnapshotHash: string,
-  ) {
-    const ledger = await input.learning.access.getTeachingLedger(sessionId);
-    if (ledger === undefined) throw new Error('review_teaching_ledger_not_found');
-    const checkpoint = [...ledger.checkpoints]
-      .reverse()
-      .find((candidate) => candidate.sourceSnapshotHash === sourceSnapshotHash);
-    if (checkpoint === undefined) throw new Error('review_checkpoint_not_found');
-    const facts = await teachingContextSources.getCourseAndLesson({
-      courseId: ledger.courseId,
-      lessonId: ledger.lessonId,
-    });
-    const messages = await teachingContextSources.listMessages(sessionId);
-    const observationIds = new Set(
-      checkpoint.observationRefs.map((ref) => ref.replace(/^observation:/u, '')),
-    );
-    return {
-      kind,
-      checkpoint,
-      course: { courseId: facts.course.courseId, title: facts.course.title },
-      lesson: {
-        lessonId: facts.lesson.lessonId,
-        title: facts.lesson.title,
-        objective: facts.lesson.objective,
-        coreKnowledgePoints: facts.lesson.coreKnowledgePoints.map((point) => point.text),
-      },
-      observations: ledger.observations.filter((observation) =>
-        observationIds.has(observation.observationId),
-      ),
-      messages: messages.filter((message) =>
-        checkpoint.sourceMessageIds.includes(message.messageId),
-      ),
-      ...(facts.course.playIntent === undefined ? {} : { reviewLens: facts.course.playIntent }),
-    } as const;
-  }
+  const reviewEvidence = createReviewEvidence(input.learning);
 
   const stageReviews = createStageReviewWorkflow({
     repository: reviewClosureRepositories.stageReviews,
@@ -212,7 +74,7 @@ export function createLocalReviewRuntime(
     reviewTask: {
       async submit(reviewInput) {
         return reviewWriter.submit(
-          await buildReviewEvidencePack(
+          await reviewEvidence.build(
             'stage',
             reviewInput.sessionId,
             reviewInput.sourceSnapshotHash,
@@ -265,12 +127,12 @@ export function createLocalReviewRuntime(
         const generated = await reviewWriter.complete(review.taskId);
         const currentReview = await reviewClosureRepositories.stageReviews.get(review.reviewId);
         if (currentReview === undefined) throw new Error('stage_review_not_found');
-        const evidence = await buildReviewEvidencePack(
+        const evidence = await reviewEvidence.build(
           'stage',
           currentReview.sourceSessionId,
           currentReview.sourceSnapshotHash,
         );
-        assertReviewEvidenceRefs(
+        reviewEvidence.assertRefs(
           generated.document,
           'lesson-stage',
           new Set(evidence.checkpoint.sourceMessageIds.map((id) => `message:${id}`)),
@@ -327,7 +189,7 @@ export function createLocalReviewRuntime(
     reviewTask: {
       async submit(reviewInput) {
         return reviewWriter.submit(
-          await buildReviewEvidencePack(
+          await reviewEvidence.build(
             'final',
             reviewInput.record.sessionId,
             reviewInput.record.messageRangeChecksum,
@@ -355,7 +217,7 @@ export function createLocalReviewRuntime(
         if (current === undefined) throw new Error('lesson_closure_not_found');
         if (current.state === 'generating') {
           const generated = await reviewWriter.complete(current.generationTaskId);
-          assertReviewEvidenceRefs(
+          reviewEvidence.assertRefs(
             generated.document,
             'lesson-final',
             new Set(current.sourceMessageIds.map((id) => `message:${id}`)),
@@ -402,7 +264,7 @@ export function createLocalReviewRuntime(
           observedAt: input.now().toISOString(),
         });
         await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lesson.id);
-        triggerCourseReviewPregeneration(lesson.courseId);
+        courseReviewRuntime.triggerPregeneration(lesson.courseId);
       } catch (error) {
         const current = await lessonClosureRepository.get(closure.transactionId);
         if (current?.state !== 'generating') return;
@@ -420,220 +282,17 @@ export function createLocalReviewRuntime(
     activeLessonClosureFinalizations.set(closure.transactionId, finalization);
     return finalization;
   }
-  const courseReviews = createCourseReviewWorkflow({
-    repository: reviewClosureRepositories.courseReviews,
+  const courseReviewRuntime = createLocalCourseReviewRuntime({
+    repositories: reviewClosureRepositories,
     unitOfWork: input.unitOfWork,
-    reviewTask: {
-      async submit(reviewInput) {
-        const course = await input.course.access.getCourse(reviewInput.courseId);
-        if (course === undefined) throw new Error('course_review_course_not_found');
-        const lessons = [];
-        const finalReviewLessonByRef = new Map<string, string>();
-        for await (const lesson of input.course.access.listLessons(reviewInput.courseId)) {
-          lessons.push({
-            lessonId: lesson.id,
-            title: lesson.title,
-            objective: lesson.objective,
-            coreKnowledgePoints: lesson.coreKnowledgePoints,
-          });
-          const learning = await input.learning.access.getRecord(lesson.id);
-          if (learning?.finalReview !== undefined) {
-            finalReviewLessonByRef.set(learning.finalReview.artifactRef, lesson.id);
-          }
-        }
-        const lessonReviews = [];
-        for (const sourceRef of reviewInput.inputManifest.completedFinalReviewRefs) {
-          const lessonId = finalReviewLessonByRef.get(sourceRef);
-          const markdown = (await input.artifactStore.read(sourceRef))?.content;
-          if (lessonId === undefined || markdown === undefined) {
-            throw new Error('course_review_evidence_pack_incomplete');
-          }
-          lessonReviews.push({ lessonId, kind: 'final' as const, sourceRef, markdown });
-        }
-        for (const reviewId of reviewInput.inputManifest.abandonedStageReviewRefs) {
-          const stageReview = await reviewClosureRepositories.stageReviews.get(reviewId);
-          const artifactRef = stageReview?.artifactRef;
-          const markdown =
-            artifactRef === undefined
-              ? undefined
-              : (await input.artifactStore.read(artifactRef))?.content;
-          if (stageReview === undefined || artifactRef === undefined || markdown === undefined) {
-            throw new Error('course_review_evidence_pack_incomplete');
-          }
-          lessonReviews.push({
-            lessonId: stageReview.lessonId,
-            kind: 'stage' as const,
-            sourceRef: artifactRef,
-            markdown,
-          });
-        }
-        const playIntent = teachingPlayIntent(course.courseMode);
-        return reviewWriter.submitCourse(
-          {
-            kind: 'course',
-            course: {
-              courseId: course.id,
-              title: course.title,
-              outlineVersionId: reviewInput.inputManifest.outlineVersionId,
-            },
-            lessons,
-            lessonReviews,
-            abandonedWithoutReviewLessonIds:
-              reviewInput.inputManifest.abandonedWithoutReviewLessonIds,
-            ...(playIntent === undefined ? {} : { reviewLens: playIntent }),
-          },
-          reviewInput.commandId,
-        );
-      },
-    },
-    outbox: input.events.outbox,
-    nextEventId: () => `event_${randomUUID()}`,
-    now: () => new Date(),
-    assertCourseWritable: input.course.access.assertCourseWritable,
+    artifactStore: input.artifactStore,
+    course: input.course,
+    learning: input.learning,
+    events: input.events,
+    reviewWriter,
+    assertEvidenceRefs: reviewEvidence.assertRefs,
   });
-  const activeCourseReviewFinalizations = new Map<string, Promise<void>>();
-
-  async function buildCourseReviewInputManifest(courseId: string) {
-    const course = await input.course.access.getCourse(courseId);
-    if (course === undefined) throw new Error('course_review_course_not_found');
-    const completedFinalReviewRefs: string[] = [];
-    const abandonedStageReviewRefs: string[] = [];
-    const abandonedWithoutReviewLessonIds: string[] = [];
-    for (const lessonId of course.lessonIds) {
-      const record = await input.learning.access.getRecord(lessonId);
-      if (record?.finalReview !== undefined) {
-        completedFinalReviewRefs.push(record.finalReview.artifactRef);
-      } else if (
-        record?.learning.progress === 'abandoned' &&
-        record.learning.session?.stageReviewId !== undefined
-      ) {
-        abandonedStageReviewRefs.push(record.learning.session.stageReviewId);
-      } else if (record?.learning.progress === 'abandoned') {
-        abandonedWithoutReviewLessonIds.push(lessonId);
-      }
-    }
-    return {
-      outlineVersionId: course.outlineVersionId,
-      completedFinalReviewRefs,
-      abandonedStageReviewRefs,
-      abandonedWithoutReviewLessonIds,
-    };
-  }
-
-  async function courseIsReadyForPregeneratedReview(courseId: string): Promise<boolean> {
-    const course = await input.course.access.getCourse(courseId);
-    if (course === undefined || course.lessonIds.length === 0) return false;
-    for (const lessonId of course.lessonIds) {
-      const record = await input.learning.access.getRecord(lessonId);
-      if (record?.learning.progress !== 'completed' || record.finalReview === undefined) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  async function allowedCourseReviewEvidenceRefs(
-    manifest: CourseReviewInputManifest,
-  ): Promise<Set<string>> {
-    const refs = new Set<string>([
-      ...manifest.completedFinalReviewRefs,
-      ...manifest.abandonedStageReviewRefs,
-    ]);
-    for (const reviewId of manifest.abandonedStageReviewRefs) {
-      const stageReview = await reviewClosureRepositories.stageReviews.get(reviewId);
-      if (stageReview?.artifactRef !== undefined) refs.add(stageReview.artifactRef);
-    }
-    return refs;
-  }
-
-  function scheduleCourseReviewFinalization(courseId: string): Promise<void> {
-    const active = activeCourseReviewFinalizations.get(courseId);
-    if (active !== undefined) return active;
-    const finalization = (async () => {
-      try {
-        let current = await reviewClosureRepositories.courseReviews.get(courseId);
-        if (current === undefined) return;
-        if (current.state === 'generating-review') {
-          if (current.generationTaskId === undefined) {
-            throw new Error('course_review_generation_task_missing');
-          }
-          const generated = await reviewWriter.complete(current.generationTaskId);
-          assertReviewEvidenceRefs(
-            generated.document,
-            'course-final',
-            await allowedCourseReviewEvidenceRefs(current.inputManifest),
-          );
-          const artifactRef = `course_review_${courseId}_${current.inputManifest.outlineVersionId}`;
-          const existingArtifact = await input.artifactStore.read(artifactRef);
-          if (existingArtifact === undefined) {
-            await input.artifactStore.finalize({
-              artifactId: artifactRef,
-              kind: 'course-review',
-              content: generated.markdown,
-              immutable: true,
-            });
-          } else if (existingArtifact.contentSha256 !== generated.contentSha256) {
-            throw new Error('course_review_artifact_conflict');
-          }
-          current = await courseReviews.markReady(
-            courseId,
-            artifactRef,
-            generated.contentSha256,
-            generated.document,
-          );
-        }
-        if (current.state !== 'review-ready' || current.artifactRef === undefined) return;
-        const artifact = await input.artifactStore.read(current.artifactRef);
-        if (artifact === undefined) throw new Error('course_review_artifact_missing');
-        await courseReviews.finalize(
-          courseId,
-          `auto_finalize_course_review_${courseId}_${current.inputManifest.outlineVersionId}`,
-        );
-        await captureReviewProfileCheckpoint({
-          checkpointKind: 'course_review_finalized',
-          sourceRef: `course-review:${courseId}:${current.inputManifest.outlineVersionId}`,
-          markdown: artifact.content,
-          courseId,
-          observedAt: input.now().toISOString(),
-        });
-      } catch (error) {
-        const current = await reviewClosureRepositories.courseReviews.get(courseId);
-        if (
-          current === undefined ||
-          current.state === 'review-finalized' ||
-          current.state === 'review-failed'
-        ) {
-          return;
-        }
-        await courseReviews.fail(
-          courseId,
-          error instanceof Error && error.message.trim() !== ''
-            ? error.message.slice(0, 200)
-            : 'course_review_generation_failed',
-          current.draftArtifactRef ?? `draft_${current.generationTaskId ?? courseId}`,
-        );
-      }
-    })()
-      .catch(() => undefined)
-      .finally(() => activeCourseReviewFinalizations.delete(courseId));
-    activeCourseReviewFinalizations.set(courseId, finalization);
-    return finalization;
-  }
-
-  function triggerCourseReviewPregeneration(courseId: string): void {
-    void (async () => {
-      if (!(await courseIsReadyForPregeneratedReview(courseId))) return;
-      const manifest = await buildCourseReviewInputManifest(courseId);
-      const review = await courseReviews.request(
-        courseId,
-        manifest,
-        `auto_generate_course_review_${courseId}_${manifest.outlineVersionId}`,
-      );
-      if (review.state === 'generating-review' || review.state === 'review-ready') {
-        void scheduleCourseReviewFinalization(courseId);
-      }
-    })().catch(() => undefined);
-  }
+  const courseReviews = courseReviewRuntime.reviews;
 
   const routes: ReviewClosureRouteOptions = {
     services: {
@@ -652,7 +311,6 @@ export function createLocalReviewRuntime(
             reason: state.evidenceCheckpoint ? 'evidenced_abandon' : 'manual_pause',
           });
           await input.learning.access.captureTeachingProfileCheckpoint(checkpoint);
-          await input.profile.recoverReasoningAnalysis();
           checkpointSourceHash = checkpoint.sourceSnapshotHash;
         }
         const result = await abandonLesson(
@@ -711,7 +369,6 @@ export function createLocalReviewRuntime(
           });
         }
         await input.learning.access.captureTeachingProfileCheckpoint(checkpoint);
-        await input.profile.recoverReasoningAnalysis();
         const closure = await lessonClosures.begin({
           lessonId,
           sessionId,
@@ -738,7 +395,7 @@ export function createLocalReviewRuntime(
         if (course === undefined) {
           throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
         }
-        const inputManifest = await buildCourseReviewInputManifest(courseId);
+        const inputManifest = await courseReviewRuntime.buildInputManifest(courseId);
         const closed = await closeCourseAggregate(
           {
             courseId,
@@ -772,7 +429,7 @@ export function createLocalReviewRuntime(
           };
         }
         const review = await courseReviews.request(courseId, inputManifest, context.commandId);
-        void scheduleCourseReviewFinalization(courseId);
+        void courseReviewRuntime.scheduleFinalization(courseId);
         return {
           ...review,
           transactionId: courseId,
@@ -851,11 +508,11 @@ export function createLocalReviewRuntime(
       }
       for await (const review of reviewClosureRepositories.courseReviews.list()) {
         if (review.state === 'generating-review' || review.state === 'review-ready') {
-          void scheduleCourseReviewFinalization(review.courseId);
+          void courseReviewRuntime.scheduleFinalization(review.courseId);
         }
       }
       for await (const course of input.course.access.listCourses()) {
-        triggerCourseReviewPregeneration(course.id);
+        courseReviewRuntime.triggerPregeneration(course.id);
       }
     },
   };

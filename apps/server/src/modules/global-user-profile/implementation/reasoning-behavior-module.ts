@@ -19,6 +19,7 @@ import type {
 import { reconcileReasoningDimensions } from './reasoning-dimension-reconciler.js';
 
 const EXTRACTOR_VERSION = 'reasoning-episode-extractor@1';
+const REVIEW_SESSION_DIMENSION_EXTRACTOR_VERSION = 'review-session-dimension@1';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -36,6 +37,10 @@ function semanticKey(value: string): string {
   return value.trim().normalize('NFKC').toLocaleLowerCase('en-US');
 }
 
+function sessionSourceGroupId(sessionId: string): string {
+  return `session:${sessionId}`;
+}
+
 function normalizeFilter(filter: Partial<ReasoningAnalysisFilter> = {}): ReasoningAnalysisFilter {
   return {
     ...(filter.windowStart === undefined ? {} : { windowStart: filter.windowStart }),
@@ -50,6 +55,7 @@ function normalizeFilter(filter: Partial<ReasoningAnalysisFilter> = {}): Reasoni
 function included(episode: ReasoningBehaviorEpisode, filter: ReasoningAnalysisFilter): boolean {
   return (
     episode.status === 'active' &&
+    episode.extractorVersion === REVIEW_SESSION_DIMENSION_EXTRACTOR_VERSION &&
     (filter.windowStart === undefined || episode.observedAt >= filter.windowStart) &&
     (filter.windowEnd === undefined || episode.observedAt <= filter.windowEnd) &&
     (filter.courseIds.length === 0 || filter.courseIds.includes(episode.courseId)) &&
@@ -96,12 +102,6 @@ export function createReasoningBehaviorModule(options: {
             extractorVersion: EXTRACTOR_VERSION,
           }),
         );
-        const sourceGroupDigest = sha256(
-          JSON.stringify({
-            sessionId: input.observation.sessionId,
-            sourceRefs: normalized(entry.sourceRefs),
-          }),
-        );
         const episode = ReasoningBehaviorEpisodeSchema.parse({
           episodeId: `reasoning_episode_${digest.slice(0, 40)}`,
           schemaVersion: 1,
@@ -112,7 +112,7 @@ export function createReasoningBehaviorModule(options: {
           behaviorSummary: entry.summary,
           sourceObservationRef: `observation:${input.observation.observationId}`,
           sourceRefs: normalized(entry.sourceRefs),
-          sourceGroupId: `session:${input.observation.sessionId}:sources:${sourceGroupDigest.slice(0, 24)}`,
+          sourceGroupId: sessionSourceGroupId(input.observation.sessionId),
           elicitation: entry.elicitation ?? 'unknown',
           observedAt: input.observation.observedAt,
           sourceSnapshotHash: input.observation.sourceSnapshotHash,
@@ -169,7 +169,7 @@ export function createReasoningBehaviorModule(options: {
           behaviorSummary: candidate.summary,
           sourceObservationRef: `profile-checkpoint:${input.checkpointId}`,
           sourceRefs,
-          sourceGroupId: input.sourceGroupId,
+          sourceGroupId: sessionSourceGroupId(input.checkpointId),
           elicitation,
           observedAt: sourceRefs
             .map((ref) => sourceByRef.get(ref)!.observedAt)
@@ -191,6 +191,78 @@ export function createReasoningBehaviorModule(options: {
       return { createdEpisodeIds };
     },
 
+    async captureFromReview(input) {
+      const drafts = input.candidates
+        .filter(
+          (candidate) =>
+            candidate.candidateKind === 'thinking_behavior' && candidate.safetyStatus !== 'blocked',
+        )
+        .map((candidate) => {
+          const sourceRefs = normalized(candidate.sourceRefs);
+          const digest = sha256(
+            JSON.stringify({
+              sessionId: input.sessionId,
+              checkpointId: input.checkpointId,
+              claimDimension: candidate.claimDimension,
+              label: semanticKey(candidate.label),
+              sourceRefs,
+              extractorVersion: REVIEW_SESSION_DIMENSION_EXTRACTOR_VERSION,
+            }),
+          );
+          return ReasoningBehaviorEpisodeSchema.parse({
+            episodeId: `reasoning_session_dimension_${digest.slice(0, 40)}`,
+            schemaVersion: 1,
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
+            courseMode: input.courseMode,
+            behaviorSummary: `${candidate.label}：${candidate.summary}`,
+            sourceObservationRef: `review-checkpoint:${input.checkpointId}`,
+            sourceRefs,
+            sourceGroupId: sessionSourceGroupId(input.sessionId),
+            elicitation: 'unknown',
+            observedAt: input.observedAt,
+            sourceSnapshotHash: input.sourceSnapshotHash,
+            extractorVersion: REVIEW_SESSION_DIMENSION_EXTRACTOR_VERSION,
+            extractedAt: input.extractedAt,
+            status: 'active',
+            resourceVersion: 0,
+          });
+        });
+      const nextIds = new Set(drafts.map((draft) => draft.episodeId));
+      const superseded: ReasoningBehaviorEpisode[] = [];
+      for await (const episode of options.repository.listEpisodes()) {
+        if (
+          episode.status === 'active' &&
+          episode.sessionId === input.sessionId &&
+          episode.extractorVersion === REVIEW_SESSION_DIMENSION_EXTRACTOR_VERSION &&
+          !nextIds.has(episode.episodeId)
+        ) {
+          superseded.push({ ...episode, status: 'superseded' });
+        }
+      }
+      const additions: ReasoningBehaviorEpisode[] = [];
+      for (const draft of drafts) {
+        if ((await options.repository.getEpisode(draft.episodeId)) === undefined) {
+          additions.push(draft);
+        }
+      }
+      if (superseded.length > 0 || additions.length > 0) {
+        await options.unitOfWork.execute(
+          { transactionId: options.nextTransactionId() },
+          async (tx) => {
+            for (const episode of superseded) {
+              await options.repository.saveEpisode(tx, episode, episode.resourceVersion);
+            }
+            for (const episode of additions) {
+              await options.repository.saveEpisode(tx, episode, 0);
+            }
+          },
+        );
+      }
+      return { createdEpisodeIds: additions.map((episode) => episode.episodeId) };
+    },
+
     async refreshAnalysis(filterInput = {}) {
       const filter = normalizeFilter(filterInput);
       const episodes: ReasoningBehaviorEpisode[] = [];
@@ -206,6 +278,7 @@ export function createReasoningBehaviorModule(options: {
       let priorAnalysis: ReasoningBehaviorAnalysisRecord | undefined;
       for await (const record of options.repository.listAnalyses()) {
         if (
+          record.snapshot.analyzerVersion === options.analyzer.version &&
           filtersEqual(record.snapshot.filter, filter) &&
           isLaterAnalysis(record, priorAnalysis)
         ) {
@@ -335,8 +408,9 @@ export function createReasoningBehaviorModule(options: {
           dimensionId: dimension.dimensionId,
           episodeCount: matched.length,
           episodeShare: matched.length / episodes.length,
-          independentSourceGroupCount: new Set(matched.map((episode) => episode.sourceGroupId))
-            .size,
+          independentSourceGroupCount: new Set(
+            matched.map((episode) => sessionSourceGroupId(episode.sessionId)),
+          ).size,
           spontaneousCount: elicitationCount('spontaneous'),
           elicitedCount: elicitationCount('elicited'),
           mixedCount: elicitationCount('mixed'),
@@ -345,8 +419,9 @@ export function createReasoningBehaviorModule(options: {
           lessonCount: new Set(matched.map((episode) => episode.lessonId)).size,
         };
       });
-      const independentSourceGroupCount = new Set(episodes.map((episode) => episode.sourceGroupId))
-        .size;
+      const independentSourceGroupCount = new Set(
+        episodes.map((episode) => sessionSourceGroupId(episode.sessionId)),
+      ).size;
       const limitations = counts
         .filter((count) => count.independentSourceGroupCount < 2)
         .map(

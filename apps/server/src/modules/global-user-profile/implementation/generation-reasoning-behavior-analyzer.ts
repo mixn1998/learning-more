@@ -7,15 +7,16 @@ import type { GenerationExecution } from '../../generation-runtime/interface.js'
 import type { ReasoningBehaviorAnalyzer } from '../ports/reasoning-behavior-analyzer.js';
 
 const ANALYSIS_CAPABILITY = [
-  '根据给定的局部思维行为证据，归纳当前证据窗口中有解释力的开放语义维度，并对 Episode 做多标签归类。',
-  '维度由证据生成，不使用预设类型表；名称、定义、纳入与排除信号都要能回溯到 Episode。',
-  '不要推断人格、能力等级或永久学习风格；证据不足时可以不创建维度，单个 Episode 也可以没有标签。',
+  '输入 Episode 是课时或阶段 Review 从原始回答中产出的会话级抽象维度。请对不同学习会话中名称或表述不同但本质一致的维度做第二次语义归并，形成全局用户档案维度。',
+  '最终 dimensions 只返回跨会话可复用的全局抽象维度。label、description、纳入信号和排除信号不得包含课程专名、题目答案或其他单次会话例子。',
+  '同一学习会话内出现多次只增强该会话内支持，不得被视为多个独立来源。证据不足时可以保留暂定维度，但不得推断人格、能力等级或永久学习风格。',
+  '每个 Episode 可以归入零到多个全局维度；语义一致的 Episode 即使措辞不同，也必须归入同一全局维度。',
   'JSON 形状：dimensions 每项={label,description,inclusionSignals,exclusionSignals,derivedFromEpisodeIds}；classifications 每项={episodeId,labels:[{label,rationale,confidence}]}。标签 label 必须引用本次 dimensions 中的 label。',
-  '只返回 dimensions 与 classifications 的 JSON。',
+  '只返回 dimensions 和 classifications 的 JSON。',
 ].join('\n');
 
 const DIMENSION_CONTINUITY_POLICY =
-  'priorDimensions 是先前分析使用过的开放维度词汇：若当前证据支持同一语义，请沿用其 label；仅在确有新的可解释行为模式时新增维度。它们不是固定分类表，也不要求每个 Episode 都匹配。';
+  'priorDimensions 是全局用户档案此前形成的再抽象维度。当前会话维度与既有维度本质一致时，即使表述不同，也应沿用既有 label；只有出现无法被既有维度解释的新模式时才新增维度。priorDimensions 不是固定类型表，也不要求每个 Episode 都匹配。';
 
 const ResultSchema = z.strictObject({
   dimensions: z.array(
@@ -71,7 +72,7 @@ export function createGenerationReasoningBehaviorAnalyzer(options: {
         courseMode: episode.courseMode,
         elicitation: episode.elicitation,
         observedAt: episode.observedAt,
-        sourceGroupId: episode.sourceGroupId,
+        sourceGroupId: `session:${episode.sessionId}`,
       }));
       const serialized = JSON.stringify({
         analyzerVersion: options.analyzerVersion,

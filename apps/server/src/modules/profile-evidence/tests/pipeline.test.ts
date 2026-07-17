@@ -80,6 +80,42 @@ async function evidenceList(repositories: ReturnType<typeof createInMemoryEviden
 }
 
 describe('ProfileEvidencePipeline', () => {
+  it('never projects pause facts as behavior evidence and retracts a legacy pause candidate', async () => {
+    const paused = fact('fact_pause', 'LessonPausedFact', '2026-07-12T09:00:00.000Z');
+    const fixture = await memoryFixture([paused], 'facts@2');
+    await fixture.repositories.evidence.save(
+      tx,
+      {
+        evidenceId: 'evidence_legacy_pause',
+        claimDimension: 'learning.session_regulation',
+        summary: 'This learning session was explicitly paused in its recorded context.',
+        sourceGroup: 'behavior',
+        sourceGroupId: 'lesson:lesson_01',
+        dependentSourceGroupIds: [],
+        sourceFactType: 'LessonPausedFact',
+        sourceRefs: ['fact:fact_pause'],
+        dataKeys: ['lesson.paused_at'],
+        observedAt: paused.occurredAt,
+        strength: { score: 1, rationale: 'Legacy pause behavior evidence awaiting cleanup.' },
+        polarity: 'supporting',
+        extractorVersion: 'facts@1',
+        dedupKey: 'a'.repeat(64),
+        status: 'active',
+        resourceVersion: 0,
+      },
+      0,
+    );
+
+    await fixture.pipeline.processFacts({ limit: 100 });
+
+    expect(await evidenceList(fixture.repositories)).toEqual([
+      expect.objectContaining({
+        evidenceId: 'evidence_legacy_pause',
+        status: 'retracted',
+      }),
+    ]);
+  });
+
   it('deduplicates replay and preserves opposite abandon/restore polarities', async () => {
     const fixture = await memoryFixture([
       fact('fact_abandon', 'LessonAbandonedFact', '2026-07-12T10:00:00.000Z'),
