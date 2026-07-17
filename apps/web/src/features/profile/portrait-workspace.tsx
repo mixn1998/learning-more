@@ -142,6 +142,7 @@ export function PortraitWorkspace(props: {
             </p>
           )}
           <section className="portrait-insight-list">
+            <h2 className="portrait-insight-list-title">你在学习中反复出现的做法</h2>
             {visibleInsights.length === 0 ? (
               <div className="lm-empty">证据不足，暂不生成稳定洞察。</div>
             ) : null}
@@ -158,7 +159,7 @@ export function PortraitWorkspace(props: {
                       <AiContent markdown={insight.markdown} />
                     </div>
                     <details className="portrait-evidence-chain">
-                      <summary>复合行为证据链</summary>
+                      <summary>这条观察从哪里来</summary>
                       <div className="portrait-evidence-flow">
                         {evidence.map((node, nodeIndex) => (
                           <div

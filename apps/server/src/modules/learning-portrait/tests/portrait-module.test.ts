@@ -77,15 +77,16 @@ const request = {
 
 function validOutput(evidenceIds = ['e1', 'e2']) {
   return {
-    title: 'A bounded learning portrait',
-    summary: 'Current evidence supports one context-limited observation.',
+    title: '你会根据后续结果调整判断',
+    summary:
+      '你在最近几次学习中都会回头检查结果，并据此修改原来的解释。这只代表当前学习记录，不说明固定性格或能力。',
     claims: [
       {
         claimId: 'claim_01',
-        markdown: 'Across two lessons, the learner returned to incomplete work.',
+        markdown: '### 你会回头检查结果\n\n完成一段学习后，你会根据结果修改原来的解释。',
         evidenceIds,
         confidence: 0.72,
-        limitations: ['The evidence covers only the current observation window.'],
+        limitations: ['只覆盖当前已经记录的学习情境。'],
         counterEvidenceChecked: true,
       },
     ],
@@ -126,6 +127,12 @@ describe('PortraitModule', () => {
     expect(prompt).toContain('【机器输出契约】');
     expect(prompt).toContain('【输出语言】');
     expect(prompt).toContain('简体中文');
+    expect(prompt).toContain('直接展示给学习者');
+    expect(prompt).toContain('不得照抄后台维度名');
+    expect(prompt).toContain('你会顺着步骤往后检查');
+    expect(prompt).toContain('title 必须以“你”开头');
+    expect(prompt).toContain('不得写“冻结证据显示”');
+    expect(prompt).toContain('各条标题不得重复');
     expect(prompt).toContain('【可用学习证据】');
     expect(prompt).toContain('证据编号：e1');
     expect(prompt).toContain('Neutral bounded observation from lesson:01.');

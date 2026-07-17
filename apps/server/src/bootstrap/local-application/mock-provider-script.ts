@@ -177,23 +177,24 @@ function mockScript(
     }
     const claims = [...groups.entries()]
       .filter(([, group]) => group.length >= 2)
-      .map(([dimension, group], index) => ({
+      .map(([, group], index) => ({
         claimId: `claim_${index + 1}`,
-        markdown: `在多个独立学习情境中观察到与“${dimension}”相关的局部模式。`,
+        markdown:
+          '### 你会在不同学习中重复使用相似的做法\n\n你在几次不同的学习记录中，都用相似的方式检查问题并调整判断。这说明在当前这些学习任务里，这种做法不是偶然出现。',
         evidenceIds: group.map((item) => item.evidenceId),
         confidence: 0.65,
-        limitations: ['该观察只适用于当前证据窗口，不构成固定人格或能力标签。'],
+        limitations: ['这条观察只适用于当前已经记录的学习情境，不能说明固定人格或永久能力。'],
         counterEvidenceChecked: true,
       }));
     return [
       {
         type: 'text',
         text: JSON.stringify({
-          title: claims.length === 0 ? '学习画像证据不足' : '当前学习画像',
+          title: claims.length === 0 ? '学习记录还不够' : '你在近期学习中重复出现的做法',
           summary:
             claims.length === 0
-              ? '当前没有满足复合证据规则的可靠观察。'
-              : '以下观察来自当前窗口内可追溯的复合证据。',
+              ? '目前还没有足够的学习记录来形成可靠观察，继续学习后会再更新。'
+              : '下面只描述你在近期不同学习记录中重复出现的具体做法，不把它解释成固定性格或能力。',
           claims,
         }),
       },

@@ -59,15 +59,16 @@ describe('compound portrait evidence policy', () => {
       dimensionSetVersion: 'dimension-set:01',
     });
     const output = {
-      title: 'Bounded portrait',
-      summary: 'The scope remains limited.',
+      title: '你会根据具体情况调整判断',
+      summary:
+        '你在不同学习记录中都会结合当时情况修改判断。这只代表当前记录，不说明固定性格或能力。',
       claims: [
         {
           claimId: 'claim_01',
-          markdown: 'The observation varies across contexts.',
+          markdown: '### 你会结合当时情况再判断\n\n条件改变时，你会重新检查原来的选择是否还合适。',
           evidenceIds: ['e1', 'e2'],
           confidence: 0.6,
-          limitations: ['Contradicting evidence narrows the scope.'],
+          limitations: ['不一致的学习记录会缩小这条结论的适用范围。'],
           counterEvidenceChecked: false,
         },
       ],

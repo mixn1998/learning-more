@@ -56,13 +56,20 @@ describe('portrait workspace projection', () => {
 
     expect(insight).toMatchObject({
       claimId: 'claim_1',
-      markdown: '### 复合证据观察\n\n会根据新证据修正判断。',
+      markdown: '### 你在学习中的一个做法\n\n会根据新证据修正判断。',
     });
     expect(insight?.evidence).toEqual([
-      expect.objectContaining({ title: '学习行为', summary: 'support summary' }),
-      expect.objectContaining({ title: '复盘反思', summary: 'counter summary', boundary: true }),
+      expect.objectContaining({
+        title: '学习行为',
+        summary: '在这次学习中，你也出现了与上面描述相符的做法。',
+      }),
+      expect.objectContaining({
+        title: '复盘反思',
+        summary: '这次学习记录提醒我们：上面的观察并不是在每次学习中都会出现。',
+        boundary: true,
+      }),
     ]);
-    expect(insight?.synthesis).toContain('2 条有效证据');
+    expect(insight?.synthesis).toContain('2 次不同的学习记录');
     expect(insight?.synthesis).not.toContain('support');
   });
 

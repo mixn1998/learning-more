@@ -5,9 +5,11 @@ import type {
   ReasoningBehaviorEpisodeSource,
 } from '../../global-user-profile/interface.js';
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
-import type { CandidateEvidence } from '../interface.js';
+import { isGlobalReasoningDimensionEvidence, type CandidateEvidence } from '../interface.js';
 import type { EvidenceRepositories } from '../ports/evidence-repository.js';
 import { parseCandidateEvidence } from './candidate-evidence.js';
+
+const GLOBAL_REASONING_ANALYZER_VERSION = 'reasoning-global-analyzer@2';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -47,6 +49,19 @@ function isDeprecatedBehaviorEvidence(candidate: CandidateEvidence): boolean {
   );
 }
 
+function isCanonicalGlobalAnalysis(analysis: ReasoningBehaviorAnalysisRecord): boolean {
+  const { filter } = analysis.snapshot;
+  return (
+    analysis.snapshot.analyzerVersion === GLOBAL_REASONING_ANALYZER_VERSION &&
+    filter.windowStart === undefined &&
+    filter.windowEnd === undefined &&
+    filter.courseIds.length === 0 &&
+    filter.lessonIds.length === 0 &&
+    filter.courseModes.length === 0 &&
+    filter.elicitations.length === 0
+  );
+}
+
 export function createReasoningEvidenceProjector(options: {
   reasoningRepository: ReasoningBehaviorEpisodeSource;
   evidenceRepositories: EvidenceRepositories;
@@ -56,27 +71,24 @@ export function createReasoningEvidenceProjector(options: {
 }) {
   return {
     async project(analysis: ReasoningBehaviorAnalysisRecord): Promise<{ created: number }> {
+      if (!isCanonicalGlobalAnalysis(analysis)) return { created: 0 };
+      const existingCandidates: CandidateEvidence[] = [];
       const deprecated: CandidateEvidence[] = [];
       for await (const candidate of options.evidenceRepositories.evidence.list()) {
+        existingCandidates.push(candidate);
         if (isDeprecatedBehaviorEvidence(candidate)) deprecated.push(candidate);
       }
-      if (deprecated.length > 0) {
-        await options.unitOfWork.execute(
-          { transactionId: options.nextTransactionId() },
-          async (tx) => {
-            for (const candidate of deprecated) {
-              await options.evidenceRepositories.evidence.save(
-                tx,
-                { ...candidate, status: 'retracted' },
-                candidate.resourceVersion,
-              );
-            }
-          },
-        );
-      }
+
+      const stableDimensionIds = new Set(
+        analysis.snapshot.dimensions
+          .filter((dimension) => dimension.independentSourceGroupCount >= 2)
+          .map((dimension) => dimension.dimensionId),
+      );
 
       const dimensionById = new Map(
-        analysis.dimensions.map((dimension) => [dimension.dimensionId, dimension]),
+        analysis.dimensions
+          .filter((dimension) => stableDimensionIds.has(dimension.dimensionId))
+          .map((dimension) => [dimension.dimensionId, dimension]),
       );
       const groups = new Map<
         string,
@@ -121,6 +133,8 @@ export function createReasoningEvidenceProjector(options: {
         }
       }
 
+      const desiredDedupKeys = new Set<string>();
+      const projected: Array<{ evidence: CandidateEvidence; expectedVersion: number }> = [];
       let created = 0;
       for (const group of [...groups.values()].sort((left, right) =>
         `${left.claimDimension}:${left.sourceGroupId}`.localeCompare(
@@ -134,7 +148,8 @@ export function createReasoningEvidenceProjector(options: {
             projection: 'reasoning-session-dimension@2',
           }),
         );
-        const existing = await options.evidenceRepositories.evidence.findByDedupKey(dedupKey);
+        desiredDedupKeys.add(dedupKey);
+        const existing = existingCandidates.find((candidate) => candidate.dedupKey === dedupKey);
         const confidence = Math.max(...group.confidences);
         const score: 1 | 2 | 3 = confidence >= 0.8 ? 3 : confidence >= 0.55 ? 2 : 1;
         const evidence = parseCandidateEvidence(
@@ -164,10 +179,43 @@ export function createReasoningEvidenceProjector(options: {
           },
           options.now(),
         );
-        await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
-          options.evidenceRepositories.evidence.save(tx, evidence, existing?.resourceVersion ?? 0),
-        );
+        projected.push({ evidence, expectedVersion: existing?.resourceVersion ?? 0 });
         if (existing === undefined) created += 1;
+      }
+
+      const stale = existingCandidates.filter(
+        (candidate) =>
+          candidate.status === 'active' &&
+          isGlobalReasoningDimensionEvidence(candidate) &&
+          !desiredDedupKeys.has(candidate.dedupKey),
+      );
+      if (deprecated.length > 0 || stale.length > 0 || projected.length > 0) {
+        await options.unitOfWork.execute(
+          { transactionId: options.nextTransactionId() },
+          async (tx) => {
+            for (const candidate of deprecated) {
+              await options.evidenceRepositories.evidence.save(
+                tx,
+                { ...candidate, status: 'retracted' },
+                candidate.resourceVersion,
+              );
+            }
+            for (const candidate of stale) {
+              await options.evidenceRepositories.evidence.save(
+                tx,
+                { ...candidate, status: 'superseded' },
+                candidate.resourceVersion,
+              );
+            }
+            for (const candidate of projected) {
+              await options.evidenceRepositories.evidence.save(
+                tx,
+                candidate.evidence,
+                candidate.expectedVersion,
+              );
+            }
+          },
+        );
       }
       return { created };
     },

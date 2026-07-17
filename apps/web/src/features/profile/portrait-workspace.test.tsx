@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 const insight = {
   claimId: 'claim_01',
-  markdown: '### 复合证据观察\n\n你会根据新证据修正判断。',
+  markdown: '### 你会根据新信息调整判断\n\n你会根据新证据修正判断。',
   evidence: [],
   synthesis: '当前洞察由有效证据支持。',
 };
@@ -29,6 +29,12 @@ function renderWorkspace() {
 }
 
 describe('PortraitWorkspace settings dialog', () => {
+  it('gives the insight collection its own visible heading', () => {
+    renderWorkspace();
+
+    expect(screen.getByRole('heading', { name: '你在学习中反复出现的做法' })).toBeVisible();
+  });
+
   it('matches the approved compact settings dialog structure', () => {
     renderWorkspace();
 

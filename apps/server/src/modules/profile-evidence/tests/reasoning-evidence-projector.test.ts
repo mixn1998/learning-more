@@ -48,12 +48,25 @@ describe('reasoning evidence projector', () => {
           snapshotId: 'snapshot_01',
           schemaVersion: 1,
           dimensionSetVersion: 'set_01',
-          analyzerVersion: 'analyzer@1',
+          analyzerVersion: 'reasoning-global-analyzer@2',
           sourceEpisodeIds: ['episode_01'],
           filter: { courseIds: [], lessonIds: [], courseModes: [], elicitations: [] },
           eligibleEpisodeCount: 1,
           independentSourceGroupCount: 1,
-          dimensions: [],
+          dimensions: [
+            {
+              dimensionId: 'dimension_association',
+              episodeCount: 1,
+              episodeShare: 1,
+              independentSourceGroupCount: 2,
+              spontaneousCount: 1,
+              elicitedCount: 0,
+              mixedCount: 0,
+              unknownCount: 0,
+              courseCount: 1,
+              lessonCount: 1,
+            },
+          ],
           limitations: [],
           sourceSnapshotHash: 'b'.repeat(64),
           createdAt: '2026-07-14T00:00:00.000Z',
@@ -110,12 +123,25 @@ describe('reasoning evidence projector', () => {
           snapshotId: 'snapshot_02',
           schemaVersion: 1,
           dimensionSetVersion: 'set_02',
-          analyzerVersion: 'analyzer@1',
+          analyzerVersion: 'reasoning-global-analyzer@2',
           sourceEpisodeIds: ['episode_01'],
           filter: { courseIds: [], lessonIds: [], courseModes: [], elicitations: [] },
           eligibleEpisodeCount: 1,
           independentSourceGroupCount: 1,
-          dimensions: [],
+          dimensions: [
+            {
+              dimensionId: 'dimension_association_revised',
+              episodeCount: 1,
+              episodeShare: 1,
+              independentSourceGroupCount: 2,
+              spontaneousCount: 1,
+              elicitedCount: 0,
+              mixedCount: 0,
+              unknownCount: 0,
+              courseCount: 1,
+              lessonCount: 1,
+            },
+          ],
           limitations: [],
           sourceSnapshotHash: 'c'.repeat(64),
           createdAt: '2026-07-14T00:01:00.000Z',
@@ -215,7 +241,20 @@ describe('reasoning evidence projector', () => {
           filter: { courseIds: [], lessonIds: [], courseModes: [], elicitations: [] },
           eligibleEpisodeCount: 3,
           independentSourceGroupCount: 2,
-          dimensions: [],
+          dimensions: [
+            {
+              dimensionId: 'dimension_condition_checking',
+              episodeCount: 3,
+              episodeShare: 1,
+              independentSourceGroupCount: 2,
+              spontaneousCount: 0,
+              elicitedCount: 0,
+              mixedCount: 0,
+              unknownCount: 3,
+              courseCount: 1,
+              lessonCount: 2,
+            },
+          ],
           limitations: [],
           sourceSnapshotHash: 'f'.repeat(64),
           createdAt: '2026-07-14T00:00:00.000Z',
@@ -265,5 +304,127 @@ describe('reasoning evidence projector', () => {
       },
     );
     expect(stored.every((evidence) => !evidence.summary.includes('Concrete rationale'))).toBe(true);
+  });
+
+  it('supersedes candidates no longer supported by the latest stable global dimensions', async () => {
+    const evidenceRepositories = createInMemoryEvidenceRepositories();
+    const episodes = new Map(
+      ['session_1', 'session_2'].map((sessionId, index) => [
+        `episode_${index + 1}`,
+        {
+          episodeId: `episode_${index + 1}`,
+          schemaVersion: 1 as const,
+          courseId: 'course_01',
+          lessonId: `lesson_${index + 1}`,
+          sessionId,
+          courseMode: 'standard' as const,
+          behaviorSummary: 'A session-level reasoning dimension.',
+          sourceObservationRef: `review:${sessionId}`,
+          sourceRefs: [`message:message_${index + 1}`],
+          sourceGroupId: `session:${sessionId}`,
+          elicitation: 'unknown' as const,
+          observedAt: `2026-07-13T00:0${index}:00.000Z`,
+          sourceSnapshotHash: `${index + 1}`.repeat(64),
+          extractorVersion: 'review-session-dimension@1',
+          extractedAt: '2026-07-13T00:03:00.000Z',
+          status: 'active' as const,
+          resourceVersion: 1,
+        },
+      ]),
+    );
+    const projector = createReasoningEvidenceProjector({
+      reasoningRepository: { getEpisode: async (episodeId) => episodes.get(episodeId) },
+      evidenceRepositories,
+      unitOfWork: {
+        execute: async (_request, work) =>
+          work({
+            stageJson: async () => undefined,
+            stageText: async () => undefined,
+            deleteOnCommit: async () => undefined,
+          }),
+      },
+      now: () => new Date('2026-07-14T00:00:00.000Z'),
+      nextTransactionId: () => 'tx_latest_snapshot_projection',
+    });
+    const analysis = (stable: boolean, filtered = false) => ({
+      snapshot: {
+        snapshotId: stable ? 'snapshot_stable' : 'snapshot_provisional',
+        schemaVersion: 1 as const,
+        dimensionSetVersion: stable ? 'set_stable' : 'set_provisional',
+        analyzerVersion: 'reasoning-global-analyzer@2',
+        sourceEpisodeIds: [...episodes.keys()],
+        filter: {
+          ...(filtered ? { windowStart: '2026-07-13T00:00:00.000Z' } : {}),
+          courseIds: [],
+          lessonIds: [],
+          courseModes: [],
+          elicitations: [],
+        },
+        eligibleEpisodeCount: 2,
+        independentSourceGroupCount: 2,
+        dimensions: [
+          {
+            dimensionId: 'dimension_layered_analysis',
+            episodeCount: stable ? 2 : 1,
+            episodeShare: stable ? 1 : 0.5,
+            independentSourceGroupCount: stable ? 2 : 1,
+            spontaneousCount: 0,
+            elicitedCount: 0,
+            mixedCount: 0,
+            unknownCount: stable ? 2 : 1,
+            courseCount: 1,
+            lessonCount: stable ? 2 : 1,
+          },
+        ],
+        limitations: [],
+        sourceSnapshotHash: (stable ? 'a' : 'b').repeat(64),
+        createdAt: stable ? '2026-07-14T00:00:00.000Z' : '2026-07-14T00:01:00.000Z',
+        status: 'usable' as const,
+      },
+      dimensions: [
+        {
+          dimensionId: 'dimension_layered_analysis',
+          dimensionSetVersion: stable ? 'set_stable' : 'set_provisional',
+          label: '分层分析',
+          description: '把完整检查集中到关键节点。',
+          inclusionSignals: [],
+          exclusionSignals: [],
+          derivedFromEpisodeIds: [...episodes.keys()],
+          analyzerVersion: 'reasoning-global-analyzer@2',
+          createdAt: '2026-07-14T00:00:00.000Z',
+          status: 'active' as const,
+        },
+      ],
+      classifications: [...episodes.keys()].map((episodeId, index) => ({
+        classificationId: `classification_${index}`,
+        episodeId,
+        dimensionSetVersion: stable ? 'set_stable' : 'set_provisional',
+        labels: [
+          {
+            dimensionId: 'dimension_layered_analysis',
+            rationale: 'The session supports the dimension.',
+            confidence: 0.9,
+          },
+        ],
+        analyzerVersion: 'reasoning-global-analyzer@2',
+        sourceSnapshotHash: `${index + 1}`.repeat(64),
+        classifiedAt: '2026-07-14T00:00:00.000Z',
+        status: 'active' as const,
+      })),
+      resourceVersion: 1,
+    });
+
+    await expect(projector.project(analysis(true))).resolves.toEqual({ created: 2 });
+    await expect(projector.project(analysis(false, true))).resolves.toEqual({ created: 0 });
+    const afterFilteredAnalysis = [];
+    for await (const evidence of evidenceRepositories.evidence.list())
+      afterFilteredAnalysis.push(evidence);
+    expect(afterFilteredAnalysis.every((evidence) => evidence.status === 'active')).toBe(true);
+    await expect(projector.project(analysis(false))).resolves.toEqual({ created: 0 });
+
+    const stored = [];
+    for await (const evidence of evidenceRepositories.evidence.list()) stored.push(evidence);
+    expect(stored).toHaveLength(2);
+    expect(stored.every((evidence) => evidence.status === 'superseded')).toBe(true);
   });
 });
