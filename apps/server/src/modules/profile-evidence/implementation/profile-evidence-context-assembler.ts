@@ -53,6 +53,8 @@ export function assembleProfileEvidenceContext(input: unknown): AssembledProfile
   if (totalLength > TOTAL_EXCERPT_LIMIT)
     throw new Error('profile_checkpoint_excerpt_budget_exceeded');
   const checkpoint = ProfileEvidenceCheckpointInputSchema.parse({ ...parsed, sources });
-  const sourceSnapshotHash = sha256(JSON.stringify(checkpoint));
+  const { existingCandidates, ...sourceSnapshot } = checkpoint;
+  void existingCandidates;
+  const sourceSnapshotHash = sha256(JSON.stringify(sourceSnapshot));
   return Object.freeze({ checkpoint: Object.freeze(checkpoint), sourceSnapshotHash });
 }

@@ -26,10 +26,12 @@ import type { LocalProfileRuntime } from './profile-runtime.js';
 import { createLocalCourseReviewRuntime } from './course-review-runtime.js';
 import { createReviewEvidence } from './review-evidence.js';
 import { createReviewProfileCheckpointCapture } from './review-profile-checkpoints.js';
+import { collectRecoverableReviewProfileCheckpoints } from './review-profile-recovery.js';
 
 export type LocalReviewRuntime = Readonly<{
   routes: ReviewClosureRouteOptions;
   recoverCommittingClosures(): Promise<void>;
+  recoverProfileCheckpoints(): Promise<void>;
 }>;
 
 export function createLocalReviewRuntime(
@@ -152,6 +154,7 @@ export function createLocalReviewRuntime(
           contentSha256: generated.contentSha256,
           ...(generated.document === undefined ? {} : { document: generated.document }),
         });
+        const committedReview = await reviewClosureRepositories.stageReviews.get(review.reviewId);
         const reviewedLesson = await input.course.access.getLesson(review.lessonId);
         if (reviewedLesson !== undefined) {
           await captureReviewProfileCheckpoint({
@@ -160,7 +163,8 @@ export function createLocalReviewRuntime(
             markdown,
             courseId: reviewedLesson.courseId,
             lessonId: review.lessonId,
-            observedAt: input.now().toISOString(),
+            sessionId: currentReview.sourceSessionId,
+            observedAt: committedReview?.updatedAt ?? input.now().toISOString(),
           });
         }
       } catch (error) {
@@ -261,7 +265,8 @@ export function createLocalReviewRuntime(
           markdown: committed.review.markdown,
           courseId: lesson.courseId,
           lessonId: committed.lessonId,
-          observedAt: input.now().toISOString(),
+          sessionId: committed.sessionId,
+          observedAt: committed.updatedAt,
         });
         await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lesson.id);
         courseReviewRuntime.triggerPregeneration(lesson.courseId);
@@ -469,6 +474,18 @@ export function createLocalReviewRuntime(
 
   return {
     routes,
+    async recoverProfileCheckpoints() {
+      const checkpoints = await collectRecoverableReviewProfileCheckpoints({
+        stageReviews: reviewClosureRepositories.stageReviews.list(),
+        lessonClosures: reviewClosureRepositories.lessonClosures.list(),
+        readArtifact: (artifactId) => input.artifactStore.read(artifactId),
+        getCourseIdForLesson: async (lessonId) =>
+          (await input.course.access.getLesson(lessonId))?.courseId,
+      });
+      for (const checkpoint of checkpoints) {
+        await captureReviewProfileCheckpoint(checkpoint, { refreshReasoningAnalysis: false });
+      }
+    },
     async recoverCommittingClosures() {
       for await (const review of reviewClosureRepositories.stageReviews.list()) {
         if (review.status !== 'generating') continue;

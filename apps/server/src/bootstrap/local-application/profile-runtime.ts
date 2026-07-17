@@ -11,6 +11,7 @@ import { packPortraitEvidence } from '../../modules/learning-portrait/implementa
 import { createPortraitModule } from '../../modules/learning-portrait/implementation/portrait-module.js';
 import { createAiProfileEvidenceExtractor } from '../../modules/profile-evidence/implementation/ai-profile-evidence-extractor.js';
 import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/implementation/profile-evidence-aggregator.js';
+import { assembleProfileEvidenceContext } from '../../modules/profile-evidence/implementation/profile-evidence-context-assembler.js';
 import { purgeDeprecatedReasoningEvidence } from '../../modules/profile-evidence/implementation/deprecated-reasoning-evidence-migration.js';
 import { createProfileEvidencePipeline } from '../../modules/profile-evidence/implementation/pipeline.js';
 import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
@@ -22,6 +23,10 @@ import { createLocalFileEvidenceRepositories } from '../../persistence/profile-e
 import { createLocalFileReasoningBehaviorRepository } from '../../persistence/reasoning-behavior-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
+import {
+  createProfileEvidenceCheckpointRecovery,
+  PROFILE_EVIDENCE_EXTRACTOR_VERSION,
+} from './profile-evidence-checkpoint-recovery.js';
 import type { LocalGenerationRuntime } from './generation-runtime.js';
 
 function parseStructuredJson(markdown: string): unknown {
@@ -78,7 +83,7 @@ export function createLocalProfileRuntime(
     execution: input.generation.execution,
     providerId: 'current',
     analyzerVersion: 'profile-evidence-analyzer@1',
-    extractorVersion: 'profile-evidence@1',
+    extractorVersion: PROFILE_EVIDENCE_EXTRACTOR_VERSION,
     now: input.now,
   });
   const profileEvidenceAggregator = createProfileEvidenceAggregator({
@@ -89,6 +94,11 @@ export function createLocalProfileRuntime(
   });
   let profileEvidenceBarrier: Promise<void> = Promise.resolve();
   let projectionStatus: 'ready' | 'degraded' = 'ready';
+  const checkpointRecovery = createProfileEvidenceCheckpointRecovery({
+    reasoning: reasoningBehaviorRepository,
+    evidence: evidenceRepositories,
+    unitOfWork: input.unitOfWork,
+  });
 
   async function enqueueProfileEvidenceCheckpoint(checkpoint: unknown): Promise<void> {
     const queued = profileEvidenceBarrier.then(async () => {
@@ -106,11 +116,18 @@ export function createLocalProfileRuntime(
           sourceGroupId: candidate.sourceGroupId,
         });
       }
-      const extracted = await profileEvidenceExtractor.extract({
-        ...(checkpoint as Record<string, unknown>),
+      const enrichedCheckpoint = await checkpointRecovery.enrichReviewCheckpoint(
+        checkpoint as Record<string, unknown>,
+      );
+      const checkpointInput = {
+        ...enrichedCheckpoint,
         existingCandidates,
-      });
+      };
+      const context = assembleProfileEvidenceContext(checkpointInput);
+      if (await checkpointRecovery.isCompleted(context)) return;
+      const extracted = await profileEvidenceExtractor.extract(context.checkpoint);
       await profileEvidenceAggregator.ingest(extracted);
+      let projectedCandidateCount = extracted.candidates.length;
       if (
         extracted.checkpoint.checkpointKind === 'authoring_candidate_confirmed' &&
         extracted.checkpoint.courseId !== undefined &&
@@ -141,6 +158,11 @@ export function createLocalProfileRuntime(
           .map((sourceGroupId) => /^lesson:([^:]+):session:(.+)$/u.exec(sourceGroupId))
           .find((match): match is RegExpExecArray => match !== null);
         if (sessionSource !== undefined) {
+          projectedCandidateCount = extracted.candidates.filter(
+            (candidate) =>
+              candidate.candidateKind === 'thinking_behavior' &&
+              candidate.safetyStatus !== 'blocked',
+          ).length;
           await reasoningBehaviorModule.captureFromReview({
             courseId: extracted.checkpoint.courseId,
             courseMode: extracted.checkpoint.courseMode,
@@ -157,6 +179,15 @@ export function createLocalProfileRuntime(
           });
         }
       }
+      await checkpointRecovery.markCompleted({
+        checkpointId: extracted.checkpoint.checkpointId,
+        sourceType: extracted.checkpoint.sourceType,
+        sourceSnapshotHash: extracted.sourceSnapshotHash,
+        projectedCandidateCount,
+        ignoredCandidateCount: extracted.candidates.length - projectedCandidateCount,
+        updatedAt: extracted.extractedAt,
+      });
+      projectionStatus = 'ready';
     });
     profileEvidenceBarrier = queued.catch(() => {
       projectionStatus = 'degraded';

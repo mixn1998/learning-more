@@ -116,7 +116,9 @@ function mockScript(
       input.checkpoint?.checkpointKind === 'stage_review_finalized' ||
       input.checkpoint?.checkpointKind === 'lesson_review_finalized';
     const eligibleSources = (input.checkpoint?.sources ?? []).filter((source) =>
-      reviewCheckpoint ? source.role === 'review' : source.role === 'user',
+      reviewCheckpoint
+        ? source.role === 'review' || source.role === 'observer'
+        : source.role === 'user',
     );
     const latest = eligibleSources.at(-1);
     const expiresAt = new Date(
@@ -140,7 +142,9 @@ function mockScript(
                       ? '该学习会话中，学习者会比较条件变化，并据此修正当前判断。'
                       : '在当前受控检查点中，用户通过提出对象关系或条件变化推进学习问题。',
                     explicitness: 'ai_observed',
-                    sourceRefs: [latest.sourceRef],
+                    sourceRefs: reviewCheckpoint
+                      ? eligibleSources.map((source) => source.sourceRef)
+                      : [latest.sourceRef],
                     confidence: 0.68,
                     qualityFlags: ['direct'],
                     limitations: [

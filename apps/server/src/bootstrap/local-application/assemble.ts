@@ -98,6 +98,7 @@ export async function assembleLocalApplication(
   // pending work and terminal tasks whose authoring projection was not saved.
   void course.recoverGenerationTasks().catch(() => undefined);
   await learning.recoverTeachingSessions();
+  await review.recoverProfileCheckpoints();
   await profile.recoverReasoningAnalysis();
   const getProjectionStatus = () =>
     learning.getProjectionStatus() === 'ready' && profile.getProjectionStatus() === 'ready'

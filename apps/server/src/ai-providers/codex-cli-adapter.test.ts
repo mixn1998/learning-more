@@ -117,12 +117,12 @@ describe('CodexCliAdapter', () => {
     const calls: Array<{
       executable: string;
       arguments_: readonly string[];
-      options: Readonly<{ shell: false; cwd: string; signal: AbortSignal }>;
+      options: Readonly<{ shell: false; cwd: string; signal: AbortSignal; stdin?: string }>;
     }> = [];
     const generate = async function* (
       executable: string,
       arguments_: readonly string[],
-      options: Readonly<{ shell: false; cwd: string; signal: AbortSignal }>,
+      options: Readonly<{ shell: false; cwd: string; signal: AbortSignal; stdin?: string }>,
     ) {
       calls.push({ executable, arguments_, options });
       yield { type: 'text' as const, text: 'ready' };
@@ -157,9 +157,9 @@ describe('CodexCliAdapter', () => {
           'gpt-5.6-sol',
           '-c',
           'model_reasoning_effort="ultra"',
-          'Explain the topic',
+          '-',
         ],
-        options: { shell: false, cwd: 'D:/workspace/course', signal },
+        options: { shell: false, cwd: 'D:/workspace/course', signal, stdin: 'Explain the topic' },
       },
     ]);
   });
