@@ -14,7 +14,6 @@ import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/
 import { createProfileEvidencePipeline } from '../../modules/profile-evidence/implementation/pipeline.js';
 import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
 import { createReasoningEvidenceProjector } from '../../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
-import { readPortraitRefreshState } from '../../persistence/course-archive-store.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createLocalFilePortraitRepository } from '../../persistence/portrait-repositories.js';
 import { createLocalFileEvidenceRepositories } from '../../persistence/profile-evidence-repositories.js';
@@ -87,7 +86,6 @@ export function createLocalProfileRuntime(
     nextTransactionId: () => `tx_profile_evidence_${randomUUID()}`,
   });
   let profileEvidenceBarrier: Promise<void> = Promise.resolve();
-  let lastProfileEvidenceError: string | undefined;
   let projectionStatus: 'ready' | 'degraded' = 'ready';
 
   function enqueueProfileEvidenceCheckpoint(checkpoint: unknown): void {
@@ -131,12 +129,8 @@ export function createLocalProfileRuntime(
           candidates: extracted.candidates,
         });
       }
-      lastProfileEvidenceError = undefined;
     });
-    profileEvidenceBarrier = queued.catch((error: unknown) => {
-      lastProfileEvidenceError =
-        error instanceof Error ? error.message : 'profile_evidence_extraction_failed';
-    });
+    profileEvidenceBarrier = queued.catch(() => undefined);
   }
 
   async function latestUsableReasoningAnalysis() {
@@ -249,9 +243,6 @@ export function createLocalProfileRuntime(
     tokenBudget: number;
   }) {
     await profileEvidenceBarrier;
-    if (lastProfileEvidenceError !== undefined) {
-      throw new Error(`profile_evidence_checkpoint_failed:${lastProfileEvidenceError}`);
-    }
     await profileEvidenceAggregator.expire();
     await recoverReasoningAnalysis();
     const [profile, reasoningBehaviorAnalysis] = await Promise.all([
@@ -438,16 +429,7 @@ export function createLocalProfileRuntime(
     requestRefresh: requestPortraitRefresh,
     async getCurrent() {
       const cursor = await portraitRepository.getCurrent();
-      if (cursor !== undefined) return portraitWithReasoning(cursor.currentVersionId);
-      const refresh = await readPortraitRefreshState(input.dataRoot);
-      return refresh === undefined
-        ? undefined
-        : {
-            state: refresh.state,
-            errorCode: refresh.errorCode,
-            retryable: refresh.state === 'failed',
-            updatedAt: refresh.updatedAt,
-          };
+      return cursor === undefined ? undefined : portraitWithReasoning(cursor.currentVersionId);
     },
     getVersion: portraitWithReasoning,
     nextCorrelationId: () => `correlation_${randomUUID()}`,

@@ -22,6 +22,7 @@ import type {
   TeachingContextSources,
 } from '../ports/teaching-context-sources.js';
 import type { TeachingLedgerRepository } from '../ports/teaching-ledger-repository.js';
+import type { TeachingInteractionSink } from '../ports/teaching-interaction-sink.js';
 import type { TeachingObserver } from '../ports/teaching-observer.js';
 import type { ReasoningBehaviorSink } from '../ports/reasoning-behavior-sink.js';
 import { createObservationQueue } from './observation-queue.js';
@@ -72,6 +73,18 @@ function failureProblem(taskId: string): ApplicationProblem {
   };
 }
 
+function latestCompleteUserMarkdown(
+  messages: readonly Readonly<{
+    role: 'user' | 'assistant';
+    completionStatus: 'complete' | 'interrupted' | 'failed';
+    markdown: string;
+  }>[],
+): string | undefined {
+  return messages.findLast(
+    (message) => message.role === 'user' && message.completionStatus === 'complete',
+  )?.markdown;
+}
+
 export function createInteractiveTeaching(options: {
   sessionModule: LearningSessionModule;
   contextSources: TeachingContextSources;
@@ -79,6 +92,7 @@ export function createInteractiveTeaching(options: {
   agent: TeachingAgent;
   observer: TeachingObserver;
   reasoningBehaviorSink?: ReasoningBehaviorSink;
+  interactionSink?: TeachingInteractionSink;
   ledgerRepository: TeachingLedgerRepository;
   unitOfWork: UnitOfWork;
   frameLog?: Pick<GenerationFrameLog, 'ensureTask' | 'append'>;
@@ -150,6 +164,7 @@ export function createInteractiveTeaching(options: {
           lessonId: input.lessonId,
           sessionId: input.sessionId,
           directive: result.directive,
+          currentUserMessage: latestCompleteUserMarkdown(input.assembled.recentMessages),
         });
         const assistantMessageId = options.nextAssistantMessageId();
         const artifactRef = `assistant-message:${assistantMessageId}`;
@@ -185,6 +200,7 @@ export function createInteractiveTeaching(options: {
           lessonId: input.lessonId,
           sessionId: input.sessionId,
           directive: result.directive,
+          currentUserMessage: latestCompleteUserMarkdown(input.assembled.recentMessages),
         });
         taskContext.delete(accepted.taskId);
         await options.frameLog?.append(accepted.taskId, 'message.completed', {
@@ -275,12 +291,17 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     directive?: TeachingDirective | undefined;
+    currentUserMessage?: string | undefined;
   }): Promise<void> {
     if (input.directive === undefined) return;
     const current = await options.ledgerRepository.get(input.sessionId);
     const base = await initialState(input.courseId, input.lessonId, input.sessionId);
     if (teachingDirectiveMatchesState(base, input.directive)) return;
-    const nextState = applyTeachingDirective(base, input.directive);
+    const nextState = applyTeachingDirective(base, input.directive, {
+      ...(input.currentUserMessage === undefined
+        ? {}
+        : { currentUserMessage: input.currentUserMessage }),
+    });
     await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
       options.ledgerRepository.save(
         tx,
@@ -303,10 +324,15 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     directive?: TeachingDirective | undefined;
+    currentUserMessage?: string | undefined;
   }): Promise<void> {
     if (input.directive === undefined) return;
     const base = await initialState(input.courseId, input.lessonId, input.sessionId);
-    applyTeachingDirective(base, input.directive);
+    applyTeachingDirective(base, input.directive, {
+      ...(input.currentUserMessage === undefined
+        ? {}
+        : { currentUserMessage: input.currentUserMessage }),
+    });
   }
 
   function resetObservationProjection(state: Awaited<ReturnType<typeof initialState>>) {
@@ -430,6 +456,12 @@ export function createInteractiveTeaching(options: {
         observation: validated,
       });
     }
+    await options.interactionSink?.captureFromObservation({
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+      sessionId: input.sessionId,
+      observation: validated,
+    });
     if (!previousState.evidenceCheckpoint && nextState.evidenceCheckpoint) {
       await options.sessionModule.execute(
         { type: 'EstablishEvidenceCheckpoint', lessonId: input.lessonId },
@@ -697,11 +729,14 @@ export function createInteractiveTeaching(options: {
             problem: failureProblem(activeTaskId),
           });
         } else {
+          const recoveryMessages = await options.contextSources.listMessages(input.sessionId);
+          const currentUserMessage = latestCompleteUserMarkdown(recoveryMessages);
           await validateDirective({
             courseId: input.courseId,
             lessonId: input.lessonId,
             sessionId: input.sessionId,
             directive: recovered.directive,
+            ...(currentUserMessage === undefined ? {} : { currentUserMessage }),
           });
           const assistantMessageId = options.nextAssistantMessageId();
           const artifactRef = `assistant-message:${assistantMessageId}`;
@@ -737,6 +772,7 @@ export function createInteractiveTeaching(options: {
             lessonId: input.lessonId,
             sessionId: input.sessionId,
             directive: recovered.directive,
+            ...(currentUserMessage === undefined ? {} : { currentUserMessage }),
           });
           await options.frameLog?.append(activeTaskId, 'message.completed', {
             messageId: assistantMessageId,
@@ -760,7 +796,8 @@ export function createInteractiveTeaching(options: {
       }
 
       const messages = await options.contextSources.listMessages(input.sessionId);
-      for (const message of [...messages].reverse()) {
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index]!;
         if (
           message.role !== 'assistant' ||
           message.completionStatus !== 'complete' ||
@@ -771,11 +808,13 @@ export function createInteractiveTeaching(options: {
         try {
           const result = await options.agent.read(message.generationTaskId);
           if (result?.directive === undefined) continue;
+          const currentUserMessage = latestCompleteUserMarkdown(messages.slice(0, index));
           await applyCommittedDirective({
             courseId: input.courseId,
             lessonId: input.lessonId,
             sessionId: input.sessionId,
             directive: result.directive,
+            ...(currentUserMessage === undefined ? {} : { currentUserMessage }),
           });
           break;
         } catch {
@@ -786,10 +825,15 @@ export function createInteractiveTeaching(options: {
       let ledger = await options.ledgerRepository.get(input.sessionId);
       const observedThrough = ledger?.state.observedThroughMessageId;
       const lastMessage = messages.at(-1)?.messageId;
+      const interactionBackfillRequired = ledger?.observations.some(
+        (observation) =>
+          observation.status === 'active' && observation.interactions === undefined,
+      );
       if (
         ledger === undefined ||
         ledger.state.observationStatus !== 'current' ||
-        observedThrough !== lastMessage
+        observedThrough !== lastMessage ||
+        interactionBackfillRequired === true
       ) {
         await markObservationPending(input.courseId, input.lessonId, input.sessionId);
         await observationQueue.enqueue(input.sessionId, () => observeCompletedTurn(input));
@@ -805,6 +849,17 @@ export function createInteractiveTeaching(options: {
           await options.reasoningBehaviorSink.captureFromObservation({
             courseId: input.courseId,
             courseMode: facts.course.courseMode,
+            observation,
+          });
+        }
+      }
+      if (options.interactionSink !== undefined && ledger !== undefined) {
+        for (const observation of ledger.observations) {
+          if (observation.status !== 'active') continue;
+          await options.interactionSink.captureFromObservation({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
             observation,
           });
         }

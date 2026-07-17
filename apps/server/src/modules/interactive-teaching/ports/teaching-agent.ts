@@ -2,7 +2,13 @@ import type { TeachingContextPackage } from './teaching-context-sources.js';
 
 export type TeachingDirective = Readonly<{
   schemaVersion: 1;
-  lessonPhase: 'warmup' | 'knowledge_point' | 'comprehensive_check' | 'summary' | 'ready_to_close';
+  lessonPhase:
+    | 'warmup'
+    | 'knowledge_point'
+    | 'comprehensive_check'
+    | 'discussion'
+    | 'summary'
+    | 'ready_to_close';
   activeKnowledgePointRef?: string | undefined;
   knowledgePoints: readonly Readonly<{
     ref: string;

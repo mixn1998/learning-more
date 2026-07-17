@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import {
+  TeachingInteractionObservationSchema,
   TeachingObservationEntrySchema,
   TeachingObservationSchema,
   TeachingScopeRelationSchema,
@@ -18,13 +19,16 @@ const OBSERVATION_CAPABILITY = [
   '被中断的助手输出可以留作过程记录，但不能作为完整教学或学习效果证据。',
   '与课程相关但不属于本课的探索记为 adjacent；不确定时使用 unclear；没有可靠变化时返回空 entries。',
   'JSON 形状：scope={alignment,relationRefs,rationale}；entries 每项={entryId,kind,summary,knowledgePointRefs,sourceRefs,resolvesEntryRefs,qualityFlags}，assessment、explicitness、elicitation 可按证据选填。',
+  '同时返回 interactions 数组，只记录教学智能体为了检验理解、激活思考或决定教学路径而明确发起的关键互动；普通澄清问句和课末自由答疑不属于关键互动。',
+  'interactions 每项={interactionId,knowledgePointRefs,promptSourceRef,outcome,responseSourceRef}。interactionId 必须严格写成 interaction:<首次发起该互动的助手消息 ID>，跨轮全量重建时不得变化。',
+  'promptSourceRef 必须引用发起关键互动的完整助手消息；outcome=pending|responded|skipped。responded 或 skipped 时 responseSourceRef 必须引用对应用户消息，pending 时不要填写 responseSourceRef。',
   '只使用以下枚举：scope.alignment=direct|supporting|adjacent|unclear|off_scope；kind=teaching_delivery|learner_demonstration|learner_misconception|learner_question|learner_intent|learner_reasoning_behavior|adjacent_exploration|open_loop。',
   'assessment=supports|limits|uncertain；explicitness=user_declared|ai_observed；elicitation=spontaneous|elicited|mixed|unknown；qualityFlags 只能使用 direct|complete|ambiguous。不要创造 aligned、current、explicit、teaching_clarification 等新值。',
   '教学观察不判断知识点检测或综合检测是否通过，不决定知识点完成、课程阶段或课程闭环，也不要输出 progressionSignal。教学推进完全由教学智能体的隐藏结构化指令负责。',
   'learner_demonstration、learner_misconception 和 assessment 只记录用户在会话中实际呈现的学习行为与证据，不得把 assessment 解释为前端进度或阶段门槛。',
   '用户明确跳过知识点、知识点互动或综合检测时，记录为 learner_intent；用户提出且在完整历史结束时仍未被回答的相关疑问记录为 open_loop。open_loop 必须引用用户消息，绝不能把助手提出的问题记为 open_loop。已经在历史中得到回答的问题不要保留为 open_loop。',
   'learner_reasoning_behavior 的 elicitation 用 spontaneous、elicited、mixed 或 unknown，表示该行为是否由教学任务直接引出；它不改变行为事实本身。',
-  '只返回 scope 与 entries 的 JSON 数据，不输出 Markdown 说明。',
+  '只返回 scope、entries 与 interactions 的 JSON 数据，不输出 Markdown 说明。',
 ].join('\n');
 
 const OBSERVATION_LENS_POLICY =
@@ -116,13 +120,31 @@ function normalizeEntry(value: unknown) {
   return parsed.success ? parsed.data : undefined;
 }
 
+function normalizeInteraction(value: unknown) {
+  const candidate = record(value);
+  if (candidate === undefined) throw new Error('teaching_interaction_object_required');
+  return TeachingInteractionObservationSchema.parse({
+    interactionId: candidate.interactionId,
+    knowledgePointRefs: candidate.knowledgePointRefs,
+    promptSourceRef: candidate.promptSourceRef,
+    outcome: candidate.outcome,
+    ...(typeof candidate.responseSourceRef === 'string'
+      ? { responseSourceRef: candidate.responseSourceRef }
+      : {}),
+  });
+}
+
 function parseGeneratedObservation(markdown: string) {
   const raw = record(parseJson(markdown));
   if (raw === undefined) throw new Error('teaching_observation_json_object_required');
   const entries = Array.isArray(raw.entries)
     ? raw.entries.map(normalizeEntry).filter((entry) => entry !== undefined)
     : [];
-  return { scope: normalizeScope(raw.scope), entries };
+  if (!Array.isArray(raw.interactions)) {
+    throw new Error('teaching_observation_interactions_required');
+  }
+  const interactions = raw.interactions.map(normalizeInteraction);
+  return { scope: normalizeScope(raw.scope), entries, interactions };
 }
 
 export function createGenerationTeachingObserver(options: {
@@ -133,7 +155,7 @@ export function createGenerationTeachingObserver(options: {
   nextObservationId?: (sourceSnapshotHash: string) => string;
   now?: () => Date;
 }): TeachingObserver {
-  const observerVersion = options.observerVersion ?? 'teaching-observer@3';
+  const observerVersion = options.observerVersion ?? 'teaching-observer@4';
   return {
     async observe(input) {
       const serializedInput = JSON.stringify(input);
@@ -188,6 +210,7 @@ export function createGenerationTeachingObserver(options: {
         ...observationBase,
         scope: raw.scope,
         entries: raw.entries,
+        interactions: raw.interactions,
       });
     },
   };

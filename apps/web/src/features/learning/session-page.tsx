@@ -366,7 +366,7 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
   const completed = state.progress === 'completed';
   const phase = teaching.lessonPhase;
   const afterWarmup = phase !== 'warmup';
-  const afterComprehensive = ['summary', 'ready_to_close'].includes(phase);
+  const afterComprehensive = ['discussion', 'summary', 'ready_to_close'].includes(phase);
   const path = [
     {
       title: '课前热身',
@@ -408,17 +408,28 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
             : ('pending' as const),
     },
     {
+      title: '讨论答疑',
+      detail:
+        completed || ['summary', 'ready_to_close'].includes(phase)
+          ? '已确认没有其他疑问'
+          : phase === 'discussion'
+            ? '可以继续追问本课内容'
+            : '等待综合检测完成',
+      state:
+        completed || ['summary', 'ready_to_close'].includes(phase)
+          ? ('done' as const)
+          : phase === 'discussion'
+            ? ('active' as const)
+            : ('pending' as const),
+    },
+    {
       title: '本课总结',
       detail:
         completed || phase === 'ready_to_close'
           ? '知识点总结已完成'
           : phase === 'summary'
-            ? teaching.closureInquiry === 'awaiting_confirmation'
-              ? '等待你确认是否还有疑问或讲解需求'
-              : teaching.closureInquiry === 'confirmed_no_questions'
-                ? 'AI 正在整理本课最终总结'
-                : '正在进入课末疑问确认'
-            : '等待综合检测完成',
+            ? 'AI 正在整理本课最终总结'
+            : '等待讨论答疑结束',
       state:
         completed || phase === 'ready_to_close'
           ? ('done' as const)

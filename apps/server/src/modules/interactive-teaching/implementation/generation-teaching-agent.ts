@@ -20,6 +20,7 @@ const TEACHING_CAPABILITY = [
   '当课程邻接探索正在成为新的主要目标时，把选择权交给学习者：继续探索、暂存后回到本课，或以后补充学习。',
   '对明显与课程无关的请求简短说明并邀请回到相关主题；不要用固定边界模板压制与课程有关的联想。',
   '教学表达保持自由，但一次只承担当前教学阶段：不要重复已经通过或跳过的检测，也不要越过账本一次倾倒后续全部知识点。',
+  '不要默认我已经理解，我想要更加深入透彻的学习理解过程体验，更强的思维激活程度和思考密度。',
   '只有当前知识点检测通过或学习者明确选择跳过，并且相关疑问已经处理完，才进入下一知识点。',
   '理解检测与通过判定属于内部教学机制。不要向学习者播报正在检测或已经通过检测，也不要用“恭喜通过”“检测完成”等流程话术。',
   '如果学习者的回答足以支持当前知识点且没有未解决疑问，用一至两句小结当前知识点，承接其刚才的理解并自然进入账本标记的下一知识点。',
@@ -102,15 +103,14 @@ function teachingFlowBackground(context: TeachingContextPackage): string[] {
       '如果综合回答仍不充分，继续提供有针对性的支架，并以一个便于学习者继续表达本课理解的问题收束。',
     ];
   }
+  if (phase === 'discussion') {
+    return [
+      '综合检测已经通过或被学习者明确跳过；当前处于讨论答疑阶段，等待学习者确认是否还有本课疑问或其他讲解需求。',
+      '如果学习者提出疑问，完整回应并保持 lessonPhase=discussion、closureInquiry=awaiting_confirmation；在回复末尾再次自然询问是否还有其他疑惑或讲解需求，不要提前输出最终课程总结。',
+      '用户可以连续追问任意轮次。只有学习者本轮明确表示没有疑问、不需要继续讲解或可以结束时，才输出结构完整、简洁连贯的最终课程总结，并在同一轮把状态设为 ready_to_close、confirmed_no_questions、delivered。',
+    ];
+  }
   if (phase === 'summary') {
-    const inquiry = state.closureInquiry ?? 'awaiting_confirmation';
-    if (inquiry === 'awaiting_confirmation') {
-      return [
-        '综合检测已经通过或被学习者明确跳过；当前等待学习者确认是否还有本课疑问或其他讲解需求。',
-        '如果学习者提出疑问，完整回应，并在回复末尾再次自然询问是否还有其他疑惑或讲解需求；不要提前输出最终课程总结。',
-        '如果学习者明确表示没有疑问、不需要继续讲解或可以结束，直接输出结构完整、简洁连贯的最终课程总结。最终总结后不要再提出问题、布置任务或引导继续输出。',
-      ];
-    }
     return [
       '学习者已经明确表示没有其他疑问。当前只输出本课最终总结，概括核心知识、关系和本次学习形成的关键理解。',
       '总结完成后告知学习者可以结束本课；不要再提出问题、布置任务或开启新的检测循环。',
@@ -172,8 +172,9 @@ function controlProtocol(context: TeachingContextPackage): string {
     'status=completed 表示你已完成该知识点教学，并基于教学互动自主判断可以进入下一阶段；此时 interactionStatus 必须是 completed 或 skipped。',
     '用户跳过整个知识点时使用 status=skipped 且 interactionStatus=skipped；只跳过知识点互动时使用 status=completed 且 interactionStatus=skipped。',
     'comprehensiveCheck 只能是 pending|learning|completed|skipped；用户跳过综合检测时使用 skipped。',
-    '已 completed 或 skipped 的节点不得倒退。只有全部知识点 completed/skipped 后才能进入 comprehensive_check；只有综合检测 completed/skipped 后才能进入 summary。',
-    '只有用户明确没有其他疑问且最终课程总结已经输出时，才能令 lessonPhase=ready_to_close、closureInquiry=confirmed_no_questions、summaryStatus=delivered。',
+    '已 completed 或 skipped 的节点不得倒退。只有全部知识点 completed/skipped 后才能进入 comprehensive_check；只有综合检测 completed/skipped 后才能进入 discussion。',
+    '综合检测 completed 或 skipped 后必须先进入 lessonPhase=discussion、closureInquiry=awaiting_confirmation；讨论答疑期间用户提出任何问题都必须保持该状态并继续答疑。',
+    '只有用户在当前轮明确没有其他疑问且最终课程总结已经输出时，才能令 lessonPhase=ready_to_close、closureInquiry=confirmed_no_questions、summaryStatus=delivered。',
     `当前机器状态：${machineControlContext(context)}`,
   ].join('\n');
 }

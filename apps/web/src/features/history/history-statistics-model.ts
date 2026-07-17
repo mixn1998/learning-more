@@ -190,7 +190,6 @@ export function buildStatisticsSnapshot(input: {
     longestStreakDays: input.statistics.longestStreakDays,
     bars,
     disciplines,
-    interactionResponded: responded,
     interactionResponseRate: prompted === 0 ? 0 : Math.round((responded / prompted) * 100),
     interactionSkipped: skipped,
   };

@@ -165,6 +165,9 @@ describe('GenerationTeachingAgent', () => {
     );
     expect(fake.request()?.prompt).toContain('课程邻接探索');
     expect(fake.request()?.prompt).toContain('把选择权交给学习者');
+    expect(fake.request()?.prompt).toContain(
+      '不要默认我已经理解，我想要更加深入透彻的学习理解过程体验，更强的思维激活程度和思考密度。',
+    );
     expect(fake.request()?.prompt).toContain('不要向学习者播报正在检测或已经通过检测');
     expect(fake.request()?.prompt).toContain('用一至两句小结当前知识点');
     expect(fake.request()?.prompt).toContain('综合检测通过后也不播报通过状态');
@@ -215,7 +218,7 @@ describe('GenerationTeachingAgent', () => {
       ...base,
       teachingState: {
         ...base.teachingState,
-        lessonPhase: 'summary',
+        lessonPhase: 'discussion',
         comprehensiveCheck: 'skipped',
         closureInquiry: 'awaiting_confirmation',
       },
@@ -233,11 +236,11 @@ describe('GenerationTeachingAgent', () => {
 
     await agent.submit(summaryContext);
 
-    expect(fake.request()?.prompt).toContain('等待学习者确认是否还有本课疑问');
+    expect(fake.request()?.prompt).toContain('当前处于讨论答疑阶段');
     expect(fake.request()?.prompt).toContain('如果学习者提出疑问，完整回应');
     expect(fake.request()?.prompt).toContain('不要提前输出最终课程总结');
-    expect(fake.request()?.prompt).toContain('如果学习者明确表示没有疑问');
-    expect(fake.request()?.prompt).toContain('最终总结后不要再提出问题');
+    expect(fake.request()?.prompt).toContain('用户可以连续追问任意轮次');
+    expect(fake.request()?.prompt).toContain('才输出结构完整、简洁连贯的最终课程总结');
   });
 
   it('preserves interrupted Markdown without treating it as a complete reply', async () => {

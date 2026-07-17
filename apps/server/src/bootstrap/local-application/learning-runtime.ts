@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   type LearningEventEnvelope,
@@ -166,6 +166,55 @@ export function createLocalLearningRuntime(
       providerId: 'current',
       now: input.now,
     }),
+    interactionSink: {
+      async captureFromObservation({ courseId, lessonId, sessionId, observation }) {
+        const events: LearningEventEnvelope[] = [];
+        const append = (
+          type: 'InteractionPrompted' | 'InteractionResponded' | 'InteractionSkipped',
+          interactionId: string,
+        ) => {
+          const eventId = `event_interaction_${createHash('sha256')
+            .update(`${sessionId}\0${interactionId}\0${type}`, 'utf8')
+            .digest('hex')
+            .slice(0, 40)}`;
+          events.push({
+            id: eventId,
+            schema_version: 1,
+            type,
+            occurred_at: observation.observedAt,
+            recorded_at: input.now().toISOString(),
+            source: 'TeachingObservation',
+            target_refs: { courseId, lessonId, sessionId, interactionId },
+            payload: {
+              interactionId,
+              conversationInteractionId: interactionId,
+              ...(type === 'InteractionPrompted'
+                ? { promptedAt: observation.observedAt }
+                : type === 'InteractionResponded'
+                  ? { respondedAt: observation.observedAt }
+                  : { skippedAt: observation.observedAt }),
+              observationId: observation.observationId,
+              sourceSnapshotHash: observation.sourceSnapshotHash,
+            },
+            idempotency_key: eventId,
+            correlation_id: eventId,
+          });
+        };
+        for (const interaction of observation.interactions ?? []) {
+          append('InteractionPrompted', interaction.interactionId);
+          if (interaction.outcome === 'responded') {
+            append('InteractionResponded', interaction.interactionId);
+          } else if (interaction.outcome === 'skipped') {
+            append('InteractionSkipped', interaction.interactionId);
+          }
+        }
+        if (events.length === 0) return;
+        await input.unitOfWork.execute(
+          { transactionId: `tx_interaction_facts_${randomUUID()}` },
+          (tx) => input.events.outbox.enqueue(tx, events),
+        );
+      },
+    },
     reasoningBehaviorSink: input.profile.reasoningBehaviorSink,
     ledgerRepository: teachingLedgerRepository,
     unitOfWork: input.unitOfWork,

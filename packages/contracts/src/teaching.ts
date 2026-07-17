@@ -64,6 +64,31 @@ export const TeachingObservationEntrySchema = z.strictObject({
   qualityFlags: z.array(z.enum(['direct', 'complete', 'ambiguous'])),
 });
 
+export const TeachingInteractionObservationSchema = z
+  .strictObject({
+    interactionId: IdentifierSchema,
+    knowledgePointRefs: z.array(SourceRefSchema),
+    promptSourceRef: SourceRefSchema,
+    outcome: z.enum(['pending', 'responded', 'skipped']),
+    responseSourceRef: SourceRefSchema.optional(),
+  })
+  .superRefine((interaction, context) => {
+    if (interaction.outcome !== 'pending' && interaction.responseSourceRef === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['responseSourceRef'],
+        message: 'settled_interaction_response_source_required',
+      });
+    }
+    if (interaction.outcome === 'pending' && interaction.responseSourceRef !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['responseSourceRef'],
+        message: 'pending_interaction_response_source_forbidden',
+      });
+    }
+  });
+
 export const TeachingObservationSchema = z.strictObject({
   observationId: IdentifierSchema,
   schemaVersion: z.literal(1),
@@ -74,6 +99,7 @@ export const TeachingObservationSchema = z.strictObject({
   sourceSnapshotHash: Sha256Schema,
   scope: TeachingScopeRelationSchema,
   entries: z.array(TeachingObservationEntrySchema),
+  interactions: z.array(TeachingInteractionObservationSchema).optional(),
   observerVersion: IdentifierSchema,
   observedAt: z.iso.datetime({ offset: true }),
   status: z.enum(['active', 'superseded', 'retracted']),
@@ -126,7 +152,14 @@ export const TeachingStateSnapshotSchema = z.strictObject({
   scopeStatus: z.enum(['aligned', 'needs_return']),
   evidenceCheckpoint: z.boolean(),
   lessonPhase: z
-    .enum(['warmup', 'knowledge_point', 'comprehensive_check', 'summary', 'ready_to_close'])
+    .enum([
+      'warmup',
+      'knowledge_point',
+      'comprehensive_check',
+      'discussion',
+      'summary',
+      'ready_to_close',
+    ])
     .optional(),
   activeKnowledgePointRef: SourceRefSchema.optional(),
   comprehensiveCheck: z
@@ -175,6 +208,9 @@ export const TeachingCheckpointSnapshotSchema = z
 
 export type TeachingScopeAlignment = z.infer<typeof TeachingScopeAlignmentSchema>;
 export type TeachingObservationEntry = Readonly<z.infer<typeof TeachingObservationEntrySchema>>;
+export type TeachingInteractionObservation = Readonly<
+  z.infer<typeof TeachingInteractionObservationSchema>
+>;
 export type TeachingObservation = Readonly<z.infer<typeof TeachingObservationSchema>>;
 export type TeachingStateSnapshot = Readonly<z.infer<typeof TeachingStateSnapshotSchema>>;
 export type TeachingCheckpointReason = z.infer<typeof TeachingCheckpointReasonSchema>;

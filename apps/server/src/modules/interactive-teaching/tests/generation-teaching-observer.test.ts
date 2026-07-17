@@ -15,7 +15,7 @@ describe('GenerationTeachingObserver', () => {
       lessonId: 'lesson_1',
       sessionId: 'session_1',
       turnSequence: 1,
-      sourceMessageIds: ['message_user_1'],
+      sourceMessageIds: ['message_ai_1', 'message_user_1'],
       sourceSnapshotHash: 'a'.repeat(64),
       scope: {
         alignment: 'direct',
@@ -32,6 +32,15 @@ describe('GenerationTeachingObserver', () => {
           explicitness: 'ai_observed',
           resolvesEntryRefs: [],
           qualityFlags: ['direct', 'complete'],
+        },
+      ],
+      interactions: [
+        {
+          interactionId: 'interaction:message_ai_1',
+          knowledgePointRefs: ['knowledge:kp_1'],
+          promptSourceRef: 'message:message_ai_1',
+          outcome: 'responded',
+          responseSourceRef: 'message:message_user_1',
         },
       ],
       observerVersion: 'teaching-observer@1',
@@ -88,6 +97,13 @@ describe('GenerationTeachingObserver', () => {
       }),
       messages: [
         {
+          messageId: 'message_ai_1',
+          role: 'assistant',
+          completionStatus: 'complete',
+          markdown: 'What follows from changing the sample space?',
+          sourceRef: 'message:message_ai_1',
+        },
+        {
           messageId: 'message_user_1',
           role: 'user',
           completionStatus: 'complete',
@@ -110,12 +126,17 @@ describe('GenerationTeachingObserver', () => {
     );
     expect(request?.prompt).toContain('qualityFlags 只能使用 direct|complete|ambiguous');
     expect(request?.prompt).toContain('完整学习会话历史');
+    expect(request?.prompt).toContain('普通澄清问句和课末自由答疑不属于关键互动');
+    expect(request?.prompt).toContain(
+      'interactionId 必须严格写成 interaction:<首次发起该互动的助手消息 ID>',
+    );
     expect(request?.prompt).toContain('教学观察不判断知识点检测或综合检测是否通过');
     expect(request?.prompt).toContain('不要输出 progressionSignal');
     expect(request?.prompt).toContain('open_loop 必须引用用户消息');
     expect(request?.prompt).toContain('绝不能把助手提出的问题记为 open_loop');
     expect(request?.prompt).toContain('记录为 learner_intent');
-    expect(result.observerVersion).toBe('teaching-observer@3');
+    expect(result.observerVersion).toBe('teaching-observer@4');
+    expect(result.interactions).toEqual(output.interactions);
   });
 
   it('keeps valid evidence when generated observation contains known aliases and invalid optional metadata', async () => {
@@ -154,6 +175,7 @@ describe('GenerationTeachingObserver', () => {
             qualityFlags: ['complete'],
           },
         ],
+        interactions: [],
       }),
     };
     const runtime: GenerationRuntime = {
@@ -274,5 +296,67 @@ describe('GenerationTeachingObserver', () => {
         ],
       }),
     ).rejects.toThrow();
+  });
+
+  it('fails the rebuild when the key-interaction projection is omitted', async () => {
+    const task: GenerationTask = {
+      id: 'task_missing_interactions',
+      taskKey: 'missing-interactions',
+      status: 'completed',
+      createdAt: '2026-07-14T00:00:00.000Z',
+      updatedAt: '2026-07-14T00:00:01.000Z',
+      resourceVersion: 1,
+      draftMarkdown: JSON.stringify({
+        scope: { alignment: 'unclear', relationRefs: [], rationale: 'No reliable change.' },
+        entries: [],
+      }),
+    };
+    const runtime: GenerationRuntime = {
+      async submit() {
+        return { taskId: task.id };
+      },
+      async runNext() {
+        return task.id;
+      },
+      async get() {
+        return task;
+      },
+      async cancel() {
+        return task;
+      },
+      async recoverExpiredLeases() {
+        return 0;
+      },
+      async getMetrics() {
+        return { total: 1, byStatus: { completed: 1 }, byErrorCode: {} };
+      },
+    };
+    const observer = createGenerationTeachingObserver({ runtime, providerId: 'mock' });
+
+    await expect(
+      observer.observe({
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        turnSequence: 1,
+        sourceSnapshotHash: 'd'.repeat(64),
+        knowledgePointRefs: ['knowledge:kp_1'],
+        courseRelationRefs: ['course-topic:probability'],
+        observationLens: teachingObservationLens('standard'),
+        previousState: createTeachingState({
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          knowledgePointRefs: ['knowledge:kp_1'],
+        }),
+        messages: [
+          {
+            messageId: 'message_user_1',
+            role: 'user',
+            completionStatus: 'complete',
+            markdown: 'Please continue.',
+            sourceRef: 'message:message_user_1',
+          },
+        ],
+      }),
+    ).rejects.toThrow('teaching_observation_interactions_required');
   });
 });

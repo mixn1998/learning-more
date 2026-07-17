@@ -10,7 +10,7 @@ function observation(): TeachingObservation {
     lessonId: 'lesson_1',
     sessionId: 'session_1',
     turnSequence: 1,
-    sourceMessageIds: ['message_user_1', 'message_ai_1'],
+    sourceMessageIds: ['message_ai_1', 'message_user_1'],
     sourceSnapshotHash: 'a'.repeat(64),
     scope: {
       alignment: 'direct',
@@ -28,6 +28,15 @@ function observation(): TeachingObservation {
         qualityFlags: ['direct', 'complete'],
       },
     ],
+    interactions: [
+      {
+        interactionId: 'interaction:message_ai_1',
+        knowledgePointRefs: ['knowledge:kp_1'],
+        promptSourceRef: 'message:message_ai_1',
+        outcome: 'responded',
+        responseSourceRef: 'message:message_user_1',
+      },
+    ],
     observerVersion: 'teaching-observer@1',
     observedAt: '2026-07-14T00:00:00.000Z',
     status: 'active',
@@ -42,8 +51,8 @@ const validationContext = {
   courseRelationRefs: ['course-topic:probability'],
   openEntryRefs: [],
   messages: [
-    { messageId: 'message_user_1', role: 'user', completionStatus: 'complete' },
     { messageId: 'message_ai_1', role: 'assistant', completionStatus: 'complete' },
+    { messageId: 'message_user_1', role: 'user', completionStatus: 'complete' },
   ],
 } as const;
 
@@ -54,11 +63,11 @@ describe('teaching observation validator', () => {
 
   it('rejects interrupted assistant output as teaching evidence', () => {
     expect(() =>
-      validateTeachingObservation(observation(), {
+      validateTeachingObservation({ ...observation(), interactions: [] }, {
         ...validationContext,
         messages: [
-          validationContext.messages[0],
           { messageId: 'message_ai_1', role: 'assistant', completionStatus: 'interrupted' },
+          validationContext.messages[1],
         ],
       }),
     ).toThrowError('assistant_evidence_incomplete');
@@ -91,5 +100,32 @@ describe('teaching observation validator', () => {
     expect(() => validateTeachingObservation(invalid, validationContext)).toThrowError(
       'open_loop_requires_user_source',
     );
+  });
+
+  it('rejects key interaction prompts that do not reference a complete assistant message', () => {
+    const invalid: TeachingObservation = {
+      ...observation(),
+      interactions: [
+        {
+          interactionId: 'interaction:message_user_1',
+          knowledgePointRefs: ['knowledge:kp_1'],
+          promptSourceRef: 'message:message_user_1',
+          outcome: 'pending',
+        },
+      ],
+    };
+
+    expect(() => validateTeachingObservation(invalid, validationContext)).toThrowError(
+      'interaction_prompt_requires_assistant',
+    );
+  });
+
+  it('rejects a learner message that occurred before the key interaction prompt as its response', () => {
+    expect(() =>
+      validateTeachingObservation(observation(), {
+        ...validationContext,
+        messages: [validationContext.messages[1], validationContext.messages[0]],
+      }),
+    ).toThrowError('interaction_response_must_follow_prompt');
   });
 });

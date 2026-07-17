@@ -202,6 +202,7 @@ async function fixture(
   let observerShouldFail = options.observerFailsOnce ?? false;
   let reasoningSinkShouldFail = options.reasoningSinkFailsOnce ?? false;
   const capturedReasoningObservations: string[] = [];
+  const capturedInteractionObservations: TeachingObservation[] = [];
   const frames: GenerationStreamEvent[] = [];
   const observer: TeachingObserver = {
     async observe(input): Promise<TeachingObservation> {
@@ -267,6 +268,26 @@ async function fixture(
                 qualityFlags: ['direct', 'complete'],
               },
             ],
+        interactions: input.messages
+          .map((message, index) => ({ message, index }))
+          .filter(({ message }) => message.role === 'assistant' && message.completionStatus === 'complete')
+          .map(({ message, index }) => {
+            const response = input.messages
+              .slice(index + 1)
+              .find(
+                (candidate) =>
+                  candidate.role === 'user' && candidate.completionStatus === 'complete',
+              );
+            return {
+              interactionId: `interaction:${message.messageId}`,
+              knowledgePointRefs: ['knowledge:kp_1'],
+              promptSourceRef: `message:${message.messageId}`,
+              outcome: response === undefined ? ('pending' as const) : ('responded' as const),
+              ...(response === undefined
+                ? {}
+                : { responseSourceRef: `message:${response.messageId}` }),
+            };
+          }),
         observerVersion: 'teaching-observer@1',
         observedAt: '2026-07-14T00:01:00.000Z',
         status: 'active',
@@ -280,6 +301,11 @@ async function fixture(
     contextAssembler: createTeachingContextAssembler({ sources }),
     agent,
     observer,
+    interactionSink: {
+      async captureFromObservation(input) {
+        capturedInteractionObservations.push(input.observation);
+      },
+    },
     reasoningBehaviorSink: {
       async captureFromObservation(input) {
         if (reasoningSinkShouldFail) {
@@ -325,6 +351,7 @@ async function fixture(
     messageLog,
     submittedContext: () => submittedContext,
     capturedReasoningObservations,
+    capturedInteractionObservations,
     observedMessageBatches,
     ledgerRepository,
     frames,
@@ -583,7 +610,12 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('rebuilds each teaching observation from the complete session history', async () => {
-    const { module, drainObservations, observedMessageBatches } = await fixture();
+    const {
+      module,
+      drainObservations,
+      observedMessageBatches,
+      capturedInteractionObservations,
+    } = await fixture();
     await module.advanceTurn(
       {
         courseId: 'course_1',
@@ -615,6 +647,17 @@ describe('InteractiveTeaching deep module', () => {
     expect(observedMessageBatches).toEqual([
       ['message_user_1', 'message_ai_1'],
       ['message_user_1', 'message_ai_1', 'message_user_2', 'message_ai_2'],
+    ]);
+    expect(capturedInteractionObservations.at(-1)?.interactions).toEqual([
+      expect.objectContaining({
+        interactionId: 'interaction:message_ai_1',
+        outcome: 'responded',
+        responseSourceRef: 'message:message_user_2',
+      }),
+      expect.objectContaining({
+        interactionId: 'interaction:message_ai_2',
+        outcome: 'pending',
+      }),
     ]);
   });
 

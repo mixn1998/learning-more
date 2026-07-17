@@ -22,7 +22,6 @@ export type HistoryStatisticsSnapshot = Readonly<{
   longestStreakDays: number;
   bars: readonly number[];
   disciplines: readonly Readonly<{ label: string; percent: number; hours: string }>[];
-  interactionResponded: number;
   interactionResponseRate: number;
   interactionSkipped: number;
 }>;
@@ -233,10 +232,6 @@ export function HistoryStatisticsWorkspace(props: {
                   </div>
                 </div>
                 <div className="history-stat-facts">
-                  <div className="history-stat-fact">
-                    <b>{snapshot.interactionResponded}</b>
-                    <span>互动回应</span>
-                  </div>
                   <div className="history-stat-fact">
                     <b>{snapshot.interactionResponseRate}%</b>
                     <span>关键互动回应率</span>

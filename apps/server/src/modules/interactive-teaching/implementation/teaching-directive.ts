@@ -22,6 +22,7 @@ export const TeachingDirectiveSchema = z.strictObject({
     'warmup',
     'knowledge_point',
     'comprehensive_check',
+    'discussion',
     'summary',
     'ready_to_close',
   ]),
@@ -88,9 +89,23 @@ function invalid(code: string): never {
   throw new Error(code);
 }
 
+export function isExplicitNoFurtherQuestions(message: string | undefined): boolean {
+  if (message === undefined) return false;
+  const raw = message.normalize('NFKC').trim().toLocaleLowerCase('zh-CN');
+  if (raw.length === 0 || /[？?]/u.test(raw)) return false;
+  const normalized = raw.replace(/[。！!，,、\s]+/gu, '');
+  return [
+    /^(?:暂时)?(?:没有|没)(?:其他|别的|更多)?(?:问题|疑问|疑惑)?(?:了)?(?:(?:(?:本课)?(?:可以)?(?:结束本课|结束|结课))|(?:(?:请|你可以)?(?:总结一下|进行总结|总结)(?:了|吧)?))?(?:谢谢|感谢)?$/u,
+    /^(?:都)?(?:清楚|明白|理解)(?:了)?(?:谢谢|感谢)?$/u,
+    /^(?:不需要|无需)(?:继续|更多|其他)?(?:讲解|说明)?(?:了)?(?:谢谢|感谢)?$/u,
+    /^(?:可以|请)?(?:结束|结课|结束本课)(?:了)?(?:谢谢|感谢)?$/u,
+  ].some((pattern) => pattern.test(normalized));
+}
+
 export function applyTeachingDirective(
   currentInput: TeachingStateSnapshot,
   directiveInput: unknown,
+  context: Readonly<{ currentUserMessage?: string }> = {},
 ): TeachingStateSnapshot {
   const current = normalizeTeachingControlState(currentInput);
   const directive = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
@@ -125,6 +140,7 @@ export function applyTeachingDirective(
     'warmup',
     'knowledge_point',
     'comprehensive_check',
+    'discussion',
     'summary',
     'ready_to_close',
   ] as const;
@@ -137,7 +153,9 @@ export function applyTeachingDirective(
     (point) => point.status === 'completed' || point.status === 'skipped',
   );
   if (
-    ['comprehensive_check', 'summary', 'ready_to_close'].includes(directive.lessonPhase) &&
+    ['comprehensive_check', 'discussion', 'summary', 'ready_to_close'].includes(
+      directive.lessonPhase,
+    ) &&
     !settled
   ) {
     invalid('teaching_directive_knowledge_points_unsettled');
@@ -176,11 +194,33 @@ export function applyTeachingDirective(
     invalid('teaching_directive_comprehensive_regression');
   }
   if (
-    (directive.lessonPhase === 'summary' || directive.lessonPhase === 'ready_to_close') &&
+    ['discussion', 'summary', 'ready_to_close'].includes(directive.lessonPhase) &&
     directive.comprehensiveCheck !== 'completed' &&
     directive.comprehensiveCheck !== 'skipped'
   ) {
     invalid('teaching_directive_comprehensive_unsettled');
+  }
+  if (
+    directive.lessonPhase === 'discussion' &&
+    (directive.closureInquiry !== 'awaiting_confirmation' ||
+      directive.summaryStatus !== 'pending')
+  ) {
+    invalid('teaching_directive_discussion_confirmation_required');
+  }
+  const attemptsClosure =
+    directive.closureInquiry === 'confirmed_no_questions' ||
+    directive.summaryStatus === 'delivered' ||
+    directive.lessonPhase === 'ready_to_close';
+  if (
+    attemptsClosure &&
+    currentPhase !== 'discussion' &&
+    currentPhase !== 'summary' &&
+    currentPhase !== 'ready_to_close'
+  ) {
+    invalid('teaching_directive_discussion_required_before_closure');
+  }
+  if (attemptsClosure && !isExplicitNoFurtherQuestions(context.currentUserMessage)) {
+    invalid('teaching_directive_explicit_no_questions_required');
   }
   if (
     directive.summaryStatus === 'delivered' &&

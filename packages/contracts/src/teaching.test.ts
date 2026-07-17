@@ -34,6 +34,15 @@ function adjacentObservation() {
         qualityFlags: ['direct', 'complete'],
       },
     ],
+    interactions: [
+      {
+        interactionId: 'interaction:message_ai_1',
+        knowledgePointRefs: [],
+        promptSourceRef: 'message:message_ai_1',
+        outcome: 'responded',
+        responseSourceRef: 'message:message_user_1',
+      },
+    ],
     observerVersion: 'teaching-observer@1',
     observedAt: '2026-07-14T00:00:00.000Z',
     status: 'active',
@@ -89,6 +98,22 @@ describe('interactive teaching contracts', () => {
       TeachingObservationSchema.parse({
         ...adjacentObservation(),
         scope: { alignment: 'adjacent', relationRefs: [], rationale: 'related' },
+      }),
+    ).toThrow();
+  });
+
+  it('requires settled key interactions to reference the learner response or skip', () => {
+    expect(() =>
+      TeachingObservationSchema.parse({
+        ...adjacentObservation(),
+        interactions: [
+          {
+            interactionId: 'interaction:message_ai_1',
+            knowledgePointRefs: [],
+            promptSourceRef: 'message:message_ai_1',
+            outcome: 'responded',
+          },
+        ],
       }),
     ).toThrow();
   });

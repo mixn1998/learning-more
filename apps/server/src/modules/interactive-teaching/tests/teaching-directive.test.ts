@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyTeachingDirective } from '../implementation/teaching-directive.js';
+import {
+  applyTeachingDirective,
+  isExplicitNoFurtherQuestions,
+} from '../implementation/teaching-directive.js';
 import { createTeachingState } from '../implementation/teaching-state-reducer.js';
 
 function initial() {
@@ -69,31 +72,90 @@ describe('teaching directive', () => {
   });
 
   it('accepts a complete closure snapshot and rejects completed-node regression', () => {
-    const closed = applyTeachingDirective(initial(), {
+    const discussion = applyTeachingDirective(initial(), {
       schemaVersion: 1,
-      lessonPhase: 'ready_to_close',
+      lessonPhase: 'discussion',
       knowledgePoints: [
         { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
         { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'skipped' },
       ],
       comprehensiveCheck: 'skipped',
-      closureInquiry: 'confirmed_no_questions',
-      summaryStatus: 'delivered',
+      closureInquiry: 'awaiting_confirmation',
+      summaryStatus: 'pending',
     });
-
-    expect(closed.lessonPhase).toBe('ready_to_close');
-    expect(() =>
-      applyTeachingDirective(closed, {
+    const closed = applyTeachingDirective(
+      discussion,
+      {
         schemaVersion: 1,
         lessonPhase: 'ready_to_close',
         knowledgePoints: [
-          { ref: 'knowledge:kp_1', status: 'learning', interactionStatus: 'pending' },
+          { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
           { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'skipped' },
         ],
         comprehensiveCheck: 'skipped',
         closureInquiry: 'confirmed_no_questions',
         summaryStatus: 'delivered',
-      }),
+      },
+      { currentUserMessage: '没有其他问题了，可以结束本课。' },
+    );
+
+    expect(closed.lessonPhase).toBe('ready_to_close');
+    expect(() =>
+      applyTeachingDirective(
+        closed,
+        {
+          schemaVersion: 1,
+          lessonPhase: 'ready_to_close',
+          knowledgePoints: [
+            { ref: 'knowledge:kp_1', status: 'learning', interactionStatus: 'pending' },
+            { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'skipped' },
+          ],
+          comprehensiveCheck: 'skipped',
+          closureInquiry: 'confirmed_no_questions',
+          summaryStatus: 'delivered',
+        },
+        { currentUserMessage: '没有其他问题了。' },
+      ),
     ).toThrowError('teaching_directive_completed_point_regression');
+  });
+
+  it('keeps questions in discussion and requires an explicit no-questions reply before closure', () => {
+    const discussion = applyTeachingDirective(initial(), {
+      schemaVersion: 1,
+      lessonPhase: 'discussion',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'completed',
+      closureInquiry: 'awaiting_confirmation',
+      summaryStatus: 'pending',
+    });
+
+    expect(() =>
+      applyTeachingDirective(
+        discussion,
+        {
+          schemaVersion: 1,
+          lessonPhase: 'ready_to_close',
+          knowledgePoints: [
+            { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+            { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'completed' },
+          ],
+          comprehensiveCheck: 'completed',
+          closureInquiry: 'confirmed_no_questions',
+          summaryStatus: 'delivered',
+        },
+        { currentUserMessage: '这个概念还能再解释一下吗？' },
+      ),
+    ).toThrowError('teaching_directive_explicit_no_questions_required');
+  });
+
+  it('recognizes only bounded explicit no-further-questions replies', () => {
+    expect(isExplicitNoFurtherQuestions('暂时没有其他疑问了，谢谢。')).toBe(true);
+    expect(isExplicitNoFurtherQuestions('可以结束本课')).toBe(true);
+    expect(isExplicitNoFurtherQuestions('没有其他问题了，你可以总结一下吧。')).toBe(true);
+    expect(isExplicitNoFurtherQuestions('没有了，但是这个概念为什么成立？')).toBe(false);
+    expect(isExplicitNoFurtherQuestions('这个概念能再解释一下吗？')).toBe(false);
   });
 });

@@ -134,7 +134,6 @@ describe('history statistics projection', () => {
       abandonedCourseCount: 1,
       currentStreakDays: 3,
       longestStreakDays: 9,
-      interactionResponded: 1,
       interactionResponseRate: 100,
       interactionSkipped: 0,
     });

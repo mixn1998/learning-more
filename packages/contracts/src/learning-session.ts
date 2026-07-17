@@ -60,6 +60,7 @@ export const LessonTeachingProgressSchema = z.strictObject({
     'warmup',
     'knowledge_point',
     'comprehensive_check',
+    'discussion',
     'summary',
     'ready_to_close',
   ]),

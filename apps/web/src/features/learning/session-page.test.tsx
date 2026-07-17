@@ -565,7 +565,17 @@ describe('learning SessionPage', () => {
     expect(await screen.findByText('连续性')).toBeInTheDocument();
     expect(
       [...document.querySelectorAll('.learning-path li')].map((item) => item.className),
-    ).toEqual(['done', 'done', 'active', 'done', 'done', 'pending', 'pending', 'pending']);
+    ).toEqual([
+      'done',
+      'done',
+      'active',
+      'done',
+      'done',
+      'pending',
+      'pending',
+      'pending',
+      'pending',
+    ]);
     expect(screen.getByText('该知识点已完成')).toBeInTheDocument();
     expect(screen.getByText('正在学习中')).toBeInTheDocument();
     expect(screen.getByText('跳过知识点')).toBeInTheDocument();

@@ -105,7 +105,6 @@ const statisticsBase = {
     { label: '游戏设计', percent: 57, hours: '5.6h' },
     { label: '商业管理', percent: 39, hours: '3.8h' },
   ],
-  interactionResponded: 184,
   interactionResponseRate: 92,
   interactionSkipped: 11,
 } as const;

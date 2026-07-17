@@ -34,6 +34,9 @@ export function validateTeachingObservation(
   }
 
   const messageById = new Map(context.messages.map((message) => [message.messageId, message]));
+  const messageOrderById = new Map(
+    context.messages.map((message, index) => [message.messageId, index] as const),
+  );
   const knowledgePointRefs = new Set(context.knowledgePointRefs);
   const openEntryRefs = new Set([
     ...context.openEntryRefs,
@@ -50,6 +53,45 @@ export function validateTeachingObservation(
   }
   for (const relationRef of observation.scope.relationRefs) {
     if (!validRelationRefs.has(relationRef)) invalid('observation_relation_unknown');
+  }
+  const interactionIds = new Set<string>();
+  const promptSourceRefs = new Set<string>();
+  for (const interaction of observation.interactions ?? []) {
+    if (interactionIds.has(interaction.interactionId)) invalid('interaction_id_duplicate');
+    interactionIds.add(interaction.interactionId);
+    if (promptSourceRefs.has(interaction.promptSourceRef)) {
+      invalid('interaction_prompt_duplicate');
+    }
+    promptSourceRefs.add(interaction.promptSourceRef);
+    for (const knowledgePointRef of interaction.knowledgePointRefs) {
+      if (!knowledgePointRefs.has(knowledgePointRef)) invalid('knowledge_point_reference_unknown');
+    }
+    const promptMessageId = messageIdFromRef(interaction.promptSourceRef);
+    const promptMessage =
+      promptMessageId === undefined ? undefined : messageById.get(promptMessageId);
+    if (promptMessage?.role !== 'assistant') invalid('interaction_prompt_requires_assistant');
+    if (interaction.interactionId !== `interaction:${promptMessageId}`) {
+      invalid('interaction_id_not_bound_to_prompt');
+    }
+    if (promptMessage.completionStatus !== 'complete') {
+      invalid('interaction_prompt_requires_complete_assistant');
+    }
+    if (interaction.responseSourceRef !== undefined) {
+      const responseMessageId = messageIdFromRef(interaction.responseSourceRef);
+      const responseMessage =
+        responseMessageId === undefined ? undefined : messageById.get(responseMessageId);
+      if (responseMessage?.role !== 'user') invalid('interaction_response_requires_user');
+      if (
+        promptMessageId === undefined ||
+        responseMessageId === undefined ||
+        messageOrderById.get(responseMessageId)! <= messageOrderById.get(promptMessageId)!
+      ) {
+        invalid('interaction_response_must_follow_prompt');
+      }
+      if (responseMessage.completionStatus !== 'complete') {
+        invalid('interaction_response_requires_complete_user');
+      }
+    }
   }
   for (const entry of observation.entries) {
     const sourceMessages = entry.sourceRefs
