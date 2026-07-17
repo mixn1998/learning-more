@@ -98,6 +98,7 @@ export async function assembleLocalApplication(
   // pending work and terminal tasks whose authoring projection was not saved.
   void course.recoverGenerationTasks().catch(() => undefined);
   await learning.recoverTeachingSessions();
+  profile.start();
   let backgroundRecovery: Promise<void> | undefined;
   const startBackgroundRecovery = () => {
     backgroundRecovery ??= (async () => {
@@ -143,7 +144,10 @@ export async function assembleLocalApplication(
     },
   };
   return {
-    close: async () => insights.close(),
+    close: async () => {
+      profile.close();
+      await insights.close();
+    },
     serverDependencies,
     courseRepositories,
     frameLog,

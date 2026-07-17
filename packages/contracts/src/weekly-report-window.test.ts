@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { completedWeeklyReportWindow, nextWeeklyReportBoundary } from './weekly-report-window.js';
+import {
+  completedWeeklyReportWindow,
+  currentLocalWeekdayCycleDate,
+  nextLocalWeekdayBoundary,
+  nextWeeklyReportBoundary,
+} from './weekly-report-window.js';
 
 describe('weekly report window', () => {
   it('selects the last complete Sunday-to-Sunday window in Asia/Shanghai', () => {
@@ -20,5 +25,28 @@ describe('weekly report window', () => {
     expect(
       nextWeeklyReportBoundary(new Date('2026-07-11T16:00:00.000Z'), 'Asia/Shanghai').toISOString(),
     ).toBe('2026-07-18T16:00:00.000Z');
+  });
+
+  it('resolves Saturday portrait cycles and their next local-midnight boundary', () => {
+    expect(
+      currentLocalWeekdayCycleDate(new Date('2026-07-17T15:59:30.000Z'), 'Asia/Shanghai', 6),
+    ).toBe('2026-07-11');
+    expect(
+      nextLocalWeekdayBoundary(
+        new Date('2026-07-17T15:59:30.000Z'),
+        'Asia/Shanghai',
+        6,
+      ).toISOString(),
+    ).toBe('2026-07-17T16:00:00.000Z');
+    expect(
+      currentLocalWeekdayCycleDate(new Date('2026-07-17T16:00:00.000Z'), 'Asia/Shanghai', 6),
+    ).toBe('2026-07-18');
+    expect(
+      nextLocalWeekdayBoundary(
+        new Date('2026-07-17T16:00:00.000Z'),
+        'Asia/Shanghai',
+        6,
+      ).toISOString(),
+    ).toBe('2026-07-24T16:00:00.000Z');
   });
 });

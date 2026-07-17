@@ -61,6 +61,31 @@ function localMidnightInstant(value: string, timeZone: string): Date {
   return candidate;
 }
 
+function assertWeekday(value: number): void {
+  if (!Number.isInteger(value) || value < 0 || value > 6) {
+    throw new Error(`local_weekday_invalid:${value}`);
+  }
+}
+
+export function currentLocalWeekdayCycleDate(
+  now: Date,
+  timeZone: string,
+  targetWeekday: number,
+): string {
+  assertWeekday(targetWeekday);
+  const today = localDate(now, timeZone);
+  const daysSinceTarget = (weekday(today) - targetWeekday + 7) % 7;
+  return addDays(today, -daysSinceTarget);
+}
+
+export function nextLocalWeekdayBoundary(now: Date, timeZone: string, targetWeekday: number): Date {
+  assertWeekday(targetWeekday);
+  const today = localDate(now, timeZone);
+  const currentWeekday = weekday(today);
+  const daysUntilTarget = (targetWeekday - currentWeekday + 7) % 7 || 7;
+  return localMidnightInstant(addDays(today, daysUntilTarget), timeZone);
+}
+
 export function completedWeeklyReportWindow(now: Date, timeZone: string): WeeklyReportWindow {
   const today = localDate(now, timeZone);
   const endLocalDate = addDays(today, -weekday(today));
@@ -73,8 +98,5 @@ export function completedWeeklyReportWindow(now: Date, timeZone: string): Weekly
 }
 
 export function nextWeeklyReportBoundary(now: Date, timeZone: string): Date {
-  const today = localDate(now, timeZone);
-  const currentWeekday = weekday(today);
-  const nextSunday = addDays(today, currentWeekday === 0 ? 7 : 7 - currentWeekday);
-  return localMidnightInstant(nextSunday, timeZone);
+  return nextLocalWeekdayBoundary(now, timeZone, 0);
 }

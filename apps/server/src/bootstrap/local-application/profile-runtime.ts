@@ -9,6 +9,8 @@ import type { TeachingContextSources } from '../../modules/interactive-teaching/
 import type { AdditionalWeeklyEvidence } from '../../modules/learning-facts/implementation/weekly-evidence-assembler.js';
 import { packPortraitEvidence } from '../../modules/learning-portrait/implementation/evidence-packer.js';
 import { createPortraitModule } from '../../modules/learning-portrait/implementation/portrait-module.js';
+import { createPortraitRefreshCoordinator } from '../../modules/learning-portrait/implementation/portrait-refresh-coordinator.js';
+import { createWeeklyPortraitScheduler } from '../../modules/learning-portrait/implementation/weekly-portrait-scheduler.js';
 import { createAiProfileEvidenceExtractor } from '../../modules/profile-evidence/implementation/ai-profile-evidence-extractor.js';
 import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/implementation/profile-evidence-aggregator.js';
 import { assembleProfileEvidenceContext } from '../../modules/profile-evidence/implementation/profile-evidence-context-assembler.js';
@@ -45,6 +47,8 @@ export type LocalProfileRuntime = Readonly<{
   listWeeklyReasoningEvidence(): Promise<readonly AdditionalWeeklyEvidence[]>;
   recoverReasoningAnalysis(): Promise<void>;
   getProjectionStatus(): 'ready' | 'degraded';
+  start(): void;
+  close(): void;
 }>;
 
 export function createLocalProfileRuntime(
@@ -328,7 +332,7 @@ export function createLocalProfileRuntime(
     },
   });
 
-  async function requestPortraitRefresh(inputRequest: {
+  async function performPortraitRefresh(inputRequest: {
     idempotencyKey: string;
     tokenBudget: number;
   }) {
@@ -392,6 +396,18 @@ export function createLocalProfileRuntime(
       throw error;
     }
   }
+
+  const portraitRefreshCoordinator = createPortraitRefreshCoordinator({
+    perform: performPortraitRefresh,
+  });
+  const requestPortraitRefresh: PortraitRouteOptions['requestRefresh'] = (request) =>
+    portraitRefreshCoordinator.request(request);
+  const weeklyPortraitScheduler = createWeeklyPortraitScheduler({
+    timeZone: 'Asia/Shanghai',
+    now: input.now,
+    refresh: ({ idempotencyKey, tokenBudget }) =>
+      requestPortraitRefresh({ idempotencyKey, tokenBudget }),
+  });
 
   const getTeachingPersonalization: TeachingContextSources['getPersonalizationView'] = async ({
     courseId,
@@ -565,5 +581,7 @@ export function createLocalProfileRuntime(
     },
     recoverReasoningAnalysis,
     getProjectionStatus: () => projectionStatus,
+    start: weeklyPortraitScheduler.start,
+    close: weeklyPortraitScheduler.stop,
   };
 }
