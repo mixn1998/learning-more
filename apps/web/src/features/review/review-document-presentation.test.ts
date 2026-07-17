@@ -21,6 +21,32 @@ describe('lesson Review presentation projection', () => {
     expect(projection.knowledgeMapNodes).toEqual(['目标体验', '核心循环', '决策节点', '因果反馈']);
   });
 
+  it('converts legacy tree-form knowledge maps into the same relation-chain projection', () => {
+    const projection = projectLessonReviewDocument({
+      knowledgeMap: {
+        title: '本课知识地图',
+        markdown:
+          '├─ 核心判断 ├─ 机会成本与局面依赖 ├─ 关键阈值 ├─ 信息条件与风险—回报 └─ 将复杂分析变得可执行',
+      },
+      coreInsight: '本课要解决如何判断选择是否真正有意义。',
+      performance: [
+        { title: '你做得好的地方', markdown: '主动检查了规则前提。' },
+        { title: '接下来的判断', markdown: '在新情境中独立验证。' },
+      ],
+    });
+
+    expect(projection.knowledgeMap.markdown).toBe(
+      '核心判断 → 机会成本与局面依赖 → 关键阈值 → 信息条件与风险—回报 → 将复杂分析变得可执行',
+    );
+    expect(projection.knowledgeMapNodes).toEqual([
+      '核心判断',
+      '机会成本与局面依赖',
+      '关键阈值',
+      '信息条件与风险—回报',
+      '将复杂分析变得可执行',
+    ]);
+  });
+
   it('coalesces many detailed performance blocks into two concise display blocks', () => {
     const projection = projectLessonReviewDocument({
       knowledgeMap: { title: '线索', markdown: '条件 → 判断 → 行动' },

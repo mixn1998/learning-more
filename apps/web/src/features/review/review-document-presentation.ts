@@ -43,6 +43,14 @@ function markdownUnits(markdown: string): string[] {
     .filter((value) => value !== '');
 }
 
+function treeKnowledgeNodes(markdown: string): string[] {
+  return unique(
+    [...markdown.replaceAll(/\r?\n/gu, ' ').matchAll(/(?:^|\s)[├└]─\s*(.*?)(?=\s+[├└]─|$)/gu)]
+      .map((match) => trimPrefix(match[1] ?? ''))
+      .filter((node) => node !== ''),
+  ).slice(0, 9);
+}
+
 function projectKnowledgeMap(block: ReviewTextBlock): ReviewTextBlock {
   const relationLines = block.markdown
     .split(/\r?\n/u)
@@ -58,11 +66,14 @@ function projectKnowledgeMap(block: ReviewTextBlock): ReviewTextBlock {
       (match[1] ?? '').trim(),
     ),
   ).slice(0, 8);
+  const treeNodes = treeKnowledgeNodes(block.markdown);
   const markdown =
     relationLines[0] ??
-    (boldTerms.length >= 2
-      ? boldTerms.join(' → ')
-      : conciseSentence(markdownUnits(block.markdown)[0] ?? block.markdown, 320));
+    (treeNodes.length >= 2
+      ? treeNodes.join(' → ')
+      : boldTerms.length >= 2
+        ? boldTerms.join(' → ')
+        : conciseSentence(markdownUnits(block.markdown)[0] ?? block.markdown, 320));
   return { ...block, markdown };
 }
 
