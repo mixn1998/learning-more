@@ -151,6 +151,10 @@ describe('GenerationReviewWriter', () => {
     expect(request?.prompt).toContain('【本课责任】');
     expect(request?.prompt).toContain('【必要的学习者原话证据】');
     expect(request?.prompt).toContain('课程邻接探索');
+    expect(request?.prompt).toContain('没有实际邻接探索时省略该模块');
+    expect(request?.prompt).toContain('knowledgeMap 只负责把本课知识点串成关系图式');
+    expect(request?.prompt).toContain('coreInsight 只回答两件事');
+    expect(request?.prompt).toContain('performance 在后端继续完整记录');
     expect(request?.prompt).toContain('自然关注情境信息使用、约束意识和迁移边界。');
     expect(request?.prompt).not.toContain('observationCompleteness');
     expect(request?.prompt).not.toContain('checkpoint_1');

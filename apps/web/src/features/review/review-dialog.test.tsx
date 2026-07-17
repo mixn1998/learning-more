@@ -73,6 +73,10 @@ describe('ReviewDialog', () => {
     );
 
     expect(screen.getByRole('heading', { name: '知识图谱' })).toBeVisible();
+    expect(screen.getByRole('list', { name: '本课知识关系主链' })).toBeVisible();
+    expect(
+      screen.getByRole('list', { name: '本课知识关系主链' }).querySelectorAll('li'),
+    ).toHaveLength(3);
     expect(screen.getByText('主动检查了规则前提。')).toBeVisible();
     expect(screen.queryByText('AI 接口 · Codex')).not.toBeInTheDocument();
   });

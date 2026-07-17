@@ -27,6 +27,42 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap;
 }
+.review-knowledge-chain {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(132px, 1fr);
+  align-items: stretch;
+  gap: 24px;
+  overflow-x: auto;
+  margin: 0;
+  padding: 2px 3px 9px;
+  list-style: none;
+}
+.review-knowledge-chain li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 9px 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.45;
+  text-align: center;
+}
+.review-knowledge-chain li:not(:last-child)::after {
+  content: '→';
+  position: absolute;
+  top: 50%;
+  right: -20px;
+  color: var(--accent-dark);
+  font-size: 18px;
+  font-weight: 800;
+  transform: translateY(-50%);
+}
 .review-callout-list {
   display: grid;
   gap: 14px;

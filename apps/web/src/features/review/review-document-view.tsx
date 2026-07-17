@@ -5,40 +5,63 @@ import type {
 } from '@learning-more/contracts';
 import { AiContent } from '@learning-more/ui';
 
+import { projectLessonReviewDocument } from './review-document-presentation.js';
 import './review-document-view.css';
 
-function Block(props: { readonly block: ReviewTextBlock; readonly className?: string }) {
+function Block(props: {
+  readonly block: ReviewTextBlock;
+  readonly className?: string;
+  readonly hideTitle?: boolean;
+}) {
   return (
     <article className={props.className}>
-      <h3>{props.block.title}</h3>
+      {props.hideTitle ? null : <h3>{props.block.title}</h3>}
       <AiContent markdown={props.block.markdown} />
     </article>
+  );
+}
+
+function KnowledgeMap(props: {
+  readonly block: ReviewTextBlock;
+  readonly nodes: readonly string[];
+}) {
+  if (props.nodes.length < 2) {
+    return <Block block={props.block} className="review-knowledge-map" hideTitle />;
+  }
+  return (
+    <div className="review-knowledge-map">
+      <ol aria-label="本课知识关系主链" className="review-knowledge-chain">
+        {props.nodes.map((node, index) => (
+          <li key={`${index}:${node}`}>{node}</li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
 export function LessonFinalReviewDocumentView(props: {
   readonly document: LessonFinalReviewDocument;
 }) {
+  const presentation = projectLessonReviewDocument(props.document);
   return (
     <article className="structured-review lesson-final-review-document">
-      <h2>{props.document.title}</h2>
       <section>
         <h2>知识图谱</h2>
-        <Block block={props.document.knowledgeMap} className="review-knowledge-map" />
+        <KnowledgeMap block={presentation.knowledgeMap} nodes={presentation.knowledgeMapNodes} />
       </section>
       <section>
         <h2>核心思想</h2>
-        <AiContent markdown={props.document.coreInsight} />
+        <AiContent markdown={presentation.coreInsight} />
       </section>
       <section>
         <h2>学习表现评价</h2>
         <div className="review-callout-list">
-          {props.document.performance.map((block) => (
+          {presentation.performance.map((block) => (
             <Block block={block} className="review-evaluation-card" key={block.title} />
           ))}
         </div>
       </section>
-      {(props.document.additionalSections ?? []).map((block) => (
+      {presentation.adjacentExploration.map((block) => (
         <section key={block.title}>
           <h2>{block.title}</h2>
           <AiContent markdown={block.markdown} />
@@ -51,6 +74,7 @@ export function LessonFinalReviewDocumentView(props: {
 export function LessonStageReviewDocumentView(props: {
   readonly document: LessonStageReviewDocument;
 }) {
+  const presentation = projectLessonReviewDocument({ ...props.document, coreInsight: '' });
   return (
     <article className="structured-review lesson-stage-review-document">
       <h2>{props.document.title}</h2>
@@ -71,12 +95,12 @@ export function LessonStageReviewDocumentView(props: {
       </div>
       <section>
         <h2>当前知识线索</h2>
-        <Block block={props.document.knowledgeMap} className="review-knowledge-map" />
+        <KnowledgeMap block={presentation.knowledgeMap} nodes={presentation.knowledgeMapNodes} />
       </section>
       <section>
         <h2>学习表现</h2>
         <div className="review-callout-list">
-          {props.document.performance.map((block) => (
+          {presentation.performance.map((block) => (
             <Block block={block} className="review-evaluation-card" key={block.title} />
           ))}
         </div>
