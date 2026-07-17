@@ -1,0 +1,82 @@
+.structured-review {
+  display: grid;
+  gap: 34px;
+  color: var(--ink);
+}
+.structured-review > h2,
+.structured-review > section > h2 {
+  margin: 0 0 16px;
+  font-size: 24px;
+  line-height: 1.35;
+}
+.structured-review > h2 {
+  font-size: 30px;
+}
+.structured-review h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.review-knowledge-map {
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper-2);
+}
+.review-knowledge-map .lm-ai-content {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+.review-callout-list {
+  display: grid;
+  gap: 14px;
+}
+.review-evaluation-card {
+  padding: 20px 22px;
+  border-left: 4px solid var(--accent);
+  border-radius: 0 14px 14px 0;
+  background: var(--tint);
+}
+.stage-review-lead {
+  margin-top: -18px;
+}
+.stage-review-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.stage-review-status-grid > section {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+.stage-review-status-grid h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+.stage-review-status-grid article + article {
+  margin-top: 18px;
+}
+.stage-review-continuation {
+  padding: 16px 20px;
+  border-left: 4px solid var(--accent);
+  background: #fff8e8;
+}
+.structured-review .lm-ai-content > :first-child {
+  margin-top: 0;
+}
+.structured-review .lm-ai-content > :last-child {
+  margin-bottom: 0;
+}
+@media (max-width: 720px) {
+  .structured-review {
+    gap: 26px;
+  }
+  .structured-review > h2 {
+    font-size: 25px;
+  }
+  .stage-review-status-grid {
+    grid-template-columns: 1fr;
+  }
+}

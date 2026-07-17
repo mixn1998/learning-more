@@ -22,4 +22,5 @@ export type LearningSessionEvent =
   | (EventBase & Readonly<{ type: 'EvidenceFreeLessonRestored' }>)
   | (EventBase & Readonly<{ type: 'AbandonedLessonRestored' }>)
   | (EventBase & Readonly<{ type: 'StageReviewCommitted'; reviewId: string }>)
+  | (EventBase & Readonly<{ type: 'LessonCompletedPendingReview' }>)
   | (EventBase & Readonly<{ type: 'FinalReviewCommitted'; reviewId: string }>);

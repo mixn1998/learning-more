@@ -115,6 +115,7 @@ export function createLessonClosureWorkflow(options: {
         contentSha256: review.contentSha256,
         sourceSessionIds: review.sourceSessionIds,
         messageRangeChecksum: review.messageRangeChecksum,
+        ...(review.document === undefined ? {} : { document: review.document }),
       },
       {
         ...context,

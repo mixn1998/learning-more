@@ -1,7 +1,12 @@
 import { useState } from 'react';
 
-import type { CourseArchiveView, CourseOutlineVersionView } from '@learning-more/contracts';
-import { AiSurface, Button } from '@learning-more/ui';
+import type {
+  CourseArchiveView,
+  CourseFinalReviewDocument,
+  CourseOutlineVersionView,
+  ReviewTextBlock,
+} from '@learning-more/contracts';
+import { AiContent, AiSurface, Button } from '@learning-more/ui';
 
 import { courseModeDefinition } from '../../course-mode-registry.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
@@ -14,6 +19,17 @@ export type CourseReviewDocument = Readonly<{
   development: Readonly<{ title: string; detail: string }>;
   boundary: Readonly<{ title: string; detail: string }>;
   extensions: readonly Readonly<{ title: string; detail: string }>[];
+}>;
+
+type CourseReviewProjection = Readonly<{
+  title?: string;
+  lead?: string;
+  knowledge: readonly ReviewTextBlock[];
+  strengths: readonly ReviewTextBlock[];
+  development: readonly ReviewTextBlock[];
+  boundaries: readonly ReviewTextBlock[];
+  extensions: readonly ReviewTextBlock[];
+  additionalSections: readonly ReviewTextBlock[];
 }>;
 
 function section(markdown: string, heading: string): string {
@@ -55,6 +71,37 @@ function reviewDocument(markdown: string): CourseReviewDocument {
   };
 }
 
+function projection(
+  document: CourseFinalReviewDocument | CourseReviewDocument | undefined,
+  markdown: string,
+): CourseReviewProjection {
+  if ((document as CourseFinalReviewDocument | undefined)?.kind === 'course-final') {
+    const structured = document as CourseFinalReviewDocument;
+    return {
+      title: structured.title,
+      ...(structured.lead === undefined ? {} : { lead: structured.lead }),
+      knowledge: structured.knowledgeThreads,
+      strengths: structured.strengths,
+      development: structured.development,
+      boundaries: structured.boundaries,
+      extensions: structured.extensions,
+      additionalSections: structured.additionalSections ?? [],
+    };
+  }
+  const legacy = (document ?? reviewDocument(markdown)) as CourseReviewDocument;
+  return {
+    knowledge: legacy.knowledge.map((item) => ({ title: item.title, markdown: item.detail })),
+    strengths: [{ title: legacy.strengths.title, markdown: legacy.strengths.detail }],
+    development: [{ title: legacy.development.title, markdown: legacy.development.detail }],
+    boundaries: [{ title: legacy.boundary.title, markdown: legacy.boundary.detail }],
+    extensions: legacy.extensions.map((item) => ({
+      title: item.title,
+      markdown: item.detail,
+    })),
+    additionalSections: [],
+  };
+}
+
 const toc = [
   ['knowledge', '核心知识线索'],
   ['performance', '总体学习表现'],
@@ -66,11 +113,11 @@ export function CourseReviewView(props: {
   readonly course: CourseArchiveView;
   readonly currentOutline?: CourseOutlineVersionView | undefined;
   readonly markdown: string;
-  readonly document?: CourseReviewDocument | undefined;
+  readonly document?: CourseFinalReviewDocument | CourseReviewDocument | undefined;
   readonly onNavigate: (path: string) => void;
 }) {
   const [active, setActive] = useState<(typeof toc)[number][0]>('knowledge');
-  const document = props.document ?? reviewDocument(props.markdown);
+  const document = projection(props.document, props.markdown);
   const lessonCount = props.course.lessons?.length ?? props.course.lessonIds.length;
   const mode = courseModeDefinition(props.course.courseMode);
   useCourseModeTheme(props.course.courseMode);
@@ -84,8 +131,12 @@ export function CourseReviewView(props: {
             <span className="lm-mode-badge">● {mode.label}</span>
           </div>
           <div className="lm-kicker course-review-hero__kicker">COURSE REVIEW</div>
-          <h1>{props.course.title}</h1>
-          <p>基于确认版大纲与 {lessonCount} 个最终课时 Review 汇总生成。</p>
+          <h1>{document.title ?? props.course.title}</h1>
+          {document.lead === undefined ? (
+            <p>基于确认版大纲与 {lessonCount} 个可用课时 Review 汇总生成。</p>
+          ) : (
+            <AiContent markdown={document.lead} />
+          )}
         </div>
         <div className="lm-actions">
           <Button type="button" onClick={() => props.onNavigate('/')}>
@@ -123,7 +174,7 @@ export function CourseReviewView(props: {
               {document.knowledge.map((item) => (
                 <article key={item.title} className="course-review-knowledge-item">
                   <b>{item.title}</b>
-                  <p>{item.detail}</p>
+                  <AiContent markdown={item.markdown} />
                 </article>
               ))}
             </div>
@@ -131,20 +182,22 @@ export function CourseReviewView(props: {
           <section className="course-review-section" id="performance">
             <h2 className="course-review-section__title">总体学习表现</h2>
             <div className="course-review-performance-grid">
-              {[document.strengths, document.development].map((item) => (
+              {[...document.strengths, ...document.development].map((item) => (
                 <article key={item.title} className="course-review-performance-card">
                   <b>{item.title}</b>
-                  <p>{item.detail}</p>
+                  <AiContent markdown={item.markdown} />
                 </article>
               ))}
             </div>
           </section>
           <section className="course-review-section" id="boundaries">
             <h2 className="course-review-section__title">可继续探索的知识边界</h2>
-            <article className="course-review-boundary">
-              <b>{document.boundary.title}</b>
-              <p>{document.boundary.detail}</p>
-            </article>
+            {document.boundaries.map((item) => (
+              <article className="course-review-boundary" key={item.title}>
+                <b>{item.title}</b>
+                <AiContent markdown={item.markdown} />
+              </article>
+            ))}
           </section>
           <section className="course-review-section" id="extensions">
             <h2 className="course-review-section__title">推荐扩展课程</h2>
@@ -152,11 +205,17 @@ export function CourseReviewView(props: {
               {document.extensions.map((item) => (
                 <article key={item.title}>
                   <b>{item.title}</b>
-                  <p>{item.detail}</p>
+                  <AiContent markdown={item.markdown} />
                 </article>
               ))}
             </div>
           </section>
+          {document.additionalSections.map((item) => (
+            <section className="course-review-section" key={item.title}>
+              <h2 className="course-review-section__title">{item.title}</h2>
+              <AiContent markdown={item.markdown} />
+            </section>
+          ))}
         </AiSurface>
       </div>
     </main>

@@ -93,4 +93,30 @@ describe('lesson history record', () => {
     fireEvent.click(screen.getByRole('tab', { name: '课时 Review' }));
     expect(screen.getByLabelText('权威课时 Review')).toHaveTextContent('权威最终 Review');
   });
+
+  it('renders a stage Review as resumable learning state instead of a final summary', () => {
+    render(
+      <LessonRecordView
+        initialTab="review"
+        original={{ sessionId: 'original', label: '原始学习', messages: [] }}
+        progress="abandoned"
+        reviewDocument={{
+          schemaVersion: 1,
+          kind: 'lesson-stage',
+          title: '阶段 Review：判断框架正在形成',
+          lead: '本课在有效证据形成后提前结束。',
+          establishedUnderstanding: [{ title: '已建立', markdown: '能够识别关键阈值。' }],
+          pendingValidation: [{ title: '尚待验证', markdown: '尚未在新案例中独立推导。' }],
+          knowledgeMap: { title: '当前线索', markdown: '条件 → 阈值 → 结果' },
+          performance: [{ title: '本次已经推进', markdown: '主动追问了规则前提。' }],
+          continuationNotice: '恢复学习后从尚待验证处继续。',
+        }}
+        supplementary={[]}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '已建立的理解' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '尚待验证的内容' })).toBeVisible();
+    expect(screen.getByText('恢复学习后从尚待验证处继续。')).toBeVisible();
+  });
 });

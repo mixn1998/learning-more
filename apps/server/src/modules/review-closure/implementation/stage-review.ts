@@ -133,6 +133,7 @@ export function createStageReviewWorkflow(options: {
               status: 'committed',
               artifactRef: input.artifactRef,
               contentSha256: input.contentSha256,
+              ...(input.document === undefined ? {} : { document: input.document }),
               replacementCount: current.replacementCount + 1,
               updatedAt: options.now().toISOString(),
             },

@@ -1,4 +1,9 @@
-import type { CommandContext, CommandResult, QueryContext } from '@learning-more/contracts';
+import type {
+  CommandContext,
+  CommandResult,
+  QueryContext,
+  ReviewDocument,
+} from '@learning-more/contracts';
 
 import type { LessonLearning } from './model/learning-session.js';
 
@@ -30,6 +35,7 @@ export type LearningSessionCommand =
   | (LessonCommand & Readonly<{ type: 'AbandonLesson' }>)
   | (LessonCommand & Readonly<{ type: 'RestoreLesson' }>)
   | (LessonCommand & Readonly<{ type: 'CommitStageReview'; reviewId: string }>)
+  | (LessonCommand & Readonly<{ type: 'CompleteLessonPendingReview' }>)
   | (LessonCommand &
       Readonly<{
         type: 'CommitFinalReview';
@@ -38,6 +44,7 @@ export type LearningSessionCommand =
         contentSha256: string;
         sourceSessionIds: readonly string[];
         messageRangeChecksum: string;
+        document?: ReviewDocument;
       }>);
 
 export type LearningSessionQuery = Readonly<{
@@ -65,6 +72,7 @@ export type LearningSessionView = Readonly<{
     sourceSessionIds: readonly string[];
     messageRangeChecksum: string;
     committedAt: string;
+    document?: ReviewDocument;
   }>;
 }>;
 

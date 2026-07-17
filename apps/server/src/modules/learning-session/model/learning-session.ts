@@ -55,9 +55,14 @@ export function decide(
 ): readonly LearningSessionEvent[] {
   if (learning.processedCommandIds.includes(commandId)) return [];
   if (learning.progress === 'completed') {
-    if (command.type === 'commitFinalReview') {
-      throw new LearningSessionError('final_review_immutable');
+    if (
+      command.type === 'commitFinalReview' &&
+      learning.session !== undefined &&
+      learning.session.finalReviewId === undefined
+    ) {
+      return [event(commandId, { type: 'FinalReviewCommitted', reviewId: command.reviewId })];
     }
+    if (command.type === 'commitFinalReview') throw new LearningSessionError('final_review_immutable');
     throw new LearningSessionError('lesson_not_startable');
   }
 
@@ -153,6 +158,12 @@ export function decide(
       throw new LearningSessionError('lesson_not_completable');
     }
     return [event(commandId, { type: 'FinalReviewCommitted', reviewId: command.reviewId })];
+  }
+  if (command.type === 'completePendingReview') {
+    if (!session.evidenceCheckpoint) {
+      throw new LearningSessionError('lesson_not_completable');
+    }
+    return [event(commandId, { type: 'LessonCompletedPendingReview' })];
   }
   throw new LearningSessionError('session_not_writable');
 }
@@ -256,6 +267,14 @@ export function evolve(learning: LessonLearning, event: LearningSessionEvent): L
         state: 'closed',
         finalReviewId: event.reviewId,
       },
+      processedCommandIds,
+    };
+  }
+  if (event.type === 'LessonCompletedPendingReview') {
+    return {
+      ...learning,
+      progress: 'completed',
+      session: { ...withoutActiveGeneration(session), state: 'closed' },
       processedCommandIds,
     };
   }

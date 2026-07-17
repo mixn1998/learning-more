@@ -37,6 +37,19 @@ describe('CoursePage', () => {
       artifactRef: 'course_review_course_01',
       markdown:
         '# 主题总结\n## 核心知识线索\nProbability\n## 总体学习表现\nEvidence based\n## 推荐扩展课程\nBayesian inference',
+      document: {
+        schemaVersion: 1,
+        kind: 'course-final',
+        title: '概率判断：从直觉到证据',
+        knowledgeThreads: [
+          { title: '条件改变参照系', markdown: '先确定当前样本空间，再比较概率。' },
+          { title: '证据更新判断', markdown: '新证据会改变不同解释的相对可信度。' },
+        ],
+        strengths: [{ title: '稳定优势', markdown: '能够主动检查前提。' }],
+        development: [{ title: '继续发展', markdown: '寻找反例后再收敛。' }],
+        boundaries: [{ title: '因果与相关', markdown: '下一步区分预测证据与因果证据。' }],
+        extensions: [{ title: '贝叶斯推断', markdown: '继续研究证据如何更新判断。' }],
+      },
       resourceVersion: 2,
     });
     render(
@@ -68,6 +81,7 @@ describe('CoursePage', () => {
     fireEvent.click(close);
 
     expect(await screen.findByRole('heading', { name: '主题核心知识线索' })).toBeInTheDocument();
+    expect(screen.getByText('条件改变参照系')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '总体学习表现' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '推荐扩展课程' })).toBeInTheDocument();
     expect(document.querySelector('.course-review-content')).toHaveAttribute('data-ai-surface');

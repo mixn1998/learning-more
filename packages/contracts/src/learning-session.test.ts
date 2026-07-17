@@ -9,6 +9,8 @@ const baseRecord = {
   courseTitle: '课程',
   completedAt: '2026-07-15T00:00:00.000Z',
   actualSeconds: 60,
+  progress: 'completed' as const,
+  reviewStatus: 'ready' as const,
   original: {
     sessionId: 'session_01',
     label: '原始学习',

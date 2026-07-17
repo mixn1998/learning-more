@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { ReviewDocumentSchema } from './review-document.js';
+
 const identifier = z.string().trim().min(1).max(200);
 const resourceVersion = z.number().int().nonnegative();
 
@@ -131,6 +133,7 @@ export const LearningSessionViewResponseSchema = z.strictObject({
       messageRangeChecksum: z.string().regex(/^[a-f0-9]{64}$/),
       committedAt: z.iso.datetime({ offset: true }),
       markdown: z.string().optional(),
+      document: ReviewDocumentSchema.optional(),
     })
     .optional(),
 });
@@ -164,6 +167,7 @@ export const LessonRecordResponseSchema = z.strictObject({
     }),
   ),
   finalReviewMarkdown: z.string().optional(),
+  reviewDocument: ReviewDocumentSchema.optional(),
 });
 
 export const LessonEntryStateResponseSchema = z.strictObject({
@@ -171,6 +175,7 @@ export const LessonEntryStateResponseSchema = z.strictObject({
   progress: z.enum(['not_started', 'in_progress', 'abandoned', 'completed']),
   sessionId: identifier.optional(),
   stageReviewMarkdown: z.string().optional(),
+  stageReviewDocument: ReviewDocumentSchema.optional(),
   stageReviewStatus: z.enum(['generating', 'failed', 'ready']).optional(),
   resourceVersion,
 });

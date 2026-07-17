@@ -83,6 +83,25 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
     }
   });
 
+  it('completes immediately while the final Review is pending and attaches it once later', () => {
+    let learning = createLessonLearning('lesson_01');
+    learning = apply(learning, { type: 'start', sessionId: 'session_01' }, 'c1');
+    learning = apply(learning, { type: 'appendUserMessage', messageId: 'message_01' }, 'c2');
+    learning = apply(learning, { type: 'establishEvidenceCheckpoint' }, 'c3');
+    learning = apply(learning, { type: 'completePendingReview' }, 'c4');
+    expect(learning).toMatchObject({
+      progress: 'completed',
+      session: { state: 'closed' },
+    });
+    expect(learning.session?.finalReviewId).toBeUndefined();
+
+    learning = apply(learning, { type: 'commitFinalReview', reviewId: 'review_01' }, 'c5');
+    expect(learning.session?.finalReviewId).toBe('review_01');
+    expect(() =>
+      decide(learning, { type: 'commitFinalReview', reviewId: 'review_02' }, 'c6'),
+    ).toThrow(expect.objectContaining({ code: 'final_review_immutable' }));
+  });
+
   it('returns no events for an already processed command', () => {
     const initial = createLessonLearning('lesson_01');
     const started = apply(initial, { type: 'start', sessionId: 'session_01' }, 'same');

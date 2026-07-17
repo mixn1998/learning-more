@@ -2,8 +2,13 @@ import { useState } from 'react';
 
 import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface, tabId, tabPanelId, Tabs } from '@learning-more/ui';
+import type { ReviewDocument } from '@learning-more/contracts';
 
 import { ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+import {
+  LessonFinalReviewDocumentView,
+  LessonStageReviewDocumentView,
+} from '../review/review-document-view.js';
 
 import './lesson-record-view.css';
 
@@ -52,6 +57,7 @@ export function LessonRecordView(props: {
   readonly completedAt?: string;
   readonly actualSeconds?: number;
   readonly reviewContent?: AiSurfaceContent;
+  readonly reviewDocument?: ReviewDocument;
   readonly onBackHome?: () => void;
   readonly onBackToOutline?: () => void;
 }) {
@@ -133,7 +139,11 @@ export function LessonRecordView(props: {
               tabIndex={0}
             >
               <article aria-label="权威课时 Review" className="lesson-record-review">
-                {props.reviewContent !== undefined ? (
+                {props.reviewDocument?.kind === 'lesson-final' ? (
+                  <LessonFinalReviewDocumentView document={props.reviewDocument} />
+                ) : props.reviewDocument?.kind === 'lesson-stage' ? (
+                  <LessonStageReviewDocumentView document={props.reviewDocument} />
+                ) : props.reviewContent !== undefined ? (
                   <AiSurface className="review-content">{props.reviewContent}</AiSurface>
                 ) : props.finalReviewMarkdown !== undefined ? (
                   <AiContent className="review-content" markdown={props.finalReviewMarkdown} />

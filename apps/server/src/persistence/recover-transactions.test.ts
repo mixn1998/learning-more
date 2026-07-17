@@ -94,4 +94,27 @@ describe('transaction recovery', () => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it('removes a journal temp file left before a transaction became prepared', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-recovery-temp-'));
+    try {
+      const root = DataRoot.create(directory);
+      await initializeStoreLayout(createStorePaths(root));
+      const transactionDirectory = path.join(
+        root.absolutePath,
+        'transactions',
+        'prepared',
+        'tx_interrupted_before_prepare',
+      );
+      await mkdir(transactionDirectory, { recursive: true });
+      await writeFile(path.join(transactionDirectory, 'journal.json.tmp'), '', 'utf8');
+
+      await expect(recoverTransactions(root)).resolves.toBe(1);
+      await expect(readFile(path.join(transactionDirectory, 'journal.json'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });

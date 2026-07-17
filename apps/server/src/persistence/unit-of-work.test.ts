@@ -58,11 +58,35 @@ describe('UnitOfWork [EQ-DATA-02]', () => {
     const first = await acquireStoreWriteLease(root, { instanceId: 'instance-a', processId: 101 });
 
     await expect(
-      acquireStoreWriteLease(root, { instanceId: 'instance-b', processId: 202 }),
+      acquireStoreWriteLease(
+        root,
+        { instanceId: 'instance-b', processId: 202 },
+        { isProcessAlive: (processId) => processId === 101 },
+      ),
     ).rejects.toMatchObject({ code: 'store_write_lease_held' });
     await expect(readFile(first.leasePath, 'utf8')).resolves.toContain('instance-a');
 
     await first.release();
+  });
+
+  it('atomically replaces a lease whose owning process is no longer alive', async () => {
+    const root = await temporaryDataRoot();
+    const abandoned = await acquireStoreWriteLease(root, {
+      instanceId: 'instance-abandoned',
+      processId: 101,
+    });
+
+    const replacement = await acquireStoreWriteLease(
+      root,
+      { instanceId: 'instance-replacement', processId: 202 },
+      { isProcessAlive: () => false },
+    );
+
+    await expect(readFile(replacement.leasePath, 'utf8')).resolves.toContain(
+      'instance-replacement',
+    );
+    await expect(abandoned.release()).rejects.toMatchObject({ code: 'store_write_lease_held' });
+    await replacement.release();
   });
 
   it('serializes concurrent transactions created by the same local application', async () => {

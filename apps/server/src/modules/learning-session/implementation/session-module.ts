@@ -67,6 +67,7 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
   if (command.type === 'CommitStageReview') {
     return { type: 'commitStageReview', reviewId: command.reviewId };
   }
+  if (command.type === 'CompleteLessonPendingReview') return { type: 'completePendingReview' };
   return { type: 'commitFinalReview', reviewId: command.reviewId };
 }
 
@@ -248,7 +249,7 @@ export function createSessionModule(options: {
           sessionId: learning.session.id,
           now,
         });
-      } else if (command.type === 'CommitFinalReview') {
+      } else if (command.type === 'CompleteLessonPendingReview') {
         intervals = closeLearningIntervals(intervals, now, 'completed');
       }
       const stored = {
@@ -265,6 +266,7 @@ export function createSessionModule(options: {
                 sourceSessionIds: command.sourceSessionIds,
                 messageRangeChecksum: command.messageRangeChecksum,
                 committedAt: now.toISOString(),
+                ...(command.document === undefined ? {} : { document: command.document }),
               },
             }
           : {}),

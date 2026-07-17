@@ -1,3 +1,5 @@
+import type { ReviewDocument } from '@learning-more/contracts';
+
 export type StageReviewStatus = 'generating' | 'failed' | 'committed';
 
 export type StageReviewState = Readonly<{
@@ -10,6 +12,7 @@ export type StageReviewState = Readonly<{
   requestReceipts: Readonly<Record<string, string>>;
   artifactRef?: string;
   contentSha256?: string;
+  document?: ReviewDocument;
   errorCode?: string;
   draftArtifactRef?: string;
   replacementCount: number;
@@ -43,6 +46,7 @@ export type LessonClosureRecord = Readonly<{
     sourceSessionIds: readonly string[];
     messageRangeChecksum: string;
     contentSha256: string;
+    document?: ReviewDocument;
   }>;
   finalReviewId?: string;
   errorCode?: string;

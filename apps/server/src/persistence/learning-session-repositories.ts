@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { z } from 'zod';
 
+import { ReviewDocumentSchema, type ReviewDocument } from '@learning-more/contracts';
+
 import type { LessonLearning } from '../modules/learning-session/model/learning-session.js';
 import type { LearningTimeInterval } from '../modules/learning-session/implementation/time-intervals.js';
 import type { SessionWriteLease } from '../modules/learning-session/implementation/session-write-lease.js';
@@ -24,6 +26,7 @@ export type LearningSessionRecord = Readonly<{
     sourceSessionIds: readonly string[];
     messageRangeChecksum: string;
     committedAt: string;
+    document?: ReviewDocument;
   }>;
   resourceVersion: number;
 }>;
@@ -112,6 +115,7 @@ const RecordSchema = z.strictObject({
       sourceSessionIds: z.array(z.string().min(1)),
       messageRangeChecksum: z.string().regex(/^[a-f0-9]{64}$/),
       committedAt: z.iso.datetime({ offset: true }),
+      document: ReviewDocumentSchema.optional(),
     })
     .optional(),
   resourceVersion: z.number().int().nonnegative(),

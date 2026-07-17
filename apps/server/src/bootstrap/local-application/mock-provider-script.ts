@@ -285,11 +285,77 @@ function mockScript(
       },
     ];
   }
+  if (prompt.includes('"kind":"lesson-final"')) {
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          schemaVersion: 1,
+          kind: 'lesson-final',
+          title: '本课学习回看',
+          knowledgeMap: { title: '知识图谱', markdown: '本课知识线索已依据冻结证据整理。' },
+          coreInsight: '把本课中的关键判断连接到可观察的学习证据。',
+          performance: [
+            { title: '已经推进的部分', markdown: '学习者已完成本课要求的主要互动。' },
+            { title: '下一步判断', markdown: '后续可继续检验理解能否迁移到新情境。' },
+          ],
+        }),
+      },
+    ];
+  }
+  if (prompt.includes('"kind":"lesson-stage"')) {
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          schemaVersion: 1,
+          kind: 'lesson-stage',
+          title: '阶段学习回看',
+          lead: '本课在形成可用证据后提前结束。',
+          establishedUnderstanding: [
+            { title: '已建立的理解', markdown: '已有互动证据支持当前阶段的部分理解。' },
+          ],
+          pendingValidation: [
+            { title: '尚待验证', markdown: '其余教学闭环仍需在恢复学习后继续。' },
+          ],
+          knowledgeMap: { title: '当前知识线索', markdown: '阶段性知识关系已按现有证据整理。' },
+          performance: [
+            { title: '本次已经推进的部分', markdown: '学习者完成了当前阶段的有效互动。' },
+          ],
+          continuationNotice: '恢复学习将继续原课时，不会新建一节课。',
+        }),
+      },
+    ];
+  }
   if (prompt.startsWith('根据完整、冻结且可追溯的教学证据')) {
     return [
       {
         type: 'text',
         text: '# 学习 Review\n\n这份 Review 仅依据已冻结的教学证据，总结实际推进、仍待确认之处与有价值的教学支线。',
+      },
+    ];
+  }
+  if (prompt.includes('"kind":"course-final"')) {
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          schemaVersion: 1,
+          kind: 'course-final',
+          title: '课程学习回看',
+          lead: '本 Review 依据课程结构与已冻结的课时 Review 汇总生成。',
+          knowledgeThreads: [
+            { title: '主题核心知识线索', markdown: '各课时的关键判断已连接为课程级知识线索。' },
+          ],
+          strengths: [{ title: '稳定优势', markdown: '能够依据互动证据推进理解。' }],
+          development: [{ title: '需要继续发展', markdown: '可继续检验理解在新情境中的迁移。' }],
+          boundaries: [
+            { title: '可继续探索的知识边界', markdown: '可从现有主题继续向相邻问题扩展。' },
+          ],
+          extensions: [
+            { title: '推荐扩展方向', markdown: '选择与当前知识线索直接相连的补充课程。' },
+          ],
+        }),
       },
     ];
   }

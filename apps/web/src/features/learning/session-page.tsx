@@ -1,5 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 
+import type { LessonFinalReviewDocument } from '@learning-more/contracts';
+
 import { learningClient, type LearningClient } from '../../client/learning-client.js';
 import { ChatComposer } from '../../components/chat/chat.js';
 import { ReviewDialog } from '../review/review-dialog.js';
@@ -35,6 +37,7 @@ type State = Readonly<{
   activity: 'active' | 'paused';
   actualSeconds: number;
   reviewMarkdown?: string;
+  reviewDocument?: LessonFinalReviewDocument;
   stageReviewStatus?: 'generating' | 'failed' | 'ready' | undefined;
   reviewDismissed: boolean;
   supplementarySessionId?: string;
@@ -66,6 +69,7 @@ type Action =
       progress: State['progress'];
       activity: State['activity'];
       reviewMarkdown?: string;
+      reviewDocument?: LessonFinalReviewDocument;
       messages?: readonly SessionMessageView[];
       actualSeconds?: number;
       sessionSnapshotHash?: string;
@@ -91,7 +95,12 @@ type Action =
       stageReviewStatus?: State['stageReviewStatus'];
     }>
   | Readonly<{ type: 'activity'; activity: State['activity']; resourceVersion: number }>
-  | Readonly<{ type: 'review'; markdown: string; resourceVersion: number }>
+  | Readonly<{
+      type: 'review';
+      markdown: string;
+      document?: LessonFinalReviewDocument;
+      resourceVersion: number;
+    }>
   | Readonly<{ type: 'review-dismissed' }>
   | Readonly<{ type: 'closure-requested' }>
   | Readonly<{ type: 'closure-request-failed'; error: string }>
@@ -171,6 +180,7 @@ function reducer(state: State, action: Action): State {
       progress: action.progress,
       activity: action.activity,
       ...(action.reviewMarkdown === undefined ? {} : { reviewMarkdown: action.reviewMarkdown }),
+      ...(action.reviewDocument === undefined ? {} : { reviewDocument: action.reviewDocument }),
       ...(action.messages === undefined
         ? {}
         : { messages: action.messages, assistantMarkdown: '' }),
@@ -316,6 +326,8 @@ function reducer(state: State, action: Action): State {
   if (action.type === 'closure') {
     return {
       ...state,
+      progress: 'completed',
+      writable: false,
       closureTransactionId: action.transactionId,
       ...(action.state === undefined ? {} : { closureState: action.state }),
       resourceVersion: action.resourceVersion,
@@ -328,6 +340,7 @@ function reducer(state: State, action: Action): State {
     writable: false,
     closureState: 'completed',
     reviewMarkdown: action.markdown,
+    ...(action.document === undefined ? {} : { reviewDocument: action.document }),
     reviewDismissed: false,
     resourceVersion: action.resourceVersion,
   };
@@ -447,6 +460,9 @@ export function SessionPage(props: {
       ...(snapshot.finalReview?.markdown === undefined
         ? {}
         : { reviewMarkdown: snapshot.finalReview.markdown }),
+      ...(snapshot.finalReview?.document?.kind === 'lesson-final'
+        ? { reviewDocument: snapshot.finalReview.document }
+        : {}),
       ...(snapshot.messages === undefined ? {} : { messages: snapshot.messages }),
       ...(snapshot.sessionSnapshotHash === undefined
         ? {}
@@ -538,7 +554,7 @@ export function SessionPage(props: {
     if (state.closureTransactionId === undefined) return undefined;
     let cancelled = false;
     const poll = async () => {
-      for (let attempt = 0; attempt < 300 && !cancelled; attempt += 1) {
+      while (!cancelled) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         if (cancelled) return;
         try {
@@ -547,6 +563,9 @@ export function SessionPage(props: {
             dispatch({
               type: 'review',
               markdown: result.review.markdown,
+              ...(result.review.document?.kind === 'lesson-final'
+                ? { document: result.review.document }
+                : {}),
               resourceVersion: result.resourceVersion,
             });
             return;
@@ -815,6 +834,9 @@ export function SessionPage(props: {
           dispatch({
             type: 'review',
             markdown: result.review.markdown,
+            ...(result.review.document?.kind === 'lesson-final'
+              ? { document: result.review.document }
+              : {}),
             resourceVersion: result.resourceVersion,
           });
         } else {
@@ -978,6 +1000,7 @@ export function SessionPage(props: {
       <ReviewDialog
         courseTitle={props.courseTitle ?? '当前课程'}
         markdown={state.reviewMarkdown ?? ''}
+        {...(state.reviewDocument === undefined ? {} : { document: state.reviewDocument })}
         open={state.reviewMarkdown !== undefined && !state.reviewDismissed}
         title={props.title ?? '当前课节'}
         onClose={() => dispatch({ type: 'review-dismissed' })}

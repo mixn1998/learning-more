@@ -208,6 +208,28 @@ export function CoursePage(props: {
     if (requestedView !== undefined) setLocalView(requestedView);
   }, [requestedView]);
 
+  useEffect(() => {
+    if (view !== 'review') return undefined;
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const next = await api.getCourseReview(props.courseId);
+        if (cancelled) return;
+        if (next !== undefined) setReview(next);
+        if (next?.state === 'review-finalized' || next?.state === 'review-failed') return;
+      } catch {
+        // The background task may not have been created yet; keep the read side passive.
+      }
+      if (!cancelled) timer = window.setTimeout(() => void poll(), 1_000);
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [api, props.courseId, view]);
+
   const loadCourse = useCallback(async () => {
     const next =
       authoring === undefined
@@ -346,7 +368,11 @@ export function CoursePage(props: {
         setCourse({ ...refreshed, status: 'closed', resourceVersion: result.resourceVersion });
       }
       setCloseConfirmOpen(false);
-      setNotice('课程已关闭，主题总结已生成');
+      setNotice(
+        result.markdown === undefined
+          ? '课程已关闭，课程总 Review 正在后台生成'
+          : '课程已关闭，课程总 Review 已保存',
+      );
       navigate(`/courses/${course.courseId}?view=review`);
     } catch (caught) {
       setError(
@@ -501,8 +527,18 @@ export function CoursePage(props: {
     return review?.markdown === undefined ? (
       <main className="lm-page course-page-loading">
         <ContentState
-          title="课程主题总结尚未生成"
-          description="关闭课程后可查看永久只读的主题总结。"
+          title={
+            review?.state === 'review-failed'
+              ? '课程总 Review 生成失败'
+              : review?.state === 'generating-review' || review?.state === 'review-ready'
+                ? '课程总 Review 正在后台生成'
+                : '课程总 Review 尚未生成'
+          }
+          description={
+            review?.state === 'review-failed'
+              ? '课时 Review 与学习档案均已保留，可稍后重试课程总结。'
+              : '最后一节课完成后会自动汇总并静态保存；生成期间无需停留在本页。'
+          }
         />
         <Button type="button" onClick={() => navigate(`/courses/${course.courseId}`)}>
           返回课程大纲
@@ -512,6 +548,7 @@ export function CoursePage(props: {
       <CourseReviewView
         course={course}
         currentOutline={currentOutline}
+        {...(review.document?.kind === 'course-final' ? { document: review.document } : {})}
         markdown={review.markdown}
         onNavigate={navigate}
       />
@@ -568,7 +605,7 @@ export function CoursePage(props: {
           if (!closing) setCloseConfirmOpen(false);
         }}
         open={closeConfirmOpen}
-        title="关闭课程并生成主题总结？"
+        title="关闭课程并在后台生成课程总 Review？"
       >
         <p>关闭后课程大纲与全部课节归档永久只读，并生成课程主题总 Review。</p>
         {abandonedLessonIds.length === 0 ? null : (

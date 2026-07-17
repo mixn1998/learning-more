@@ -31,6 +31,9 @@ export function createInMemoryCourseReviewRepository(): CourseReviewRepository {
         structuredClone({ ...record, resourceVersion: expectedVersion + 1 }),
       );
     },
+    async *list() {
+      for (const id of [...records.keys()].sort()) yield structuredClone(records.get(id)!);
+    },
   };
 }
 
@@ -75,7 +78,15 @@ export function createCourseReviewWorkflow(options: {
     async request(courseId: string, inputManifest: CourseReviewInputManifest, commandId: string) {
       const existing = await options.repository.get(courseId);
       if (existing?.state === 'review-finalized') throw new ImmutableResourceError();
-      if (existing?.state === 'generating-review') return existing;
+      const sameManifest =
+        existing !== undefined &&
+        JSON.stringify(existing.inputManifest) === JSON.stringify(inputManifest);
+      if (
+        sameManifest &&
+        (existing?.state === 'generating-review' || existing?.state === 'review-ready')
+      ) {
+        return existing;
+      }
       const generationTaskId = await submit(courseId, inputManifest, commandId);
       return save({
         courseId,
@@ -100,10 +111,21 @@ export function createCourseReviewWorkflow(options: {
       void _draft;
       return save({ ...rest, state: 'generating-review', generationTaskId });
     },
-    async markReady(courseId: string, artifactRef: string, contentSha256: string) {
+    async markReady(
+      courseId: string,
+      artifactRef: string,
+      contentSha256: string,
+      document?: CourseReviewRecord['document'],
+    ) {
       const current = await options.repository.get(courseId);
       if (current === undefined) throw new Error('COURSE_REVIEW_NOT_FOUND');
-      return save({ ...current, state: 'review-ready', artifactRef, contentSha256 });
+      return save({
+        ...current,
+        state: 'review-ready',
+        artifactRef,
+        contentSha256,
+        ...(document === undefined ? {} : { document }),
+      });
     },
     async finalize(courseId: string, idempotencyKey: string) {
       const current = await options.repository.get(courseId);

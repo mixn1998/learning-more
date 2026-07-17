@@ -14,6 +14,7 @@ describe('GenerationReviewWriter', () => {
       createdAt: '2026-07-14T00:00:00.000Z',
       updatedAt: '2026-07-14T00:00:00.000Z',
       resourceVersion: 0,
+      taskKind: 'final-review',
     };
     const runtime: GenerationRuntime = {
       async submit(input) {
@@ -24,8 +25,21 @@ describe('GenerationReviewWriter', () => {
         task = {
           ...task,
           status: 'completed',
-          draftMarkdown:
-            '# 本课 Review\n\n你已经解释了条件变化，也保留了一个有价值的课程邻接支线。',
+          draftMarkdown: JSON.stringify({
+            schemaVersion: 1,
+            kind: 'lesson-final',
+            title: '本课总结：条件概率的参照系',
+            knowledgeMap: {
+              title: '条件改变参照总体',
+              markdown: '样本空间 → 条件事件 → 新的分母',
+              evidenceRefs: ['message:message_user_1'],
+            },
+            coreInsight: '分母变化不是技巧，而是参照总体已经改变。',
+            performance: [
+              { title: '你做得很好的地方', markdown: '主动追问了分母为什么变化。' },
+              { title: '接下来的判断', markdown: '继续检验不同条件下参照总体的变化。' },
+            ],
+          }),
         };
         return task.id;
       },
@@ -131,18 +145,20 @@ describe('GenerationReviewWriter', () => {
     );
 
     await expect(writer.complete(accepted.taskId)).resolves.toMatchObject({
-      markdown: expect.stringContaining('课程邻接支线'),
+      markdown: expect.stringContaining('条件概率的参照系'),
+      document: { kind: 'lesson-final', schemaVersion: 1 },
     });
     expect(request?.prompt).toContain('【本课责任】');
-    expect(request?.prompt).toContain('【实际对话】');
+    expect(request?.prompt).toContain('【必要的学习者原话证据】');
     expect(request?.prompt).toContain('课程邻接探索');
     expect(request?.prompt).toContain('自然关注情境信息使用、约束意识和迁移边界。');
     expect(request?.prompt).not.toContain('observationCompleteness');
     expect(request?.prompt).not.toContain('checkpoint_1');
-    expect(request?.prompt).not.toContain('message_user_1');
+    expect(request?.prompt).toContain('message:message_user_1');
+    expect(request?.prompt).not.toContain('The denominator follows');
     expect(request?.prompt).not.toContain('sourceSnapshotHash');
     expect(request?.prompt).not.toContain('reviewLens');
-    expect(request?.prompt).not.toContain('final-review@v1');
+    expect(request?.prompt).toContain('"kind":"lesson-final"');
     expect(request?.prompt).not.toContain('templateRef');
     expect(request?.prompt).not.toMatch(/玩法专属章节|必须按/u);
   });

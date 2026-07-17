@@ -16,7 +16,7 @@ body:has([data-visual-ready='true']) .lesson-review-overlay {
 }
 .lesson-review-stage {
   display: grid;
-  min-height: calc(100vh - 72px);
+  min-height: 100vh;
   padding: 24px;
   background: rgba(44, 38, 32, 0.36);
   place-items: center;

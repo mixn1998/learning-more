@@ -16,6 +16,7 @@ export * from './profile.js';
 export * from './queries.js';
 export * from './result.js';
 export * from './review-closure.js';
+export * from './review-document.js';
 export * from './runtime.js';
 export * from './teaching.js';
 export * from './weekly-report-window.js';

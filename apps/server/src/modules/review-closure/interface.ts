@@ -1,3 +1,5 @@
+import type { ReviewDocument } from '@learning-more/contracts';
+
 import type { TransactionContext } from '../../persistence/unit-of-work.js';
 
 import type { LessonClosureRecord, StageReviewState } from './model/review-state.js';
@@ -26,6 +28,7 @@ export interface StageReviewWorkflow {
     taskId: string;
     artifactRef: string;
     contentSha256: string;
+    document?: ReviewDocument;
   }): Promise<void>;
 }
 
@@ -54,6 +57,7 @@ export interface CourseReviewRecord {
   readonly generationTaskId?: string;
   readonly artifactRef?: string;
   readonly contentSha256?: string;
+  readonly document?: ReviewDocument;
   readonly errorCode?: string;
   readonly draftArtifactRef?: string;
   readonly resourceVersion: number;
@@ -62,4 +66,5 @@ export interface CourseReviewRecord {
 export interface CourseReviewRepository {
   get(courseId: string): Promise<CourseReviewRecord | undefined>;
   save(tx: TransactionContext, record: CourseReviewRecord, expectedVersion: number): Promise<void>;
+  list(): AsyncIterable<CourseReviewRecord>;
 }

@@ -32,7 +32,9 @@ afterEach(async () => {
 
 describe('local CourseAuthoring application', () => {
   it('removes obsolete outline lessons from live scheduling while preserving learning history', async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-outline-live-reconcile-'));
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), 'learning-more-outline-live-reconcile-'),
+    );
     roots.push(directory);
     const dataRoot = DataRoot.create(directory);
     const unitOfWork = createUnitOfWork({ dataRoot });
@@ -403,6 +405,22 @@ describe('local CourseAuthoring application', () => {
       }
       throw new Error('candidate_generation_did_not_settle');
     };
+    const waitForCourseReview = async (courseId: string) => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const response = await app.inject({
+          method: 'GET',
+          url: `/api/v1/courses/${courseId}/review`,
+        });
+        if (
+          response.statusCode === 200 &&
+          response.json<{ state: string }>().state === 'review-finalized'
+        ) {
+          return response;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error('course_review_generation_did_not_settle');
+    };
 
     const created = await app.inject({
       method: 'POST',
@@ -647,12 +665,9 @@ describe('local CourseAuthoring application', () => {
       payload: { confirmAbandoned: true },
     });
     expect(closed.statusCode, closed.body).toBe(202);
-    expect(closed.json()).toMatchObject({ state: 'review-finalized' });
-    expect(closed.json<{ markdown: string }>().markdown).toContain('课程结构与已冻结的课时 Review');
-    const courseReview = await app.inject({
-      method: 'GET',
-      url: `/api/v1/courses/${confirmation.courseId}/review`,
-    });
+    expect(closed.json()).toMatchObject({ state: 'generating-review' });
+    expect(closed.json<{ markdown?: string }>().markdown).toBeUndefined();
+    const courseReview = await waitForCourseReview(confirmation.courseId);
     expect(courseReview.statusCode, courseReview.body).toBe(200);
     expect(courseReview.json()).toMatchObject({ state: 'review-finalized' });
     course = await local.courseRepositories.courses.get(confirmation.courseId);

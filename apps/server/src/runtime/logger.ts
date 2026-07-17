@@ -25,11 +25,45 @@ export function createStructuredLogger(options: {
   now?: () => Date;
   maxTotalBytes?: number;
   retentionDays?: number;
+  retryDelay?: (delayMs: number) => Promise<void>;
 }): StructuredLogger {
   const now = options.now ?? (() => new Date());
   const maxTotalBytes = options.maxTotalBytes ?? 200 * 1024 * 1024;
   const retentionDays = options.retentionDays ?? 30;
   let barrier: Promise<void> = Promise.resolve();
+  const retryDelay =
+    options.retryDelay ?? ((delayMs: number) => new Promise((resolve) => setTimeout(resolve, delayMs)));
+
+  function retryableWriteError(error: unknown): boolean {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'EPERM' || code === 'EACCES' || code === 'EBUSY';
+  }
+
+  async function appendWithRecovery(filePath: string, content: string): Promise<void> {
+    const delays = [20, 50, 100, 200, 400] as const;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await appendFile(filePath, content, 'utf8');
+        return;
+      } catch (error) {
+        if (!retryableWriteError(error) || attempt >= delays.length) {
+          if (!retryableWriteError(error)) throw error;
+          const parsed = path.parse(filePath);
+          const fallbackPath = path.join(
+            parsed.dir,
+            `${parsed.name}.${options.instanceId}${parsed.ext}`,
+          );
+          try {
+            await appendFile(fallbackPath, content, 'utf8');
+          } catch (fallbackError) {
+            if (!retryableWriteError(fallbackError)) throw fallbackError;
+          }
+          return;
+        }
+        await retryDelay(delays[attempt]!);
+      }
+    }
+  }
 
   async function prune(): Promise<void> {
     const entries = await readdir(options.directory, { withFileTypes: true });
@@ -66,7 +100,7 @@ export function createStructuredLogger(options: {
     const timestamp = now().toISOString();
     const day = timestamp.slice(0, 10);
     await mkdir(options.directory, { recursive: true });
-    await appendFile(
+    await appendWithRecovery(
       path.join(options.directory, `${stream}-${day}.jsonl`),
       `${serializeRedacted({
         timestamp,
@@ -77,9 +111,8 @@ export function createStructuredLogger(options: {
         eventCode: input.eventCode,
         fields: input.fields ?? {},
       })}\n`,
-      'utf8',
     );
-    await prune();
+    await prune().catch(() => undefined);
   }
 
   return {

@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { z } from 'zod';
 
+import { ReviewDocumentSchema } from '@learning-more/contracts';
+
 import type {
   CourseReviewRecord,
   CourseReviewRepository,
@@ -34,6 +36,7 @@ const StageReviewSchema = z.strictObject({
   requestReceipts: z.record(identifier, identifier),
   artifactRef: identifier.optional(),
   contentSha256: checksum.optional(),
+  document: ReviewDocumentSchema.optional(),
   errorCode: identifier.optional(),
   draftArtifactRef: identifier.optional(),
   replacementCount: z.number().int().nonnegative(),
@@ -47,6 +50,7 @@ const FinalReviewDraftSchema = z.strictObject({
   sourceSessionIds: z.array(identifier).min(1),
   messageRangeChecksum: checksum,
   contentSha256: checksum,
+  document: ReviewDocumentSchema.optional(),
 });
 
 const LessonClosureSchema = z.strictObject({
@@ -96,6 +100,7 @@ const CourseReviewSchema = z.strictObject({
   generationTaskId: identifier.optional(),
   artifactRef: identifier.optional(),
   contentSha256: checksum.optional(),
+  document: ReviewDocumentSchema.optional(),
   errorCode: identifier.optional(),
   draftArtifactRef: identifier.optional(),
   resourceVersion: version,
@@ -259,6 +264,12 @@ export function createLocalFileReviewClosureRepositories(
         expectedVersion,
         current,
       });
+    },
+    async *list() {
+      for (const id of await listIds(dataRoot, 'course-reviews')) {
+        const review = await courseReviews.get(id);
+        if (review !== undefined) yield review;
+      }
     },
   };
 

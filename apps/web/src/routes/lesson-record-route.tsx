@@ -46,6 +46,7 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
       {...(record.finalReviewMarkdown === undefined
         ? {}
         : { finalReviewMarkdown: record.finalReviewMarkdown })}
+      {...(record.reviewDocument === undefined ? {} : { reviewDocument: record.reviewDocument })}
       progress={record.progress}
       reviewStatus={record.reviewStatus}
       initialTab={searchParams.get('tab') === 'review' ? 'review' : 'conversation'}

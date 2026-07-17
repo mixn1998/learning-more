@@ -127,13 +127,14 @@ export function createLocalLearningRuntime(
           append('LessonRestored', { sessionId });
         } else if (event.type === 'StageReviewCommitted') {
           append('ReviewCreated', { reviewId: event.reviewId, reviewType: 'stage' });
-        } else if (event.type === 'FinalReviewCommitted') {
-          append('ReviewFinalized', { reviewId: event.reviewId, reviewType: 'final' });
+        } else if (event.type === 'LessonCompletedPendingReview') {
           append('LessonSessionCompleted', {
             sessionId,
-            reviewId: event.reviewId,
+            reviewStatus: 'generating',
             actualSeconds: actualLearningSeconds(record.intervals),
           });
+        } else if (event.type === 'FinalReviewCommitted') {
+          append('ReviewFinalized', { reviewId: event.reviewId, reviewType: 'final' });
         }
       }
       await input.events.outbox.enqueue(tx, publicEvents);
@@ -495,6 +496,7 @@ export function createLocalLearningRuntime(
                 stageReview?.artifactRef ?? `lesson_review_${stageReviewId}`,
               )
             )?.content;
+      const stageReviewDocument = stageReview?.document;
       const stageReviewStatus =
         stageReviewMarkdown !== undefined
           ? ('ready' as const)
@@ -510,6 +512,7 @@ export function createLocalLearningRuntime(
           ? {}
           : { sessionId: record.learning.session.id }),
         ...(stageReviewMarkdown === undefined ? {} : { stageReviewMarkdown }),
+        ...(stageReviewDocument === undefined ? {} : { stageReviewDocument }),
         ...(stageReviewStatus === undefined ? {} : { stageReviewStatus }),
         resourceVersion: record.resourceVersion,
       };
@@ -566,6 +569,7 @@ export function createLocalLearningRuntime(
         reviewArtifactRef === undefined
           ? undefined
           : (await input.artifactStore.read(reviewArtifactRef))?.content;
+      const reviewDocument = record.finalReview?.document ?? stageReview?.document;
       const endedAt =
         record.finalReview?.committedAt ??
         stageReview?.updatedAt ??
@@ -591,6 +595,7 @@ export function createLocalLearningRuntime(
         original: { sessionId, label: '原始学习', messages: originalMessages },
         supplementary,
         ...(finalReviewMarkdown === undefined ? {} : { finalReviewMarkdown }),
+        ...(reviewDocument === undefined ? {} : { reviewDocument }),
       };
     },
     nextCommandId: () => `command_${randomUUID()}`,
