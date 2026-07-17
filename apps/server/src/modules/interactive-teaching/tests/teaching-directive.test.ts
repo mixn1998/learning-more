@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  applyTeachingDirective,
-  isExplicitNoFurtherQuestions,
-} from '../implementation/teaching-directive.js';
+import { applyTeachingDirective } from '../implementation/teaching-directive.js';
 import { createTeachingState } from '../implementation/teaching-state-reducer.js';
 
 function initial() {
@@ -83,43 +80,67 @@ describe('teaching directive', () => {
       closureInquiry: 'awaiting_confirmation',
       summaryStatus: 'pending',
     });
-    const closed = applyTeachingDirective(
-      discussion,
-      {
+    const closed = applyTeachingDirective(discussion, {
+      schemaVersion: 1,
+      lessonPhase: 'ready_to_close',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'skipped' },
+      ],
+      comprehensiveCheck: 'skipped',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    });
+
+    expect(closed.lessonPhase).toBe('ready_to_close');
+    expect(() =>
+      applyTeachingDirective(closed, {
         schemaVersion: 1,
         lessonPhase: 'ready_to_close',
         knowledgePoints: [
-          { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+          { ref: 'knowledge:kp_1', status: 'learning', interactionStatus: 'pending' },
           { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'skipped' },
         ],
         comprehensiveCheck: 'skipped',
         closureInquiry: 'confirmed_no_questions',
         summaryStatus: 'delivered',
-      },
-      { currentUserMessage: '没有其他问题了，可以结束本课。' },
-    );
-
-    expect(closed.lessonPhase).toBe('ready_to_close');
-    expect(() =>
-      applyTeachingDirective(
-        closed,
-        {
-          schemaVersion: 1,
-          lessonPhase: 'ready_to_close',
-          knowledgePoints: [
-            { ref: 'knowledge:kp_1', status: 'learning', interactionStatus: 'pending' },
-            { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'skipped' },
-          ],
-          comprehensiveCheck: 'skipped',
-          closureInquiry: 'confirmed_no_questions',
-          summaryStatus: 'delivered',
-        },
-        { currentUserMessage: '没有其他问题了。' },
-      ),
+      }),
     ).toThrowError('teaching_directive_completed_point_regression');
   });
 
-  it('keeps questions in discussion and requires an explicit no-questions reply before closure', () => {
+  it('accepts the teaching agent semantic closure decision without matching learner wording', () => {
+    const discussion = applyTeachingDirective(initial(), {
+      schemaVersion: 1,
+      lessonPhase: 'discussion',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'completed',
+      closureInquiry: 'awaiting_confirmation',
+      summaryStatus: 'pending',
+    });
+
+    const closed = applyTeachingDirective(discussion, {
+      schemaVersion: 1,
+      lessonPhase: 'ready_to_close',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'completed',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    });
+
+    expect(closed).toMatchObject({
+      lessonPhase: 'ready_to_close',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    });
+  });
+
+  it('rejects closure-state combinations that are illegal for their phase', () => {
     const discussion = applyTeachingDirective(initial(), {
       schemaVersion: 1,
       lessonPhase: 'discussion',
@@ -133,33 +154,32 @@ describe('teaching directive', () => {
     });
 
     expect(() =>
-      applyTeachingDirective(
-        discussion,
-        {
-          schemaVersion: 1,
-          lessonPhase: 'ready_to_close',
-          knowledgePoints: [
-            { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
-            { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'completed' },
-          ],
-          comprehensiveCheck: 'completed',
-          closureInquiry: 'confirmed_no_questions',
-          summaryStatus: 'delivered',
-        },
-        { currentUserMessage: '这个概念还能再解释一下吗？' },
-      ),
-    ).toThrowError('teaching_directive_explicit_no_questions_required');
-  });
+      applyTeachingDirective(discussion, {
+        schemaVersion: 1,
+        lessonPhase: 'summary',
+        knowledgePoints: [
+          { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+          { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'completed' },
+        ],
+        comprehensiveCheck: 'completed',
+        closureInquiry: 'awaiting_confirmation',
+        summaryStatus: 'pending',
+      }),
+    ).toThrowError('teaching_directive_closure_state_mismatch');
 
-  it('recognizes only bounded explicit no-further-questions replies', () => {
-    expect(isExplicitNoFurtherQuestions('暂时没有其他疑问了，谢谢。')).toBe(true);
-    expect(isExplicitNoFurtherQuestions('可以结束本课')).toBe(true);
-    expect(isExplicitNoFurtherQuestions('没有其他问题了，你可以总结一下吧。')).toBe(true);
-    expect(isExplicitNoFurtherQuestions('明白了')).toBe(true);
-    expect(isExplicitNoFurtherQuestions('这个问题我理解了')).toBe(true);
-    expect(isExplicitNoFurtherQuestions('明白了，我还想继续讨论应用场景')).toBe(false);
-    expect(isExplicitNoFurtherQuestions('这个问题我理解了，不过还有一个例外')).toBe(false);
-    expect(isExplicitNoFurtherQuestions('没有了，但是这个概念为什么成立？')).toBe(false);
-    expect(isExplicitNoFurtherQuestions('这个概念能再解释一下吗？')).toBe(false);
+    expect(() =>
+      applyTeachingDirective(initial(), {
+        schemaVersion: 1,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        knowledgePoints: [
+          { ref: 'knowledge:kp_1', status: 'learning', interactionStatus: 'pending' },
+          { ref: 'knowledge:kp_2', status: 'pending', interactionStatus: 'pending' },
+        ],
+        comprehensiveCheck: 'pending',
+        closureInquiry: 'awaiting_confirmation',
+        summaryStatus: 'pending',
+      }),
+    ).toThrowError('teaching_directive_closure_state_mismatch');
   });
 });
