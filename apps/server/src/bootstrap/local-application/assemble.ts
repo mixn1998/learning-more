@@ -98,8 +98,13 @@ export async function assembleLocalApplication(
   // pending work and terminal tasks whose authoring projection was not saved.
   void course.recoverGenerationTasks().catch(() => undefined);
   await learning.recoverTeachingSessions();
-  await review.recoverProfileCheckpoints();
-  await profile.recoverReasoningAnalysis();
+  let backgroundRecovery: Promise<void> | undefined;
+  const startBackgroundRecovery = () => {
+    backgroundRecovery ??= (async () => {
+      await review.recoverProfileCheckpoints();
+      await profile.recoverReasoningAnalysis();
+    })().catch(() => undefined);
+  };
   const getProjectionStatus = () =>
     learning.getProjectionStatus() === 'ready' && profile.getProjectionStatus() === 'ready'
       ? ('ready' as const)
@@ -117,7 +122,11 @@ export async function assembleLocalApplication(
     planning: planningRuntime,
   });
   const serverDependencies: ServerDependencies = {
-    getRuntimeReadiness: readiness,
+    getRuntimeReadiness: async () => {
+      const status = await readiness();
+      startBackgroundRecovery();
+      return status;
+    },
     home,
     courseAuthoring: course.routes,
     learningSession: learning.routes,
