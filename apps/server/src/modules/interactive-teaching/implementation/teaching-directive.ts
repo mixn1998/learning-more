@@ -3,16 +3,18 @@ import { z } from 'zod';
 import type { TeachingStateSnapshot } from '@learning-more/contracts';
 import type { TeachingDirective } from '../ports/teaching-agent.js';
 
-const KnowledgePointDirectiveSchema = z.strictObject({
-  ref: z.string().trim().min(1).max(2_000),
-  title: z.string().trim().min(1).max(2_000).optional(),
-  status: z.enum(['pending', 'learning', 'completed', 'skipped']),
-  interactionStatus: z.enum(['pending', 'completed', 'skipped']),
-}).transform((point) => ({
-  ref: point.ref,
-  status: point.status,
-  interactionStatus: point.interactionStatus,
-}));
+const KnowledgePointDirectiveSchema = z
+  .strictObject({
+    ref: z.string().trim().min(1).max(2_000),
+    title: z.string().trim().min(1).max(2_000).optional(),
+    status: z.enum(['pending', 'learning', 'completed', 'skipped']),
+    interactionStatus: z.enum(['pending', 'completed', 'skipped']),
+  })
+  .transform((point) => ({
+    ref: point.ref,
+    status: point.status,
+    interactionStatus: point.interactionStatus,
+  }));
 
 export const TeachingDirectiveSchema = z.strictObject({
   schemaVersion: z.literal(1),
