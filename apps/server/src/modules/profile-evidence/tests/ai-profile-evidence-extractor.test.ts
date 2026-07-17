@@ -119,6 +119,8 @@ describe('AI profile evidence extractor', () => {
     expect(result.candidates[0]?.claimDimension).toBe('thinking_tendency.counterfactual_branching');
     expect(fake.request()?.taskKind).toBe('profile-evidence-extraction');
     expect(fake.request()?.prompt).toContain('不是固定维度表');
+    expect(fake.request()?.prompt).toContain('claimDimension MUST be a stable lower-case ASCII');
+    expect(fake.request()?.prompt).toContain('limitations MUST always be a JSON array of strings');
     expect(fake.request()?.prompt).not.toContain('promotionState');
   });
 

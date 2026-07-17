@@ -82,7 +82,7 @@ export function createLocalProfileRuntime(
     runtime: input.generation.runtime,
     execution: input.generation.execution,
     providerId: 'current',
-    analyzerVersion: 'profile-evidence-analyzer@1',
+    analyzerVersion: 'profile-evidence-analyzer@2',
     extractorVersion: PROFILE_EVIDENCE_EXTRACTOR_VERSION,
     now: input.now,
   });

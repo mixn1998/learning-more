@@ -15,6 +15,13 @@ import {
 
 const PROFILE_EVIDENCE_CAPABILITY = [
   'PROFILE_EVIDENCE_EXTRACTION_V1',
+  'OUTPUT_CONTRACT: Return exactly one JSON object with a candidates array and no prose.',
+  'candidateKind MUST be one of: durable_preference, durable_fact, learning_behavior, thinking_behavior.',
+  'claimDimension MUST be a stable lower-case ASCII dotted identifier matching ^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$, for example thinking_reasoning.dependency_tracing. Put the human-readable Chinese name in label, never in claimDimension.',
+  'explicitness MUST be user_declared or ai_observed. qualityFlags MUST be an array containing only direct, complete, ambiguous, or interrupted.',
+  'limitations MUST always be a JSON array of strings, including when there is only one limitation.',
+  'safetyStatus MUST be usable, sanitized, or blocked. polarity MUST be supporting, limiting, or contradicting. contradictionEvidenceIds MUST be a JSON array.',
+  'expiryPolicy MUST be exactly one object: {"kind":"until_corrected"}, {"kind":"window_bound","expiresAt":"ISO-8601"}, or {"kind":"review_after","reviewAt":"ISO-8601"}.',
   '只分析给定受控检查点中的净化片段，提取中性、局部、可撤回的候选证据。',
   'claimDimension 与 label 必须从本次行为证据中开放生成；逻辑、关联、发散、结构、隐喻只是可能示例，不是固定维度表。',
   '当 checkpointKind 为 stage_review_finalized 或 lesson_review_finalized 时，thinking_behavior 必须按该学习会话的抽象维度聚合：合并本质相同的具体表现，label 与 summary 不得携带题目答案、课程专名或单次案例细节。',
