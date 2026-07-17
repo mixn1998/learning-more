@@ -234,6 +234,91 @@ describe('CoursePage', () => {
     expect(getLessonState).toHaveBeenCalledTimes(2);
   });
 
+  it('restores the original authoring conversation, later revisions, and the latest candidate after refresh', async () => {
+    const course = {
+      courseId: 'course_01',
+      title: '微积分',
+      status: 'active' as const,
+      courseMode: 'standard' as const,
+      outlineVersionId: 'outline_01',
+      lessonIds: [],
+      lessons: [],
+      resourceVersion: 7,
+    };
+    const createOutlineAdjustmentSession = vi.fn().mockResolvedValue({
+      outlineSessionId: 'outline_session_01',
+      resourceVersion: 5,
+      state: 'candidate-ready',
+      candidateVersionId: 'candidate_02',
+      candidateMarkdown: '# 微积分核心版\n\n## 极限\n### 直观理解极限',
+      messages: [
+        {
+          messageId: 'origin_user',
+          role: 'user',
+          content: '我想系统学习微积分。',
+          status: 'complete',
+          createdAt: '2026-07-14T08:00:00.000Z',
+        },
+        {
+          messageId: 'origin_assistant',
+          role: 'assistant',
+          content: '你希望投入多长时间？',
+          status: 'complete',
+          createdAt: '2026-07-14T08:01:00.000Z',
+        },
+        {
+          messageId: 'revision_user',
+          role: 'user',
+          content: '四周时间不严格，也可以延长。',
+          status: 'complete',
+          createdAt: '2026-07-14T08:02:00.000Z',
+        },
+      ],
+    });
+    render(
+      <CoursePage
+        authoringClient={
+          {
+            getCourse: vi.fn().mockResolvedValue(course),
+            getOutlineVersion: vi.fn().mockResolvedValue({
+              courseId: 'course_01',
+              outlineVersionId: 'outline_01',
+              sourceCandidateVersionId: 'candidate_01',
+              current: true,
+              outlineMarkdown: '# 微积分\n\n## 极限\n### 极限是什么',
+              disciplineTag: '数学',
+              topicTags: ['微积分'],
+              resourceVersion: 1,
+              createdAt: '2026-07-14T08:00:00.000Z',
+            }),
+            createOutlineAdjustmentSession,
+            appendMessage: vi.fn(),
+            getOutlineSession: vi.fn(),
+            reviseOutline: vi.fn(),
+          } as unknown as CourseAuthoringClient
+        }
+        client={
+          {
+            getCourseReview: vi.fn().mockResolvedValue(undefined),
+          } as unknown as LearningClient
+        }
+        courseId="course_01"
+        view="revision"
+      />,
+    );
+
+    expect(await screen.findByText('我想系统学习微积分。')).toBeInTheDocument();
+    expect(screen.getByText('四周时间不严格，也可以延长。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '微积分核心版', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('log', { name: '大纲调整对话' }).closest('.ow-panel')).toHaveClass(
+      'ow-panel--conversation',
+    );
+    expect(
+      screen.getByRole('heading', { name: '微积分核心版', level: 2 }).closest('.ow-panel'),
+    ).toHaveClass('ow-panel--outline');
+    expect(createOutlineAdjustmentSession).toHaveBeenCalledTimes(1);
+  });
+
   it('[EQ-COURSE-03] completes the AI outline revision chain and publishes the candidate against the loaded course version', async () => {
     const course = {
       courseId: 'course_01',
@@ -267,23 +352,42 @@ describe('CoursePage', () => {
       resourceVersion: 2,
       state: 'generating-candidates',
     });
-    const getOutlineSession = vi.fn().mockResolvedValue({
-      outlineSessionId: 'outline_session_01',
-      resourceVersion: 4,
-      state: 'candidate-ready',
-      candidateVersionId: 'candidate_02',
-      candidateMarkdown:
-        '# Revised Probability\n\n## Foundations\n### Evidence\nA tighter evidence loop.',
-      messages: [
-        {
-          messageId: 'assistant_01',
-          role: 'assistant',
-          content: 'I updated the evidence loop.',
-          status: 'complete',
-          createdAt: '2026-07-14T08:01:00.000Z',
-        },
-      ],
-    });
+    const getOutlineSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outlineSessionId: 'outline_session_01',
+        resourceVersion: 3,
+        state: 'candidate-ready',
+        candidateVersionId: 'candidate_01',
+        candidateMarkdown: '# Probability\n\n## Foundations\n### Evidence',
+        messages: [
+          {
+            messageId: 'assistant_alignment',
+            role: 'assistant',
+            content: 'I will regenerate the outline around the evidence loop.',
+            status: 'complete',
+            alignmentAction: 'regenerate',
+            createdAt: '2026-07-14T08:00:30.000Z',
+          },
+        ],
+      })
+      .mockResolvedValue({
+        outlineSessionId: 'outline_session_01',
+        resourceVersion: 4,
+        state: 'candidate-ready',
+        candidateVersionId: 'candidate_02',
+        candidateMarkdown:
+          '# Revised Probability\n\n## Foundations\n### Evidence\nA tighter evidence loop.',
+        messages: [
+          {
+            messageId: 'assistant_01',
+            role: 'assistant',
+            content: 'I updated the evidence loop.',
+            status: 'complete',
+            createdAt: '2026-07-14T08:01:00.000Z',
+          },
+        ],
+      });
     const reviseOutline = vi.fn().mockResolvedValue({
       courseId: 'course_01',
       outlineVersionId: 'outline_02',
@@ -342,6 +446,7 @@ describe('CoursePage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Revised Probability', level: 2 }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '当前正式大纲' })).not.toBeInTheDocument();
     expect(createOutlineAdjustmentSession).toHaveBeenCalledWith(
       expect.objectContaining({ courseId: 'course_01', resourceVersion: 7 }),
     );
@@ -353,6 +458,7 @@ describe('CoursePage', () => {
       }),
     );
     expect(screen.getAllByText('内容调整').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('查看前后内容').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: '确认并发布 v2' }));
     fireEvent.click(screen.getByRole('button', { name: '确认发布' }));

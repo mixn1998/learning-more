@@ -225,4 +225,39 @@ describe('projectOutlineMarkdown', () => {
       { title: '微分', lessons: ['导数作为局部变化率'] },
     ]);
   });
+
+  it('keeps course completion criteria as a course-level section instead of lessons', () => {
+    const projection = projectOutlineMarkdown(`# 微积分
+
+## 极限与连续
+### 极限是什么
+
+## 课程完成标准
+
+1. 用自己的语言解释极限、连续、导数与积分的关系。
+2. 在图像、公式、数表和自然语言之间转换同一数学对象。
+3. 稳定完成核心极限、求导和基础积分计算。`);
+
+    expect(projection.modules.map((module) => module.title)).toEqual(['极限与连续']);
+    expect(projection.modules[0]?.lessons.map((lesson) => lesson.title)).toEqual(['极限是什么']);
+    expect(projection.courseSections.map((section) => section.title)).toEqual(['课程完成标准']);
+    expect(projection.ungroupedLessons).toEqual([]);
+  });
+
+  it('keeps paragraph-only completion criteria course-level while retaining flat H2 lessons', () => {
+    const projection = projectOutlineMarkdown(`# Calculus
+
+## A First Look at Limits
+Understand approaching values through a graph.
+
+## Course Completion Criteria
+Explain limits and continuity in your own words.`);
+
+    expect(projection.ungroupedLessons.map((lesson) => lesson.title)).toEqual([
+      'A First Look at Limits',
+    ]);
+    expect(projection.courseSections.map((section) => section.title)).toEqual([
+      'Course Completion Criteria',
+    ]);
+  });
 });

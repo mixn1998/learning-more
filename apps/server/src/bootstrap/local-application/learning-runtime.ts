@@ -18,9 +18,11 @@ import { createLocalFileMessageLog } from '../../modules/learning-session/implem
 import { createSessionModule } from '../../modules/learning-session/implementation/session-module.js';
 import { createSupplementarySessionModule } from '../../modules/learning-session/implementation/supplementary-session-module.js';
 import { actualLearningSeconds } from '../../modules/learning-session/implementation/time-intervals.js';
+import { reviewIdForLesson } from '../../modules/review-closure/implementation/stage-review.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createLocalFileLearningSessionRepositories } from '../../persistence/learning-session-repositories.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
+import { createLocalFileReviewClosureRepositories } from '../../persistence/review-closure-repositories.js';
 import { createLocalFileSupplementarySessionRepository } from '../../persistence/supplementary-session-repository.js';
 import { createLocalFileTeachingLedgerRepository } from '../../persistence/teaching-ledger-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
@@ -66,6 +68,7 @@ export function createLocalLearningRuntime(
   }>,
 ): LocalLearningRuntime {
   const learningRepositories = createLocalFileLearningSessionRepositories(input.dataRoot);
+  const reviewRepositories = createLocalFileReviewClosureRepositories(input.dataRoot);
   const messageLog = createLocalFileMessageLog(input.dataRoot);
   const supplementaryRepository = createLocalFileSupplementarySessionRepository(input.dataRoot);
   const teachingLedgerRepository = createLocalFileTeachingLedgerRepository(input.dataRoot);
@@ -82,6 +85,7 @@ export function createLocalLearningRuntime(
     nextLeaseToken: () => `lease_${randomUUID()}`,
     now: () => new Date(),
     assertLessonWritable: input.course.access.assertLessonWritable,
+    assertLessonStartable: input.course.access.assertLessonStartable,
     async recordEvents(tx, events, record) {
       const lesson = await input.course.access.getLesson(record.lessonId);
       const sessionId = record.learning.session?.id;
@@ -194,6 +198,9 @@ export function createLocalLearningRuntime(
             (await input.artifactStore.readDraft(message.contentArtifactRef)) ??
             '',
           sourceRef: `message:${message.id}`,
+          ...(message.generationTaskId === undefined
+            ? {}
+            : { generationTaskId: message.generationTaskId }),
         })),
       );
     },
@@ -428,7 +435,12 @@ export function createLocalLearningRuntime(
             ? {}
             : { activeKnowledgePointRef: facts.lesson.coreKnowledgePoints[0].ref }
           : { activeKnowledgePointRef: state.activeKnowledgePointRef }),
-        comprehensiveCheck: state?.comprehensiveCheck ?? 'pending',
+        comprehensiveCheck:
+          state?.comprehensiveCheck === 'passed' || state?.comprehensiveCheck === 'completed'
+            ? ('completed' as const)
+            : state?.comprehensiveCheck === 'checking' || state?.comprehensiveCheck === 'learning'
+              ? ('learning' as const)
+              : (state?.comprehensiveCheck ?? ('pending' as const)),
         closureInquiry: state?.closureInquiry ?? 'pending',
         summaryStatus: state?.summaryStatus ?? 'pending',
         knowledgePoints: facts.lesson.coreKnowledgePoints.map((knowledgePoint) => {
@@ -437,12 +449,16 @@ export function createLocalLearningRuntime(
             ref: knowledgePoint.ref,
             title: knowledgePoint.text,
             progress:
-              point?.progress ??
-              (point?.verification === 'supporting'
-                ? ('passed' as const)
-                : point?.delivery === 'explained'
-                  ? ('checking' as const)
-                  : ('pending' as const)),
+              point?.progress === 'passed' || point?.progress === 'completed'
+                ? ('completed' as const)
+                : point?.progress === 'teaching' ||
+                    point?.progress === 'checking' ||
+                    point?.progress === 'learning'
+                  ? ('learning' as const)
+                  : (point?.progress ?? ('pending' as const)),
+            interactionStatus:
+              point?.interactionStatus ??
+              (point?.progress === 'skipped' ? ('skipped' as const) : ('pending' as const)),
             delivery: point?.delivery ?? ('not_addressed' as const),
             verification: point?.verification ?? ('not_observed' as const),
             unresolvedQuestionCount: point?.unresolvedEntryRefs.length ?? 0,
@@ -467,11 +483,26 @@ export function createLocalLearningRuntime(
       if (record === undefined) {
         return { lessonId, progress: 'not_started', resourceVersion: 0 };
       }
-      const stageReviewId = record.learning.session?.stageReviewId;
+      const stageReview = await reviewRepositories.stageReviews.get(reviewIdForLesson(lessonId));
+      const stageReviewId = record.learning.session?.stageReviewId ?? stageReview?.reviewId;
       const stageReviewMarkdown =
-        stageReviewId === undefined
+        stageReviewId === undefined ||
+        stageReview?.status === 'generating' ||
+        stageReview?.status === 'failed'
           ? undefined
-          : (await input.artifactStore.read(`lesson_review_${stageReviewId}`))?.content;
+          : (
+              await input.artifactStore.read(
+                stageReview?.artifactRef ?? `lesson_review_${stageReviewId}`,
+              )
+            )?.content;
+      const stageReviewStatus =
+        stageReviewMarkdown !== undefined
+          ? ('ready' as const)
+          : stageReview?.status === 'failed'
+            ? ('failed' as const)
+            : stageReview?.status === 'generating' || record.learning.progress === 'abandoned'
+              ? ('generating' as const)
+              : undefined;
       return {
         lessonId,
         progress: record.learning.progress,
@@ -479,15 +510,21 @@ export function createLocalLearningRuntime(
           ? {}
           : { sessionId: record.learning.session.id }),
         ...(stageReviewMarkdown === undefined ? {} : { stageReviewMarkdown }),
+        ...(stageReviewStatus === undefined ? {} : { stageReviewStatus }),
         resourceVersion: record.resourceVersion,
       };
     },
     async getLessonRecord(lessonId) {
       const record = await learningRepositories.get(lessonId);
       const sessionId = record?.learning.session?.id;
-      if (record === undefined || sessionId === undefined || record.finalReview === undefined) {
+      if (
+        record === undefined ||
+        sessionId === undefined ||
+        record.learning.progress === 'not_started'
+      ) {
         throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
       }
+      const stageReview = await reviewRepositories.stageReviews.get(reviewIdForLesson(lessonId));
       const [lesson, messages] = await Promise.all([
         input.course.access.getLesson(lessonId),
         messageLog.list(sessionId),
@@ -524,18 +561,36 @@ export function createLocalLearningRuntime(
           messages: sessionMessages,
         });
       }
+      const reviewArtifactRef = record.finalReview?.artifactRef ?? stageReview?.artifactRef;
       const finalReviewMarkdown =
-        (await input.artifactStore.read(record.finalReview.artifactRef))?.content ?? '';
+        reviewArtifactRef === undefined
+          ? undefined
+          : (await input.artifactStore.read(reviewArtifactRef))?.content;
+      const endedAt =
+        record.finalReview?.committedAt ??
+        stageReview?.updatedAt ??
+        [...record.intervals].reverse().find((interval) => interval.endedAt !== undefined)
+          ?.endedAt ??
+        record.intervals.at(-1)?.startedAt ??
+        input.now().toISOString();
+      const reviewStatus =
+        finalReviewMarkdown !== undefined
+          ? ('ready' as const)
+          : stageReview?.status === 'failed'
+            ? ('failed' as const)
+            : ('generating' as const);
       return {
         lessonId,
         courseId: lesson.courseId,
         title: lesson.title,
         courseTitle: course.title,
-        completedAt: record.finalReview.committedAt,
+        completedAt: endedAt,
         actualSeconds: actualLearningSeconds(record.intervals),
+        progress: record.learning.progress,
+        reviewStatus,
         original: { sessionId, label: '原始学习', messages: originalMessages },
         supplementary,
-        finalReviewMarkdown,
+        ...(finalReviewMarkdown === undefined ? {} : { finalReviewMarkdown }),
       };
     },
     nextCommandId: () => `command_${randomUUID()}`,

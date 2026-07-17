@@ -62,7 +62,7 @@ describe('teaching state reducer', () => {
     ]);
   });
 
-  it('does not pass a knowledge point before it has been taught', () => {
+  it('records learner evidence without changing teaching control state', () => {
     const initial = createTeachingState({
       lessonId: 'lesson_1',
       sessionId: 'session_1',
@@ -89,7 +89,7 @@ describe('teaching state reducer', () => {
     );
 
     expect(next).toMatchObject({
-      lessonPhase: 'knowledge_point',
+      lessonPhase: 'warmup',
       activeKnowledgePointRef: 'knowledge:kp_1',
     });
     expect(next.knowledgePoints[0]).toMatchObject({
@@ -99,7 +99,7 @@ describe('teaching state reducer', () => {
     });
   });
 
-  it('advances only after a knowledge point is passed or explicitly skipped with no open question', () => {
+  it('does not let observation progression signals advance the teaching ledger', () => {
     const initial = createTeachingState({
       lessonId: 'lesson_1',
       sessionId: 'session_1',
@@ -134,11 +134,11 @@ describe('teaching state reducer', () => {
     );
 
     expect(firstPassed).toMatchObject({
-      lessonPhase: 'knowledge_point',
-      activeKnowledgePointRef: 'knowledge:kp_2',
+      lessonPhase: 'warmup',
+      activeKnowledgePointRef: 'knowledge:kp_1',
     });
     expect(firstPassed.knowledgePoints.map((point) => point.progress)).toEqual([
-      'passed',
+      'pending',
       'pending',
     ]);
 
@@ -164,14 +164,13 @@ describe('teaching state reducer', () => {
     );
 
     expect(secondSkipped).toMatchObject({
-      lessonPhase: 'comprehensive_check',
-      comprehensiveCheck: 'checking',
+      lessonPhase: 'warmup',
+      comprehensiveCheck: 'pending',
     });
-    expect(secondSkipped.activeKnowledgePointRef).toBeUndefined();
-    expect(Object.hasOwn(secondSkipped, 'activeKnowledgePointRef')).toBe(false);
+    expect(secondSkipped.activeKnowledgePointRef).toBe('knowledge:kp_1');
     expect(secondSkipped.knowledgePoints.map((point) => point.progress)).toEqual([
-      'passed',
-      'skipped',
+      'pending',
+      'pending',
     ]);
 
     const comprehensivePassed = reduceTeachingState(
@@ -196,9 +195,9 @@ describe('teaching state reducer', () => {
       }),
     );
     expect(comprehensivePassed).toMatchObject({
-      lessonPhase: 'summary',
-      comprehensiveCheck: 'passed',
-      closureInquiry: 'awaiting_confirmation',
+      lessonPhase: 'warmup',
+      comprehensiveCheck: 'pending',
+      closureInquiry: 'pending',
       summaryStatus: 'pending',
     });
 
@@ -223,8 +222,8 @@ describe('teaching state reducer', () => {
       }),
     );
     expect(prematureSummary).toMatchObject({
-      lessonPhase: 'summary',
-      closureInquiry: 'awaiting_confirmation',
+      lessonPhase: 'warmup',
+      closureInquiry: 'pending',
       summaryStatus: 'pending',
     });
 
@@ -259,13 +258,13 @@ describe('teaching state reducer', () => {
       }),
     );
     expect(summarized).toMatchObject({
-      lessonPhase: 'ready_to_close',
-      closureInquiry: 'confirmed_no_questions',
-      summaryStatus: 'delivered',
+      lessonPhase: 'warmup',
+      closureInquiry: 'pending',
+      summaryStatus: 'pending',
     });
   });
 
-  it('allows an explicitly skipped comprehensive check to use the same closure inquiry', () => {
+  it('records a skipped comprehensive check as learner intent without changing control state', () => {
     const initial = createTeachingState({
       lessonId: 'lesson_1',
       sessionId: 'session_1',
@@ -291,14 +290,14 @@ describe('teaching state reducer', () => {
     );
 
     expect(skipped).toMatchObject({
-      lessonPhase: 'summary',
-      comprehensiveCheck: 'skipped',
-      closureInquiry: 'awaiting_confirmation',
+      lessonPhase: 'warmup',
+      comprehensiveCheck: 'pending',
+      closureInquiry: 'pending',
       summaryStatus: 'pending',
     });
   });
 
-  it('keeps the current knowledge point active while a related question remains unresolved', () => {
+  it('records an unresolved question without taking ownership of teaching progression', () => {
     const initial = createTeachingState({
       lessonId: 'lesson_1',
       sessionId: 'session_1',
@@ -342,11 +341,11 @@ describe('teaching state reducer', () => {
     );
 
     expect(next).toMatchObject({
-      lessonPhase: 'knowledge_point',
+      lessonPhase: 'warmup',
       activeKnowledgePointRef: 'knowledge:kp_1',
     });
     expect(next.knowledgePoints[0]).toMatchObject({
-      progress: 'checking',
+      progress: 'pending',
       unresolvedEntryRefs: ['entry_open_question'],
     });
   });

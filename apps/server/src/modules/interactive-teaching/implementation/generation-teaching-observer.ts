@@ -11,18 +11,18 @@ import type { GenerationExecution } from '../../generation-runtime/interface.js'
 import type { TeachingObserver } from '../ports/teaching-observer.js';
 
 const OBSERVATION_CAPABILITY = [
-  '只观察给定消息范围相对于当前课节和前一账本产生的局部教学事实。',
+  '每轮读取给定的完整学习会话历史，并据此重建当前课节的教学观察。不要把输入理解成相对于前一账本的增量。',
+  '相同历史事实跨轮重建时必须保持 entryId 稳定；entryId 应由条目 kind、首个来源消息 ID 和简短语义标识确定，不得加入轮次号或 observationId。',
   '所有关系和条目必须引用给定的有效来源 ID；不能推断稳定人格、能力等级或永久思维类型。',
   '可以记录用户实际表现出的具体思维行为，但行为类型和摘要保持开放语义，不使用固定维度表。',
   '被中断的助手输出可以留作过程记录，但不能作为完整教学或学习效果证据。',
   '与课程相关但不属于本课的探索记为 adjacent；不确定时使用 unclear；没有可靠变化时返回空 entries。',
-  'JSON 形状：scope={alignment,relationRefs,rationale}；entries 每项={entryId,kind,summary,knowledgePointRefs,sourceRefs,resolvesEntryRefs,qualityFlags}，assessment、explicitness、elicitation、progressionSignal 可按证据选填。',
+  'JSON 形状：scope={alignment,relationRefs,rationale}；entries 每项={entryId,kind,summary,knowledgePointRefs,sourceRefs,resolvesEntryRefs,qualityFlags}，assessment、explicitness、elicitation 可按证据选填。',
   '只使用以下枚举：scope.alignment=direct|supporting|adjacent|unclear|off_scope；kind=teaching_delivery|learner_demonstration|learner_misconception|learner_question|learner_intent|learner_reasoning_behavior|adjacent_exploration|open_loop。',
   'assessment=supports|limits|uncertain；explicitness=user_declared|ai_observed；elicitation=spontaneous|elicited|mixed|unknown；qualityFlags 只能使用 direct|complete|ambiguous。不要创造 aligned、current、explicit、teaching_clarification 等新值。',
-  'progressionSignal 只记录明确可验证的流程事实：skip_knowledge_point 表示用户明确跳过当前知识点；pass_comprehensive_check 表示综合检测回答已通过；skip_comprehensive_check 表示用户明确跳过综合检测；confirm_no_further_questions 表示用户明确表示没有本课疑问或其他讲解需求；lesson_summary_delivered 表示助手在该确认之后已经完成最终课程总结。不得仅凭对话顺畅推断这些信号。',
-  '知识点检测通过使用 learner_demonstration + assessment=supports；未通过或仍不稳定使用 assessment=limits/uncertain。用户提出且尚未被回答的相关疑问还要记录为 open_loop；open_loop 必须引用用户消息，绝不能把助手提出的教学问题、检测题或“还有疑问吗”记为 open_loop。疑问被解决时用 resolvesEntryRefs 关闭，未关闭前不得推进知识点。',
-  '综合检测回答充分时，即使助手没有明说“通过”，也要基于用户回答和助手的接受性反馈记录 pass_comprehensive_check；用户明确跳过则只记录 skip_comprehensive_check，保持 skipped 事实，不得改写成 passed。',
-  '用户明确表示没有疑问时记录 confirm_no_further_questions；如果同一轮助手随后输出了最终课程总结，再同时记录 lesson_summary_delivered。仅有阶段性小结、知识点小结或询问是否有疑问，不算最终课程总结。',
+  '教学观察不判断知识点检测或综合检测是否通过，不决定知识点完成、课程阶段或课程闭环，也不要输出 progressionSignal。教学推进完全由教学智能体的隐藏结构化指令负责。',
+  'learner_demonstration、learner_misconception 和 assessment 只记录用户在会话中实际呈现的学习行为与证据，不得把 assessment 解释为前端进度或阶段门槛。',
+  '用户明确跳过知识点、知识点互动或综合检测时，记录为 learner_intent；用户提出且在完整历史结束时仍未被回答的相关疑问记录为 open_loop。open_loop 必须引用用户消息，绝不能把助手提出的问题记为 open_loop。已经在历史中得到回答的问题不要保留为 open_loop。',
   'learner_reasoning_behavior 的 elicitation 用 spontaneous、elicited、mixed 或 unknown，表示该行为是否由教学任务直接引出；它不改变行为事实本身。',
   '只返回 scope 与 entries 的 JSON 数据，不输出 Markdown 说明。',
 ].join('\n');
@@ -133,7 +133,7 @@ export function createGenerationTeachingObserver(options: {
   nextObservationId?: (sourceSnapshotHash: string) => string;
   now?: () => Date;
 }): TeachingObserver {
-  const observerVersion = options.observerVersion ?? 'teaching-observer@2';
+  const observerVersion = options.observerVersion ?? 'teaching-observer@3';
   return {
     async observe(input) {
       const serializedInput = JSON.stringify(input);
@@ -183,24 +183,12 @@ export function createGenerationTeachingObserver(options: {
         observedAt: (options.now?.() ?? new Date()).toISOString(),
         status: 'active',
       } as const;
-      try {
-        const raw = parseGeneratedObservation(task.draftMarkdown ?? '');
-        return TeachingObservationSchema.parse({
-          ...observationBase,
-          scope: raw.scope,
-          entries: raw.entries,
-        });
-      } catch {
-        return TeachingObservationSchema.parse({
-          ...observationBase,
-          scope: {
-            alignment: 'unclear',
-            relationRefs: [],
-            rationale: 'Generated observation was invalid; no evidence was projected.',
-          },
-          entries: [],
-        });
-      }
+      const raw = parseGeneratedObservation(task.draftMarkdown ?? '');
+      return TeachingObservationSchema.parse({
+        ...observationBase,
+        scope: raw.scope,
+        entries: raw.entries,
+      });
     },
   };
 }

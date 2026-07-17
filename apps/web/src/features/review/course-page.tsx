@@ -63,13 +63,38 @@ function candidateFromSession(
     lessonId: lesson.lessonId,
     title: lesson.title,
   }));
-  const diff = diffOutlineMarkdown(currentOutline.outlineMarkdown, markdown, formalLessons);
-  const counts = diff.modules
-    .flatMap((module) => [module.status, ...module.lessons.map((lesson) => lesson.status)])
+  const alignment = session.messages
+    ?.slice()
+    .reverse()
+    .find(
+      (message) =>
+        message.role === 'assistant' &&
+        (message.alignmentAction === 'patch' || message.alignmentAction === 'regenerate'),
+    );
+  const diff = diffOutlineMarkdown(currentOutline.outlineMarkdown, markdown, formalLessons, {
+    ...(alignment?.alignmentAction === 'patch' || alignment?.alignmentAction === 'regenerate'
+      ? { action: alignment.alignmentAction }
+      : {}),
+    ...(alignment?.targetModuleIds === undefined
+      ? {}
+      : { targetNodeRefs: alignment.targetModuleIds }),
+  });
+  const changes = [
+    ...diff.modules.flatMap((module) => [module, ...module.lessons]),
+    ...diff.courseSections,
+  ];
+  const counts = changes
+    .map((change) => change.status)
     .reduce<Record<string, number>>((current, status) => {
       current[status] = (current[status] ?? 0) + 1;
       return current;
     }, {});
+  const requested = changes.filter(
+    (change) => change.status !== 'unchanged' && change.attribution === 'requested',
+  ).length;
+  const synchronised = changes.filter(
+    (change) => change.status !== 'unchanged' && change.attribution === 'ai_sync',
+  ).length;
   const title = projectOutlineMarkdown(markdown).title ?? course.title;
   return {
     candidateVersionId,
@@ -77,8 +102,14 @@ function candidateFromSession(
     markdown,
     versionLabel: `基于当前版 · 候选 ${candidateVersionId.slice(-4)}`,
     diff,
-    impact: `保持不变 ${counts.unchanged ?? 0} · 内容调整 ${counts.modified ?? 0} · 新增 ${counts.added ?? 0} · 删除 ${counts.removed ?? 0}`,
+    impact: `响应要求 ${requested} · AI 同步调整 ${synchronised} · 新增 ${counts.added ?? 0} · 删除 ${counts.removed ?? 0}`,
   };
+}
+
+function messagesFromSession(session: OutlineSessionView): readonly CourseRevisionMessage[] {
+  return (session.messages ?? [])
+    .filter((message) => message.status === 'complete')
+    .map((message) => ({ role: message.role, markdown: message.content }));
 }
 
 async function waitForAdjustedSession(input: {
@@ -87,7 +118,7 @@ async function waitForAdjustedSession(input: {
   readonly baselineCandidateVersionId?: string | undefined;
   readonly appendState: string;
 }): Promise<OutlineSessionView> {
-  for (let attempt = 0; attempt < 180; attempt += 1) {
+  for (let attempt = 0; attempt < 480; attempt += 1) {
     const session = await input.authoring.getOutlineSession(input.outlineSessionId);
     if (
       session.candidateVersionId !== undefined &&
@@ -95,10 +126,22 @@ async function waitForAdjustedSession(input: {
     ) {
       return session;
     }
-    if (input.appendState === 'candidate-ready' && session.state === 'candidate-ready') {
+    const latestAssistant = session.messages
+      ?.slice()
+      .reverse()
+      .find((message) => message.role === 'assistant');
+    if (session.state === 'candidate-ready' && latestAssistant?.alignmentAction === 'clarify') {
       return session;
     }
-    if (session.state !== 'generating-candidates' && session.state !== 'alignment-turn-running') {
+    const candidateExpected =
+      input.appendState !== 'candidate-ready' ||
+      latestAssistant?.alignmentAction === 'regenerate' ||
+      latestAssistant?.alignmentAction === 'patch';
+    if (
+      !candidateExpected &&
+      session.state !== 'generating-candidates' &&
+      session.state !== 'alignment-turn-running'
+    ) {
       return session;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -136,13 +179,8 @@ export function CoursePage(props: {
   const [revisionError, setRevisionError] = useState<string>();
   const [revisionSession, setRevisionSession] = useState<OutlineSessionView>();
   const [revisionCandidate, setRevisionCandidate] = useState<CourseRevisionCandidate>();
-  const [revisionMessages, setRevisionMessages] = useState<readonly CourseRevisionMessage[]>([
-    {
-      role: 'assistant',
-      markdown:
-        '说明希望保留、删除、重排或强化的内容。我会继承当前大纲与已完成 Review，生成完整候选版本；发布前不会改变正式课程。',
-    },
-  ]);
+  const [revisionMessages, setRevisionMessages] = useState<readonly CourseRevisionMessage[]>([]);
+  const openedRevisionKey = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
 
   useAppShellHeaderStatus(
@@ -151,7 +189,11 @@ export function CoursePage(props: {
       : course.status === 'closed'
         ? { tone: 'readonly', text: '● 课程已关闭' }
         : view === 'revision'
-          ? { tone: 'success', text: '● 调整会话已保存' }
+          ? revisionBusy
+            ? { tone: 'warning', text: '● 正在恢复调整会话' }
+            : revisionSession === undefined
+              ? { tone: 'readonly', text: '● 调整会话待恢复' }
+              : { tone: 'success', text: '● 调整会话已保存' }
           : { tone: 'success', text: '● 课程进行中' },
   );
 
@@ -222,6 +264,54 @@ export function CoursePage(props: {
     }
     return undefined;
   }, [api, loadCourse, props.client, props.courseId]);
+
+  useEffect(() => {
+    if (
+      view !== 'revision' ||
+      course === undefined ||
+      currentOutline === undefined ||
+      authoring === undefined
+    ) {
+      return;
+    }
+    const key = `${course.courseId}:${course.resourceVersion}:${currentOutline.outlineVersionId}`;
+    if (openedRevisionKey.current === key) return;
+    openedRevisionKey.current = key;
+    let cancelled = false;
+    setRevisionBusy(true);
+    void authoring
+      .createOutlineAdjustmentSession({
+        courseId: course.courseId,
+        resourceVersion: course.resourceVersion,
+        pageInstanceId: getPageInstanceId(),
+      })
+      .then(async (opened) => {
+        let restored = opened;
+        if (opened.state === 'generating-candidates' || opened.state === 'alignment-turn-running') {
+          restored = await waitForAdjustedSession({
+            authoring,
+            outlineSessionId: opened.outlineSessionId,
+            baselineCandidateVersionId: currentOutline.sourceCandidateVersionId,
+            appendState: opened.state,
+          });
+        }
+        if (cancelled || !mounted.current) return;
+        setRevisionSession(restored);
+        setRevisionMessages(messagesFromSession(restored));
+        setRevisionCandidate(candidateFromSession(course, currentOutline, restored));
+      })
+      .catch(() => {
+        if (cancelled || !mounted.current) return;
+        openedRevisionKey.current = undefined;
+        setRevisionError('大纲调整会话暂时无法恢复，请稍后重试。');
+      })
+      .finally(() => {
+        if (!cancelled && mounted.current) setRevisionBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authoring, course, currentOutline, view]);
 
   const navigate = (path: string) => {
     if (props.onNavigate !== undefined) {
@@ -310,18 +400,36 @@ export function CoursePage(props: {
         .find((message) => message.role === 'assistant')?.content;
       setRevisionSession(refreshed);
       if (candidate !== undefined) setRevisionCandidate(candidate);
-      setRevisionMessages((current) => [
-        ...current,
-        {
-          role: 'assistant',
-          markdown:
-            assistantReply ??
-            (candidate === undefined
-              ? '我需要再确认一个边界；当前正式大纲仍保持不变。'
-              : '已将这项要求纳入候选版本。你可以继续调整，或在核对变化后发布。'),
-        },
-      ]);
+      const authoritativeMessages = messagesFromSession(refreshed);
+      setRevisionMessages(
+        authoritativeMessages.length > 0
+          ? authoritativeMessages
+          : [
+              { role: 'user', markdown: message },
+              {
+                role: 'assistant',
+                markdown:
+                  assistantReply ??
+                  (candidate === undefined
+                    ? '我需要再确认一个边界；当前正式大纲仍保持不变。'
+                    : '已将这项要求纳入候选版本。你可以继续调整，或在核对变化后发布。'),
+              },
+            ],
+      );
     } catch (caught) {
+      if (revisionSession !== undefined) {
+        void authoring.getOutlineSession(revisionSession.outlineSessionId).then(
+          (restored) => {
+            if (!mounted.current) return;
+            setRevisionSession(restored);
+            setRevisionMessages(messagesFromSession(restored));
+            if (currentOutline !== undefined) {
+              setRevisionCandidate(candidateFromSession(course, currentOutline, restored));
+            }
+          },
+          () => undefined,
+        );
+      }
       setRevisionError(
         errorCode(caught) === 'version_conflict'
           ? '调整会话已在其他页面更新，请返回课程大纲后重新进入。'
@@ -350,6 +458,7 @@ export function CoursePage(props: {
         setRevisionError('课程大纲已被更新。最新正式版本已重新读取，请基于最新版本再次生成候选。');
         setRevisionSession(undefined);
         setRevisionCandidate(undefined);
+        openedRevisionKey.current = undefined;
         await loadCourse();
         return;
       }

@@ -134,6 +134,68 @@ describe('CourseAuthoring public facade', () => {
       },
       0,
     );
+    await authoring.outlineSessions.save(
+      tx,
+      {
+        session: {
+          outlineSessionId: 'original_session',
+          courseMode: 'standard',
+          topic: '微积分',
+          state: 'confirmed',
+          messageIds: ['origin_user', 'origin_assistant'],
+          completedAssessmentRounds: 3,
+          candidateVersionIds: ['candidate_v1'],
+          latestCandidateVersionId: 'candidate_v1',
+          confirmedCourseId: 'course_1',
+        },
+        resourceVersion: 0,
+        candidateCommandReceipts: {},
+        messages: [
+          {
+            messageId: 'origin_user',
+            role: 'user',
+            content: '我想系统学习微积分。',
+            status: 'complete',
+            createdAt: '2026-07-12T23:58:00.000Z',
+          },
+          {
+            messageId: 'origin_assistant',
+            role: 'assistant',
+            content: '你希望投入多长时间？',
+            status: 'complete',
+            createdAt: '2026-07-12T23:59:00.000Z',
+          },
+        ],
+      },
+      0,
+    );
+    await authoring.outlineSessions.save(
+      tx,
+      {
+        session: {
+          outlineSessionId: 'legacy_adjustment_session',
+          courseMode: 'standard',
+          topic: '微积分',
+          state: 'candidate-ready',
+          messageIds: ['revision_user'],
+          completedAssessmentRounds: 3,
+          candidateVersionIds: ['candidate_v1'],
+          latestCandidateVersionId: 'candidate_v1',
+        },
+        resourceVersion: 0,
+        candidateCommandReceipts: {},
+        messages: [
+          {
+            messageId: 'revision_user',
+            role: 'user',
+            content: '压缩为十八课核心版。',
+            status: 'complete',
+            createdAt: '2026-07-13T00:00:00.000Z',
+          },
+        ],
+      },
+      0,
+    );
 
     const created = await facade.execute(
       { type: 'CreateOutlineAdjustmentSession', courseId: 'course_1' },
@@ -146,14 +208,30 @@ describe('CourseAuthoring public facade', () => {
     );
 
     expect(created).toMatchObject({
-      resourceVersion: 1,
-      value: { state: 'candidate-ready', completedAssessmentRounds: 3 },
+      resourceVersion: 2,
+      value: {
+        outlineSessionId: 'legacy_adjustment_session',
+        state: 'candidate-ready',
+        completedAssessmentRounds: 3,
+      },
     });
     expect(view).toMatchObject({
       topic: '微积分',
       candidateVersionId: 'candidate_v1',
       candidateMarkdown: '# 微积分\n\n## 极限\n### 极限是什么',
-      messages: [],
+      messages: [
+        { messageId: 'origin_user', content: '我想系统学习微积分。' },
+        { messageId: 'origin_assistant', content: '你希望投入多长时间？' },
+        { messageId: 'revision_user', content: '压缩为十八课核心版。' },
+      ],
+    });
+    const reopened = await facade.execute(
+      { type: 'CreateOutlineAdjustmentSession', courseId: 'course_1' },
+      { ...context, commandId: 'command_02', expectedVersion: 1 },
+    );
+    expect(reopened).toMatchObject({
+      resourceVersion: 2,
+      value: { outlineSessionId: 'legacy_adjustment_session' },
     });
     await expect(facade.getCourse?.('course_1', queryContext)).resolves.toMatchObject({
       title: '微积分',

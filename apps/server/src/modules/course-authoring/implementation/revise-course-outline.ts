@@ -9,6 +9,7 @@ import {
   resolveNextLessonRecommendation,
   type NextLessonRecommender,
 } from '../../next-lesson/interface.js';
+import type { OutlineRevisionLiveCleanup } from './outline-revision-live-cleanup.js';
 
 class CourseRevisionError extends Error {
   constructor(readonly code: 'course_closed' | 'lesson_semantic_rebind') {
@@ -49,6 +50,7 @@ export async function reviseCourseOutline(
     readonly unitOfWork: UnitOfWork;
     readonly hasLearningEvidence: (lessonId: string) => Promise<boolean>;
     readonly nextLessonRecommender?: NextLessonRecommender;
+    readonly liveCleanup?: OutlineRevisionLiveCleanup;
     readonly now: () => Date;
   },
 ): Promise<{ outlineVersionId: string }> {
@@ -63,17 +65,40 @@ export async function reviseCourseOutline(
     existingLessons.map((lesson) => [lesson.semanticKey, lesson]),
   );
   const chosenIds = new Map<string, string>();
+  const usedExistingIds = new Set<string>();
   const completedSemanticKeys = new Set<string>();
   for (const candidate of command.candidate.lessons) {
-    const existing = existingBySemanticKey.get(candidate.id);
-    const hasEvidence =
-      existing !== undefined && (await dependencies.hasLearningEvidence(existing.id));
-    if (hasEvidence) {
-      completedSemanticKeys.add(candidate.id);
+    const directExisting = existingBySemanticKey.get(candidate.id);
+    const directHasEvidence =
+      directExisting !== undefined && (await dependencies.hasLearningEvidence(directExisting.id));
+    if (
+      directExisting !== undefined &&
+      directHasEvidence &&
+      !sameSemanticMeaning(directExisting, candidate)
+    ) {
+      throw new CourseRevisionError('lesson_semantic_rebind');
+    }
+    const existing =
+      directExisting !== undefined &&
+      !usedExistingIds.has(directExisting.id) &&
+      sameSemanticMeaning(directExisting, candidate)
+        ? directExisting
+        : existingLessons.find(
+            (lesson) => !usedExistingIds.has(lesson.id) && sameSemanticMeaning(lesson, candidate),
+          );
+    if (existing !== undefined) {
+      const hasEvidence =
+        existing.id === directExisting?.id
+          ? directHasEvidence
+          : await dependencies.hasLearningEvidence(existing.id);
+      if (hasEvidence) {
+        completedSemanticKeys.add(candidate.id);
+      }
       if (!sameSemanticMeaning(existing, candidate)) {
         throw new CourseRevisionError('lesson_semantic_rebind');
       }
       chosenIds.set(candidate.id, existing.id);
+      usedExistingIds.add(existing.id);
     } else {
       chosenIds.set(candidate.id, lessonId(command.newOutlineVersionId, candidate.id));
     }
@@ -209,6 +234,16 @@ export async function reviseCourseOutline(
               }),
         },
         command.expectedCourseVersion,
+      );
+      await dependencies.liveCleanup?.retire(
+        {
+          courseId: command.courseId,
+          retainedLessonIds: lessonIds,
+          knownCourseLessonIds: existingLessons.map((lesson) => lesson.id),
+          commandId: `outline-revised:${command.adjustmentSessionId}`,
+          occurredAt: createdAt,
+        },
+        tx,
       );
     },
   );

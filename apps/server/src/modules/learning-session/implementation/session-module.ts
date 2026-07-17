@@ -80,6 +80,7 @@ export function createSessionModule(options: {
   readonly nextLeaseToken: () => string;
   readonly now: () => Date;
   readonly assertLessonWritable?: (lessonId: string) => Promise<void>;
+  readonly assertLessonStartable?: (lessonId: string) => Promise<void>;
   readonly recordEvents?: (
     tx: TransactionContext,
     events: readonly LearningSessionEvent[],
@@ -271,7 +272,11 @@ export function createSessionModule(options: {
       await options.unitOfWork.execute(
         { transactionId: `tx_learning_${randomUUID()}` },
         async (tx) => {
-          await options.assertLessonWritable?.(command.lessonId);
+          if (command.type === 'StartLesson' && current === undefined) {
+            await options.assertLessonStartable?.(command.lessonId);
+          } else {
+            await options.assertLessonWritable?.(command.lessonId);
+          }
           if (
             events.length > 0 &&
             learning.session !== undefined &&

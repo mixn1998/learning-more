@@ -52,6 +52,7 @@ export type LearningSessionRouteOptions = Readonly<{
     progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
     sessionId?: string;
     stageReviewMarkdown?: string;
+    stageReviewStatus?: 'generating' | 'failed' | 'ready';
     resourceVersion: number;
   }>;
   nextCommandId(): string;

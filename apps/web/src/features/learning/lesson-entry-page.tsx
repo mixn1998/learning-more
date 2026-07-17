@@ -70,6 +70,9 @@ export function LessonEntryPage(props: {
         {...(lessonState.stageReviewMarkdown === undefined
           ? {}
           : { stageReviewMarkdown: lessonState.stageReviewMarkdown })}
+        {...(lessonState.stageReviewStatus === undefined
+          ? {}
+          : { stageReviewStatus: lessonState.stageReviewStatus })}
         onBackHome={() => props.onNavigate?.('/')}
         onBackToOutline={() => props.onNavigate?.(`/courses/${preview.courseId}`)}
         onRestore={() => {

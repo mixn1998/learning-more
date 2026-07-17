@@ -30,6 +30,8 @@ export interface OutlineSession {
   readonly latestCandidateVersionId?: string;
   readonly confirmingCandidateVersionId?: string;
   readonly confirmedCourseId?: string;
+  readonly adjustmentCourseId?: string;
+  readonly historySessionIds?: readonly string[];
   readonly savedAsDraft?: boolean;
 }
 
@@ -53,6 +55,8 @@ export function createOutlineAdjustmentSession(input: {
   readonly courseMode: CourseMode;
   readonly topic: string;
   readonly baselineCandidateVersionId: string;
+  readonly courseId?: string;
+  readonly historySessionIds?: readonly string[];
 }): OutlineSession {
   return {
     outlineSessionId: input.outlineSessionId,
@@ -63,6 +67,10 @@ export function createOutlineAdjustmentSession(input: {
     completedAssessmentRounds: 3,
     candidateVersionIds: [input.baselineCandidateVersionId],
     latestCandidateVersionId: input.baselineCandidateVersionId,
+    ...(input.courseId === undefined ? {} : { adjustmentCourseId: input.courseId }),
+    ...(input.historySessionIds === undefined
+      ? {}
+      : { historySessionIds: [...input.historySessionIds] }),
   };
 }
 

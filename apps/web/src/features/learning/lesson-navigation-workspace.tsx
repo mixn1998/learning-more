@@ -19,6 +19,7 @@ export function LessonNavigationWorkspace(props: {
   readonly onBackToOutline: () => void;
   readonly onBackHome?: () => void;
   readonly onViewRecord?: () => void;
+  readonly statusMessage?: string;
 }) {
   const abandoned = props.state === 'abandoned';
   return (
@@ -84,7 +85,8 @@ export function LessonNavigationWorkspace(props: {
             </div>
             {abandoned ? (
               <div className="nav-inherit">
-                当前阶段 Review 与原始对话保持只读；恢复后解除冻结并切换为“学习中”。
+                {props.statusMessage ??
+                  '当前阶段 Review 与原始对话保持只读；恢复后解除冻结并切换为“学习中”。'}
               </div>
             ) : null}
           </div>

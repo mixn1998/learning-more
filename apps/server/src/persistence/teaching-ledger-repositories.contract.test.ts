@@ -9,6 +9,7 @@ import {
   createTeachingState,
   reduceTeachingState,
 } from '../modules/interactive-teaching/implementation/teaching-state-reducer.js';
+import { applyTeachingDirective } from '../modules/interactive-teaching/implementation/teaching-directive.js';
 import type { TeachingLedgerRepository } from '../modules/interactive-teaching/ports/teaching-ledger-repository.js';
 import { DataRoot } from './data-root.js';
 import { createStorePaths, initializeStoreLayout } from './paths.js';
@@ -162,13 +163,20 @@ function contract(
         },
         entries: [],
       };
-      const state = reduceTeachingState(
+      const state = applyTeachingDirective(
         createTeachingState({
           lessonId: 'lesson_1',
           sessionId: 'session_1',
           knowledgePointRefs: [],
         }),
-        phaseObservation,
+        {
+          schemaVersion: 1,
+          lessonPhase: 'comprehensive_check',
+          knowledgePoints: [],
+          comprehensiveCheck: 'learning',
+          closureInquiry: 'pending',
+          summaryStatus: 'pending',
+        },
       );
 
       expect(Object.hasOwn(state, 'activeKnowledgePointRef')).toBe(false);
@@ -189,7 +197,7 @@ function contract(
       );
 
       await expect(repository.get('session_1')).resolves.toMatchObject({
-        state: { lessonPhase: 'comprehensive_check', comprehensiveCheck: 'checking' },
+        state: { lessonPhase: 'comprehensive_check', comprehensiveCheck: 'learning' },
       });
     });
   });

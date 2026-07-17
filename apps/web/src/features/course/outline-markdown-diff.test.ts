@@ -51,4 +51,55 @@ describe('diffOutlineMarkdown', () => {
 
     expect(diff.modules.map((module) => module.status)).toEqual(['added', 'removed']);
   });
+
+  it('keeps course-level completion criteria out of the module and lesson diff', () => {
+    const diff = diffOutlineMarkdown(
+      '# 微积分\n\n## 极限\n### 极限是什么',
+      '# 微积分\n\n## 极限\n### 极限是什么\n\n## 课程完成标准\n1. 解释极限与连续的关系。',
+    );
+
+    expect(diff.modules.map((module) => module.title)).toEqual(['极限']);
+    expect(diff.courseSections.map((section) => [section.title, section.status])).toEqual([
+      ['课程完成标准', 'added'],
+    ]);
+  });
+
+  it('recognizes a renamed and reordered lesson as a modification instead of delete plus add', () => {
+    const diff = diffOutlineMarkdown(
+      '# 课程\n\n## 基础\n### 极限入门\n理解趋近。\n### 连续性\n理解连续。',
+      '# 课程\n\n## 基础\n### 连续性\n理解连续。\n### 从趋近理解极限\n理解趋近。',
+    );
+
+    const lessons = diff.modules[0]?.lessons ?? [];
+    expect(lessons.map((lesson) => lesson.status)).toEqual(['modified', 'modified']);
+    expect(lessons[0]?.changeKinds).toContain('moved');
+    expect(lessons[1]?.changeKinds).toEqual(expect.arrayContaining(['renamed', 'moved']));
+  });
+
+  it('keeps a renamed or moved target attributed to the request through its previous anchor', () => {
+    const diff = diffOutlineMarkdown(
+      '# 课程\n\n## 基础\n### 极限入门\n理解趋近。\n\n## 应用\n### 连续性\n理解连续。',
+      '# 课程\n\n## 基础\n### 连续性\n理解连续。\n\n## 应用\n### 从趋近理解极限\n理解趋近。',
+      undefined,
+      { action: 'patch', targetNodeRefs: ['lesson:基础/极限入门'] },
+    );
+
+    const moved = diff.modules
+      .flatMap((module) => module.lessons)
+      .find((lesson) => lesson.title === '从趋近理解极限');
+    expect(moved).toMatchObject({ attribution: 'requested', status: 'modified' });
+    expect(moved?.changeKinds).toEqual(expect.arrayContaining(['renamed', 'moved']));
+  });
+
+  it('labels out-of-target changes as AI-synchronised without rejecting them', () => {
+    const diff = diffOutlineMarkdown(
+      '# 课程\n\n## 基础\n### 第一课\n旧内容\n\n## 应用\n### 第二课\n旧内容',
+      '# 课程\n\n## 基础\n### 第一课\n新内容\n\n## 应用\n### 第二课\n也被调整',
+      undefined,
+      { action: 'patch', targetNodeRefs: ['module:基础'] },
+    );
+
+    expect(diff.modules.find((module) => module.title === '基础')?.attribution).toBe('requested');
+    expect(diff.modules.find((module) => module.title === '应用')?.attribution).toBe('ai_sync');
+  });
 });

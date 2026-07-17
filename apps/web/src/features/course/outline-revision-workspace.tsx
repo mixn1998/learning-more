@@ -5,7 +5,12 @@ import { AiContent, AiSurface, Button, Card, Dialog } from '@learning-more/ui';
 
 import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
-import type { OutlineMarkdownDiff, OutlineChangeStatus } from './outline-markdown-diff.js';
+import type {
+  OutlineChangeAttribution,
+  OutlineChangeKind,
+  OutlineMarkdownDiff,
+  OutlineChangeStatus,
+} from './outline-markdown-diff.js';
 import '../course-authoring/outline-workspace-view.css';
 import './outline-revision-workspace.css';
 
@@ -30,6 +35,47 @@ const changeLabels: Readonly<Record<OutlineChangeStatus, string>> = {
   removed: '删除',
 };
 
+const changeKindLabels: Readonly<Record<OutlineChangeKind, string>> = {
+  content: '内容变化',
+  renamed: '重命名',
+  moved: '移动',
+};
+
+const attributionLabels: Readonly<Record<OutlineChangeAttribution, string>> = {
+  requested: '响应本次要求',
+  ai_sync: 'AI 同步调整',
+};
+
+function ChangePreview(props: {
+  readonly status: OutlineChangeStatus;
+  readonly base?: Readonly<{ markdown: string }> | undefined;
+  readonly candidate?: Readonly<{ markdown: string }> | undefined;
+}) {
+  if (props.status === 'unchanged') return null;
+  const hasBefore = (props.base?.markdown.trim().length ?? 0) > 0;
+  const hasAfter = (props.candidate?.markdown.trim().length ?? 0) > 0;
+  if (!hasBefore && !hasAfter) return null;
+  return (
+    <details className="course-revision-diff__preview">
+      <summary>查看前后内容</summary>
+      <div className="course-revision-diff__preview-grid">
+        {hasBefore ? (
+          <section>
+            <strong>修改前</strong>
+            <AiContent markdown={props.base!.markdown} />
+          </section>
+        ) : null}
+        {hasAfter ? (
+          <section>
+            <strong>修改后</strong>
+            <AiContent markdown={props.candidate!.markdown} />
+          </section>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
 export function OutlineRevisionWorkspace(props: {
   readonly course: CourseArchiveView;
   readonly currentOutline?: CourseOutlineVersionView | undefined;
@@ -52,6 +98,18 @@ export function OutlineRevisionWorkspace(props: {
     ) + 1,
   );
   const nextVersionNumber = currentVersionNumber + 1;
+  const visibleChangeCount =
+    props.candidate === undefined
+      ? 0
+      : props.candidate.diff.courseSections.filter((section) => section.status !== 'unchanged')
+          .length +
+        props.candidate.diff.modules.reduce(
+          (count, module) =>
+            count +
+            (module.status === 'unchanged' ? 0 : 1) +
+            module.lessons.filter((lesson) => lesson.status !== 'unchanged').length,
+          0,
+        );
 
   const send = (message: string) => {
     if (props.busy === true) return;
@@ -95,7 +153,7 @@ export function OutlineRevisionWorkspace(props: {
       </Card>
 
       <div className="ow-workbench">
-        <Card className="ow-panel">
+        <Card className="ow-panel ow-panel--conversation">
           <header className="ow-panel-head">
             <strong>大纲调整对话</strong>
             <span>继承起点评估、当前大纲和已完成 Review</span>
@@ -126,7 +184,9 @@ export function OutlineRevisionWorkspace(props: {
               <p className="course-revision-busy" role="status">
                 正在更新候选大纲…
               </p>
-            ) : null}
+            ) : (
+              <></>
+            )}
             {props.error === undefined ? null : <p role="alert">{props.error}</p>}
           </ConversationStream>
           <ChatComposer
@@ -141,29 +201,33 @@ export function OutlineRevisionWorkspace(props: {
           />
         </Card>
 
-        <Card className="ow-panel">
+        <Card className="ow-panel ow-panel--outline">
           <header className="ow-panel-head">
             <strong>当前大纲与调整候选</strong>
             <span>{props.candidate?.versionLabel ?? '当前正式版本保持不变'}</span>
           </header>
           <AiSurface className="ow-outline course-revision-outlines">
-            <section className="course-revision-version course-revision-version--current">
-              <div className="course-revision-version__head">
-                <div>
-                  <div className="lm-kicker">CURRENT FORMAL OUTLINE</div>
-                  <h2>当前正式大纲</h2>
+            {props.candidate === undefined ? (
+              <section className="course-revision-version course-revision-version--current">
+                <div className="course-revision-version__head">
+                  <div>
+                    <div className="lm-kicker">CURRENT FORMAL OUTLINE</div>
+                    <h2>当前正式大纲</h2>
+                  </div>
+                  <span className="lm-pill">调整前版本</span>
                 </div>
-                <span className="lm-pill">发布前保持不变</span>
-              </div>
-              <AiContent
-                className="course-revision-markdown"
-                markdown={
-                  props.currentOutline?.outlineMarkdown ??
-                  props.course.outlineMarkdown ??
-                  `# ${props.course.title}`
-                }
-              />
-            </section>
+                <AiContent
+                  className="course-revision-markdown"
+                  markdown={
+                    props.currentOutline?.outlineMarkdown ??
+                    props.course.outlineMarkdown ??
+                    `# ${props.course.title}`
+                  }
+                />
+              </section>
+            ) : (
+              <></>
+            )}
 
             {props.candidate === undefined ? (
               <div className="course-revision-guidance">
@@ -192,28 +256,125 @@ export function OutlineRevisionWorkspace(props: {
                     <h3>版本变化</h3>
                     <p>{props.candidate.impact}</p>
                   </div>
-                  {props.candidate.diff.modules.map((module) => (
-                    <section key={module.key} className="course-revision-diff__module">
+                  {visibleChangeCount === 0 ? (
+                    <p className="course-revision-diff__empty">
+                      没有检测到相对于当前版的可见变化。
+                    </p>
+                  ) : null}
+                  {props.candidate.diff.courseSections.some(
+                    (section) => section.status !== 'unchanged',
+                  ) ? (
+                    <section className="course-revision-diff__module">
                       <div className="course-revision-diff__row">
-                        <strong>{module.title}</strong>
-                        <span
-                          className={`course-revision-change course-revision-change--${module.status}`}
-                        >
-                          {changeLabels[module.status]}
-                        </span>
+                        <strong>课程级内容变化</strong>
                       </div>
-                      {module.lessons.map((lesson) => (
-                        <div key={lesson.key} className="course-revision-diff__lesson">
-                          <span>{lesson.title}</span>
-                          <span
-                            className={`course-revision-change course-revision-change--${lesson.status}`}
-                          >
-                            {changeLabels[lesson.status]}
+                      {props.candidate.diff.courseSections
+                        .filter((section) => section.status !== 'unchanged')
+                        .map((section) => (
+                          <div key={section.key} className="course-revision-diff__lesson">
+                            <div className="course-revision-diff__change-head">
+                              <span>
+                                {section.previousTitle === undefined
+                                  ? section.title
+                                  : `${section.previousTitle} → ${section.title}`}
+                              </span>
+                              <span className="course-revision-diff__badges">
+                                {section.changeKinds.map((kind) => (
+                                  <span key={kind} className="course-revision-change">
+                                    {changeKindLabels[kind]}
+                                  </span>
+                                ))}
+                                <span
+                                  className={`course-revision-change course-revision-change--${section.status}`}
+                                >
+                                  {changeLabels[section.status]}
+                                </span>
+                                <span
+                                  className={`course-revision-attribution course-revision-attribution--${section.attribution}`}
+                                >
+                                  {attributionLabels[section.attribution]}
+                                </span>
+                              </span>
+                            </div>
+                            <ChangePreview
+                              base={section.base}
+                              candidate={section.candidate}
+                              status={section.status}
+                            />
+                          </div>
+                        ))}
+                    </section>
+                  ) : null}
+                  {props.candidate.diff.modules
+                    .filter((module) => module.status !== 'unchanged')
+                    .map((module) => (
+                      <section key={module.key} className="course-revision-diff__module">
+                        <div className="course-revision-diff__row">
+                          <strong>
+                            {module.previousTitle === undefined
+                              ? module.title
+                              : `${module.previousTitle} → ${module.title}`}
+                          </strong>
+                          <span className="course-revision-diff__badges">
+                            {module.changeKinds.map((kind) => (
+                              <span key={kind} className="course-revision-change">
+                                {changeKindLabels[kind]}
+                              </span>
+                            ))}
+                            <span
+                              className={`course-revision-change course-revision-change--${module.status}`}
+                            >
+                              {changeLabels[module.status]}
+                            </span>
+                            <span
+                              className={`course-revision-attribution course-revision-attribution--${module.attribution}`}
+                            >
+                              {attributionLabels[module.attribution]}
+                            </span>
                           </span>
                         </div>
-                      ))}
-                    </section>
-                  ))}
+                        <ChangePreview
+                          base={module.base}
+                          candidate={module.candidate}
+                          status={module.status}
+                        />
+                        {module.lessons
+                          .filter((lesson) => lesson.status !== 'unchanged')
+                          .map((lesson) => (
+                            <div key={lesson.key} className="course-revision-diff__lesson">
+                              <div className="course-revision-diff__change-head">
+                                <span>
+                                  {lesson.previousTitle === undefined
+                                    ? lesson.title
+                                    : `${lesson.previousTitle} → ${lesson.title}`}
+                                </span>
+                                <span className="course-revision-diff__badges">
+                                  {lesson.changeKinds.map((kind) => (
+                                    <span key={kind} className="course-revision-change">
+                                      {changeKindLabels[kind]}
+                                    </span>
+                                  ))}
+                                  <span
+                                    className={`course-revision-change course-revision-change--${lesson.status}`}
+                                  >
+                                    {changeLabels[lesson.status]}
+                                  </span>
+                                  <span
+                                    className={`course-revision-attribution course-revision-attribution--${lesson.attribution}`}
+                                  >
+                                    {attributionLabels[lesson.attribution]}
+                                  </span>
+                                </span>
+                              </div>
+                              <ChangePreview
+                                base={lesson.base}
+                                candidate={lesson.candidate}
+                                status={lesson.status}
+                              />
+                            </div>
+                          ))}
+                      </section>
+                    ))}
                 </section>
               </>
             )}

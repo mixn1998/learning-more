@@ -33,6 +33,7 @@ import { confirmCourse } from './confirm-course.js';
 import { createAuthoringContextAssembler } from './authoring-context-assembler.js';
 import { reviseCourseOutline } from './revise-course-outline.js';
 import { resolveCourseTitle } from '../model/course-title.js';
+import type { OutlineRevisionLiveCleanup } from './outline-revision-live-cleanup.js';
 
 export interface CandidateGenerationCoordinator {
   generate(input: { readonly commandId: string; readonly outlineSessionId: string }): Promise<{
@@ -71,6 +72,7 @@ export function createCourseAuthoringFacade(options: {
   readonly authoringAgent: AuthoringAgent;
   readonly candidateAlignmentPlanner: CandidateAlignmentPlanner;
   readonly nextLessonRecommender?: NextLessonRecommender;
+  readonly outlineRevisionLiveCleanup?: OutlineRevisionLiveCleanup;
   readonly outbox?: Outbox;
   readonly hasLearningEvidence?: (lessonId: string) => Promise<boolean>;
   readonly profileEvidenceSink?: Readonly<{
@@ -94,6 +96,136 @@ export function createCourseAuthoringFacade(options: {
     const record = await options.authoring.outlineSessions.get(outlineSessionId);
     if (record === undefined) throw new ResourceNotFoundError();
     return record;
+  }
+
+  async function candidateLineage(candidateVersionId: string) {
+    const lineage = [];
+    const visited = new Set<string>();
+    let currentId: string | undefined = candidateVersionId;
+    while (currentId !== undefined && !visited.has(currentId)) {
+      visited.add(currentId);
+      const candidate = await options.authoring.candidateVersions.get(currentId);
+      if (candidate === undefined) break;
+      lineage.push(candidate);
+      currentId = candidate.parentVersionId;
+    }
+    return lineage.reverse();
+  }
+
+  function orderedUnique(values: readonly string[]): string[] {
+    return [...new Set(values)];
+  }
+
+  function sessionActivity(record: OutlineSessionRecord): string {
+    return record.messages.at(-1)?.createdAt ?? '';
+  }
+
+  async function openCourseAdjustmentSession(input: {
+    readonly courseId: string;
+    readonly courseMode: Parameters<typeof createOutlineAdjustmentSession>[0]['courseMode'];
+    readonly topic: string;
+    readonly baselineCandidateVersionId: string;
+    readonly commandId: string;
+  }): Promise<OutlineSessionRecord> {
+    const lineage = await candidateLineage(input.baselineCandidateVersionId);
+    const lineageCandidateIds = new Set(lineage.map((candidate) => candidate.id));
+    const lineageSessionIds = orderedUnique(lineage.map((candidate) => candidate.outlineSessionId));
+    const allSessions: OutlineSessionRecord[] = [];
+    for await (const record of options.authoring.outlineSessions.list()) allSessions.push(record);
+
+    const relatedAdjustments = allSessions
+      .filter((record) => {
+        if (record.session.confirmedCourseId !== undefined) return false;
+        if (record.session.adjustmentCourseId === input.courseId) return true;
+        return record.session.candidateVersionIds.some((candidateId) =>
+          lineageCandidateIds.has(candidateId),
+        );
+      })
+      .sort((left, right) => {
+        const byActivity = sessionActivity(left).localeCompare(sessionActivity(right));
+        if (byActivity !== 0) return byActivity;
+        const byVersion = left.resourceVersion - right.resourceVersion;
+        if (byVersion !== 0) return byVersion;
+        return left.session.outlineSessionId.localeCompare(right.session.outlineSessionId);
+      });
+    const active = relatedAdjustments.at(-1);
+    const historySessionIds = orderedUnique([
+      ...lineageSessionIds,
+      ...relatedAdjustments
+        .filter((record) => record.session.outlineSessionId !== active?.session.outlineSessionId)
+        .map((record) => record.session.outlineSessionId),
+    ]);
+
+    if (active !== undefined) {
+      const nextHistory = orderedUnique([
+        ...(active.session.historySessionIds ?? []),
+        ...historySessionIds,
+      ]).filter((sessionId) => sessionId !== active.session.outlineSessionId);
+      const alreadyLinked =
+        active.session.adjustmentCourseId === input.courseId &&
+        JSON.stringify(active.session.historySessionIds ?? []) === JSON.stringify(nextHistory);
+      if (alreadyLinked) return active;
+      const linked: OutlineSessionRecord = {
+        ...active,
+        session: {
+          ...active.session,
+          adjustmentCourseId: input.courseId,
+          historySessionIds: nextHistory,
+        },
+      };
+      await options.unitOfWork.execute(
+        { transactionId: `tx_link_outline_adjustment_${input.commandId}` },
+        (tx) => options.authoring.outlineSessions.save(tx, linked, active.resourceVersion),
+      );
+      return { ...linked, resourceVersion: active.resourceVersion + 1 };
+    }
+
+    const outlineSessionId = options.nextId('session');
+    const started: OutlineSessionRecord = {
+      session: createOutlineAdjustmentSession({
+        outlineSessionId,
+        topic: input.topic,
+        courseMode: input.courseMode,
+        baselineCandidateVersionId: input.baselineCandidateVersionId,
+        courseId: input.courseId,
+        historySessionIds,
+      }),
+      resourceVersion: 0,
+      candidateCommandReceipts: {},
+      messages: [],
+    };
+    await options.unitOfWork.execute(
+      { transactionId: `tx_create_outline_adjustment_${input.commandId}` },
+      (tx) => options.authoring.outlineSessions.save(tx, started, 0),
+    );
+    return { ...started, resourceVersion: 1 };
+  }
+
+  async function projectedConversation(record: OutlineSessionRecord) {
+    const sources: OutlineSessionRecord[] = [];
+    for (const sessionId of record.session.historySessionIds ?? []) {
+      const historical = await options.authoring.outlineSessions.get(sessionId);
+      if (historical !== undefined) sources.push(historical);
+    }
+    sources.push(record);
+    const seen = new Set<string>();
+    return sources
+      .flatMap((source, sourceIndex) =>
+        source.messages.map((message, messageIndex) => ({
+          message,
+          order: sourceIndex * 10_000 + messageIndex,
+        })),
+      )
+      .filter(({ message }) => {
+        if (seen.has(message.messageId)) return false;
+        seen.add(message.messageId);
+        return true;
+      })
+      .sort(
+        (left, right) =>
+          left.message.createdAt.localeCompare(right.message.createdAt) || left.order - right.order,
+      )
+      .map(({ message }) => message);
   }
 
   function result(
@@ -309,32 +441,23 @@ export function createCourseAuthoringFacade(options: {
           outline.sourceCandidateVersionId,
         );
         if (baselineCandidate === undefined) throw new ResourceNotFoundError();
-        const outlineSessionId = options.nextId('session');
-        const started: OutlineSessionRecord = {
-          session: createOutlineAdjustmentSession({
-            outlineSessionId,
-            topic: resolveCourseTitle(outline.outlineMarkdown, course.title),
-            courseMode: course.courseMode,
-            baselineCandidateVersionId: baselineCandidate.id,
-          }),
-          resourceVersion: 0,
-          candidateCommandReceipts: {},
-          messages: [],
-        };
-        await options.unitOfWork.execute(
-          { transactionId: `tx_create_outline_adjustment_${context.commandId}` },
-          (tx) => options.authoring.outlineSessions.save(tx, started, 0),
-        );
+        const started = await openCourseAdjustmentSession({
+          courseId: course.id,
+          topic: resolveCourseTitle(outline.outlineMarkdown, course.title),
+          courseMode: course.courseMode,
+          baselineCandidateVersionId: baselineCandidate.id,
+          commandId: context.commandId,
+        });
         return result(
           context,
           {
             kind: 'outline-session',
-            outlineSessionId,
+            outlineSessionId: started.session.outlineSessionId,
             state: started.session.state,
             completedAssessmentRounds: started.session.completedAssessmentRounds,
             canGenerateCandidate: canGenerateCandidate(started),
           },
-          1,
+          started.resourceVersion,
         );
       }
 
@@ -591,6 +714,9 @@ export function createCourseAuthoringFacade(options: {
             ...(options.nextLessonRecommender === undefined
               ? {}
               : { nextLessonRecommender: options.nextLessonRecommender }),
+            ...(options.outlineRevisionLiveCleanup === undefined
+              ? {}
+              : { liveCleanup: options.outlineRevisionLiveCleanup }),
             now: options.now,
           },
         );
@@ -658,6 +784,7 @@ export function createCourseAuthoringFacade(options: {
     },
     async query(query) {
       const record = await sessionRecord(query.outlineSessionId);
+      const messages = await projectedConversation(record);
       const candidate =
         record.session.latestCandidateVersionId === undefined
           ? undefined
@@ -685,7 +812,7 @@ export function createCourseAuthoringFacade(options: {
         completedAssessmentRounds: record.session.completedAssessmentRounds,
         canGenerateCandidate: canGenerateCandidate(record),
         ...(record.session.savedAsDraft === true ? { savedAsDraft: true } : {}),
-        messages: record.messages,
+        messages,
         ...(record.session.activeCandidateTaskId === undefined
           ? {}
           : { generationTaskId: record.session.activeCandidateTaskId }),
@@ -773,7 +900,8 @@ export function createCourseAuthoringFacade(options: {
     async getLesson(lessonId) {
       const lesson = await options.courses.lessons.get(lessonId);
       if (lesson === undefined) throw new ResourceNotFoundError();
-      if ((await options.courses.courses.get(lesson.courseId)) === undefined) {
+      const course = await options.courses.courses.get(lesson.courseId);
+      if (course === undefined || !course.lessonIds.includes(lessonId)) {
         throw new ResourceNotFoundError();
       }
       return {

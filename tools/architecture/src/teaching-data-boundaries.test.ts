@@ -58,7 +58,7 @@ describe('interactive teaching and reasoning-data architecture boundaries', () =
     expect(learningRuntime).toContain('createLocalFileTeachingLedgerRepository');
     expect(profileRuntime).toContain('createLocalFileReasoningBehaviorRepository');
     expect(profileRuntime).toContain('filter.courseIds.length > 0');
-    expect(learningRuntime).toContain('interactiveTeachingRuntime.recoverSession');
+    expect(learningRuntime).toMatch(/interactiveTeachingRuntime\s*\.recoverSession/u);
     expect(learningRuntime).toContain("projectionStatus = 'degraded'");
     expect(profileRoutes).toContain("header('deprecation', 'true')");
   });

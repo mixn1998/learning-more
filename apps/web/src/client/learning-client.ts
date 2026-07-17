@@ -39,6 +39,7 @@ export interface LearningClient {
     progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
     sessionId?: string | undefined;
     stageReviewMarkdown?: string | undefined;
+    stageReviewStatus?: 'generating' | 'failed' | 'ready' | undefined;
     resourceVersion: number;
   }>;
   getCourse(courseId: string): Promise<CourseArchiveView>;
@@ -82,6 +83,7 @@ export interface LearningClient {
   ): Promise<{
     progress: 'not_started' | 'in_progress' | 'abandoned' | 'completed';
     resourceVersion: number;
+    reviewStatus?: 'generating' | 'failed' | 'ready' | undefined;
   }>;
   restore(
     lessonId: string,

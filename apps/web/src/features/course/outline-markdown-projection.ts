@@ -5,6 +5,7 @@ export type OutlineProjectionLessonInput = Readonly<{
 
 export type OutlineProjectionLesson = Readonly<{
   key: string;
+  anchor: string;
   title: string;
   markdown: string;
   lessonId?: string | undefined;
@@ -12,9 +13,17 @@ export type OutlineProjectionLesson = Readonly<{
 
 export type OutlineProjectionModule = Readonly<{
   key: string;
+  anchor: string;
   title: string;
   markdown: string;
   lessons: readonly OutlineProjectionLesson[];
+}>;
+
+export type OutlineProjectionCourseSection = Readonly<{
+  key: string;
+  anchor: string;
+  title: string;
+  markdown: string;
 }>;
 
 export type OutlineMarkdownProjection = Readonly<{
@@ -23,6 +32,7 @@ export type OutlineMarkdownProjection = Readonly<{
   markdown: string;
   modules: readonly OutlineProjectionModule[];
   ungroupedLessons: readonly OutlineProjectionLesson[];
+  courseSections: readonly OutlineProjectionCourseSection[];
 }>;
 
 export type ResolvedCourseIntroduction = Readonly<{
@@ -55,6 +65,31 @@ export function normalizeOutlineTitle(value: string): string {
     )
     .replace(/[\s:：、，,。.!！?？()（）[\]【】《》“”'"\-—·]/gu, '')
     .toLocaleLowerCase();
+}
+
+export function outlineModuleAnchor(title: string): string {
+  return `module:${normalizeOutlineTitle(title)}`;
+}
+
+export function outlineLessonAnchor(moduleTitle: string | undefined, title: string): string {
+  const parent = moduleTitle === undefined ? 'ungrouped' : normalizeOutlineTitle(moduleTitle);
+  return `lesson:${parent}/${normalizeOutlineTitle(title)}`;
+}
+
+export function outlineCourseSectionAnchor(title: string): string {
+  return `section:${normalizeOutlineTitle(title)}`;
+}
+
+function isCourseLevelSectionTitle(title: string): boolean {
+  const normalized = normalizeOutlineTitle(title);
+  return (
+    /(?:课程|学习)(?:完成|结业|掌握|能力|学习)?(?:标准|目标|成果|要求|说明|介绍|摘要|评估)|适用对象|先修要求|参考资料|学习建议/u.test(
+      normalized,
+    ) ||
+    /course(?:completion|learning)?(?:criteria|standards|goals|summary|overview)|learningoutcomes|assessmentcriteria|prerequisites|references/u.test(
+      normalized,
+    )
+  );
 }
 
 function parseMarkdown(markdown: string): Readonly<{
@@ -224,6 +259,7 @@ function projectWithFormalLessons(
     if (nodeIndex < 0) {
       ungroupedLessons.push({
         key: lesson.lessonId,
+        anchor: outlineLessonAnchor(undefined, lesson.title),
         lessonId: lesson.lessonId,
         title: lesson.title,
         markdown: '',
@@ -233,13 +269,17 @@ function projectWithFormalLessons(
     usedNodeIndexes.add(nodeIndex);
     const node = parsed.nodes[nodeIndex];
     if (node === undefined) return;
+    const moduleIndex = findModuleHeadingIndex(parsed.nodes, node);
     const projected = {
       key: lesson.lessonId,
+      anchor: outlineLessonAnchor(
+        moduleIndex === undefined ? undefined : parsed.nodes[moduleIndex]?.title,
+        lesson.title,
+      ),
       lessonId: lesson.lessonId,
       title: lesson.title,
       markdown: nodeMarkdown(parsed, node, nodeIndex),
     } satisfies OutlineProjectionLesson;
-    const moduleIndex = findModuleHeadingIndex(parsed.nodes, node);
     if (moduleIndex === undefined) {
       ungroupedLessons.push(projected);
       return;
@@ -256,6 +296,7 @@ function projectWithFormalLessons(
       if (node === undefined) return undefined;
       return {
         key: `module-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
+        anchor: outlineModuleAnchor(node.title),
         title: node.title,
         markdown: nodeMarkdown(parsed, node, nodeIndex),
         lessons: moduleLessons,
@@ -274,24 +315,54 @@ function projectCandidate(
   );
   const modules: OutlineProjectionModule[] = [];
   const consumed = new Set<number>();
+  const courseSectionHeadingIndexes = new Set<number>();
 
   parsed.nodes.forEach((node, nodeIndex) => {
     if (node.kind !== 'heading' || node.parentHeadingIndex !== courseHeadingIndex) return;
+    const courseLevelSection = isCourseLevelSectionTitle(node.title);
     const childIndexes = parsed.nodes
       .map((child, childIndex) => ({ child, childIndex }))
       .filter(({ child }) => child.parentHeadingIndex === nodeIndex)
       .map(({ childIndex }) => childIndex);
-    if (childIndexes.length === 0) return;
-    childIndexes.forEach((index) => consumed.add(index));
+    if (childIndexes.length === 0) {
+      if (courseLevelSection) courseSectionHeadingIndexes.add(nodeIndex);
+      return;
+    }
+    const headingChildIndexes = childIndexes.filter(
+      (childIndex) => parsed.nodes[childIndex]?.kind === 'heading',
+    );
+    const listChildIndexes = childIndexes.filter(
+      (childIndex) => parsed.nodes[childIndex]?.kind === 'list',
+    );
+    const shortListRatio =
+      listChildIndexes.length === 0
+        ? 0
+        : listChildIndexes.filter((childIndex) => {
+            const title = parsed.nodes[childIndex]?.title ?? '';
+            return Array.from(title).length <= 24 && !/[。！？!?；;]$/u.test(title);
+          }).length / listChildIndexes.length;
+    const lessonChildIndexes =
+      headingChildIndexes.length > 0
+        ? headingChildIndexes
+        : !courseLevelSection && shortListRatio >= 0.75
+          ? listChildIndexes
+          : [];
+    if (lessonChildIndexes.length === 0) {
+      if (courseLevelSection) courseSectionHeadingIndexes.add(nodeIndex);
+      return;
+    }
+    lessonChildIndexes.forEach((index) => consumed.add(index));
     consumed.add(nodeIndex);
     modules.push({
       key: `module-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
+      anchor: outlineModuleAnchor(node.title),
       title: node.title,
       markdown: nodeMarkdown(parsed, node, nodeIndex),
-      lessons: childIndexes.map((childIndex) => {
+      lessons: lessonChildIndexes.map((childIndex) => {
         const child = parsed.nodes[childIndex];
         return {
           key: `lesson-${child?.lineIndex ?? childIndex}-${normalizeOutlineTitle(child?.title ?? '')}`,
+          anchor: outlineLessonAnchor(node.title, child?.title ?? ''),
           title: child?.title ?? '',
           markdown: child === undefined ? '' : nodeMarkdown(parsed, child, childIndex),
         };
@@ -302,12 +373,14 @@ function projectCandidate(
   const ungroupedLessons = parsed.nodes
     .map((node, nodeIndex) => ({ node, nodeIndex }))
     .filter(({ node, nodeIndex }) => {
-      if (consumed.has(nodeIndex) || node.level === 1) return false;
+      if (consumed.has(nodeIndex) || courseSectionHeadingIndexes.has(nodeIndex) || node.level === 1)
+        return false;
       if (node.kind === 'heading') return node.parentHeadingIndex === courseHeadingIndex;
       return node.parentHeadingIndex === undefined;
     })
     .map(({ node, nodeIndex }) => ({
       key: `lesson-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
+      anchor: outlineLessonAnchor(undefined, node.title),
       title: node.title,
       markdown: nodeMarkdown(parsed, node, nodeIndex),
     }));
@@ -328,11 +401,31 @@ export function projectOutlineMarkdown(
     courseHeadingIndex < 0 ? undefined : courseIntroductionText(parsed, courseHeadingIndex);
   const projection =
     lessons === undefined ? projectCandidate(parsed) : projectWithFormalLessons(parsed, lessons);
+  const moduleTitles = new Set(
+    projection.modules.map((module) => normalizeOutlineTitle(module.title)),
+  );
+  const ungroupedLessonTitles = new Set(
+    projection.ungroupedLessons.map((lesson) => normalizeOutlineTitle(lesson.title)),
+  );
+  const courseSections = parsed.nodes
+    .map((node, nodeIndex) => ({ node, nodeIndex }))
+    .filter(({ node }) => {
+      if (node.kind !== 'heading' || node.parentHeadingIndex !== courseHeadingIndex) return false;
+      const normalized = normalizeOutlineTitle(node.title);
+      return !moduleTitles.has(normalized) && !ungroupedLessonTitles.has(normalized);
+    })
+    .map(({ node, nodeIndex }) => ({
+      key: `section-${node.lineIndex}-${normalizeOutlineTitle(node.title)}`,
+      anchor: outlineCourseSectionAnchor(node.title),
+      title: node.title,
+      markdown: nodeMarkdown(parsed, node, nodeIndex),
+    }));
   return {
     ...(courseTitle === undefined ? {} : { title: courseTitle }),
     ...(introductionText === undefined ? {} : { introductionText }),
     markdown,
     ...projection,
+    courseSections,
   };
 }
 

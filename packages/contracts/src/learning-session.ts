@@ -62,14 +62,15 @@ export const LessonTeachingProgressSchema = z.strictObject({
     'ready_to_close',
   ]),
   activeKnowledgePointRef: z.string().trim().min(1).max(2_000).optional(),
-  comprehensiveCheck: z.enum(['pending', 'checking', 'passed', 'skipped']),
+  comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),
   summaryStatus: z.enum(['pending', 'delivered']),
   knowledgePoints: z.array(
     z.strictObject({
       ref: z.string().trim().min(1).max(2_000),
       title: z.string().trim().min(1).max(2_000),
-      progress: z.enum(['pending', 'teaching', 'checking', 'passed', 'skipped']),
+      progress: z.enum(['pending', 'learning', 'completed', 'skipped']),
+      interactionStatus: z.enum(['pending', 'completed', 'skipped']),
       delivery: z.enum(['not_addressed', 'explained']),
       verification: z.enum(['not_observed', 'supporting', 'limiting', 'mixed']),
       unresolvedQuestionCount: z.number().int().nonnegative(),
@@ -147,6 +148,8 @@ export const LessonRecordResponseSchema = z.strictObject({
   courseTitle: z.string().min(1),
   completedAt: z.iso.datetime({ offset: true }),
   actualSeconds: z.number().int().nonnegative(),
+  progress: z.enum(['in_progress', 'abandoned', 'completed']),
+  reviewStatus: z.enum(['generating', 'failed', 'ready']),
   original: z.strictObject({
     sessionId: identifier,
     label: z.string(),
@@ -160,7 +163,7 @@ export const LessonRecordResponseSchema = z.strictObject({
       messages: z.array(LessonRecordMessageSchema),
     }),
   ),
-  finalReviewMarkdown: z.string(),
+  finalReviewMarkdown: z.string().optional(),
 });
 
 export const LessonEntryStateResponseSchema = z.strictObject({
@@ -168,6 +171,7 @@ export const LessonEntryStateResponseSchema = z.strictObject({
   progress: z.enum(['not_started', 'in_progress', 'abandoned', 'completed']),
   sessionId: identifier.optional(),
   stageReviewMarkdown: z.string().optional(),
+  stageReviewStatus: z.enum(['generating', 'failed', 'ready']).optional(),
   resourceVersion,
 });
 

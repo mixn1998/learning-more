@@ -78,13 +78,27 @@ describe('candidate output protocol', () => {
       sources: [{ sourceRef: 'source_topic', title: '初始课程方向', excerpt: '微积分' }],
       currentCandidate: {
         markdown: '# 微积分 v1\n\n## 极限\n### 极限是什么',
+        outlineNodes: [
+          {
+            ref: 'module:极限',
+            kind: 'module',
+            title: '极限',
+            excerpt: '## 极限\n### 极限是什么',
+            parentRef: 'outline:root',
+          },
+        ],
       },
-      requestedAdjustment: { action: 'patch', targetModuleIds: ['module_derivative'] },
+      requestedAdjustment: { action: 'patch', targetModuleIds: ['module:极限'] },
     });
 
     expect(prompt).toContain('[CURRENT CANDIDATE]');
     expect(prompt).toContain('# 微积分 v1\n\n## 极限\n### 极限是什么');
     expect(prompt).toContain('[CURRENT REQUEST]');
+    expect(prompt).toContain('primarily concerns: 极限');
+    expect(prompt).toContain('Relevant current content (极限)');
+    expect(prompt).toContain('the application will disclose those changes separately');
+    expect(prompt).not.toContain('[CURRENT OUTLINE NODE MANIFEST]');
+    expect(prompt).not.toContain('module:极限');
     expect(prompt).not.toContain('outlineSessionId');
   });
 });

@@ -22,7 +22,7 @@ const ScheduleItemSchema = z.strictObject({
   source: z.enum(['manual', 'plan-flow']),
   status: z.enum(['scheduled', 'removed']),
   locked: z.boolean().optional(),
-  cancelReason: z.enum(['lesson_abandoned', 'user_removed']).optional(),
+  cancelReason: z.enum(['lesson_abandoned', 'user_removed', 'outline_revised']).optional(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
   processedCommandIds: z.array(z.string().min(1)),

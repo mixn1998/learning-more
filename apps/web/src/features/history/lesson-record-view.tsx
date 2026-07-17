@@ -43,7 +43,9 @@ function durationLabel(seconds: number | undefined) {
 export function LessonRecordView(props: {
   readonly original: SessionRecord;
   readonly supplementary: readonly SessionRecord[];
-  readonly finalReviewMarkdown: string;
+  readonly finalReviewMarkdown?: string;
+  readonly progress?: 'in_progress' | 'abandoned' | 'completed';
+  readonly reviewStatus?: 'generating' | 'failed' | 'ready';
   readonly initialTab?: 'conversation' | 'review';
   readonly title?: string;
   readonly courseTitle?: string;
@@ -61,6 +63,7 @@ export function LessonRecordView(props: {
   const selected = sessions.find((session) => session.sessionId === sessionId) ?? props.original;
   const date = props.completedAt ?? '完成时间已归档';
   const duration = durationLabel(props.actualSeconds);
+  const progressLabel = props.progress === 'abandoned' ? '已结束' : '已完成';
   return (
     <div className="lesson-record-workspace">
       <header className="lm-topbar lesson-record-topbar">
@@ -92,8 +95,8 @@ export function LessonRecordView(props: {
         <section className="lm-card lesson-hero">
           <div>
             <div className="lm-mode-badge">● 标准模式</div>
-            <div className="lm-kicker lesson-record-kicker">已完成 · 课节记录</div>
-            <h1>{props.title ?? '已完成课节'}</h1>
+            <div className="lm-kicker lesson-record-kicker">{progressLabel} · 课节记录</div>
+            <h1>{props.title ?? '课节记录'}</h1>
             <p>
               《{props.courseTitle ?? '当前课程'}》· {date} · {duration}
             </p>
@@ -130,10 +133,14 @@ export function LessonRecordView(props: {
               tabIndex={0}
             >
               <article aria-label="权威课时 Review" className="lesson-record-review">
-                {props.reviewContent === undefined ? (
-                  <AiContent className="review-content" markdown={props.finalReviewMarkdown} />
-                ) : (
+                {props.reviewContent !== undefined ? (
                   <AiSurface className="review-content">{props.reviewContent}</AiSurface>
+                ) : props.finalReviewMarkdown !== undefined ? (
+                  <AiContent className="review-content" markdown={props.finalReviewMarkdown} />
+                ) : props.reviewStatus === 'failed' ? (
+                  <p role="alert">阶段性 Review 生成失败；课节对话已经完整归档。</p>
+                ) : (
+                  <p role="status">阶段性 Review 正在生成中，可稍后返回课程页面查看。</p>
                 )}
               </article>
             </section>

@@ -13,7 +13,9 @@ import { createSessionModule } from '../../learning-session/implementation/sessi
 import type { LearningSessionModule } from '../../learning-session/interface.js';
 import { createTeachingContextAssembler } from '../implementation/context-assembler.js';
 import { createInteractiveTeaching } from '../implementation/interactive-teaching.js';
+import { createTeachingState } from '../implementation/teaching-state-reducer.js';
 import type { TeachingAgent } from '../ports/teaching-agent.js';
+import type { TeachingDirective } from '../ports/teaching-agent.js';
 import type { TeachingContextSources } from '../ports/teaching-context-sources.js';
 import type { TeachingObserver } from '../ports/teaching-observer.js';
 
@@ -47,6 +49,7 @@ async function fixture(
     reasoningSinkFailsOnce?: boolean;
     artifactSaveFails?: boolean;
     deferredCompletion?: boolean;
+    agentDirective?: TeachingDirective;
   } = {},
 ) {
   const artifacts = new Map<string, string>([
@@ -56,6 +59,7 @@ async function fixture(
         ? 'How would intervention change this in the later causal-inference topic?'
         : 'Please explain why the denominator changes.',
     ],
+    ['artifact:user:2', 'Can you connect that explanation to the earlier example?'],
   ]);
   const messageLog = createInMemoryMessageLog();
   const storedSessionModule = createSessionModule({
@@ -137,6 +141,9 @@ async function fixture(
         completionStatus: message.completionStatus,
         markdown: artifacts.get(message.contentArtifactRef) ?? '',
         sourceRef: `message:${message.id}`,
+        ...(message.generationTaskId === undefined
+          ? {}
+          : { generationTaskId: message.generationTaskId }),
       }));
     },
     async listRelevantFinalReviews() {
@@ -153,6 +160,9 @@ async function fixture(
     },
   };
   let submittedContext: unknown;
+  let submittedTaskCount = 0;
+  let assistantMessageCount = 0;
+  const observedMessageBatches: string[][] = [];
   let resolveAgentCompletion: ((value: Readonly<{ markdown: string }>) => void) | undefined;
   const deferredCompletion = options.deferredCompletion
     ? new Promise<Readonly<{ markdown: string }>>((resolve) => {
@@ -162,7 +172,8 @@ async function fixture(
   const agent: TeachingAgent = {
     async submit(context) {
       submittedContext = context;
-      return { taskId: 'task_1' };
+      submittedTaskCount += 1;
+      return { taskId: `task_${submittedTaskCount}` };
     },
     async complete() {
       if (deferredCompletion !== undefined) return deferredCompletion;
@@ -170,7 +181,13 @@ async function fixture(
         markdown: options.adjacent
           ? 'That is a useful adjacent direction. Let us explore it briefly, then return to the denominator change.'
           : 'Conditioning narrows the reference population, so the denominator changes with the sample space.',
+        ...(options.agentDirective === undefined ? {} : { directive: options.agentDirective }),
       };
+    },
+    async read() {
+      return options.agentDirective === undefined
+        ? undefined
+        : { markdown: 'Recovered teaching explanation.', directive: options.agentDirective };
     },
     async recover() {
       return {
@@ -193,6 +210,7 @@ async function fixture(
         throw new Error('simulated_observer_failure');
       }
       const sourceMessageIds = input.messages.map((message) => message.messageId);
+      observedMessageBatches.push(sourceMessageIds);
       const assistant = input.messages.find((message) => message.role === 'assistant')!;
       const user = input.messages.find((message) => message.role === 'user')!;
       return {
@@ -255,6 +273,7 @@ async function fixture(
       };
     },
   };
+  const ledgerRepository = createInMemoryTeachingLedgerRepository();
   const created = createInteractiveTeaching({
     sessionModule,
     contextSources: sources,
@@ -270,7 +289,7 @@ async function fixture(
         capturedReasoningObservations.push(input.observation.observationId);
       },
     },
-    ledgerRepository: createInMemoryTeachingLedgerRepository(),
+    ledgerRepository,
     unitOfWork,
     frameLog: {
       async ensureTask() {},
@@ -292,7 +311,10 @@ async function fixture(
         artifacts.set(input.artifactRef, input.markdown);
       },
     },
-    nextAssistantMessageId: () => 'message_ai_1',
+    nextAssistantMessageId: () => {
+      assistantMessageCount += 1;
+      return `message_ai_${assistantMessageCount}`;
+    },
     nextCheckpointId: () => 'checkpoint_1',
     nextTransactionId: () => 'tx_interactive_1',
     now: () => new Date('2026-07-14T00:02:00.000Z'),
@@ -303,6 +325,8 @@ async function fixture(
     messageLog,
     submittedContext: () => submittedContext,
     capturedReasoningObservations,
+    observedMessageBatches,
+    ledgerRepository,
     frames,
     resolveAgentCompletion(markdown: string) {
       if (resolveAgentCompletion === undefined) throw new Error('completion_not_deferred');
@@ -520,6 +544,131 @@ describe('InteractiveTeaching deep module', () => {
     await expect(
       module.freezeCheckpoint({ sessionId: 'session_1', reason: 'lesson_closure' }),
     ).resolves.toEqual(checkpoint);
+  });
+
+  it('commits the teaching agent directive before observation and exposes its control state', async () => {
+    const { module, drainObservations } = await fixture({
+      agentDirective: {
+        schemaVersion: 1,
+        lessonPhase: 'comprehensive_check',
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            status: 'completed',
+            interactionStatus: 'skipped',
+          },
+        ],
+        comprehensiveCheck: 'learning',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+      },
+    });
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'comprehensive_check',
+      knowledgePoints: [{ progress: 'completed', interactionStatus: 'skipped' }],
+    });
+  });
+
+  it('rebuilds each teaching observation from the complete session history', async () => {
+    const { module, drainObservations, observedMessageBatches } = await fixture();
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_2',
+        userContentArtifactRef: 'artifact:user:2',
+      },
+      {
+        ...commandContext,
+        commandId: 'command_turn_2',
+        idempotencyKey: 'idempotency_2',
+        expectedVersion: undefined,
+      },
+    );
+    await drainObservations('session_1');
+
+    expect(observedMessageBatches).toEqual([
+      ['message_user_1', 'message_ai_1'],
+      ['message_user_1', 'message_ai_1', 'message_user_2', 'message_ai_2'],
+    ]);
+  });
+
+  it('replays the latest hidden teaching directive when the persisted ledger is stale', async () => {
+    const directive: TeachingDirective = {
+      schemaVersion: 1,
+      lessonPhase: 'comprehensive_check',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'learning',
+      closureInquiry: 'pending',
+      summaryStatus: 'pending',
+    };
+    const { module, drainObservations, recoverSession, ledgerRepository } = await fixture({
+      agentDirective: directive,
+    });
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    const current = (await ledgerRepository.get('session_1'))!;
+    await ledgerRepository.save(
+      tx,
+      {
+        ...current,
+        state: createTeachingState({
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          knowledgePointRefs: ['knowledge:kp_1'],
+        }),
+      },
+      current.resourceVersion,
+    );
+
+    await recoverSession({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: commandContext,
+    });
+
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'comprehensive_check',
+      comprehensiveCheck: 'learning',
+      knowledgePoints: [{ progress: 'completed', interactionStatus: 'completed' }],
+    });
   });
 
   it('records adjacent exploration without changing current knowledge coverage', async () => {

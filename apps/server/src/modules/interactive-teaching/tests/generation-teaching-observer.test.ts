@@ -109,11 +109,13 @@ describe('GenerationTeachingObserver', () => {
       'scope.alignment=direct|supporting|adjacent|unclear|off_scope',
     );
     expect(request?.prompt).toContain('qualityFlags 只能使用 direct|complete|ambiguous');
-    expect(request?.prompt).toContain('confirm_no_further_questions');
+    expect(request?.prompt).toContain('完整学习会话历史');
+    expect(request?.prompt).toContain('教学观察不判断知识点检测或综合检测是否通过');
+    expect(request?.prompt).toContain('不要输出 progressionSignal');
     expect(request?.prompt).toContain('open_loop 必须引用用户消息');
-    expect(request?.prompt).toContain('绝不能把助手提出的教学问题');
-    expect(request?.prompt).toContain('保持 skipped 事实');
-    expect(result.observerVersion).toBe('teaching-observer@2');
+    expect(request?.prompt).toContain('绝不能把助手提出的问题记为 open_loop');
+    expect(request?.prompt).toContain('记录为 learner_intent');
+    expect(result.observerVersion).toBe('teaching-observer@3');
   });
 
   it('keeps valid evidence when generated observation contains known aliases and invalid optional metadata', async () => {
@@ -215,7 +217,7 @@ describe('GenerationTeachingObserver', () => {
     expect(result.entries[0]).not.toHaveProperty('explicitness');
   });
 
-  it('projects no evidence when generated observation is not JSON', async () => {
+  it('fails the rebuild when generated observation is not JSON', async () => {
     const task: GenerationTask = {
       id: 'task_invalid_json_observer',
       taskKey: 'invalid-json-observer',
@@ -247,31 +249,30 @@ describe('GenerationTeachingObserver', () => {
     };
     const observer = createGenerationTeachingObserver({ runtime, providerId: 'mock' });
 
-    const result = await observer.observe({
-      lessonId: 'lesson_1',
-      sessionId: 'session_1',
-      turnSequence: 1,
-      sourceSnapshotHash: 'c'.repeat(64),
-      knowledgePointRefs: ['knowledge:kp_1'],
-      courseRelationRefs: ['course-topic:probability'],
-      observationLens: teachingObservationLens('standard'),
-      previousState: createTeachingState({
+    await expect(
+      observer.observe({
         lessonId: 'lesson_1',
         sessionId: 'session_1',
+        turnSequence: 1,
+        sourceSnapshotHash: 'c'.repeat(64),
         knowledgePointRefs: ['knowledge:kp_1'],
+        courseRelationRefs: ['course-topic:probability'],
+        observationLens: teachingObservationLens('standard'),
+        previousState: createTeachingState({
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          knowledgePointRefs: ['knowledge:kp_1'],
+        }),
+        messages: [
+          {
+            messageId: 'message_user_1',
+            role: 'user',
+            completionStatus: 'complete',
+            markdown: 'Please explain this again.',
+            sourceRef: 'message:message_user_1',
+          },
+        ],
       }),
-      messages: [
-        {
-          messageId: 'message_user_1',
-          role: 'user',
-          completionStatus: 'complete',
-          markdown: 'Please explain this again.',
-          sourceRef: 'message:message_user_1',
-        },
-      ],
-    });
-
-    expect(result.scope).toMatchObject({ alignment: 'unclear', relationRefs: [] });
-    expect(result.entries).toEqual([]);
+    ).rejects.toThrow();
   });
 });

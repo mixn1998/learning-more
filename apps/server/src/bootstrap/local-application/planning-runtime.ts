@@ -5,6 +5,7 @@ import type { LearningEventEnvelope } from '@learning-more/contracts';
 import type { PlanningRouteOptions } from '../../http/routes/planning.js';
 import { createPlanFlowService } from '../../modules/planning/implementation/plan-flow-service.js';
 import { createPlanningModule } from '../../modules/planning/implementation/planning-module.js';
+import type { ScheduleItem } from '../../modules/planning/model/schedule-item.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import {
@@ -45,17 +46,20 @@ export function createLocalPlanningRuntime(
     return version;
   }
 
+  async function currentLesson(lessonId: string) {
+    const lesson = await input.course.access.getLesson(lessonId);
+    if (lesson === undefined) return undefined;
+    const course = await input.course.access.getCourse(lesson.courseId);
+    if (course === undefined || !course.lessonIds.includes(lessonId)) return undefined;
+    return lesson;
+  }
+
   const planning = createPlanningModule({
     repository: scheduleRepository,
     unitOfWork: input.unitOfWork,
     async getLessonProgress(lessonId) {
-      const lesson = await input.course.access.getLesson(lessonId);
-      if (
-        lesson === undefined ||
-        (await input.course.access.getCourse(lesson.courseId)) === undefined
-      ) {
-        return undefined;
-      }
+      const lesson = await currentLesson(lessonId);
+      if (lesson === undefined) return undefined;
       return (await input.learning.access.getRecord(lessonId))?.learning.progress ?? 'not_started';
     },
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
@@ -98,7 +102,7 @@ export function createLocalPlanningRuntime(
       }
       const lessons = [];
       for (const lessonId of previewInput.lessonRefs) {
-        const lesson = await input.course.access.getLesson(lessonId);
+        const lesson = await currentLesson(lessonId);
         if (lesson !== undefined) {
           lessons.push({
             lessonId: lesson.id,
@@ -114,7 +118,11 @@ export function createLocalPlanningRuntime(
         }
       }
       const existingSchedule = [];
-      for await (const item of scheduleRepository.list()) existingSchedule.push(item);
+      for await (const item of scheduleRepository.list()) {
+        if (item.status === 'scheduled' && (await currentLesson(item.lessonId)) !== undefined) {
+          existingSchedule.push(item);
+        }
+      }
       const constraints = await input.artifactStore.read(previewInput.constraintsArtifactRef);
       const preference = (prefix: string) =>
         previewInput.timeWindowRefs.find((ref) => ref.startsWith(prefix))?.slice(prefix.length);
@@ -140,12 +148,12 @@ export function createLocalPlanningRuntime(
     },
     getScheduleVersion: scheduleVersion,
     lessonIsPlannable: async (lessonId) => {
-      if ((await input.course.access.getLesson(lessonId)) === undefined) return false;
+      if ((await currentLesson(lessonId)) === undefined) return false;
       const progress = (await input.learning.access.getRecord(lessonId))?.learning.progress;
       return progress !== 'completed' && progress !== 'abandoned';
     },
     getLessonPrerequisiteIds: async (lessonId) =>
-      (await input.course.access.getLesson(lessonId))?.prerequisiteLessonIds ?? [],
+      (await currentLesson(lessonId))?.prerequisiteLessonIds ?? [],
     nextPlanFlowId: () => `plan_flow_${randomUUID()}`,
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
@@ -177,11 +185,20 @@ export function createLocalPlanningRuntime(
     },
   });
 
+  async function listCurrentSchedule() {
+    const items = await planning.list();
+    const current: ScheduleItem[] = [];
+    for (const item of items) {
+      if ((await currentLesson(item.lessonId)) !== undefined) current.push(item);
+    }
+    return current;
+  }
+
   return {
     routes: {
       planning: {
         execute: planning.execute,
-        list: planning.list,
+        list: listCurrentSchedule,
       },
       planFlows: {
         requestPreview: planFlows.requestPreview,
@@ -194,7 +211,7 @@ export function createLocalPlanningRuntime(
       now: () => new Date(),
     },
     access: {
-      listSchedule: planning.list,
+      listSchedule: listCurrentSchedule,
       getScheduleVersion: scheduleVersion,
     },
   };

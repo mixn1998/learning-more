@@ -217,7 +217,8 @@ describe('LearningSession HTTP contract', () => {
           {
             ref: 'knowledge:kp_1',
             title: '平均变化率',
-            progress: 'passed',
+            progress: 'completed',
+            interactionStatus: 'completed',
             delivery: 'explained',
             verification: 'supporting',
             unresolvedQuestionCount: 0,
@@ -225,7 +226,8 @@ describe('LearningSession HTTP contract', () => {
           {
             ref: 'knowledge:kp_2',
             title: '有限求和',
-            progress: 'checking',
+            progress: 'learning',
+            interactionStatus: 'pending',
             delivery: 'explained',
             verification: 'limiting',
             unresolvedQuestionCount: 1,
@@ -249,8 +251,8 @@ describe('LearningSession HTTP contract', () => {
         lessonPhase: 'knowledge_point',
         activeKnowledgePointRef: 'knowledge:kp_2',
         knowledgePoints: [
-          { title: '平均变化率', progress: 'passed' },
-          { title: '有限求和', progress: 'checking', unresolvedQuestionCount: 1 },
+          { title: '平均变化率', progress: 'completed' },
+          { title: '有限求和', progress: 'learning', unresolvedQuestionCount: 1 },
         ],
       },
     });
@@ -266,6 +268,8 @@ describe('LearningSession HTTP contract', () => {
         courseTitle: '课程',
         completedAt: '2026-07-13T00:00:00.000Z',
         actualSeconds: 120,
+        progress: 'completed',
+        reviewStatus: 'ready',
         original: {
           sessionId: 'session_01',
           label: '原始学习',

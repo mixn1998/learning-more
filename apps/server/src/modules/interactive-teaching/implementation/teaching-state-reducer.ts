@@ -3,6 +3,7 @@ import type {
   TeachingObservationEntry,
   TeachingStateSnapshot,
 } from '@learning-more/contracts';
+import { normalizeTeachingControlState } from './teaching-directive.js';
 
 const EMPTY_SNAPSHOT_HASH = '0'.repeat(64);
 
@@ -35,6 +36,7 @@ export function createTeachingState(input: {
     knowledgePoints: orderedKnowledgePointRefs.map((ref) => ({
       ref,
       progress: 'pending',
+      interactionStatus: 'pending',
       delivery: 'not_addressed',
       verification: 'not_observed',
       teachingEvidenceRefs: [],
@@ -56,36 +58,40 @@ export function alignTeachingState(
     sessionId: current.sessionId,
     knowledgePointRefs,
   });
-  const currentByRef = new Map(current.knowledgePoints.map((point) => [point.ref, point]));
+  const normalizedCurrent = normalizeTeachingControlState(current);
+  const currentByRef = new Map(
+    normalizedCurrent.knowledgePoints.map((point) => [point.ref, point]),
+  );
   const knowledgePoints = baseline.knowledgePoints.map(
     (point) => currentByRef.get(point.ref) ?? point,
   );
   const activeStillExists = knowledgePoints.some(
-    (point) => point.ref === current.activeKnowledgePointRef,
+    (point) => point.ref === normalizedCurrent.activeKnowledgePointRef,
   );
   const activeKnowledgePointRef = activeStillExists
-    ? current.activeKnowledgePointRef
-    : knowledgePoints.find((point) => point.progress !== 'passed' && point.progress !== 'skipped')
-        ?.ref;
+    ? normalizedCurrent.activeKnowledgePointRef
+    : knowledgePoints.find(
+        (point) => point.progress !== 'completed' && point.progress !== 'skipped',
+      )?.ref;
   const { activeKnowledgePointRef: _previousActiveKnowledgePointRef, ...currentWithoutActive } =
-    current;
+    normalizedCurrent;
   void _previousActiveKnowledgePointRef;
-  const comprehensiveCheck = current.comprehensiveCheck ?? 'pending';
+  const comprehensiveCheck = normalizedCurrent.comprehensiveCheck ?? 'pending';
   const closureInquiry =
-    current.closureInquiry ??
-    (current.lessonPhase === 'ready_to_close'
+    normalizedCurrent.closureInquiry ??
+    (normalizedCurrent.lessonPhase === 'ready_to_close'
       ? 'confirmed_no_questions'
-      : comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped'
+      : comprehensiveCheck === 'completed' || comprehensiveCheck === 'skipped'
         ? 'awaiting_confirmation'
         : 'pending');
   return {
     ...currentWithoutActive,
-    lessonPhase: current.lessonPhase ?? 'warmup',
+    lessonPhase: normalizedCurrent.lessonPhase ?? 'warmup',
     comprehensiveCheck,
     closureInquiry,
     summaryStatus:
       closureInquiry === 'confirmed_no_questions'
-        ? (current.summaryStatus ?? 'pending')
+        ? (normalizedCurrent.summaryStatus ?? 'pending')
         : 'pending',
     knowledgePoints,
     ...(activeKnowledgePointRef === undefined ? {} : { activeKnowledgePointRef }),
@@ -148,54 +154,29 @@ export function reduceTeachingState(
   );
   const knowledgePoints = current.knowledgePoints.map((knowledgePoint) => ({
     ...knowledgePoint,
-    progress:
-      knowledgePoint.progress ??
-      (knowledgePoint.verification === 'supporting'
-        ? ('passed' as const)
-        : knowledgePoint.delivery === 'explained'
-          ? ('checking' as const)
-          : ('pending' as const)),
+    progress: knowledgePoint.progress ?? ('pending' as const),
+    interactionStatus: knowledgePoint.interactionStatus ?? ('pending' as const),
     unresolvedEntryRefs: knowledgePoint.unresolvedEntryRefs.filter(
       (entryRef) => !resolvedEntryRefs.has(entryRef),
     ),
   }));
   const recentLearnerSignals = [...current.recentLearnerSignals];
   let evidenceCheckpoint = current.evidenceCheckpoint;
-  let comprehensiveCheck = current.comprehensiveCheck ?? 'pending';
-  let closureInquiry =
+  const comprehensiveCheck = current.comprehensiveCheck ?? 'pending';
+  const closureInquiry =
     current.closureInquiry ??
     (current.lessonPhase === 'ready_to_close'
       ? 'confirmed_no_questions'
-      : comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped'
+      : comprehensiveCheck === 'completed' || comprehensiveCheck === 'skipped'
         ? 'awaiting_confirmation'
         : 'pending');
-  let summaryStatus =
+  const summaryStatus =
     closureInquiry === 'confirmed_no_questions' ? (current.summaryStatus ?? 'pending') : 'pending';
-
-  for (const entry of observation.entries) {
-    if (entry.progressionSignal === 'pass_comprehensive_check') {
-      comprehensiveCheck = 'passed';
-    }
-    if (entry.progressionSignal === 'skip_comprehensive_check') {
-      comprehensiveCheck = 'skipped';
-    }
-  }
-  if (comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped') {
-    if (
-      observation.entries.some(
-        (entry) => entry.progressionSignal === 'confirm_no_further_questions',
-      )
-    ) {
-      closureInquiry = 'confirmed_no_questions';
-    } else if (closureInquiry === 'pending') {
-      closureInquiry = 'awaiting_confirmation';
-    }
-  }
 
   for (const entry of observation.entries) {
     if (establishesCheckpoint(observation, entry)) evidenceCheckpoint = true;
 
-    if (entry.kind === 'open_loop') {
+    if (entry.kind === 'open_loop' && !resolvedEntryRefs.has(entry.entryId)) {
       const existingIndex = openLoops.findIndex((loop) => loop.entryId === entry.entryId);
       const loop = {
         entryId: entry.entryId,
@@ -251,7 +232,6 @@ export function reduceTeachingState(
           const point = knowledgePoints[index]!;
           knowledgePoints[index] = {
             ...point,
-            progress: 'checking',
             delivery: 'explained',
             teachingEvidenceRefs: unique([...point.teachingEvidenceRefs, ...entry.sourceRefs]),
           };
@@ -276,27 +256,6 @@ export function reduceTeachingState(
         }
       }
     }
-    if (entry.progressionSignal === 'skip_knowledge_point') {
-      const targetRefs =
-        entry.knowledgePointRefs.length > 0
-          ? entry.knowledgePointRefs
-          : current.activeKnowledgePointRef === undefined
-            ? []
-            : [current.activeKnowledgePointRef];
-      for (const ref of targetRefs) {
-        const index = knowledgePoints.findIndex((item) => item.ref === ref);
-        const point = knowledgePoints[index];
-        if (index !== -1 && point !== undefined) {
-          knowledgePoints[index] = { ...point, progress: 'skipped' };
-        }
-      }
-    }
-    if (
-      entry.progressionSignal === 'lesson_summary_delivered' &&
-      closureInquiry === 'confirmed_no_questions'
-    ) {
-      summaryStatus = 'delivered';
-    }
     if (isLearnerSignal(entry)) {
       const signal = {
         entryId: entry.entryId,
@@ -319,54 +278,9 @@ export function reduceTeachingState(
     observation.scope.alignment === 'unclear' ||
     observation.scope.alignment === 'off_scope';
 
-  const normalizedKnowledgePoints = knowledgePoints.map((point) => {
-    if (point.progress === 'skipped' || point.progress === 'passed') return point;
-    if (point.delivery !== 'explained') return { ...point, progress: 'pending' as const };
-    if (point.unresolvedEntryRefs.length > 0) {
-      return { ...point, progress: 'checking' as const };
-    }
-    return {
-      ...point,
-      progress: point.verification === 'supporting' ? ('passed' as const) : ('checking' as const),
-    };
-  });
-  const comprehensiveCheckSettled =
-    comprehensiveCheck === 'passed' || comprehensiveCheck === 'skipped';
-  const unsettledKnowledgePoint = normalizedKnowledgePoints.find(
-    (point) =>
-      (point.progress !== 'passed' && point.progress !== 'skipped') ||
-      (!comprehensiveCheckSettled && point.unresolvedEntryRefs.length > 0),
-  );
-  const mayAdvanceWarmup =
-    (observation.scope.alignment === 'direct' || observation.scope.alignment === 'supporting') &&
-    observation.entries.some((entry) =>
-      [
-        'learner_demonstration',
-        'learner_question',
-        'learner_intent',
-        'learner_reasoning_behavior',
-      ].includes(entry.kind),
-    );
-  let lessonPhase = current.lessonPhase ?? 'warmup';
-  let activeKnowledgePointRef = current.activeKnowledgePointRef;
-  if (unsettledKnowledgePoint !== undefined) {
-    if (lessonPhase !== 'warmup' || mayAdvanceWarmup) lessonPhase = 'knowledge_point';
-    activeKnowledgePointRef = unsettledKnowledgePoint.ref;
-  } else if (comprehensiveCheck === 'pending' || comprehensiveCheck === 'checking') {
-    lessonPhase = 'comprehensive_check';
-    comprehensiveCheck = 'checking';
-    activeKnowledgePointRef = undefined;
-  } else if (
-    openLoops.length > 0 ||
-    closureInquiry !== 'confirmed_no_questions' ||
-    summaryStatus !== 'delivered'
-  ) {
-    lessonPhase = 'summary';
-    activeKnowledgePointRef = undefined;
-  } else {
-    lessonPhase = 'ready_to_close';
-    activeKnowledgePointRef = undefined;
-  }
+  const normalizedKnowledgePoints = knowledgePoints;
+  const lessonPhase = current.lessonPhase ?? 'warmup';
+  const activeKnowledgePointRef = current.activeKnowledgePointRef;
 
   const { activeKnowledgePointRef: _previousActiveKnowledgePointRef, ...currentWithoutActive } =
     current;

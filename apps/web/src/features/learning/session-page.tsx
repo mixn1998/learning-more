@@ -35,6 +35,7 @@ type State = Readonly<{
   activity: 'active' | 'paused';
   actualSeconds: number;
   reviewMarkdown?: string;
+  stageReviewStatus?: 'generating' | 'failed' | 'ready' | undefined;
   reviewDismissed: boolean;
   supplementarySessionId?: string;
   supplementaryVersion?: number;
@@ -83,7 +84,12 @@ type Action =
   | Readonly<{ type: 'completed' }>
   | Readonly<{ type: 'stopped'; draftArtifactRef: string; resourceVersion: number }>
   | Readonly<{ type: 'transferred'; resourceVersion: number }>
-  | Readonly<{ type: 'progress'; progress: State['progress']; resourceVersion: number }>
+  | Readonly<{
+      type: 'progress';
+      progress: State['progress'];
+      resourceVersion: number;
+      stageReviewStatus?: State['stageReviewStatus'];
+    }>
   | Readonly<{ type: 'activity'; activity: State['activity']; resourceVersion: number }>
   | Readonly<{ type: 'review'; markdown: string; resourceVersion: number }>
   | Readonly<{ type: 'review-dismissed' }>
@@ -261,7 +267,15 @@ function reducer(state: State, action: Action): State {
     return { ...state, writable: true, resourceVersion: action.resourceVersion, phase: 'ready' };
   }
   if (action.type === 'progress') {
-    return { ...state, progress: action.progress, resourceVersion: action.resourceVersion };
+    return {
+      ...state,
+      progress: action.progress,
+      resourceVersion: action.resourceVersion,
+      stageReviewStatus:
+        action.progress === 'abandoned'
+          ? (action.stageReviewStatus ?? state.stageReviewStatus)
+          : undefined,
+    };
   }
   if (action.type === 'activity') {
     return { ...state, activity: action.activity, resourceVersion: action.resourceVersion };
@@ -305,11 +319,7 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
     return points.map((title, index) => ({
       title,
       detail:
-        state.progress === 'completed'
-          ? '本课已完成'
-          : index === 0
-            ? '等待教学状态更新'
-            : '尚未推进到此',
+        state.progress === 'completed' ? '该知识点已完成' : index === 0 ? '正在学习中' : '待讲解',
       state:
         state.progress === 'completed'
           ? ('done' as const)
@@ -330,44 +340,29 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
       state: completed || afterWarmup ? ('done' as const) : ('active' as const),
     },
     ...teaching.knowledgePoints.map((point) => {
-      if (completed) return { title: point.title, detail: '本课已完成', state: 'done' as const };
-      const active =
-        point.ref === teaching.activeKnowledgePointRef ||
-        point.progress === 'teaching' ||
-        point.progress === 'checking';
-      if (point.unresolvedQuestionCount > 0) {
+      const active = point.progress === 'learning';
+      if (point.progress === 'completed') {
         return {
           title: point.title,
-          detail: `还有 ${point.unresolvedQuestionCount} 个相关疑问待处理`,
-          state: 'active' as const,
+          detail: point.interactionStatus === 'skipped' ? '跳过知识点互动' : '该知识点已完成',
+          state: 'done' as const,
         };
       }
-      if (point.progress === 'passed') {
-        return { title: point.title, detail: '检测已通过', state: 'done' as const };
-      }
       if (point.progress === 'skipped') {
-        return { title: point.title, detail: '已按你的选择跳过', state: 'done' as const };
+        return { title: point.title, detail: '跳过知识点', state: 'done' as const };
       }
       if (active) {
-        const detail =
-          point.verification === 'limiting'
-            ? '仍有误解需要澄清'
-            : point.verification === 'mixed'
-              ? '理解表现仍不稳定'
-              : point.delivery === 'explained'
-                ? '已讲解，正在进行理解检测'
-                : '正在进入本知识点';
-        return { title: point.title, detail, state: 'active' as const };
+        return { title: point.title, detail: '正在学习中', state: 'active' as const };
       }
-      return { title: point.title, detail: '尚未推进到此', state: 'pending' as const };
+      return { title: point.title, detail: '待讲解', state: 'pending' as const };
     }),
     {
       title: '综合检测',
       detail:
         completed || afterComprehensive
           ? teaching.comprehensiveCheck === 'skipped'
-            ? '已按你的选择跳过'
-            : '综合检测已通过'
+            ? '跳过检测'
+            : '综合检测已完成'
           : phase === 'comprehensive_check'
             ? '正在连接本课全部知识点'
             : '等待逐项学习完成',
@@ -398,20 +393,6 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
             : ('pending' as const),
     },
   ];
-
-  if (teaching.observationStatus !== 'current') {
-    const activeIndex = path.findIndex((point) => point.state === 'active');
-    if (activeIndex !== -1) {
-      const active = path[activeIndex]!;
-      path[activeIndex] = {
-        ...active,
-        detail:
-          teaching.observationStatus === 'failed'
-            ? '教学进度同步失败，系统将在下一轮重试'
-            : '正在同步真实讲解进度',
-      };
-    }
-  }
 
   return path;
 }
@@ -546,6 +527,7 @@ export function SessionPage(props: {
       dispatch({ type: 'opening-started' });
       try {
         const opening = await api.openLesson(sessionId, resourceVersion);
+        let terminalFailure = false;
         dispatch({
           type: 'generating',
           taskId: opening.taskId,
@@ -555,8 +537,17 @@ export function SessionPage(props: {
           if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
             dispatch({ type: 'delta', markdown: event.data.markdown });
           }
+          if (event.type === 'task.failed' || event.type === 'task.cancelled') {
+            terminalFailure = true;
+          }
         });
+        if (terminalFailure) {
+          throw new Error('lesson_opening_generation_failed');
+        }
         const refreshed = await api.getSession(sessionId);
+        if (!refreshed.messages?.some((message) => message.role === 'assistant')) {
+          throw new Error('lesson_opening_content_missing');
+        }
         hydrateAndRefreshTeachingProgress(sessionId, refreshed);
         dispatch({ type: 'completed' });
       } catch {
@@ -724,18 +715,18 @@ export function SessionPage(props: {
 
   const abandon = () =>
     once('abandon', async () => {
-      if (state.sessionSnapshotHash === undefined) return;
       const result = await withLatestSessionVersion((resourceVersion, refreshed) =>
         api.abandon(
           props.lessonId,
           resourceVersion,
-          refreshed?.sessionSnapshotHash ?? state.sessionSnapshotHash!,
+          refreshed?.sessionSnapshotHash ?? state.sessionSnapshotHash ?? '0'.repeat(64),
         ),
       );
       dispatch({
         type: 'progress',
         progress: result.progress === 'not_started' ? 'in_progress' : result.progress,
         resourceVersion: result.resourceVersion,
+        stageReviewStatus: result.reviewStatus ?? 'generating',
       });
     });
 
@@ -882,6 +873,16 @@ export function SessionPage(props: {
         onStop={() => void stop()}
         onTransfer={() => void transfer()}
       />
+      {state.progress === 'abandoned' && state.stageReviewStatus === 'generating' ? (
+        <div className="lesson-closure-status" role="status">
+          本课已结束，阶段性 Review 正在生成中，可稍后返回课程页面查看。
+        </div>
+      ) : null}
+      {state.progress === 'abandoned' && state.stageReviewStatus === 'failed' ? (
+        <div className="lesson-closure-status" role="alert">
+          本课已结束，但阶段性 Review 生成失败。课节档案与原始对话仍可正常查看。
+        </div>
+      ) : null}
       {state.draftArtifactRef === undefined ? null : (
         <p aria-label="生成停止状态" className="sr-only" role="status">
           生成已停止，未完成内容已安全保留。

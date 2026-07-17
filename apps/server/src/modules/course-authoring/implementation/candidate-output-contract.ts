@@ -48,6 +48,23 @@ function renderConversation(conversation: CandidatePromptInput['conversation']):
     .join('\n\n');
 }
 
+function renderAdjustmentTargets(input: CandidatePromptInput): string {
+  const adjustment = input.requestedAdjustment;
+  if (adjustment === undefined || adjustment.action !== 'patch') {
+    return 'The learner requested a global restructuring. Rebuild the complete outline around the latest request.';
+  }
+  const nodes = input.currentCandidate?.outlineNodes ?? [];
+  const targets = adjustment.targetModuleIds
+    .map((ref) => nodes.find((node) => node.ref === ref))
+    .filter((node): node is NonNullable<typeof node> => node !== undefined);
+  const targetNames = targets.map((node) => node.title);
+  return [
+    `The learner's requested change primarily concerns: ${targetNames.join('、') || 'the complete current outline'}.`,
+    ...targets.map((node) => `Relevant current content (${node.title}):\n${node.excerpt}`),
+    'Preserve unrelated content where it remains coherent. You may make additional coherent adjustments when they genuinely improve the outline; the application will disclose those changes separately instead of rejecting the candidate.',
+  ].join('\n\n');
+}
+
 export function buildCandidateGenerationPrompt(input: CandidatePromptInput): string {
   const adjustment = input.requestedAdjustment;
   return [
@@ -83,14 +100,6 @@ export function buildCandidateGenerationPrompt(input: CandidatePromptInput): str
     ...(input.currentCandidate === undefined
       ? []
       : ['', '[CURRENT CANDIDATE]', input.currentCandidate.markdown]),
-    ...(adjustment === undefined
-      ? []
-      : [
-          '',
-          '[CURRENT REQUEST]',
-          adjustment.action === 'patch'
-            ? `Update only these module ids: ${adjustment.targetModuleIds.join(', ')}. Preserve the remaining modules.`
-            : 'Regenerate the complete outline from the full learning background and conversation.',
-        ]),
+    ...(adjustment === undefined ? [] : ['', '[CURRENT REQUEST]', renderAdjustmentTargets(input)]),
   ].join('\n');
 }

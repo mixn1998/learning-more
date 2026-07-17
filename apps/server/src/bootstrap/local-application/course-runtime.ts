@@ -8,6 +8,7 @@ import { createCourseAuthoringModule } from '../../modules/course-authoring/impl
 import { createGenerationAuthoringAgent } from '../../modules/course-authoring/implementation/generation-authoring-agent.js';
 import { createGenerationCandidateAlignmentPlanner } from '../../modules/course-authoring/implementation/generation-candidate-alignment-planner.js';
 import { ingestSelectedMaterial } from '../../modules/course-authoring/implementation/material-ingestion.js';
+import { createOutlineRevisionLiveCleanup } from '../../modules/course-authoring/implementation/outline-revision-live-cleanup.js';
 import {
   createLocalFileCourseArchiveStore,
   createLocalFileOutlineSessionDraftStore,
@@ -17,6 +18,10 @@ import { createLocalFileCourseAuthoringRepositories } from '../../persistence/co
 import { createLocalFileCourseCreationRepositories } from '../../persistence/course-creation-repositories.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
+import {
+  createLocalFilePlanFlowRepository,
+  createLocalFileScheduleRepository,
+} from '../../persistence/planning-repositories.js';
 import { RepositoryVersionConflictError } from '../../persistence/repository-errors.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
@@ -38,12 +43,14 @@ export type CourseAccess = Readonly<{
   saveCourse: CourseRepositories['courses']['save'];
   assertCourseWritable(courseId: string): Promise<void>;
   assertLessonWritable(lessonId: string): Promise<void>;
+  assertLessonStartable(lessonId: string): Promise<void>;
 }>;
 
 export type LocalCourseRuntime = Readonly<{
   routes: CourseAuthoringRouteOptions;
   access: CourseAccess;
   courseRepositories: CourseRepositories;
+  reconcileOutlineLiveReferences(): Promise<void>;
   recoverGenerationTasks(): Promise<void>;
 }>;
 
@@ -60,6 +67,36 @@ export function createLocalCourseRuntime(
 ): LocalCourseRuntime {
   const authoringRepositories = createLocalFileCourseAuthoringRepositories(input.dataRoot);
   const courseRepositories = createLocalFileCourseCreationRepositories(input.dataRoot);
+  const scheduleRepository = createLocalFileScheduleRepository(input.dataRoot);
+  const planFlowRepository = createLocalFilePlanFlowRepository(input.dataRoot);
+  const outlineRevisionLiveCleanup = createOutlineRevisionLiveCleanup({
+    schedules: scheduleRepository,
+    planFlows: planFlowRepository,
+    async recordScheduleCancelled(event, tx) {
+      const eventId = `event_${randomUUID()}`;
+      await input.events.outbox.enqueue(tx, [
+        {
+          id: eventId,
+          schema_version: 1,
+          type: 'ScheduleCancelled',
+          occurred_at: event.occurredAt,
+          recorded_at: event.occurredAt,
+          source: 'Planning',
+          target_refs: {
+            scheduleItemId: event.scheduleItemId,
+            courseId: event.courseId,
+            lessonId: event.lessonId,
+          },
+          payload: {
+            scheduleItemId: event.scheduleItemId,
+            cancelReason: event.reason,
+          },
+          idempotency_key: `outline-revised:${event.scheduleItemId}:${event.occurredAt}`,
+          correlation_id: eventId,
+        },
+      ]);
+    },
+  });
 
   async function getCourseWithOutlineTitle(courseId: string) {
     const course = await courseRepositories.courses.get(courseId);
@@ -96,6 +133,17 @@ export function createLocalCourseRuntime(
       throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
     }
     await assertCourseWritable(lesson.courseId);
+  }
+
+  async function assertLessonStartable(lessonId: string): Promise<void> {
+    const lesson = await courseRepositories.lessons.get(lessonId);
+    if (lesson === undefined) {
+      throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+    }
+    const course = await courseRepositories.courses.get(lesson.courseId);
+    if (course === undefined || !course.lessonIds.includes(lessonId)) {
+      throw Object.assign(new Error('lesson_not_current'), { code: 'lesson_not_current' });
+    }
   }
 
   const authoringModule = createCourseAuthoringModule({
@@ -159,6 +207,7 @@ export function createLocalCourseRuntime(
       providerId: 'current',
     }),
     nextLessonRecommender: input.generation.nextLessonRecommender,
+    outlineRevisionLiveCleanup,
     outbox: input.events.outbox,
     profileEvidenceSink: input.profile.checkpointSink,
     nextId,
@@ -238,8 +287,33 @@ export function createLocalCourseRuntime(
         courseRepositories.courses.save(tx, course, expectedVersion),
       assertCourseWritable,
       assertLessonWritable,
+      assertLessonStartable,
     },
     courseRepositories,
+    async reconcileOutlineLiveReferences() {
+      for await (const course of courseRepositories.courses.list()) {
+        const knownCourseLessonIds: string[] = [];
+        for await (const lesson of courseRepositories.lessons.listByCourse(course.id)) {
+          knownCourseLessonIds.push(lesson.id);
+        }
+        await input.unitOfWork.execute(
+          {
+            transactionId: `tx_outline_live_reconcile_${course.id}_${course.outlineVersionId}`,
+          },
+          (tx) =>
+            outlineRevisionLiveCleanup.retire(
+              {
+                courseId: course.id,
+                retainedLessonIds: course.lessonIds,
+                knownCourseLessonIds,
+                commandId: `outline-live-reconcile:${course.outlineVersionId}`,
+                occurredAt: input.now().toISOString(),
+              },
+              tx,
+            ),
+        );
+      }
+    },
     async recoverGenerationTasks() {
       for await (const record of authoringRepositories.outlineSessions.list()) {
         if (record.session.state !== 'generating-candidates') continue;

@@ -6,12 +6,13 @@ import type {
   CandidateAlignmentPlan,
   CandidateAlignmentPlanner,
 } from '../ports/candidate-alignment-planner.js';
+import { buildOutlineSemanticManifest } from './outline-semantic-manifest.js';
 
 function hash(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-function parsePlan(markdown: string): CandidateAlignmentPlan {
+function parsePlan(markdown: string, allowedNodeRefs: ReadonlySet<string>): CandidateAlignmentPlan {
   const unfenced = markdown
     .trim()
     .replace(/^```(?:json)?\s*/iu, '')
@@ -29,20 +30,30 @@ function parsePlan(markdown: string): CandidateAlignmentPlan {
   ) {
     throw new Error('candidate_alignment_plan_invalid');
   }
+  const requestedRefs = [
+    ...new Set(parsed.targetModuleIds.map((id) => id.trim()).filter(Boolean)),
+  ].filter((ref) => allowedNodeRefs.has(ref));
   return {
     action: parsed.action as CandidateAlignmentPlan['action'],
     rationale: parsed.rationale.trim(),
-    targetModuleIds: [...new Set(parsed.targetModuleIds.map((id) => id.trim()).filter(Boolean))],
+    targetModuleIds:
+      parsed.action === 'patch' && requestedRefs.length === 0 ? ['outline:root'] : requestedRefs,
   };
 }
 
 function prompt(context: AuthoringContext): string {
+  const nodes =
+    context.candidate?.outlineNodes ??
+    buildOutlineSemanticManifest(context.candidate?.markdown ?? '');
   return [
     'COURSE_CANDIDATE_ALIGNMENT_PLAN_V1',
     'Decide how the current candidate outline should respond to the latest user turn.',
     'Use clarify when intent or desired boundary is still ambiguous; regenerate when the learning goal, audience, scope, or global structure changes; patch when a contained part can change while the rest remains coherent.',
     'Course mode is an attention bias, never a format prison. Do not reject course-adjacent exploration merely because it crosses a mode boundary.',
-    'Return strict JSON only: {"action":"clarify|regenerate|patch","rationale":"...","targetModuleIds":["..."]}. Module ids may be empty when the outline does not expose stable ids.',
+    'Return strict JSON only: {"action":"clarify|regenerate|patch","rationale":"...","targetModuleIds":["..."]}. Despite the legacy field name, targetModuleIds must contain refs copied exactly from CURRENT OUTLINE NODE MANIFEST. Use outline:root only when the requested patch is course-wide rather than local.',
+    '',
+    '[CURRENT OUTLINE NODE MANIFEST]',
+    nodes.map((node) => `${node.ref} | ${node.kind} | ${node.title}`).join('\n'),
     '',
     JSON.stringify(context),
   ].join('\n');
@@ -74,7 +85,9 @@ export function createGenerationCandidateAlignmentPlanner(options: {
           taskId: task.taskId,
         });
       }
-      return parsePlan(completed.draftMarkdown);
+      const nodes =
+        context.candidate.outlineNodes ?? buildOutlineSemanticManifest(context.candidate.markdown);
+      return parsePlan(completed.draftMarkdown, new Set(nodes.map((node) => node.ref)));
     },
   };
 }

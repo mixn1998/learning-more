@@ -81,7 +81,10 @@ export const TeachingObservationSchema = z.strictObject({
 
 export const TeachingKnowledgePointStateSchema = z.strictObject({
   ref: SourceRefSchema,
-  progress: z.enum(['pending', 'teaching', 'checking', 'passed', 'skipped']).optional(),
+  progress: z
+    .enum(['pending', 'learning', 'completed', 'skipped', 'teaching', 'checking', 'passed'])
+    .optional(),
+  interactionStatus: z.enum(['pending', 'completed', 'skipped']).optional(),
   delivery: z.enum(['not_addressed', 'explained']),
   verification: z.enum(['not_observed', 'supporting', 'limiting', 'mixed']),
   teachingEvidenceRefs: z.array(SourceRefSchema),
@@ -126,7 +129,9 @@ export const TeachingStateSnapshotSchema = z.strictObject({
     .enum(['warmup', 'knowledge_point', 'comprehensive_check', 'summary', 'ready_to_close'])
     .optional(),
   activeKnowledgePointRef: SourceRefSchema.optional(),
-  comprehensiveCheck: z.enum(['pending', 'checking', 'passed', 'skipped']).optional(),
+  comprehensiveCheck: z
+    .enum(['pending', 'learning', 'completed', 'skipped', 'checking', 'passed'])
+    .optional(),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']).optional(),
   summaryStatus: z.enum(['pending', 'delivered']).optional(),
   knowledgePoints: z.array(TeachingKnowledgePointStateSchema),

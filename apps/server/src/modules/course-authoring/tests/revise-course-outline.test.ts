@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryCourseCreationRepositories } from '../ports/course-repositories.js';
 import { reviseCourseOutline } from '../implementation/revise-course-outline.js';
@@ -93,6 +93,7 @@ const revision = {
 describe('reviseCourseOutline', () => {
   it('publishes a new immutable outline while preserving an evidenced lesson id', async () => {
     const repositories = await seeded();
+    const retire = vi.fn().mockResolvedValue(undefined);
 
     await reviseCourseOutline(
       {
@@ -107,6 +108,7 @@ describe('reviseCourseOutline', () => {
         repositories,
         unitOfWork,
         hasLearningEvidence: async (id) => id === 'lesson_stable',
+        liveCleanup: { retire },
         now: () => new Date('2026-07-13T01:00:00.000Z'),
       },
     );
@@ -121,6 +123,78 @@ describe('reviseCourseOutline', () => {
       outlineMarkdown: '# v1',
     });
     await expect(repositories.outlineVersions.get('outline_v2')).resolves.toBeDefined();
+    expect(retire).toHaveBeenCalledWith(
+      expect.objectContaining({
+        courseId: 'course_01',
+        retainedLessonIds: ['lesson_stable'],
+        knownCourseLessonIds: ['lesson_stable'],
+      }),
+      tx,
+    );
+  });
+
+  it('preserves an unchanged lesson id even before the lesson has learning evidence', async () => {
+    const repositories = await seeded();
+
+    await reviseCourseOutline(
+      {
+        adjustmentSessionId: 'adjustment_without_evidence',
+        courseId: 'course_01',
+        sourceCandidateVersionId: 'candidate_v2',
+        newOutlineVersionId: 'outline_v2',
+        expectedCourseVersion: 1,
+        candidate: revision,
+      },
+      {
+        repositories,
+        unitOfWork,
+        hasLearningEvidence: async () => false,
+        now: () => new Date('2026-07-13T01:00:00.000Z'),
+      },
+    );
+
+    await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
+      lessonIds: ['lesson_stable'],
+    });
+  });
+
+  it('maps an unchanged lesson back to its existing id when the generated semantic key drifts', async () => {
+    const repositories = await seeded();
+
+    await reviseCourseOutline(
+      {
+        adjustmentSessionId: 'adjustment_semantic_key_drift',
+        courseId: 'course_01',
+        sourceCandidateVersionId: 'candidate_v2',
+        newOutlineVersionId: 'outline_v2',
+        expectedCourseVersion: 1,
+        candidate: {
+          ...revision,
+          modules: [
+            {
+              ...revision.modules[0]!,
+              lessonIds: ['probability-space-renamed-by-model'],
+            },
+          ],
+          lessons: [
+            {
+              ...revision.lessons[0]!,
+              id: 'probability-space-renamed-by-model',
+            },
+          ],
+        },
+      },
+      {
+        repositories,
+        unitOfWork,
+        hasLearningEvidence: async () => false,
+        now: () => new Date('2026-07-13T01:00:00.000Z'),
+      },
+    );
+
+    await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
+      lessonIds: ['lesson_stable'],
+    });
   });
 
   it('rejects revision after course closure', async () => {

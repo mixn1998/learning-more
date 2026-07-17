@@ -43,7 +43,11 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
         ...session,
         meta: `${archivedDateLabel(session.createdAt)} · 独立补充学习`,
       }))}
-      finalReviewMarkdown={record.finalReviewMarkdown}
+      {...(record.finalReviewMarkdown === undefined
+        ? {}
+        : { finalReviewMarkdown: record.finalReviewMarkdown })}
+      progress={record.progress}
+      reviewStatus={record.reviewStatus}
       initialTab={searchParams.get('tab') === 'review' ? 'review' : 'conversation'}
       title={record.title}
       courseTitle={record.courseTitle}

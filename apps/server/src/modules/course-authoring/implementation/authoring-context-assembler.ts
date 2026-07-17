@@ -1,5 +1,6 @@
 import type { CourseAuthoringRepositories } from '../../../persistence/course-authoring-repositories.js';
 import type { AuthoringContext } from '../ports/authoring-agent.js';
+import { buildOutlineSemanticManifest } from './outline-semantic-manifest.js';
 
 const MAX_MATERIAL_EXCERPT_CHARS = 12_000;
 
@@ -37,6 +38,7 @@ export function createAuthoringContextAssembler(repositories: CourseAuthoringRep
             candidate: {
               candidateVersionId: candidate.id,
               markdown: candidate.candidate.outlineMarkdown,
+              outlineNodes: buildOutlineSemanticManifest(candidate.candidate.outlineMarkdown),
             },
           }),
     };

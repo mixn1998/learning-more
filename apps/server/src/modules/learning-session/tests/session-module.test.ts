@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryLearningSessionRepositories } from '../../../persistence/learning-session-repositories.js';
 import { createInMemoryMessageLog } from '../implementation/message-log.js';
@@ -29,7 +29,12 @@ function context(commandId: string, pageInstanceId: string) {
   };
 }
 
-function fixture(options: { assertLessonWritable?: (lessonId: string) => Promise<void> } = {}) {
+function fixture(
+  options: {
+    assertLessonWritable?: (lessonId: string) => Promise<void>;
+    assertLessonStartable?: (lessonId: string) => Promise<void>;
+  } = {},
+) {
   let now = new Date('2026-07-13T00:00:00.000Z');
   const repositories = createInMemoryLearningSessionRepositories();
   const messageLog = createInMemoryMessageLog();
@@ -48,6 +53,9 @@ function fixture(options: { assertLessonWritable?: (lessonId: string) => Promise
     ...(options.assertLessonWritable === undefined
       ? {}
       : { assertLessonWritable: options.assertLessonWritable }),
+    ...(options.assertLessonStartable === undefined
+      ? {}
+      : { assertLessonStartable: options.assertLessonStartable }),
   });
   return {
     module,
@@ -60,6 +68,36 @@ function fixture(options: { assertLessonWritable?: (lessonId: string) => Promise
 }
 
 describe('LearningSession module', () => {
+  it('rejects starting an obsolete lesson while preserving an existing historical session', async () => {
+    const assertLessonStartable = vi
+      .fn<(lessonId: string) => Promise<void>>()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('lesson_not_current'), { code: 'lesson_not_current' }),
+      )
+      .mockResolvedValue(undefined);
+    const assertLessonWritable = vi.fn<(lessonId: string) => Promise<void>>().mockResolvedValue();
+    const { module } = fixture({ assertLessonStartable, assertLessonWritable });
+
+    await expect(
+      module.execute(
+        { type: 'StartLesson', lessonId: 'lesson_obsolete' },
+        context('start_obsolete', 'page_a'),
+      ),
+    ).rejects.toMatchObject({ code: 'lesson_not_current' });
+
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_historical' },
+      context('start_historical', 'page_a'),
+    );
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_historical' },
+      context('resume_historical', 'page_b'),
+    );
+
+    expect(assertLessonStartable).toHaveBeenCalledTimes(2);
+    expect(assertLessonWritable).toHaveBeenCalledWith('lesson_historical');
+  });
+
   it('establishes evidence only from a validated teaching observation effect', async () => {
     const { module } = fixture();
     await module.execute(

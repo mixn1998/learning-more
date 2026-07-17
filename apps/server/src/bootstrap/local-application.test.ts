@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { HomeDashboardResponseSchema } from '@learning-more/contracts';
 
 import { createMockProvider } from '../ai-providers/mock-provider.js';
+import { reviewIdForLesson } from '../modules/review-closure/implementation/stage-review.js';
 import { DataRoot } from '../persistence/data-root.js';
+import { createLocalFileCourseCreationRepositories } from '../persistence/course-creation-repositories.js';
+import { createLocalFileLearningSessionRepositories } from '../persistence/learning-session-repositories.js';
+import { createLocalFileScheduleRepository } from '../persistence/planning-repositories.js';
 import { createLocalFileReviewClosureRepositories } from '../persistence/review-closure-repositories.js';
 import { createUnitOfWork } from '../persistence/unit-of-work.js';
 import { createMemoryProviderConfigRepository } from '../runtime/provider-config-service.js';
@@ -27,6 +31,223 @@ afterEach(async () => {
 });
 
 describe('local CourseAuthoring application', () => {
+  it('removes obsolete outline lessons from live scheduling while preserving learning history', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-outline-live-reconcile-'));
+    roots.push(directory);
+    const dataRoot = DataRoot.create(directory);
+    const unitOfWork = createUnitOfWork({ dataRoot });
+    const courses = createLocalFileCourseCreationRepositories(dataRoot);
+    const schedules = createLocalFileScheduleRepository(dataRoot);
+    const learning = createLocalFileLearningSessionRepositories(dataRoot);
+    await unitOfWork.execute({ transactionId: 'tx_seed_outline_live_reconcile' }, async (tx) => {
+      await courses.courses.save(
+        tx,
+        {
+          id: 'course_revised',
+          title: 'Revised course',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_current',
+          lessonIds: ['lesson_current'],
+          recommendedLessonId: 'lesson_current',
+          status: 'active',
+          createdAt: '2026-07-16T00:00:00.000Z',
+          resourceVersion: 0,
+        },
+        0,
+      );
+      for (const lesson of [
+        { id: 'lesson_obsolete', outlineVersionId: 'outline_old' },
+        { id: 'lesson_current', outlineVersionId: 'outline_current' },
+      ]) {
+        await courses.lessons.save(
+          tx,
+          {
+            ...lesson,
+            courseId: 'course_revised',
+            semanticKey: lesson.id,
+            title: lesson.id,
+            objective: lesson.id,
+            coreKnowledgePoints: [],
+            prerequisiteLessonIds: [],
+            estimatedMinutes: 30,
+            sourceRefs: [],
+            resourceVersion: 0,
+          },
+          0,
+        );
+      }
+      await schedules.save(
+        tx,
+        {
+          id: 'schedule_obsolete',
+          courseId: 'course_revised',
+          lessonId: 'lesson_obsolete',
+          startAt: '2026-07-17T01:00:00.000Z',
+          endAt: '2026-07-17T01:30:00.000Z',
+          timezoneAtCreation: 'Asia/Shanghai',
+          source: 'manual',
+          status: 'scheduled',
+          createdAt: '2026-07-16T00:00:00.000Z',
+          updatedAt: '2026-07-16T00:00:00.000Z',
+          processedCommandIds: [],
+          resourceVersion: 0,
+        },
+        0,
+      );
+      await learning.save(
+        tx,
+        {
+          lessonId: 'lesson_obsolete',
+          learning: {
+            lessonId: 'lesson_obsolete',
+            progress: 'abandoned',
+            session: {
+              id: 'session_obsolete_history',
+              state: 'frozen',
+              messageIds: [],
+              evidenceCheckpoint: true,
+            },
+            processedCommandIds: ['abandon_obsolete'],
+          },
+          intervals: [],
+          resourceVersion: 0,
+        },
+        0,
+      );
+    });
+
+    const local = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
+    const app = await buildApp(local.serverDependencies);
+
+    await expect(schedules.get('schedule_obsolete')).resolves.toMatchObject({
+      status: 'removed',
+      cancelReason: 'outline_revised',
+    });
+    await expect(learning.get('lesson_obsolete')).resolves.toMatchObject({
+      learning: { session: { id: 'session_obsolete_history' } },
+    });
+    const scheduleResponse = await app.inject({ method: 'GET', url: '/api/v1/schedule' });
+    expect(scheduleResponse.statusCode, scheduleResponse.body).toBe(200);
+    expect(scheduleResponse.json()).toMatchObject({ items: [] });
+    const homeResponse = await app.inject({ method: 'GET', url: '/api/v1/home' });
+    expect(homeResponse.statusCode, homeResponse.body).toBe(200);
+    expect(homeResponse.json<{ schedule: Array<{ lessonId: string }> }>().schedule).toEqual([]);
+    const obsoleteLivePreview = await app.inject({
+      method: 'GET',
+      url: '/api/v1/lessons/lesson_obsolete',
+    });
+    expect(obsoleteLivePreview.statusCode).toBe(404);
+
+    await app.close();
+    await local.close();
+  });
+
+  it('serves an abandoned lesson archive before its stage Review is ready', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-abandoned-record-'));
+    roots.push(directory);
+    const local = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
+    const dataRoot = DataRoot.create(directory);
+    const unitOfWork = createUnitOfWork({ dataRoot });
+    const learning = createLocalFileLearningSessionRepositories(dataRoot);
+    const reviews = createLocalFileReviewClosureRepositories(dataRoot);
+    const reviewId = reviewIdForLesson('lesson_abandoned_record');
+    await unitOfWork.execute({ transactionId: 'tx_seed_abandoned_record' }, async (tx) => {
+      await local.courseRepositories.courses.save(
+        tx,
+        {
+          id: 'course_abandoned_record',
+          title: 'Archive course',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_abandoned_record',
+          lessonIds: ['lesson_abandoned_record'],
+          recommendedLessonId: 'lesson_abandoned_record',
+          status: 'active',
+          createdAt: '2026-07-16T00:00:00.000Z',
+          resourceVersion: 0,
+        },
+        0,
+      );
+      await local.courseRepositories.lessons.save(
+        tx,
+        {
+          id: 'lesson_abandoned_record',
+          courseId: 'course_abandoned_record',
+          outlineVersionId: 'outline_abandoned_record',
+          semanticKey: 'abandoned-record',
+          title: 'Abandoned lesson',
+          objective: 'Keep the archive available while Review is generated.',
+          coreKnowledgePoints: [],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: [],
+          resourceVersion: 0,
+        },
+        0,
+      );
+      await learning.save(
+        tx,
+        {
+          lessonId: 'lesson_abandoned_record',
+          learning: {
+            lessonId: 'lesson_abandoned_record',
+            progress: 'abandoned',
+            session: {
+              id: 'session_abandoned_record',
+              state: 'frozen',
+              messageIds: [],
+              evidenceCheckpoint: true,
+            },
+            processedCommandIds: ['abandon_record'],
+          },
+          intervals: [
+            {
+              id: 'interval_abandoned_record',
+              sessionId: 'session_abandoned_record',
+              startedAt: '2026-07-16T00:00:00.000Z',
+              endedAt: '2026-07-16T00:05:00.000Z',
+              endReason: 'abandoned',
+              recovered: false,
+            },
+          ],
+          resourceVersion: 0,
+        },
+        0,
+      );
+      await reviews.stageReviews.save(
+        tx,
+        {
+          reviewId,
+          lessonId: 'lesson_abandoned_record',
+          sourceSessionId: 'session_abandoned_record',
+          sourceSnapshotHash: 'a'.repeat(64),
+          status: 'generating',
+          taskId: 'task_stage_record',
+          requestReceipts: { abandon_record: 'task_stage_record' },
+          replacementCount: 0,
+          updatedAt: '2026-07-16T00:05:00.000Z',
+          resourceVersion: 0,
+        },
+        0,
+      );
+    });
+    const app = await buildApp(local.serverDependencies);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/lessons/lesson_abandoned_record/record',
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      progress: 'abandoned',
+      reviewStatus: 'generating',
+      original: { sessionId: 'session_abandoned_record', messages: [] },
+    });
+    expect(response.json()).not.toHaveProperty('finalReviewMarkdown');
+    await app.close();
+    await local.close();
+  });
+
   it('saves a schedule command without starting derived AI work', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-schedule-response-'));
     roots.push(directory);

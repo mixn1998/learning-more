@@ -62,7 +62,16 @@ function context(): TeachingContextPackage {
   };
 }
 
-function runtime() {
+function runtime(options: { includeKnowledgePointTitles?: boolean } = {}) {
+  const directive = {
+    schemaVersion: 1,
+    lessonPhase: 'warmup',
+    activeKnowledgePointRef: 'knowledge:kp_1',
+    knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'pending', interactionStatus: 'pending' }],
+    comprehensiveCheck: 'pending',
+    closureInquiry: 'pending',
+    summaryStatus: 'pending',
+  } as const;
   let request: GenerationRequest | undefined;
   let task: GenerationTask = {
     id: 'task_1',
@@ -79,11 +88,29 @@ function runtime() {
       return { taskId: task.id };
     },
     async runNext() {
-      task = { ...task, status: 'completed', draftMarkdown: 'A free-form explanation.' };
+      const emittedDirective = options.includeKnowledgePointTitles
+        ? {
+            ...directive,
+            knowledgePoints: directive.knowledgePoints.map((point) => ({
+              ...point,
+              title: 'Sample-space change.',
+            })),
+          }
+        : directive;
+      task = {
+        ...task,
+        status: 'completed',
+        draftMarkdown: `<learning-more-control>${JSON.stringify(emittedDirective)}</learning-more-control><learning-more-reply>A free-form explanation.</learning-more-reply>`,
+      };
       return task.id;
     },
     async cancel() {
-      task = { ...task, status: 'cancelled', draftMarkdown: 'A partial explanation.' };
+      task = {
+        ...task,
+        status: 'cancelled',
+        draftMarkdown:
+          '<learning-more-control>{}</learning-more-control><learning-more-reply>A partial explanation.',
+      };
       return task;
     },
     async get() {
@@ -96,7 +123,7 @@ function runtime() {
       return { total: 1, byStatus: { [task.status]: 1 }, byErrorCode: {} };
     },
   };
-  return { value, request: () => request };
+  return { value, request: () => request, directive };
 }
 
 describe('GenerationTeachingAgent', () => {
@@ -144,11 +171,13 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('是否还有疑惑或其他讲解需求');
     expect(fake.request()?.prompt).toContain('每一轮回复都必须以一个自然、容易回应');
     expect(fake.request()?.prompt).toContain('最终课程总结是唯一不再提出问题');
+    expect(fake.request()?.prompt).toContain('<learning-more-control>');
+    expect(fake.request()?.prompt).toContain('interactionStatus');
+    expect(fake.request()?.prompt).toContain('knowledge:kp_1');
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
     expect(fake.request()?.prompt).not.toContain('off_scope');
     expect(fake.request()?.prompt?.match(/Explain this systematically\./gu)).toHaveLength(1);
     for (const internalValue of [
-      'schemaVersion',
       'courseId',
       'lessonId',
       'outlineVersionId',
@@ -158,12 +187,24 @@ describe('GenerationTeachingAgent', () => {
       'sourceSnapshotHash',
       'session_1',
       'message_current',
-      'knowledge:kp_1',
     ]) {
       expect(fake.request()?.prompt).not.toContain(internalValue);
     }
     await expect(agent.complete('task_1')).resolves.toEqual({
       markdown: 'A free-form explanation.',
+      directive: fake.directive,
+    });
+  });
+
+  it('accepts the knowledge-point titles included in the supplied machine state', async () => {
+    const fake = runtime({ includeKnowledgePointTitles: true });
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(context());
+
+    await expect(agent.complete('task_1')).resolves.toEqual({
+      markdown: 'A free-form explanation.',
+      directive: fake.directive,
     });
   });
 
@@ -218,7 +259,12 @@ describe('GenerationTeachingAgent', () => {
 
     await expect(agent.recover('task_1')).resolves.toEqual({
       markdown: 'A free-form explanation.',
+      directive: fake.directive,
       completionStatus: 'complete',
+    });
+    await expect(agent.read('task_1')).resolves.toEqual({
+      markdown: 'A free-form explanation.',
+      directive: fake.directive,
     });
 
     await fake.value.cancel('task_1');

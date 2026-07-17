@@ -44,6 +44,8 @@ export type OutlineSessionView = Readonly<{
         status: 'complete' | 'failed';
         createdAt: string;
         inReplyToMessageId?: string | undefined;
+        alignmentAction?: 'clarify' | 'regenerate' | 'patch' | undefined;
+        targetModuleIds?: readonly string[] | undefined;
       }>[]
     | undefined;
   candidateVersionIds?: readonly string[] | undefined;

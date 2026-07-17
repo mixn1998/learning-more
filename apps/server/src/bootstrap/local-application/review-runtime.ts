@@ -205,6 +205,60 @@ export function createLocalReviewRuntime(
       );
     },
   });
+  const activeStageReviewFinalizations = new Map<string, Promise<void>>();
+
+  function scheduleStageReviewFinalization(review: {
+    readonly lessonId: string;
+    readonly reviewId: string;
+    readonly taskId: string;
+  }): void {
+    if (activeStageReviewFinalizations.has(review.taskId)) return;
+    const finalization = (async () => {
+      try {
+        const generated = await reviewWriter.complete(review.taskId);
+        const markdown = generated.markdown;
+        const artifactRef = `lesson_review_${review.reviewId}`;
+        await input.artifactStore.finalize({
+          artifactId: artifactRef,
+          kind: 'lesson-stage-review',
+          content: markdown,
+          immutable: false,
+        });
+        await stageReviews.commit({
+          reviewId: review.reviewId,
+          taskId: review.taskId,
+          artifactRef,
+          contentSha256: generated.contentSha256,
+        });
+        const reviewedLesson = await input.course.access.getLesson(review.lessonId);
+        if (reviewedLesson !== undefined) {
+          await captureReviewProfileCheckpoint({
+            checkpointKind: 'stage_review_finalized',
+            sourceRef: `review:${review.reviewId}`,
+            markdown,
+            courseId: reviewedLesson.courseId,
+            lessonId: review.lessonId,
+            observedAt: input.now().toISOString(),
+          });
+        }
+      } catch (error) {
+        const current = await reviewClosureRepositories.stageReviews.get(review.reviewId);
+        if (current?.status !== 'generating' || current.taskId !== review.taskId) return;
+        await stageReviews.fail({
+          reviewId: review.reviewId,
+          taskId: review.taskId,
+          errorCode:
+            error instanceof Error && error.message.trim() !== ''
+              ? error.message.slice(0, 200)
+              : 'stage_review_generation_failed',
+          draftArtifactRef: current.draftArtifactRef ?? `draft_${review.taskId}`,
+        });
+      }
+    })()
+      .catch(() => undefined)
+      .finally(() => activeStageReviewFinalizations.delete(review.taskId));
+    activeStageReviewFinalizations.set(review.taskId, finalization);
+  }
   const lessonClosureRepository = reviewClosureRepositories.lessonClosures;
   const lessonClosures = createLessonClosureWorkflow({
     repository: lessonClosureRepository,
@@ -325,42 +379,12 @@ export function createLocalReviewRuntime(
           { sessionModule, stageReviews },
         );
         if (result.stageReview === undefined) return result;
-        const generated = await reviewWriter.complete(result.stageReview.taskId);
-        const markdown = generated.markdown;
-        const artifactRef = `lesson_review_${result.stageReview.reviewId}`;
-        await input.artifactStore.finalize({
-          artifactId: artifactRef,
-          kind: 'lesson-stage-review',
-          content: markdown,
-          immutable: false,
-        });
-        await stageReviews.commit({
+        scheduleStageReviewFinalization({
+          lessonId,
           reviewId: result.stageReview.reviewId,
           taskId: result.stageReview.taskId,
-          artifactRef,
-          contentSha256: generated.contentSha256,
         });
-        const reviewedLesson = await input.course.access.getLesson(lessonId);
-        if (reviewedLesson !== undefined) {
-          await captureReviewProfileCheckpoint({
-            checkpointKind: 'stage_review_finalized',
-            sourceRef: `review:${result.stageReview.reviewId}`,
-            markdown,
-            courseId: reviewedLesson.courseId,
-            lessonId,
-            observedAt: input.now().toISOString(),
-          });
-        }
-        const view = await sessionModule.query(
-          { type: 'GetLessonLearning', lessonId },
-          {
-            correlationId: context.correlationId,
-            actor: context.actor,
-            requestedAt: context.requestedAt,
-            receivedAt: context.receivedAt,
-          },
-        );
-        return { ...result, resourceVersion: view.resourceVersion };
+        return { ...result, reviewStatus: 'generating' as const };
       },
       restoreLesson: (lessonId, context) =>
         sessionModule
@@ -388,14 +412,20 @@ export function createLocalReviewRuntime(
           reason: 'lesson_closure',
         });
         if (
-          checkpoint.observationCompleteness !== 'complete' ||
-          !checkpoint.teachingState.evidenceCheckpoint ||
-          (checkpoint.teachingState.lessonPhase !== undefined &&
-            checkpoint.teachingState.lessonPhase !== 'ready_to_close') ||
-          checkpoint.retentionDecision !== 'preserve'
+          checkpoint.teachingState.lessonPhase !== undefined &&
+          checkpoint.teachingState.lessonPhase !== 'ready_to_close'
         ) {
           throw Object.assign(new Error('lesson_not_completable'), {
             code: 'lesson_not_completable',
+          });
+        }
+        if (
+          checkpoint.observationCompleteness !== 'complete' ||
+          !checkpoint.teachingState.evidenceCheckpoint ||
+          checkpoint.retentionDecision !== 'preserve'
+        ) {
+          throw Object.assign(new Error('projection_incomplete'), {
+            code: 'projection_incomplete',
           });
         }
         await input.learning.access.captureTeachingProfileCheckpoint(checkpoint);
@@ -597,6 +627,14 @@ export function createLocalReviewRuntime(
   return {
     routes,
     async recoverCommittingClosures() {
+      for await (const review of reviewClosureRepositories.stageReviews.list()) {
+        if (review.status !== 'generating') continue;
+        scheduleStageReviewFinalization({
+          lessonId: review.lessonId,
+          reviewId: review.reviewId,
+          taskId: review.taskId,
+        });
+      }
       for await (const closure of lessonClosureRepository.list()) {
         if (closure.state !== 'committing') continue;
         const learning = await input.learning.access.getRecord(closure.lessonId);

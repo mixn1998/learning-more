@@ -84,6 +84,8 @@ const CurrentOutlineSessionRecordSchema = z.strictObject({
     latestCandidateVersionId: z.string().optional(),
     confirmingCandidateVersionId: z.string().optional(),
     confirmedCourseId: z.string().optional(),
+    adjustmentCourseId: z.string().optional(),
+    historySessionIds: z.array(z.string()).optional(),
     savedAsDraft: z.boolean().optional(),
   }),
   messages: z

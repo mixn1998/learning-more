@@ -90,9 +90,16 @@ export function createReasoningBehaviorModule(options: {
         if (entry.kind !== 'learner_reasoning_behavior') continue;
         const digest = sha256(
           JSON.stringify({
-            observationId: input.observation.observationId,
+            sessionId: input.observation.sessionId,
             entryId: entry.entryId,
+            sourceRefs: normalized(entry.sourceRefs),
             extractorVersion: EXTRACTOR_VERSION,
+          }),
+        );
+        const sourceGroupDigest = sha256(
+          JSON.stringify({
+            sessionId: input.observation.sessionId,
+            sourceRefs: normalized(entry.sourceRefs),
           }),
         );
         const episode = ReasoningBehaviorEpisodeSchema.parse({
@@ -105,7 +112,7 @@ export function createReasoningBehaviorModule(options: {
           behaviorSummary: entry.summary,
           sourceObservationRef: `observation:${input.observation.observationId}`,
           sourceRefs: normalized(entry.sourceRefs),
-          sourceGroupId: `session:${input.observation.sessionId}:turn:${input.observation.turnSequence}`,
+          sourceGroupId: `session:${input.observation.sessionId}:sources:${sourceGroupDigest.slice(0, 24)}`,
           elicitation: entry.elicitation ?? 'unknown',
           observedAt: input.observation.observedAt,
           sourceSnapshotHash: input.observation.sourceSnapshotHash,
@@ -116,12 +123,6 @@ export function createReasoningBehaviorModule(options: {
         });
         const existing = await options.repository.getEpisode(episode.episodeId);
         if (existing !== undefined) {
-          if (
-            existing.sourceSnapshotHash !== episode.sourceSnapshotHash ||
-            existing.behaviorSummary !== episode.behaviorSummary
-          ) {
-            throw new Error('reasoning_episode_identity_collision');
-          }
           continue;
         }
         await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>

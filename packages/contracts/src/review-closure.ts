@@ -18,6 +18,7 @@ export const CloseCourseBodySchema = z.strictObject({ confirmAbandoned: z.boolea
 export const LessonProgressCommandResponseSchema = z.looseObject({
   progress: z.enum(['not_started', 'in_progress', 'abandoned', 'completed']),
   resourceVersion: z.number().int().nonnegative(),
+  reviewStatus: z.enum(['generating', 'failed', 'ready']).optional(),
 });
 
 export const LessonClosureResponseSchema = z.looseObject({

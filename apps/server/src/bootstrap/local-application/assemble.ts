@@ -47,6 +47,7 @@ export async function assembleLocalApplication(
     events,
     profile,
   });
+  await course.reconcileOutlineLiveReferences();
   const { courseRepositories } = course;
   const learning = createLocalLearningRuntime({
     dataRoot,

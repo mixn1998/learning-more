@@ -159,30 +159,32 @@ export function LessonSessionWorkspace(props: {
               className="lesson-session-stream"
               followKey={followKey}
               forceFollowKey={lastUserMessage?.id}
-              generating={props.assistantPending}
+              generating={props.assistantPending && !props.opening}
               label="学习对话"
             >
-              {props.messages.length === 0 && !props.assistantPending ? (
+              {props.messages.length === 0 && props.opening && props.assistantPending ? (
+                <article
+                  aria-label="AI 备课状态"
+                  className="learn-ai learn-ai-thinking"
+                  role="status"
+                >
+                  正在备课中，请稍等……
+                </article>
+              ) : props.messages.length === 0 && !props.assistantPending && props.openingError ? (
                 <div className="learn-ai">
-                  {props.openingError ? (
-                    <>
-                      <p>AI 开场没有完成，你可以重试，或直接开始对话。</p>
-                      <div className="lm-actions">
-                        <button
-                          className="lm-btn primary"
-                          type="button"
-                          onClick={props.onRetryOpening}
-                        >
-                          重试开场
-                        </button>
-                        <button className="lm-btn" type="button" onClick={props.onSkipOpening}>
-                          直接开始对话
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <p>AI 导师正在准备本课的第一步。</p>
-                  )}
+                  <p>AI 开场没有完成，你可以重试，或直接开始对话。</p>
+                  <div className="lm-actions">
+                    <button
+                      className="lm-btn primary"
+                      type="button"
+                      onClick={props.onRetryOpening}
+                    >
+                      重试开场
+                    </button>
+                    <button className="lm-btn" type="button" onClick={props.onSkipOpening}>
+                      直接开始对话
+                    </button>
+                  </div>
                 </div>
               ) : (
                 props.messages.map((message) =>
@@ -207,7 +209,7 @@ export function LessonSessionWorkspace(props: {
                   ),
                 )
               )}
-              {props.assistantPending ? (
+              {props.assistantPending && !props.opening ? (
                 <article
                   aria-label="AI 回复状态"
                   className="learn-ai learn-ai-thinking"

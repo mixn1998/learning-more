@@ -16,6 +16,13 @@ export type AuthoringContext = Readonly<{
   candidate?: Readonly<{
     candidateVersionId: string;
     markdown: string;
+    outlineNodes?: readonly Readonly<{
+      ref: string;
+      kind: 'course' | 'module' | 'lesson' | 'course-section';
+      title: string;
+      excerpt: string;
+      parentRef?: string | undefined;
+    }>[];
   }>;
   pendingAlignment?: Readonly<{
     action: 'regenerate' | 'patch';

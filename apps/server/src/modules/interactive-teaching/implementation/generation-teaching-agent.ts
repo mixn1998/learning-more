@@ -2,8 +2,15 @@ import { createHash } from 'node:crypto';
 
 import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import type { GenerationExecution } from '../../generation-runtime/interface.js';
-import type { TeachingAgent } from '../ports/teaching-agent.js';
+import type { TeachingAgent, TeachingAgentResult } from '../ports/teaching-agent.js';
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
+import { TeachingDirectiveSchema, normalizeTeachingControlState } from './teaching-directive.js';
+
+const CONTROL_START = '<learning-more-control>';
+const CONTROL_END = '</learning-more-control>';
+const REPLY_START = '<learning-more-reply>';
+const REPLY_END = '</learning-more-reply>';
+const STRUCTURED_TASK_PREFIX = 'interactive-teaching-control-v1:';
 
 const TEACHING_CAPABILITY = [
   '依据提供的真实上下文继续当前互动式教学。',
@@ -19,7 +26,8 @@ const TEACHING_CAPABILITY = [
   '综合检测通过后也不播报通过状态；先用跨知识点的小结自然过渡，再询问学习者对本课是否还有疑惑或其他讲解需求。',
   '在最终课程总结输出之前，每一轮回复都必须以一个自然、容易回应、与本课有关的问题或表达邀请收束，不能让对话掉在地上。',
   '只有学习者明确表示没有疑问或不需要其他讲解后，才输出最终课程总结；最终课程总结是唯一不再提出问题或引导继续输出的回复。',
-  '不要把缺少证据的掌握状态当作事实。只输出学习者可见的 Markdown。',
+  '不要把缺少证据的掌握状态当作事实。可见回复区块只输出学习者可读的 Markdown。',
+  '你拥有判断学习者是否足以进入下一教学阶段的教学自主权。判断结果通过隐藏教学指令同步，不要在可见回复中播报检测状态。',
 ].join('\n');
 
 function sha256(value: string): string {
@@ -32,10 +40,11 @@ function section(title: string, values: readonly string[]): string | undefined {
 }
 
 function knowledgeBackground(context: TeachingContextPackage): string[] {
+  const state = normalizeTeachingControlState(context.teachingState);
   const textByRef = new Map(
     context.lesson.coreKnowledgePoints.map((point) => [point.ref, point.text] as const),
   );
-  return context.teachingState.knowledgePoints.map((point) => {
+  return state.knowledgePoints.map((point) => {
     const text = textByRef.get(point.ref) ?? '本课的一个知识责任点';
     const delivery = point.delivery === 'explained' ? '已经讲解过' : '尚未讲解';
     const evidence =
@@ -47,15 +56,15 @@ function knowledgeBackground(context: TeachingContextPackage): string[] {
             ? '现有表现相互混合，尚不能下结论'
             : '尚未观察到足够的学习者证据';
     const progress =
-      point.progress === 'passed'
-        ? '本课检测已通过'
+      point.progress === 'completed'
+        ? point.interactionStatus === 'skipped'
+          ? '该知识点教学已完成，学习者跳过了知识点互动'
+          : '该知识点教学已完成'
         : point.progress === 'skipped'
-          ? '学习者已选择跳过'
-          : point.progress === 'checking'
-            ? '正在讲解或检测'
-            : point.progress === 'teaching'
-              ? '正在讲解'
-              : '尚未进入';
+          ? '学习者已跳过该知识点'
+          : point.progress === 'learning'
+            ? '正在学习中'
+            : '待讲解';
     return `- ${text}：${progress}；${delivery}；${evidence}`;
   });
 }
@@ -87,7 +96,7 @@ function teachingFlowBackground(context: TeachingContextPackage): string[] {
   }
   if (phase === 'comprehensive_check') {
     return [
-      '全部知识点已经逐项通过或由学习者明确跳过。当前进行跨知识点的综合检测。',
+      '全部知识点教学已经完成或由学习者明确跳过。当前进行跨知识点的综合检测。',
       '若尚未提出综合任务，只提出一个能够连接本课核心关系的任务；若用户正在回答，则完成判断与反馈。',
       '综合回答充分，或用户明确选择跳过时，不播报检测或通过状态；用一小段跨知识点小结自然过渡，然后询问“对本课是否还有疑惑或其他讲解需求”。此时不要输出最终课程总结。',
       '如果综合回答仍不充分，继续提供有针对性的支架，并以一个便于学习者继续表达本课理解的问题收束。',
@@ -127,6 +136,72 @@ function priorConversation(context: TeachingContextPackage): string[] {
     const partial = message.completionStatus === 'interrupted' ? '（未完成）' : '';
     return `${message.role === 'user' ? '学习者' : '教学助手'}${partial}：${message.markdown.trim()}`;
   });
+}
+
+function machineControlContext(context: TeachingContextPackage): string {
+  const state = normalizeTeachingControlState(context.teachingState);
+  return JSON.stringify({
+    schemaVersion: 1,
+    lessonPhase: state.lessonPhase ?? 'warmup',
+    ...(state.activeKnowledgePointRef === undefined
+      ? {}
+      : { activeKnowledgePointRef: state.activeKnowledgePointRef }),
+    knowledgePoints: context.lesson.coreKnowledgePoints.map((point) => {
+      const existing = state.knowledgePoints.find((candidate) => candidate.ref === point.ref);
+      return {
+        ref: point.ref,
+        title: point.text,
+        status: existing?.progress ?? 'pending',
+        interactionStatus: existing?.interactionStatus ?? 'pending',
+      };
+    }),
+    comprehensiveCheck: state.comprehensiveCheck ?? 'pending',
+    closureInquiry: state.closureInquiry ?? 'pending',
+    summaryStatus: state.summaryStatus ?? 'pending',
+  });
+}
+
+function controlProtocol(context: TeachingContextPackage): string {
+  return [
+    '【机器控制协议｜不得展示给学习者】',
+    '本轮必须严格输出两个区块，控制区块在前、可见回复区块在后：',
+    `${CONTROL_START}{完整 JSON 教学状态快照}${CONTROL_END}`,
+    `${REPLY_START}{仅供学习者阅读的 Markdown}${REPLY_END}`,
+    '控制 JSON 必须包含 schemaVersion=1、lessonPhase、knowledgePoints、comprehensiveCheck、closureInquiry、summaryStatus；只在 warmup 或 knowledge_point 阶段按需包含 activeKnowledgePointRef。',
+    'knowledgePoints 必须完整返回给定的全部 ref；可原样保留用于辨认知识点的 title。每项 status 只能是 pending|learning|completed|skipped，interactionStatus 只能是 pending|completed|skipped。',
+    'status=completed 表示你已完成该知识点教学，并基于教学互动自主判断可以进入下一阶段；此时 interactionStatus 必须是 completed 或 skipped。',
+    '用户跳过整个知识点时使用 status=skipped 且 interactionStatus=skipped；只跳过知识点互动时使用 status=completed 且 interactionStatus=skipped。',
+    'comprehensiveCheck 只能是 pending|learning|completed|skipped；用户跳过综合检测时使用 skipped。',
+    '已 completed 或 skipped 的节点不得倒退。只有全部知识点 completed/skipped 后才能进入 comprehensive_check；只有综合检测 completed/skipped 后才能进入 summary。',
+    '只有用户明确没有其他疑问且最终课程总结已经输出时，才能令 lessonPhase=ready_to_close、closureInquiry=confirmed_no_questions、summaryStatus=delivered。',
+    `当前机器状态：${machineControlContext(context)}`,
+  ].join('\n');
+}
+
+function extractBetween(value: string, start: string, end: string): string | undefined {
+  const startIndex = value.indexOf(start);
+  if (startIndex === -1) return undefined;
+  const contentStart = startIndex + start.length;
+  const endIndex = value.indexOf(end, contentStart);
+  return value.slice(contentStart, endIndex === -1 ? undefined : endIndex).trim();
+}
+
+function parseCompletedResult(raw: string, structured: boolean): TeachingAgentResult {
+  const control = extractBetween(raw, CONTROL_START, CONTROL_END);
+  const markdown = extractBetween(raw, REPLY_START, REPLY_END);
+  if (control === undefined || markdown === undefined) {
+    if (structured) throw new Error('teaching_control_protocol_invalid');
+    return { markdown: raw };
+  }
+  const directive = TeachingDirectiveSchema.parse(
+    JSON.parse(control) as unknown,
+  ) as TeachingAgentResult['directive'];
+  if (markdown.length === 0) throw new Error('teaching_reply_empty');
+  return { markdown, directive };
+}
+
+function parseInterruptedMarkdown(raw: string): string {
+  return extractBetween(raw, REPLY_START, REPLY_END) ?? '';
 }
 
 export function renderTeachingConversationInput(context: TeachingContextPackage): string {
@@ -195,6 +270,7 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
     ),
     section('此前真实对话', priorConversation(context)),
     ...(opening ? [] : [`【当前诉求｜用户原话】\n${currentRequest}`]),
+    controlProtocol(context),
   ]
     .filter((value): value is string => value !== undefined)
     .join('\n\n');
@@ -232,7 +308,7 @@ export function createGenerationTeachingAgent(options: {
     async submit(context) {
       const expressionContext = renderTeachingConversationInput(context);
       return (options.execution ?? options.runtime).submit({
-        taskKey: `interactive-teaching:${context.teachingState.sessionId}:${sha256(expressionContext)}`,
+        taskKey: `${STRUCTURED_TASK_PREFIX}${context.teachingState.sessionId}:${sha256(expressionContext)}`,
         inputSnapshotHash: sha256(expressionContext),
         taskKind: 'interactive-teaching',
         taskGroup: 'interactive',
@@ -245,15 +321,35 @@ export function createGenerationTeachingAgent(options: {
     async complete(taskId) {
       const task = await awaitTerminal(taskId, false);
       if (task.status !== 'completed') throw new Error('teaching_generation_incomplete');
-      return { markdown: task.draftMarkdown ?? '' };
+      return parseCompletedResult(
+        task.draftMarkdown ?? '',
+        task.taskKey.startsWith(STRUCTURED_TASK_PREFIX),
+      );
+    },
+    async read(taskId) {
+      const task = await options.runtime.get(taskId);
+      if (task.status !== 'completed') return undefined;
+      return parseCompletedResult(
+        task.draftMarkdown ?? '',
+        task.taskKey.startsWith(STRUCTURED_TASK_PREFIX),
+      );
     },
     async recover(taskId) {
       const task = await awaitTerminal(taskId, true);
       if (task.status === 'completed') {
-        return { markdown: task.draftMarkdown ?? '', completionStatus: 'complete' };
+        return {
+          ...parseCompletedResult(
+            task.draftMarkdown ?? '',
+            task.taskKey.startsWith(STRUCTURED_TASK_PREFIX),
+          ),
+          completionStatus: 'complete',
+        };
       }
       if (task.status === 'cancelled') {
-        return { markdown: task.draftMarkdown ?? '', completionStatus: 'interrupted' };
+        return {
+          markdown: parseInterruptedMarkdown(task.draftMarkdown ?? ''),
+          completionStatus: 'interrupted',
+        };
       }
       return {
         completionStatus: 'failed',
@@ -263,7 +359,7 @@ export function createGenerationTeachingAgent(options: {
     async stop(taskId) {
       const task = await (options.execution ?? options.runtime).cancel(taskId);
       return {
-        markdown: task.draftMarkdown ?? '',
+        markdown: parseInterruptedMarkdown(task.draftMarkdown ?? ''),
         completionStatus: 'interrupted',
       };
     },

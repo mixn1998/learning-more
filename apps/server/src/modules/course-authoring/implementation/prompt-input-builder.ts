@@ -27,6 +27,7 @@ export type CandidatePromptInput = Readonly<{
   }>[];
   currentCandidate?: Readonly<{
     markdown: string;
+    outlineNodes?: NonNullable<AuthoringContext['candidate']>['outlineNodes'];
   }>;
   requestedAdjustment?: Readonly<{
     action: 'regenerate' | 'patch';
@@ -50,7 +51,14 @@ export function buildCandidatePromptInput(context: AuthoringContext): CandidateP
     ],
     ...(context.candidate === undefined
       ? {}
-      : { currentCandidate: { markdown: context.candidate.markdown } }),
+      : {
+          currentCandidate: {
+            markdown: context.candidate.markdown,
+            ...(context.candidate.outlineNodes === undefined
+              ? {}
+              : { outlineNodes: context.candidate.outlineNodes }),
+          },
+        }),
     ...(context.pendingAlignment === undefined
       ? {}
       : { requestedAdjustment: context.pendingAlignment }),

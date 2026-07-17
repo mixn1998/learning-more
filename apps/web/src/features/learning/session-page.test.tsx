@@ -85,6 +85,33 @@ describe('learning SessionPage', () => {
     expect(screen.queryByText('学习中 · 渐进式教学')).not.toBeInTheDocument();
   });
 
+  it('keeps opening preparation as transient UI and exposes an empty terminal task as retryable', async () => {
+    let finishStream: (() => void) | undefined;
+    const stream = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 2,
+      learning: { progress: 'in_progress', session: { state: 'active' } },
+      messages: [],
+    });
+    const api = client({ stream, getSession });
+
+    render(<SessionPage autoOpen lessonId="lesson_01" client={api} />);
+
+    expect(await screen.findByText('正在备课中，请稍等……')).toBeInTheDocument();
+    await act(async () => finishStream?.());
+
+    expect(
+      await screen.findByText('AI 开场没有完成，你可以重试，或直接开始对话。'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('正在备课中，请稍等……')).not.toBeInTheDocument();
+    expect(screen.queryByText('AI 导师正在准备本课的第一步。')).not.toBeInTheDocument();
+  });
+
   it('offers an explicit opening retry or direct conversation fallback', async () => {
     const openLesson = vi.fn().mockRejectedValue(new Error('opening unavailable'));
     const api = client({ openLesson });
@@ -233,6 +260,23 @@ describe('learning SessionPage', () => {
     await waitFor(() => expect(resume).toHaveBeenCalledWith('session_01', 1));
   });
 
+  it('ends immediately and reports background stage Review generation without a snapshot hash', async () => {
+    const abandon = vi.fn().mockResolvedValue({
+      progress: 'abandoned',
+      resourceVersion: 2,
+      reviewStatus: 'generating',
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ abandon })} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认放弃课节' }));
+
+    await waitFor(() => expect(abandon).toHaveBeenCalledWith('lesson_01', 1, '0'.repeat(64)));
+    expect(
+      await screen.findByText('本课已结束，阶段性 Review 正在生成中，可稍后返回课程页面查看。'),
+    ).toBeInTheDocument();
+  });
+
   it('presents a completed closure after the final summary instead of an abandonment warning', async () => {
     const getSession = vi.fn().mockResolvedValue({
       resourceVersion: 8,
@@ -256,6 +300,7 @@ describe('learning SessionPage', () => {
     });
     render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
 
+    expect(await screen.findByText('跳过检测')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
 
     expect(screen.getByText('教学已闭环')).toBeInTheDocument();
@@ -381,7 +426,8 @@ describe('learning SessionPage', () => {
             {
               ref: 'knowledge:rate',
               title: '平均变化率',
-              progress: 'passed',
+              progress: 'completed',
+              interactionStatus: 'completed',
               delivery: 'explained',
               verification: 'supporting',
               unresolvedQuestionCount: 0,
@@ -389,7 +435,8 @@ describe('learning SessionPage', () => {
             {
               ref: 'knowledge:sum',
               title: '有限求和',
-              progress: 'checking',
+              progress: 'learning',
+              interactionStatus: 'pending',
               delivery: 'explained',
               verification: 'limiting',
               unresolvedQuestionCount: 0,
@@ -397,7 +444,26 @@ describe('learning SessionPage', () => {
             {
               ref: 'knowledge:limit',
               title: '极限',
+              progress: 'skipped',
+              interactionStatus: 'skipped',
+              delivery: 'not_addressed',
+              verification: 'not_observed',
+              unresolvedQuestionCount: 0,
+            },
+            {
+              ref: 'knowledge:derivative',
+              title: '导数',
+              progress: 'completed',
+              interactionStatus: 'skipped',
+              delivery: 'explained',
+              verification: 'not_observed',
+              unresolvedQuestionCount: 0,
+            },
+            {
+              ref: 'knowledge:continuity',
+              title: '连续性',
               progress: 'pending',
+              interactionStatus: 'pending',
               delivery: 'not_addressed',
               verification: 'not_observed',
               unresolvedQuestionCount: 0,
@@ -409,12 +475,15 @@ describe('learning SessionPage', () => {
 
     render(<SessionPage client={api} lessonId="lesson_01" />);
 
-    expect(await screen.findByText('极限')).toBeInTheDocument();
+    expect(await screen.findByText('连续性')).toBeInTheDocument();
     expect(
       [...document.querySelectorAll('.learning-path li')].map((item) => item.className),
-    ).toEqual(['done', 'done', 'active', 'pending', 'pending', 'pending']);
-    expect(screen.getByText('检测已通过')).toBeInTheDocument();
-    expect(screen.getByText('仍有误解需要澄清')).toBeInTheDocument();
+    ).toEqual(['done', 'done', 'active', 'done', 'done', 'pending', 'pending', 'pending']);
+    expect(screen.getByText('该知识点已完成')).toBeInTheDocument();
+    expect(screen.getByText('正在学习中')).toBeInTheDocument();
+    expect(screen.getByText('跳过知识点')).toBeInTheDocument();
+    expect(screen.getByText('跳过知识点互动')).toBeInTheDocument();
+    expect(screen.getByText('待讲解')).toBeInTheDocument();
   });
 
   it('refreshes the visible learning path when pending teaching observation becomes current', async () => {
@@ -436,7 +505,8 @@ describe('learning SessionPage', () => {
             {
               ref: 'knowledge:fantasy',
               title: '玩家幻想',
-              progress: 'checking',
+              progress: 'learning',
+              interactionStatus: 'pending',
               delivery: 'explained',
               verification: 'not_observed',
               unresolvedQuestionCount: 0,
@@ -445,6 +515,7 @@ describe('learning SessionPage', () => {
               ref: 'knowledge:experience',
               title: '体验目标',
               progress: 'pending',
+              interactionStatus: 'pending',
               delivery: 'not_addressed',
               verification: 'not_observed',
               unresolvedQuestionCount: 0,
@@ -467,7 +538,8 @@ describe('learning SessionPage', () => {
             {
               ref: 'knowledge:fantasy',
               title: '玩家幻想',
-              progress: 'passed',
+              progress: 'completed',
+              interactionStatus: 'completed',
               delivery: 'explained',
               verification: 'supporting',
               unresolvedQuestionCount: 0,
@@ -475,7 +547,8 @@ describe('learning SessionPage', () => {
             {
               ref: 'knowledge:experience',
               title: '体验目标',
-              progress: 'teaching',
+              progress: 'learning',
+              interactionStatus: 'pending',
               delivery: 'not_addressed',
               verification: 'not_observed',
               unresolvedQuestionCount: 0,

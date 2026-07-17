@@ -16,6 +16,7 @@ import type {
   TeachingTurnStopped,
 } from '../interface.js';
 import type { TeachingAgent } from '../ports/teaching-agent.js';
+import type { TeachingDirective } from '../ports/teaching-agent.js';
 import type {
   TeachingContextAssembler,
   TeachingContextSources,
@@ -34,6 +35,11 @@ import {
   createTeachingState,
   reduceTeachingState,
 } from './teaching-state-reducer.js';
+import {
+  applyTeachingDirective,
+  normalizeTeachingControlState,
+  teachingDirectiveMatchesState,
+} from './teaching-directive.js';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -139,6 +145,12 @@ export function createInteractiveTeaching(options: {
       let replyCommitted = false;
       try {
         const result = await options.agent.complete(accepted.taskId);
+        await validateDirective({
+          courseId: input.courseId,
+          lessonId: input.lessonId,
+          sessionId: input.sessionId,
+          directive: result.directive,
+        });
         const assistantMessageId = options.nextAssistantMessageId();
         const artifactRef = `assistant-message:${assistantMessageId}`;
         await options.frameLog?.append(accepted.taskId, 'message.started', {
@@ -168,6 +180,12 @@ export function createInteractiveTeaching(options: {
           backgroundContext(input.context, `${input.context.commandId}:assistant-complete`),
         );
         replyCommitted = true;
+        await applyCommittedDirective({
+          courseId: input.courseId,
+          lessonId: input.lessonId,
+          sessionId: input.sessionId,
+          directive: result.directive,
+        });
         taskContext.delete(accepted.taskId);
         await options.frameLog?.append(accepted.taskId, 'message.completed', {
           messageId: assistantMessageId,
@@ -252,6 +270,64 @@ export function createInteractiveTeaching(options: {
     });
   }
 
+  async function applyCommittedDirective(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    directive?: TeachingDirective | undefined;
+  }): Promise<void> {
+    if (input.directive === undefined) return;
+    const current = await options.ledgerRepository.get(input.sessionId);
+    const base = await initialState(input.courseId, input.lessonId, input.sessionId);
+    if (teachingDirectiveMatchesState(base, input.directive)) return;
+    const nextState = applyTeachingDirective(base, input.directive);
+    await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
+      options.ledgerRepository.save(
+        tx,
+        {
+          courseId: input.courseId,
+          lessonId: input.lessonId,
+          sessionId: input.sessionId,
+          observations: current?.observations ?? [],
+          checkpoints: current?.checkpoints ?? [],
+          state: nextState,
+          resourceVersion: current?.resourceVersion ?? 0,
+        },
+        current?.resourceVersion ?? 0,
+      ),
+    );
+  }
+
+  async function validateDirective(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    directive?: TeachingDirective | undefined;
+  }): Promise<void> {
+    if (input.directive === undefined) return;
+    const base = await initialState(input.courseId, input.lessonId, input.sessionId);
+    applyTeachingDirective(base, input.directive);
+  }
+
+  function resetObservationProjection(state: Awaited<ReturnType<typeof initialState>>) {
+    return {
+      ...state,
+      evidenceCheckpoint: false,
+      scopeStatus: 'aligned' as const,
+      knowledgePoints: state.knowledgePoints.map((point) => ({
+        ...point,
+        delivery: 'not_addressed' as const,
+        verification: 'not_observed' as const,
+        teachingEvidenceRefs: [],
+        learnerEvidenceRefs: [],
+        unresolvedEntryRefs: [],
+      })),
+      openLoops: [],
+      explorationBranches: [],
+      recentLearnerSignals: [],
+    };
+  }
+
   async function observeCompletedTurn(input: {
     courseId: string;
     lessonId: string;
@@ -271,13 +347,7 @@ export function createInteractiveTeaching(options: {
             facts.lesson.coreKnowledgePoints.map((point) => point.ref),
           );
     const allMessages = await options.contextSources.listMessages(input.sessionId);
-    const observedIndex =
-      previousState.observedThroughMessageId === undefined
-        ? -1
-        : allMessages.findIndex(
-            (message) => message.messageId === previousState.observedThroughMessageId,
-          );
-    const messages = allMessages.slice(observedIndex + 1);
+    const messages = allMessages;
     if (messages.length === 0) return;
     const sourceSnapshotHash = sha256(
       JSON.stringify(
@@ -326,8 +396,18 @@ export function createInteractiveTeaching(options: {
         candidate.sourceSnapshotHash === validated.sourceSnapshotHash &&
         candidate.observerVersion === validated.observerVersion,
     );
-    if (duplicate !== undefined) return;
-    const nextState = reduceTeachingState(previousState, validated);
+    const nextState = reduceTeachingState(resetObservationProjection(previousState), validated);
+    const observations =
+      duplicate === undefined
+        ? [
+            ...(current?.observations ?? []).map((candidate) =>
+              candidate.status === 'active'
+                ? ({ ...candidate, status: 'superseded' as const } as TeachingObservation)
+                : candidate,
+            ),
+            validated,
+          ]
+        : (current?.observations ?? []);
     await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
       options.ledgerRepository.save(
         tx,
@@ -335,7 +415,7 @@ export function createInteractiveTeaching(options: {
           courseId: input.courseId,
           lessonId: input.lessonId,
           sessionId: input.sessionId,
-          observations: [...(current?.observations ?? []), validated],
+          observations,
           checkpoints: current?.checkpoints ?? [],
           state: nextState,
           resourceVersion: current?.resourceVersion ?? 0,
@@ -343,11 +423,13 @@ export function createInteractiveTeaching(options: {
         current?.resourceVersion ?? 0,
       ),
     );
-    await options.reasoningBehaviorSink?.captureFromObservation({
-      courseId: input.courseId,
-      courseMode: facts.course.courseMode,
-      observation: validated,
-    });
+    if (duplicate === undefined) {
+      await options.reasoningBehaviorSink?.captureFromObservation({
+        courseId: input.courseId,
+        courseMode: facts.course.courseMode,
+        observation: validated,
+      });
+    }
     if (!previousState.evidenceCheckpoint && nextState.evidenceCheckpoint) {
       await options.sessionModule.execute(
         { type: 'EstablishEvidenceCheckpoint', lessonId: input.lessonId },
@@ -528,7 +610,7 @@ export function createInteractiveTeaching(options: {
     async getTeachingState(sessionId) {
       const record = await options.ledgerRepository.get(sessionId);
       if (record === undefined) throw new Error('teaching_state_not_found');
-      return record.state;
+      return normalizeTeachingControlState(record.state);
     },
     async freezeCheckpoint(input) {
       const record = await options.ledgerRepository.get(input.sessionId);
@@ -615,6 +697,12 @@ export function createInteractiveTeaching(options: {
             problem: failureProblem(activeTaskId),
           });
         } else {
+          await validateDirective({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
+            directive: recovered.directive,
+          });
           const assistantMessageId = options.nextAssistantMessageId();
           const artifactRef = `assistant-message:${assistantMessageId}`;
           await options.frameLog?.ensureTask(activeTaskId, 'running');
@@ -644,6 +732,12 @@ export function createInteractiveTeaching(options: {
             },
             backgroundContext(input.context, `recover-assistant:${activeTaskId}`),
           );
+          await applyCommittedDirective({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
+            directive: recovered.directive,
+          });
           await options.frameLog?.append(activeTaskId, 'message.completed', {
             messageId: assistantMessageId,
             contentSha256: sha256(recovered.markdown),
@@ -666,6 +760,28 @@ export function createInteractiveTeaching(options: {
       }
 
       const messages = await options.contextSources.listMessages(input.sessionId);
+      for (const message of [...messages].reverse()) {
+        if (
+          message.role !== 'assistant' ||
+          message.completionStatus !== 'complete' ||
+          message.generationTaskId === undefined
+        ) {
+          continue;
+        }
+        try {
+          const result = await options.agent.read(message.generationTaskId);
+          if (result?.directive === undefined) continue;
+          await applyCommittedDirective({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
+            directive: result.directive,
+          });
+          break;
+        } catch {
+          // Older or unavailable generation tasks do not prevent observation recovery.
+        }
+      }
       if (messages.length === 0 || !messages.some((message) => message.role === 'user')) return;
       let ledger = await options.ledgerRepository.get(input.sessionId);
       const observedThrough = ledger?.state.observedThroughMessageId;

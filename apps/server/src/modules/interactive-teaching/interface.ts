@@ -43,6 +43,7 @@ export type MaterializedTeachingMessage = Readonly<{
   completionStatus: 'complete' | 'interrupted' | 'failed';
   markdown: string;
   sourceRef: string;
+  generationTaskId?: string;
 }>;
 
 export interface InteractiveTeaching {

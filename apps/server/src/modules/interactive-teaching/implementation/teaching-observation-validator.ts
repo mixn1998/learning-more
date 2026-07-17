@@ -35,7 +35,10 @@ export function validateTeachingObservation(
 
   const messageById = new Map(context.messages.map((message) => [message.messageId, message]));
   const knowledgePointRefs = new Set(context.knowledgePointRefs);
-  const openEntryRefs = new Set(context.openEntryRefs);
+  const openEntryRefs = new Set([
+    ...context.openEntryRefs,
+    ...observation.entries.map((entry) => entry.entryId),
+  ]);
   const validRelationRefs = new Set([
     ...context.knowledgePointRefs,
     ...context.courseRelationRefs,
