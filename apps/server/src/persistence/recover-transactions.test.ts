@@ -110,9 +110,11 @@ describe('transaction recovery', () => {
       await writeFile(path.join(transactionDirectory, 'journal.json.tmp'), '', 'utf8');
 
       await expect(recoverTransactions(root)).resolves.toBe(1);
-      await expect(readFile(path.join(transactionDirectory, 'journal.json'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
+      await expect(readFile(path.join(transactionDirectory, 'journal.json'))).rejects.toMatchObject(
+        {
+          code: 'ENOENT',
+        },
+      );
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

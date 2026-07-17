@@ -174,11 +174,7 @@ export function LessonSessionWorkspace(props: {
                 <div className="learn-ai">
                   <p>AI 开场没有完成，你可以重试，或直接开始对话。</p>
                   <div className="lm-actions">
-                    <button
-                      className="lm-btn primary"
-                      type="button"
-                      onClick={props.onRetryOpening}
-                    >
+                    <button className="lm-btn primary" type="button" onClick={props.onRetryOpening}>
                       重试开场
                     </button>
                     <button className="lm-btn" type="button" onClick={props.onSkipOpening}>

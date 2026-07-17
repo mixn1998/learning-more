@@ -32,7 +32,8 @@ export function createStructuredLogger(options: {
   const retentionDays = options.retentionDays ?? 30;
   let barrier: Promise<void> = Promise.resolve();
   const retryDelay =
-    options.retryDelay ?? ((delayMs: number) => new Promise((resolve) => setTimeout(resolve, delayMs)));
+    options.retryDelay ??
+    ((delayMs: number) => new Promise((resolve) => setTimeout(resolve, delayMs)));
 
   function retryableWriteError(error: unknown): boolean {
     const code = (error as NodeJS.ErrnoException).code;

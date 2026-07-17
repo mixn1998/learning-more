@@ -62,7 +62,8 @@ export function decide(
     ) {
       return [event(commandId, { type: 'FinalReviewCommitted', reviewId: command.reviewId })];
     }
-    if (command.type === 'commitFinalReview') throw new LearningSessionError('final_review_immutable');
+    if (command.type === 'commitFinalReview')
+      throw new LearningSessionError('final_review_immutable');
     throw new LearningSessionError('lesson_not_startable');
   }
 
