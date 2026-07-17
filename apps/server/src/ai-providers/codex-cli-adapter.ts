@@ -27,7 +27,7 @@ export type CodexCliGenerationRequest = Readonly<{
 export type CodexCliGenerationRunner = (
   executable: string,
   arguments_: readonly string[],
-  options: Readonly<{ shell: false; cwd: string; signal: AbortSignal }>,
+  options: Readonly<{ shell: false; cwd: string; signal: AbortSignal; stdin?: string }>,
 ) => AsyncIterable<ProviderDelta>;
 
 export type CodexCliProbe = Readonly<{
@@ -93,7 +93,7 @@ function isAuthenticatedStatus(output: string): boolean {
 async function* runGeneration(
   executable: string,
   arguments_: readonly string[],
-  options: Readonly<{ shell: false; cwd: string; signal: AbortSignal }>,
+  options: Readonly<{ shell: false; cwd: string; signal: AbortSignal; stdin?: string }>,
 ): AsyncIterable<ProviderDelta> {
   if (options.signal.aborted) return;
   const child = spawn(executable, [...arguments_], {
@@ -101,8 +101,10 @@ async function* runGeneration(
     windowsHide: process.platform === 'win32',
     cwd: options.cwd,
     env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
+  child.stdin.on('error', () => undefined);
+  child.stdin.end(options.stdin ?? '', 'utf8');
   let aborted = false;
   const onAbort = () => {
     aborted = true;
@@ -363,12 +365,13 @@ export function createCodexCliAdapter(
           request.model,
           '-c',
           `model_reasoning_effort=${JSON.stringify(request.reasoningEffort)}`,
-          request.prompt,
+          '-',
         ],
         {
           shell: false,
           cwd: request.workingDirectory ?? process.cwd(),
           signal,
+          stdin: request.prompt,
         },
       );
     },

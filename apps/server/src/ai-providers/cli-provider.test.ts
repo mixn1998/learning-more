@@ -5,6 +5,7 @@ import { createCliProvider } from './cli-provider.js';
 
 describe('real CLI provider', () => {
   it('uses the live adapter catalog for health, selection, and generation', async () => {
+    const longPrompt = 'Explain the topic. '.repeat(2_500);
     const run = vi.fn(async (_executable: string, arguments_: readonly string[]) => {
       if (arguments_[0] === '--version') {
         return { exitCode: 0, stdout: 'codex-cli 0.144.0-alpha.4\n', stderr: '' };
@@ -28,7 +29,14 @@ describe('real CLI provider', () => {
         stderr: '',
       };
     });
-    const generate = vi.fn(async function* (_executable: string, arguments_: readonly string[]) {
+    const generate = vi.fn(async function* (
+      _executable: string,
+      arguments_: readonly string[],
+      options: Readonly<{ stdin?: string }>,
+    ) {
+      expect(arguments_.at(-1)).toBe('-');
+      expect(arguments_).not.toContain(longPrompt);
+      expect(options.stdin).toBe(longPrompt);
       yield { type: 'text' as const, text: arguments_.join(' ') };
     });
     const adapter = createCodexCliAdapter({ executable: 'codex.exe', run, generate });
@@ -66,7 +74,7 @@ describe('real CLI provider', () => {
     );
     const output: string[] = [];
     for await (const delta of provider.generate(
-      { taskId: 'task-cli', prompt: 'Explain the topic' },
+      { taskId: 'task-cli', prompt: longPrompt },
       new AbortController().signal,
     )) {
       output.push(delta.text);
