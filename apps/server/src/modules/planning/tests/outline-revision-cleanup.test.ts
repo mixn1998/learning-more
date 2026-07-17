@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createInMemoryPlanFlowRepository } from '../../planning/ports/plan-flow-repository.js';
-import { createInMemoryScheduleRepository } from '../../planning/ports/schedule-repository.js';
-import { createOutlineRevisionLiveCleanup } from '../implementation/outline-revision-live-cleanup.js';
+import { createOutlineRevisionCleanup } from '../implementation/outline-revision-cleanup.js';
+import { createInMemoryPlanFlowRepository } from '../ports/plan-flow-repository.js';
+import { createInMemoryScheduleRepository } from '../ports/schedule-repository.js';
 
 const tx = {
   stageJson: async () => undefined,
@@ -10,7 +10,7 @@ const tx = {
   deleteOnCommit: async () => undefined,
 };
 
-describe('outline revision live cleanup', () => {
+describe('outline revision planning cleanup', () => {
   it('retires stale active schedules and invalidates an unconfirmed flow without deleting history', async () => {
     const schedules = createInMemoryScheduleRepository();
     const planFlows = createInMemoryPlanFlowRepository();
@@ -77,12 +77,12 @@ describe('outline revision live cleanup', () => {
       0,
     );
 
-    const cleanup = createOutlineRevisionLiveCleanup({
+    const cleanup = createOutlineRevisionCleanup({
       schedules,
       planFlows,
       recordScheduleCancelled,
     });
-    await cleanup.retire(
+    await cleanup.retireOutlineReferences(
       {
         courseId: 'course_01',
         retainedLessonIds: ['lesson_current'],

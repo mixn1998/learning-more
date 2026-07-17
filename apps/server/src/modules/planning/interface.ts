@@ -1,5 +1,6 @@
 import type { CommandContext } from '@learning-more/contracts';
 
+import type { TransactionContext } from '../../persistence/unit-of-work.js';
 import type { ScheduleItem, ScheduleSource } from './model/schedule-item.js';
 
 export type PlanningCommand =
@@ -27,6 +28,21 @@ export type PlanningCommand =
   | Readonly<{ type: 'RemoveScheduleItem'; scheduleItemId: string }>;
 
 export type PlanningResult = Readonly<{ scheduleItem: ScheduleItem }>;
+
+export type PlanningOutlineRevisionInput = Readonly<{
+  courseId: string;
+  retainedLessonIds: readonly string[];
+  knownCourseLessonIds: readonly string[];
+  commandId: string;
+  occurredAt: string;
+}>;
+
+export interface PlanningOutlineRevisionParticipant {
+  retireOutlineReferences(
+    input: PlanningOutlineRevisionInput,
+    tx: TransactionContext,
+  ): Promise<void>;
+}
 
 export interface PlanningModule {
   execute(command: PlanningCommand, context: CommandContext): Promise<PlanningResult>;

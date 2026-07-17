@@ -9,7 +9,7 @@ import {
   resolveNextLessonRecommendation,
   type NextLessonRecommender,
 } from '../../next-lesson/interface.js';
-import type { OutlineRevisionLiveCleanup } from './outline-revision-live-cleanup.js';
+import type { PlanningOutlineRevisionParticipant } from '../../planning/interface.js';
 
 class CourseRevisionError extends Error {
   constructor(readonly code: 'course_closed' | 'lesson_semantic_rebind') {
@@ -50,7 +50,7 @@ export async function reviseCourseOutline(
     readonly unitOfWork: UnitOfWork;
     readonly hasLearningEvidence: (lessonId: string) => Promise<boolean>;
     readonly nextLessonRecommender?: NextLessonRecommender;
-    readonly liveCleanup?: OutlineRevisionLiveCleanup;
+    readonly liveCleanup?: PlanningOutlineRevisionParticipant;
     readonly now: () => Date;
   },
 ): Promise<{ outlineVersionId: string }> {
@@ -235,7 +235,7 @@ export async function reviseCourseOutline(
         },
         command.expectedCourseVersion,
       );
-      await dependencies.liveCleanup?.retire(
+      await dependencies.liveCleanup?.retireOutlineReferences(
         {
           courseId: command.courseId,
           retainedLessonIds: lessonIds,

@@ -29,11 +29,11 @@ import type {
 import type { OutlineSessionRecord } from '../ports/outline-session-repository.js';
 import type { OutlineSessionDraftStore } from '../ports/outline-session-draft-store.js';
 import type { NextLessonRecommender } from '../../next-lesson/interface.js';
+import type { PlanningOutlineRevisionParticipant } from '../../planning/interface.js';
 import { confirmCourse } from './confirm-course.js';
 import { createAuthoringContextAssembler } from './authoring-context-assembler.js';
 import { reviseCourseOutline } from './revise-course-outline.js';
 import { resolveCourseTitle } from '../model/course-title.js';
-import type { OutlineRevisionLiveCleanup } from './outline-revision-live-cleanup.js';
 
 export interface CandidateGenerationCoordinator {
   generate(input: { readonly commandId: string; readonly outlineSessionId: string }): Promise<{
@@ -72,7 +72,7 @@ export function createCourseAuthoringFacade(options: {
   readonly authoringAgent: AuthoringAgent;
   readonly candidateAlignmentPlanner: CandidateAlignmentPlanner;
   readonly nextLessonRecommender?: NextLessonRecommender;
-  readonly outlineRevisionLiveCleanup?: OutlineRevisionLiveCleanup;
+  readonly outlineRevisionLiveCleanup?: PlanningOutlineRevisionParticipant;
   readonly outbox?: Outbox;
   readonly hasLearningEvidence?: (lessonId: string) => Promise<boolean>;
   readonly profileEvidenceSink?: Readonly<{

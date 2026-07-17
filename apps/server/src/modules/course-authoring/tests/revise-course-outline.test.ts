@@ -93,7 +93,7 @@ const revision = {
 describe('reviseCourseOutline', () => {
   it('publishes a new immutable outline while preserving an evidenced lesson id', async () => {
     const repositories = await seeded();
-    const retire = vi.fn().mockResolvedValue(undefined);
+    const retireOutlineReferences = vi.fn().mockResolvedValue(undefined);
 
     await reviseCourseOutline(
       {
@@ -108,7 +108,7 @@ describe('reviseCourseOutline', () => {
         repositories,
         unitOfWork,
         hasLearningEvidence: async (id) => id === 'lesson_stable',
-        liveCleanup: { retire },
+        liveCleanup: { retireOutlineReferences },
         now: () => new Date('2026-07-13T01:00:00.000Z'),
       },
     );
@@ -123,7 +123,7 @@ describe('reviseCourseOutline', () => {
       outlineMarkdown: '# v1',
     });
     await expect(repositories.outlineVersions.get('outline_v2')).resolves.toBeDefined();
-    expect(retire).toHaveBeenCalledWith(
+    expect(retireOutlineReferences).toHaveBeenCalledWith(
       expect.objectContaining({
         courseId: 'course_01',
         retainedLessonIds: ['lesson_stable'],

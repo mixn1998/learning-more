@@ -8,7 +8,7 @@ import { createCourseAuthoringModule } from '../../modules/course-authoring/impl
 import { createGenerationAuthoringAgent } from '../../modules/course-authoring/implementation/generation-authoring-agent.js';
 import { createGenerationCandidateAlignmentPlanner } from '../../modules/course-authoring/implementation/generation-candidate-alignment-planner.js';
 import { ingestSelectedMaterial } from '../../modules/course-authoring/implementation/material-ingestion.js';
-import { createOutlineRevisionLiveCleanup } from '../../modules/course-authoring/implementation/outline-revision-live-cleanup.js';
+import { createOutlineRevisionCleanup } from '../../modules/planning/implementation/outline-revision-cleanup.js';
 import {
   createLocalFileCourseArchiveStore,
   createLocalFileOutlineSessionDraftStore,
@@ -69,7 +69,7 @@ export function createLocalCourseRuntime(
   const courseRepositories = createLocalFileCourseCreationRepositories(input.dataRoot);
   const scheduleRepository = createLocalFileScheduleRepository(input.dataRoot);
   const planFlowRepository = createLocalFilePlanFlowRepository(input.dataRoot);
-  const outlineRevisionLiveCleanup = createOutlineRevisionLiveCleanup({
+  const outlineRevisionLiveCleanup = createOutlineRevisionCleanup({
     schedules: scheduleRepository,
     planFlows: planFlowRepository,
     async recordScheduleCancelled(event, tx) {
@@ -301,7 +301,7 @@ export function createLocalCourseRuntime(
             transactionId: `tx_outline_live_reconcile_${course.id}_${course.outlineVersionId}`,
           },
           (tx) =>
-            outlineRevisionLiveCleanup.retire(
+            outlineRevisionLiveCleanup.retireOutlineReferences(
               {
                 courseId: course.id,
                 retainedLessonIds: course.lessonIds,

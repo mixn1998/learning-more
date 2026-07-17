@@ -1,14 +1,7 @@
 import type { TransactionContext } from '../../../persistence/unit-of-work.js';
-import type { PlanFlowRepository } from '../../planning/ports/plan-flow-repository.js';
-import type { ScheduleRepository } from '../../planning/ports/schedule-repository.js';
-
-type CleanupInput = Readonly<{
-  courseId: string;
-  retainedLessonIds: readonly string[];
-  knownCourseLessonIds: readonly string[];
-  commandId: string;
-  occurredAt: string;
-}>;
+import type { PlanningOutlineRevisionParticipant } from '../interface.js';
+import type { PlanFlowRepository } from '../ports/plan-flow-repository.js';
+import type { ScheduleRepository } from '../ports/schedule-repository.js';
 
 type ScheduleCancelledEvent = Readonly<{
   scheduleItemId: string;
@@ -18,27 +11,18 @@ type ScheduleCancelledEvent = Readonly<{
   occurredAt: string;
 }>;
 
-export interface OutlineRevisionLiveCleanup {
-  retire(input: CleanupInput, tx: TransactionContext): Promise<void>;
-}
+const unconfirmedPlanFlowStates = new Set(['draft', 'previewing', 'preview-ready', 'confirming']);
 
-const unconfirmedPlanFlowStates = new Set([
-  'draft',
-  'previewing',
-  'preview-ready',
-  'confirming',
-]);
-
-export function createOutlineRevisionLiveCleanup(options: {
+export function createOutlineRevisionCleanup(options: {
   readonly schedules: ScheduleRepository;
   readonly planFlows: PlanFlowRepository;
   readonly recordScheduleCancelled?: (
     event: ScheduleCancelledEvent,
     tx: TransactionContext,
   ) => Promise<void>;
-}): OutlineRevisionLiveCleanup {
+}): PlanningOutlineRevisionParticipant {
   return {
-    async retire(input, tx) {
+    async retireOutlineReferences(input, tx) {
       const retained = new Set(input.retainedLessonIds);
       const staleCourseLessons = new Set(
         input.knownCourseLessonIds.filter((lessonId) => !retained.has(lessonId)),
