@@ -11,6 +11,7 @@ import { packPortraitEvidence } from '../../modules/learning-portrait/implementa
 import { createPortraitModule } from '../../modules/learning-portrait/implementation/portrait-module.js';
 import { createAiProfileEvidenceExtractor } from '../../modules/profile-evidence/implementation/ai-profile-evidence-extractor.js';
 import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/implementation/profile-evidence-aggregator.js';
+import { purgeDeprecatedReasoningEvidence } from '../../modules/profile-evidence/implementation/deprecated-reasoning-evidence-migration.js';
 import { createProfileEvidencePipeline } from '../../modules/profile-evidence/implementation/pipeline.js';
 import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
 import { createReasoningEvidenceProjector } from '../../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
@@ -210,6 +211,18 @@ export function createLocalProfileRuntime(
 
   async function recoverReasoningAnalysis(): Promise<void> {
     try {
+      const referencedEvidenceIds = new Set<string>();
+      for await (const manifest of portraitRepository.listManifests()) {
+        for (const evidenceId of manifest.includedEvidenceIds) {
+          referencedEvidenceIds.add(evidenceId);
+        }
+      }
+      await purgeDeprecatedReasoningEvidence({
+        evidenceRepository: evidenceRepositories.evidence,
+        referencedEvidenceIds,
+        unitOfWork: input.unitOfWork,
+        nextTransactionId: () => `tx_reasoning_evidence_migration_${randomUUID()}`,
+      });
       const analysis = await refreshAndProjectReasoningAnalysis();
       if (analysis !== undefined) projectionStatus = 'ready';
     } catch {

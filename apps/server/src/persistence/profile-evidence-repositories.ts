@@ -102,6 +102,14 @@ export function createLocalFileEvidenceRepositories(dataRoot: DataRoot): Evidenc
         document('candidate-evidence', candidate.evidenceId, stored),
       );
     },
+    async delete(tx, evidenceId, expectedVersion) {
+      const current = await evidence.get(evidenceId);
+      if (current === undefined) return;
+      if (current.resourceVersion !== expectedVersion) {
+        throw new RepositoryVersionConflictError(current.resourceVersion);
+      }
+      await tx.deleteOnCommit(relativePath('candidates', evidenceId));
+    },
     async *list() {
       for (const id of await listIds(evidenceRoot)) {
         const candidate = await evidence.get(id);

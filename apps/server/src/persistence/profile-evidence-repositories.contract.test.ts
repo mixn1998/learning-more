@@ -137,6 +137,27 @@ function repositoryContract(
         resourceVersion: 2,
       });
     });
+
+    it('deletes evidence with optimistic concurrency and treats missing evidence as a no-op', async () => {
+      const { repositories, unitOfWork } = await fixture();
+      await unitOfWork.execute({ transactionId: 'tx_evidence_seed' }, (tx) =>
+        repositories.evidence.save(tx, evidence('evidence_delete'), 0),
+      );
+      await expect(
+        unitOfWork.execute({ transactionId: 'tx_evidence_delete_stale' }, (tx) =>
+          repositories.evidence.delete(tx, 'evidence_delete', 0),
+        ),
+      ).rejects.toBeInstanceOf(Error);
+      await unitOfWork.execute({ transactionId: 'tx_evidence_delete' }, (tx) =>
+        repositories.evidence.delete(tx, 'evidence_delete', 1),
+      );
+      await expect(repositories.evidence.get('evidence_delete')).resolves.toBeUndefined();
+      await expect(
+        unitOfWork.execute({ transactionId: 'tx_evidence_delete_again' }, (tx) =>
+          repositories.evidence.delete(tx, 'evidence_delete', 1),
+        ),
+      ).resolves.toBeUndefined();
+    });
   });
 }
 

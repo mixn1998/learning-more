@@ -15,6 +15,7 @@ export interface CandidateEvidenceRepository {
   get(evidenceId: string): Promise<CandidateEvidence | undefined>;
   findByDedupKey(dedupKey: string): Promise<CandidateEvidence | undefined>;
   save(tx: TransactionContext, evidence: CandidateEvidence, expectedVersion: number): Promise<void>;
+  delete(tx: TransactionContext, evidenceId: string, expectedVersion: number): Promise<void>;
   list(): AsyncIterable<CandidateEvidence>;
 }
 
@@ -65,6 +66,14 @@ export function createInMemoryEvidenceRepositories(): EvidenceRepositories {
         candidate.evidenceId,
         structuredClone({ ...candidate, resourceVersion: expectedVersion + 1 }),
       );
+    },
+    async delete(_tx, evidenceId, expectedVersion) {
+      const current = evidenceRecords.get(evidenceId);
+      if (current === undefined) return;
+      if (current.resourceVersion !== expectedVersion) {
+        throw new RepositoryVersionConflictError(current.resourceVersion);
+      }
+      evidenceRecords.delete(evidenceId);
     },
     async *list() {
       for (const id of [...evidenceRecords.keys()].sort()) {
