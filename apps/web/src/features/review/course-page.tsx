@@ -684,6 +684,7 @@ export function CoursePage(props: {
       title: item.title,
       status: item.status,
       courseMode: item.courseMode,
+      ...(item.disciplineTag === undefined ? {} : { disciplineTag: item.disciplineTag }),
     }),
   );
   const abandonedLessonIds = course.lessonIds.filter(

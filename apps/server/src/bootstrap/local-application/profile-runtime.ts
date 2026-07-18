@@ -492,7 +492,6 @@ export function createLocalProfileRuntime(
   const profileRoutes: ProfileRouteOptions = {
     getGlobalProfile: globalProfile,
     async listEvidence() {
-      await syncProfileEvidence();
       const evidence = [];
       for await (const candidate of evidenceRepositories.evidence.list()) evidence.push(candidate);
       return evidence;

@@ -15,6 +15,7 @@ import {
   projectOutlineMarkdown,
   resolveCourseIntroduction,
 } from './outline-markdown-projection.js';
+import { CourseCatalogFilters, filterCourseCatalog } from './course-catalog-filters.js';
 import { OutlineView, type CourseLessonRuntimeState } from './outline-view.js';
 import { OutlineVersionHistory } from './outline-version-history.js';
 
@@ -25,6 +26,7 @@ export type CourseDirectoryItem = Readonly<{
   title: string;
   status: 'active' | 'closed';
   courseMode: CourseMode;
+  disciplineTag?: string | undefined;
   progressLabel?: string | undefined;
 }>;
 
@@ -44,6 +46,8 @@ export function FormalCourseView(props: {
   const { course } = props;
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [chooserDiscipline, setChooserDiscipline] = useState('');
+  const [chooserMode, setChooserMode] = useState<CourseMode | ''>('');
   const [selectedVersion, setSelectedVersion] = useState<CourseOutlineVersionView>();
   const [versionError, setVersionError] = useState<string>();
   const mode = courseModeDefinition(course.courseMode);
@@ -76,6 +80,10 @@ export function FormalCourseView(props: {
   const otherCourses = (props.availableCourses ?? []).filter(
     (item) => item.courseId !== course.courseId,
   );
+  const visibleOtherCourses = filterCourseCatalog(otherCourses, {
+    discipline: chooserDiscipline,
+    courseMode: chooserMode,
+  });
   const progressPercent = lessons.length === 0 ? 0 : Math.round((completed / lessons.length) * 100);
   const versionRows = useMemo(() => course.outlineVersions ?? [], [course.outlineVersions]);
 
@@ -238,8 +246,15 @@ export function FormalCourseView(props: {
         open={chooserOpen}
         title="切换课程"
       >
+        <CourseCatalogFilters
+          courseMode={chooserMode}
+          courses={otherCourses}
+          discipline={chooserDiscipline}
+          onCourseModeChange={setChooserMode}
+          onDisciplineChange={setChooserDiscipline}
+        />
         <div className="course-choice-list">
-          {otherCourses.map((item) => (
+          {visibleOtherCourses.map((item) => (
             <button
               key={item.courseId}
               className="course-choice"
@@ -259,6 +274,9 @@ export function FormalCourseView(props: {
               <em>{item.status === 'closed' ? '已关闭' : '查看课程'}</em>
             </button>
           ))}
+          {otherCourses.length > 0 && visibleOtherCourses.length === 0 ? (
+            <p className="course-choice-empty">没有符合当前筛选条件的课程。</p>
+          ) : null}
         </div>
       </Dialog>
     </main>

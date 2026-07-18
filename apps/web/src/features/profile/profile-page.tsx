@@ -13,6 +13,17 @@ const insufficientPortraitTitle = '学习画像：证据尚不足';
 const insufficientPortraitSummary =
   '当前冻结的证据尚不足以形成可独立验证的学习观察，因此暂不生成稳定结论。后续学习、复盘或补充对话积累到足够的可追溯证据后，画像会继续更新。';
 
+type PortraitSnapshot = Readonly<{
+  evidence: readonly PortraitEvidence[];
+  portrait: PortraitCurrent | undefined;
+}>;
+
+const portraitSnapshotCache = new WeakMap<ProfileClient, PortraitSnapshot>();
+
+function portraitVersionId(portrait: PortraitCurrent | undefined): string | undefined {
+  return portrait !== undefined && 'versionId' in portrait ? portrait.versionId : undefined;
+}
+
 export function ProfilePage(props: {
   readonly client?: ProfileClient;
   readonly embedded?: boolean;
@@ -22,35 +33,66 @@ export function ProfilePage(props: {
   const navigate = useNavigate();
   const commands = useCommandAttempts();
   useAppShellBrandSubtitle('学习画像');
+  const initialSnapshot = portraitSnapshotCache.get(api);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [evidence, setEvidence] = useState<readonly PortraitEvidence[]>([]);
-  const [portrait, setPortrait] = useState<PortraitCurrent>();
+  const [evidence, setEvidence] = useState<readonly PortraitEvidence[]>(
+    initialSnapshot?.evidence ?? [],
+  );
+  const [portrait, setPortrait] = useState<PortraitCurrent | undefined>(initialSnapshot?.portrait);
   const [pendingVersion, setPendingVersion] = useState<PortraitVersion>();
-  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(
+    initialSnapshot === undefined ? 'loading' : 'ready',
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string>();
 
   useEffect(() => {
     let current = true;
-    setLoadState('loading');
-    void Promise.all([api.getEvidence(), api.getPortrait()]).then(
-      ([evidenceView, portraitView]) => {
-        if (!current) return;
-        setEvidence(evidenceView);
-        setPortrait(portraitView);
-        if (
-          portraitView !== undefined &&
-          'versionId' in portraitView &&
-          (portraitView.state === 'preparing' || portraitView.state === 'generating')
-        ) {
-          setPendingVersion(portraitView);
-        }
-        setLoadState('ready');
-      },
-      () => {
-        if (current) setLoadState('error');
-      },
-    );
+    const cached = portraitSnapshotCache.get(api);
+    if (cached === undefined) {
+      setLoadState('loading');
+      void Promise.all([api.getEvidence(), api.getPortrait()]).then(
+        ([evidenceView, portraitView]) => {
+          if (!current) return;
+          portraitSnapshotCache.set(api, { evidence: evidenceView, portrait: portraitView });
+          setEvidence(evidenceView);
+          setPortrait(portraitView);
+          if (
+            portraitView !== undefined &&
+            'versionId' in portraitView &&
+            (portraitView.state === 'preparing' || portraitView.state === 'generating')
+          ) {
+            setPendingVersion(portraitView);
+          }
+          setLoadState('ready');
+        },
+        () => {
+          if (current) setLoadState('error');
+        },
+      );
+    } else {
+      setLoadState('ready');
+      void api.getPortrait().then(
+        async (portraitView) => {
+          if (!current) return;
+          if (
+            portraitView !== undefined &&
+            'versionId' in portraitView &&
+            (portraitView.state === 'preparing' || portraitView.state === 'generating')
+          ) {
+            setPendingVersion(portraitView);
+            return;
+          }
+          if (portraitVersionId(portraitView) === portraitVersionId(cached.portrait)) return;
+          const evidenceView = await api.getEvidence();
+          if (!current) return;
+          portraitSnapshotCache.set(api, { evidence: evidenceView, portrait: portraitView });
+          setEvidence(evidenceView);
+          setPortrait(portraitView);
+        },
+        () => undefined,
+      );
+    }
     return () => {
       current = false;
     };
@@ -70,6 +112,10 @@ export function ProfilePage(props: {
           return;
         }
         if (version.state === 'completed') {
+          const evidenceView = await api.getEvidence();
+          if (!current) return;
+          portraitSnapshotCache.set(api, { evidence: evidenceView, portrait: version });
+          setEvidence(evidenceView);
           setPortrait(version);
           setPendingVersion(undefined);
           return;
@@ -109,6 +155,9 @@ export function ProfilePage(props: {
       const version = await api.refresh(undefined, commands.attemptFor(commandKey));
       commands.complete(commandKey);
       if (version.state === 'completed') {
+        const evidenceView = await api.getEvidence();
+        portraitSnapshotCache.set(api, { evidence: evidenceView, portrait: version });
+        setEvidence(evidenceView);
         setPortrait(version);
       } else if (version.state === 'failed') {
         setPortrait((current) =>
@@ -151,13 +200,11 @@ export function ProfilePage(props: {
       <PortraitWorkspace
         embedded={props.embedded}
         insights={[]}
-        onRefresh={() => setLoadAttempt((value) => value + 1)}
         onSectionChange={changeSection}
-        pendingMessage="正在同步画像与复合证据链。"
-        refreshing
-        summary="正在读取当前证据窗口，请稍候。"
+        pendingMessage="正在读取已生成的画像静态快照。"
+        summary="正在读取最近一次成功生成的画像，请稍候。"
         title="正在加载学习画像"
-        updatedLabel="同步中"
+        updatedLabel="读取中"
       />
     );
   }
@@ -169,6 +216,7 @@ export function ProfilePage(props: {
         insights={[]}
         onRefresh={() => setLoadAttempt((value) => value + 1)}
         onSectionChange={changeSection}
+        refreshLabel="重新读取"
         summary="画像或证据接口暂时无法读取，当前页面没有改写任何学习事实。"
         title="学习画像暂不可用"
         updatedLabel="读取失败"

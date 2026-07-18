@@ -243,11 +243,12 @@ describe('home page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '查看草稿' }));
     expect(screen.getByRole('region', { name: '已保存草稿' })).toHaveTextContent('已保存草稿');
-    expect(screen.queryByRole('region', { name: '正式课程' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '课程列表' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '返回主页' }));
     fireEvent.click(screen.getByRole('button', { name: '继续学习' }));
-    expect(screen.getByRole('region', { name: '正式课程' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '课程列表' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '正式课程' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: '已保存草稿' })).not.toBeInTheDocument();
   });
 
@@ -264,7 +265,41 @@ describe('home page', () => {
     expect(screen.getByRole('region', { name: '已保存草稿' })).toHaveTextContent('草稿主题');
     fireEvent.click(screen.getByRole('button', { name: '返回主页' }));
     fireEvent.click(screen.getByRole('button', { name: '继续学习' }));
-    expect(screen.getByRole('region', { name: '正式课程' })).toHaveTextContent('正式主题');
+    expect(screen.getByRole('region', { name: '课程列表' })).toHaveTextContent('正式主题');
+  });
+
+  it('filters selectable courses by normalized discipline and source mode', () => {
+    render(
+      <HomePage
+        client={client()}
+        courses={[
+          {
+            courseId: 'course_math',
+            title: '微积分',
+            courseMode: 'standard',
+            disciplineTag: '数学:单变量微积分',
+          },
+          {
+            courseId: 'course_business',
+            title: '商业决策',
+            courseMode: 'case_study',
+            disciplineTag: 'AI 商业分析与创业',
+          },
+        ]}
+        onNavigate={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '继续学习' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '学科/领域' }), {
+      target: { value: '商业' },
+    });
+    expect(screen.getByText('商业决策')).toBeVisible();
+    expect(screen.queryByText('微积分')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '来源模式' }), {
+      target: { value: 'standard' },
+    });
+    expect(screen.getByText('没有符合当前筛选条件的课程。')).toBeVisible();
   });
 
   it('shows action-oriented course cards with real progress and recent learning', () => {

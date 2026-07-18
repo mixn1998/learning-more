@@ -12,6 +12,7 @@ import type { AuthoringStartIntent } from '../../state/authoring-start-intent.js
 import { getPageInstanceId } from '../../state/page-instance.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
 import { CourseModeSelector } from '../course-authoring/course-mode-selector.js';
+import { CourseCatalogFilters, filterCourseCatalog } from '../course/course-catalog-filters.js';
 import { DeleteDraftDialog } from '../course-authoring/delete-draft-dialog.js';
 import { buildCourseChoiceModel, type HomeLessonCandidate } from './course-choice-model.js';
 
@@ -30,6 +31,7 @@ type HomeCourse = Readonly<{
   title: string;
   status?: 'active' | 'closed' | undefined;
   courseMode?: CourseMode | undefined;
+  disciplineTag?: string | undefined;
 }>;
 
 type HomeScheduleItem = Readonly<{
@@ -187,6 +189,8 @@ export function HomePage(props: {
   const [weekAnchor, setWeekAnchor] = useState(() => startOfWeek(now));
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [chooserDiscipline, setChooserDiscipline] = useState('');
+  const [chooserMode, setChooserMode] = useState<CourseMode | ''>('');
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [draftToDelete, setDraftToDelete] = useState<HomeDraft>();
   const [deletedDraftIds, setDeletedDraftIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -199,6 +203,10 @@ export function HomePage(props: {
     (draft) => !deletedDraftIds.has(draft.outlineSessionId),
   );
   const courses = props.courses ?? [];
+  const visibleCourses = filterCourseCatalog(courses, {
+    discipline: chooserDiscipline,
+    courseMode: chooserMode,
+  });
   const schedule = [...(props.schedule ?? [])].sort((left, right) =>
     left.startAt.localeCompare(right.startAt),
   );
@@ -446,12 +454,20 @@ export function HomePage(props: {
         title="选择课程"
         onClose={() => setChooserOpen(false)}
       >
-        <section aria-label="正式课程">
-          <h3>正式课程</h3>
+        <section aria-label="课程列表">
+          <CourseCatalogFilters
+            courseMode={chooserMode}
+            courses={courses}
+            discipline={chooserDiscipline}
+            onCourseModeChange={setChooserMode}
+            onDisciplineChange={setChooserDiscipline}
+          />
           {courses.length === 0 ? (
-            <p>尚未创建正式课程</p>
+            <p>尚未创建课程</p>
+          ) : visibleCourses.length === 0 ? (
+            <p>没有符合当前筛选条件的课程。</p>
           ) : (
-            courses.map((course) => {
+            visibleCourses.map((course) => {
               const model = buildCourseChoiceModel(course.courseId, lessons);
               const target = model.nextLesson;
               const alternatives = lessons

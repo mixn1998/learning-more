@@ -209,6 +209,36 @@ describe('HistoryPage', () => {
     expect(screen.getByTestId('current-path')).toHaveTextContent('/history');
   });
 
+  it('opens the portrait snapshot without loading unrelated history projections', async () => {
+    const historyApi = client();
+    const portraitApi = portraitClient();
+    render(
+      <MemoryRouter initialEntries={['/history?tab=portrait']}>
+        <HistoryPage client={historyApi} portraitClient={portraitApi} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: '学习画像' })).toBeVisible();
+    expect(historyApi.getDashboard).not.toHaveBeenCalled();
+    expect(historyApi.getHistory).not.toHaveBeenCalled();
+    expect(historyApi.getStatistics).not.toHaveBeenCalled();
+    expect(historyApi.getCalendar).not.toHaveBeenCalled();
+    expect(historyApi.getWeeklyReport).not.toHaveBeenCalled();
+  });
+
+  it('renders statistics as soon as core metrics arrive while details continue in background', async () => {
+    const api = client();
+    vi.mocked(api.getDashboard).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(api.getHistory).mockReturnValue(new Promise(() => undefined));
+
+    renderHistory(api);
+
+    expect(await screen.findByRole('heading', { level: 1, name: '历史统计' })).toBeVisible();
+    expect(screen.getByText('0.2 小时')).toBeVisible();
+    expect(api.getStatistics).toHaveBeenCalledTimes(1);
+    expect(api.getWeeklyReport).not.toHaveBeenCalled();
+  });
+
   it('[EQ-HIS-05] shows stale/asOf context and switches dates without retaining old results', async () => {
     renderHistory(client());
     expect(screen.getByText('正在加载历史')).toBeInTheDocument();
@@ -217,7 +247,7 @@ describe('HistoryPage', () => {
     expect(screen.getByText('0.2 小时')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: '学习日历' }));
-    fireEvent.click(screen.getByRole('button', { name: /2026-07-03/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /2026-07-03/ }));
     expect(screen.getByRole('button', { name: /lesson_01/ })).toBeInTheDocument();
     expect(screen.queryByText(/course_01/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /2026-07-05/ }));
@@ -229,7 +259,7 @@ describe('HistoryPage', () => {
     renderHistory(client());
     await screen.findByText('数据截至：event_f2');
     fireEvent.click(screen.getByRole('tab', { name: '学习日历' }));
-    fireEvent.click(screen.getByRole('button', { name: /2026-07-03/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /2026-07-03/ }));
 
     expect(screen.getByRole('link', { name: '打开课程' })).toHaveAttribute(
       'href',

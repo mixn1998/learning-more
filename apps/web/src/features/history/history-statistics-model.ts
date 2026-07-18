@@ -129,8 +129,13 @@ export function buildStatisticsSnapshot(input: {
       .map((entry) => courseIdForEntry(entry, lessonCourse))
       .filter((value): value is string => value !== undefined),
   );
-  const totalSeconds = selectedDays.reduce((sum, day) => sum + day.actualSeconds, 0);
-  const completionCount = selectedDays.reduce((sum, day) => sum + day.completedLessonIds.length, 0);
+  const aggregateFallback = selectedDays.length === 0 && input.statistics.lessonCompletedCount > 0;
+  const totalSeconds = aggregateFallback
+    ? input.statistics.totalActualSeconds
+    : selectedDays.reduce((sum, day) => sum + day.actualSeconds, 0);
+  const completionCount = aggregateFallback
+    ? input.statistics.lessonCompletedCount
+    : selectedDays.reduce((sum, day) => sum + day.completedLessonIds.length, 0);
 
   const end = dateFromLocal(selectedBounds.end);
   const start = new Date(end.getTime() - 83 * DAY_MS);
@@ -181,9 +186,10 @@ export function buildStatisticsSnapshot(input: {
     completedLessons: completionCount,
     closedCourses:
       input.range === 'all' ? input.statistics.courseClosedCount : closedCourseIds.size,
-    activeDays: selectedDays.filter(
-      (day) => day.actualSeconds > 0 || day.completedLessonIds.length > 0,
-    ).length,
+    activeDays: aggregateFallback
+      ? input.statistics.activeDayCount
+      : selectedDays.filter((day) => day.actualSeconds > 0 || day.completedLessonIds.length > 0)
+          .length,
     courseCount: completedCourseIds.size,
     abandonedCourseCount: abandonedCourseIds.size,
     currentStreakDays: input.statistics.currentStreakDays,

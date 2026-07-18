@@ -149,6 +149,12 @@ export function HistoryPage(props: {
     let current = true;
     const now = localDate(new Date().toISOString());
     const year = now.slice(0, 4);
+    if (section === 'portrait' && !showingWeekly) {
+      setLoadState('ready');
+      return () => {
+        current = false;
+      };
+    }
     setLoadState('loading');
     setErrors({});
     setPageError(undefined);
@@ -178,17 +184,16 @@ export function HistoryPage(props: {
       );
       return { history, calendars } as const;
     };
-    void Promise.allSettled([
-      api.getDashboard(),
-      loadHistoryAndCalendars(),
-      api.getStatistics(),
-      api.getWeeklyReport(reportWindow.localWeekKey),
-    ]).then(([home, historyBundle, stats, report]) => {
+    const applyCatalog = (home: PromiseSettledResult<HomeDashboardView>) => {
       if (!current) return;
-      const nextErrors: LoadErrors = {};
-      const statuses: Array<'current' | 'stale' | 'rebuilding'> = [];
       if (home.status === 'fulfilled') setDashboard(home.value);
-      else nextErrors.catalog = errorMessage(home.reason);
+      else setErrors((value) => ({ ...value, catalog: errorMessage(home.reason) }));
+    };
+    const applyHistoryBundle = (
+      historyBundle: PromiseSettledResult<Awaited<ReturnType<typeof loadHistoryAndCalendars>>>,
+    ) => {
+      if (!current) return;
+      const statuses: Array<'current' | 'stale' | 'rebuilding'> = [];
       if (historyBundle.status === 'fulfilled') {
         const { history, calendars } = historyBundle.value;
         setEntries(history.first.entries);
@@ -203,29 +208,63 @@ export function HistoryPage(props: {
             statuses.push(calendar.value.freshness);
             setAsOf((value) => value ?? calendar.value.asOfEventId);
           } else {
-            nextErrors.calendar = errorMessage(calendar.reason);
+            setErrors((value) => ({ ...value, calendar: errorMessage(calendar.reason) }));
           }
         }
         setDays(calendarDays);
       } else {
-        nextErrors.history = errorMessage(historyBundle.reason);
-        nextErrors.calendar = errorMessage(historyBundle.reason);
+        const message = errorMessage(historyBundle.reason);
+        setErrors((value) => ({ ...value, history: message, calendar: message }));
       }
+      setFreshness((existing) => statuses.find((status) => status !== 'current') ?? existing);
+    };
+    const applyStatistics = (stats: PromiseSettledResult<StatisticsResponse>) => {
+      if (!current) return;
       if (stats.status === 'fulfilled') {
         setStatistics(stats.value);
         setAsOf((value) => value ?? stats.value.asOfEventId);
-        statuses.push(stats.value.freshness);
-      } else nextErrors.statistics = errorMessage(stats.reason);
-      if (report.status === 'fulfilled') setWeeklyReport(report.value);
-      else nextErrors.weekly = errorMessage(report.reason);
-      setFreshness(statuses.find((status) => status !== 'current') ?? 'current');
-      setErrors(nextErrors);
-      setLoadState('ready');
-    });
+        setFreshness(stats.value.freshness);
+      } else {
+        setErrors((value) => ({ ...value, statistics: errorMessage(stats.reason) }));
+      }
+    };
+
+    if (showingWeekly) {
+      void Promise.allSettled([
+        api.getDashboard(),
+        api.getWeeklyReport(reportWindow.localWeekKey),
+      ]).then(([home, report]) => {
+        if (!current) return;
+        applyCatalog(home);
+        if (report.status === 'fulfilled') setWeeklyReport(report.value);
+        else setErrors((value) => ({ ...value, weekly: errorMessage(report.reason) }));
+        setLoadState('ready');
+      });
+    } else if (section === 'calendar') {
+      void Promise.allSettled([api.getDashboard(), loadHistoryAndCalendars()]).then(
+        ([home, historyBundle]) => {
+          if (!current) return;
+          applyCatalog(home);
+          applyHistoryBundle(historyBundle);
+          setLoadState('ready');
+        },
+      );
+    } else {
+      const details = Promise.allSettled([api.getDashboard(), loadHistoryAndCalendars()]);
+      void details.then(([home, historyBundle]) => {
+        applyCatalog(home);
+        applyHistoryBundle(historyBundle);
+      });
+      void Promise.allSettled([api.getStatistics()]).then(([stats]) => {
+        if (!current) return;
+        applyStatistics(stats);
+        setLoadState('ready');
+      });
+    }
     return () => {
       current = false;
     };
-  }, [api, loadAttempt, reportWindow.localWeekKey]);
+  }, [api, loadAttempt, reportWindow.localWeekKey, section, showingWeekly]);
 
   useEffect(() => {
     const now = new Date();
@@ -381,6 +420,10 @@ export function HistoryPage(props: {
     );
   };
 
+  if (section === 'portrait' && !showingWeekly) {
+    return <ProfilePage client={portraitApi} onSectionChange={changeHistorySection} />;
+  }
+
   if (loadState === 'loading') {
     return (
       <Page className="history-page">
@@ -467,10 +510,6 @@ export function HistoryPage(props: {
         <CourseSummaryDrawer {...summaryDrawer} onClose={() => setSummaryDrawer({ open: false })} />
       </>
     );
-  }
-
-  if (section === 'portrait') {
-    return <ProfilePage client={portraitApi} onSectionChange={changeHistorySection} />;
   }
 
   return (

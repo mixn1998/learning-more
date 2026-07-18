@@ -307,6 +307,14 @@ describe('FormalCourseView outline history', () => {
             title: '微积分',
             status: 'active',
             courseMode: 'standard',
+            disciplineTag: '数学:单变量微积分',
+          },
+          {
+            courseId: 'course_business',
+            title: '商业决策',
+            status: 'active',
+            courseMode: 'case_study',
+            disciplineTag: 'AI 商业分析与创业',
           },
         ]}
         course={{
@@ -331,6 +339,10 @@ describe('FormalCourseView outline history', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '切换课程' }));
     expect(screen.getByRole('dialog', { name: '切换课程' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '学科/领域' }), {
+      target: { value: '数学' },
+    });
+    expect(screen.queryByText('商业决策')).not.toBeInTheDocument();
     const targetCourse = screen.getByText('查看课程').closest('button');
     if (targetCourse === null) throw new Error('missing course switch button');
     fireEvent.click(targetCourse);

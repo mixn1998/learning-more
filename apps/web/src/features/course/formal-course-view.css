@@ -556,6 +556,12 @@
   gap: 9px;
 }
 
+.course-choice-empty {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .outline-version-item,
 .course-choice {
   display: grid;

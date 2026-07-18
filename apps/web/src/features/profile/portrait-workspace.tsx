@@ -52,7 +52,8 @@ export function PortraitWorkspace(props: {
   readonly refreshing?: boolean;
   readonly pendingMessage?: string;
   readonly errorMessage?: string;
-  readonly onRefresh: () => void;
+  readonly onRefresh?: (() => void) | undefined;
+  readonly refreshLabel?: string | undefined;
   readonly onSectionChange: (section: 'statistics' | 'calendar' | 'portrait') => void;
   readonly embedded?: boolean | undefined;
 }) {
@@ -102,15 +103,17 @@ export function PortraitWorkspace(props: {
           <button className="lm-btn" onClick={openSettings} type="button">
             画像设置
           </button>
-          <button
-            aria-busy={props.refreshing || undefined}
-            className="lm-btn primary"
-            disabled={props.refreshing}
-            onClick={props.onRefresh}
-            type="button"
-          >
-            {props.refreshing ? '正在刷新…' : '刷新画像'}
-          </button>
+          {props.onRefresh === undefined ? null : (
+            <button
+              aria-busy={props.refreshing || undefined}
+              className="lm-btn primary"
+              disabled={props.refreshing}
+              onClick={props.onRefresh}
+              type="button"
+            >
+              {props.refreshing ? '正在刷新…' : (props.refreshLabel ?? '刷新画像')}
+            </button>
+          )}
         </div>
       </section>
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -103,6 +103,27 @@ describe('ProfilePage', () => {
 
     expect(await screen.findByRole('heading', { name: '刷新后的有边界观察' })).toBeVisible();
     expect(api.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the static snapshot across tab remounts without refreshing or reloading evidence', async () => {
+    const api = client();
+    const first = render(
+      <MemoryRouter initialEntries={['/history?tab=portrait']}>
+        <ProfilePage client={api} />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { name: '从行为证据修正判断' });
+    first.unmount();
+
+    render(
+      <MemoryRouter initialEntries={['/history?tab=portrait']}>
+        <ProfilePage client={api} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('heading', { name: '从行为证据修正判断' })).toBeVisible();
+    await waitFor(() => expect(api.getPortrait).toHaveBeenCalledTimes(2));
+    expect(api.getEvidence).toHaveBeenCalledTimes(1);
+    expect(api.refresh).not.toHaveBeenCalled();
   });
 
   it('localizes a completed zero-insight portrait instead of replaying legacy English fallback copy', async () => {
