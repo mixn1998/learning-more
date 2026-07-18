@@ -40,6 +40,7 @@ function setup(
   const courses = createInMemoryCourseCreationRepositories();
   let id = 0;
   let generationCalls = 0;
+  let alignmentCalls = 0;
   const profileCheckpoints: unknown[] = [];
   const facade = createCourseAuthoringFacade({
     authoring,
@@ -50,7 +51,10 @@ function setup(
         `第 ${completedAssessmentRounds + 1} 轮澄清：请继续说明目标与边界。`,
     },
     candidateAlignmentPlanner: {
-      plan: async () => ({ action: 'patch', rationale: 'contained change', targetModuleIds: [] }),
+      plan: async () => {
+        alignmentCalls += 1;
+        return { action: 'patch', rationale: 'contained change', targetModuleIds: [] };
+      },
     },
     candidateGeneration: {
       recover: async () => undefined,
@@ -70,10 +74,100 @@ function setup(
       ? {}
       : { outlineSessionDraftStore: options.outlineSessionDraftStore }),
   });
-  return { authoring, courses, facade, generationCalls: () => generationCalls, profileCheckpoints };
+  return {
+    authoring,
+    courses,
+    facade,
+    generationCalls: () => generationCalls,
+    alignmentCalls: () => alignmentCalls,
+    profileCheckpoints,
+  };
 }
 
 describe('CourseAuthoring public facade', () => {
+  it('keeps formal-course adjustment messages reply-only until the user requests a candidate', async () => {
+    const { authoring, facade, generationCalls, alignmentCalls } = setup();
+    await authoring.candidateVersions.save(
+      tx,
+      {
+        id: 'candidate_v1',
+        outlineSessionId: 'original_session',
+        generationTaskId: 'task_v1',
+        draftArtifactRef: 'draft_v1',
+        candidate: {
+          outlineMarkdown: '# Probability\n\n## Evidence\n### Bayesian update',
+          courseGoals: ['Reason with evidence'],
+          disciplineTag: 'Mathematics',
+          topicTags: ['Probability'],
+          modules: [{ id: 'module_evidence', title: 'Evidence', lessonIds: ['lesson_bayes'] }],
+          lessons: [
+            {
+              id: 'lesson_bayes',
+              title: 'Bayesian update',
+              objective: 'Update a belief from evidence',
+              coreKnowledgePoints: ['Prior', 'Likelihood', 'Posterior'],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 30,
+              sourceRefs: ['source_topic'],
+            },
+          ],
+        },
+        createdAt: context.requestedAt,
+        resourceVersion: 0,
+      },
+      0,
+    );
+    await authoring.outlineSessions.save(
+      tx,
+      {
+        session: {
+          outlineSessionId: 'adjustment_session',
+          courseMode: 'standard',
+          topic: 'Probability',
+          state: 'candidate-ready',
+          messageIds: [],
+          completedAssessmentRounds: 3,
+          candidateVersionIds: ['candidate_v1'],
+          latestCandidateVersionId: 'candidate_v1',
+          adjustmentCourseId: 'course_1',
+        },
+        resourceVersion: 0,
+        candidateCommandReceipts: {},
+        messages: [],
+      },
+      0,
+    );
+    const original = await authoring.outlineSessions.get('adjustment_session');
+    if (original === undefined) throw new Error('missing adjustment session');
+
+    const appended = await facade.execute(
+      {
+        type: 'AppendOutlineSessionMessage',
+        outlineSessionId: 'adjustment_session',
+        content: 'Shorten the evidence module.',
+      },
+      { ...context, commandId: 'append_adjustment', expectedVersion: original.resourceVersion },
+    );
+
+    expect(appended.value).toMatchObject({ kind: 'message', state: 'candidate-ready' });
+    expect(alignmentCalls()).toBe(0);
+    expect(generationCalls()).toBe(0);
+
+    const replied = await authoring.outlineSessions.get('adjustment_session');
+    if (replied === undefined) throw new Error('missing replied adjustment session');
+    await facade.execute(
+      { type: 'RequestCandidateGeneration', outlineSessionId: 'adjustment_session' },
+      {
+        ...context,
+        commandId: 'generate_adjustment',
+        expectedVersion: replied.resourceVersion,
+      },
+    );
+
+    expect(alignmentCalls()).toBe(1);
+    expect(generationCalls()).toBe(1);
+  });
+
   it('creates an adjustment session from the current saved outline candidate', async () => {
     const { authoring, courses, facade } = setup();
     await authoring.candidateVersions.save(

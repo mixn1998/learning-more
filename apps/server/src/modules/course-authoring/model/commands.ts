@@ -27,6 +27,11 @@ export type OutlineSessionCommand =
       targetModuleIds: readonly string[];
     }>
   | Readonly<{ type: 'failAlignmentTurn'; userMessageId: string }>
+  | Readonly<{
+      type: 'planCandidateGeneration';
+      action: 'regenerate' | 'patch';
+      targetModuleIds: readonly string[];
+    }>
   | Readonly<{ type: 'requestCandidate'; generationTaskId: string }>
   | Readonly<{
       type: 'candidateGenerated';

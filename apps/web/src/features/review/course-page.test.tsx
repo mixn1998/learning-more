@@ -364,7 +364,12 @@ describe('CoursePage', () => {
     const appendMessage = vi.fn().mockResolvedValue({
       outlineSessionId: 'outline_session_01',
       resourceVersion: 2,
-      state: 'generating-candidates',
+      state: 'candidate-ready',
+    });
+    const requestCandidateGeneration = vi.fn().mockResolvedValue({
+      taskId: 'task_revision_01',
+      resourceVersion: 4,
+      state: 'running',
     });
     const getOutlineSession = vi
       .fn()
@@ -378,9 +383,8 @@ describe('CoursePage', () => {
           {
             messageId: 'assistant_alignment',
             role: 'assistant',
-            content: 'I will regenerate the outline around the evidence loop.',
+            content: 'I understand the requested evidence-loop adjustment.',
             status: 'complete',
-            alignmentAction: 'regenerate',
             createdAt: '2026-07-14T08:00:30.000Z',
           },
         ],
@@ -426,6 +430,8 @@ describe('CoursePage', () => {
       }),
       createOutlineAdjustmentSession,
       appendMessage,
+      requestCandidateGeneration,
+      cancelCandidateGeneration: vi.fn(),
       getOutlineSession,
       reviseOutline,
     } as unknown as CourseAuthoringClient;
@@ -458,9 +464,21 @@ describe('CoursePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '发送调整要求' }));
 
     expect(
+      await screen.findByText('I understand the requested evidence-loop adjustment.'),
+    ).toBeInTheDocument();
+    expect(requestCandidateGeneration).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: 'Revised Probability' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '生成新候选' }));
+
+    expect(
       await screen.findByRole('heading', { name: 'Revised Probability', level: 2 }),
     ).toBeInTheDocument();
+    expect(requestCandidateGeneration).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('heading', { name: '当前正式大纲' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认并发布 v2' }).closest('.ow-panel')).toHaveClass(
+      'ow-panel--conversation',
+    );
     expect(createOutlineAdjustmentSession).toHaveBeenCalledWith(
       expect.objectContaining({ courseId: 'course_01', resourceVersion: 7 }),
     );

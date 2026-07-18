@@ -172,8 +172,11 @@ export function CourseFixture(props: { readonly fixtureId: CourseFixtureId }) {
         currentOutline={COURSE_FIXTURE_OUTLINE}
         initialMessages={COURSE_FIXTURE_REVISION_MESSAGES}
         onBack={() => undefined}
+        onCancelGeneration={async () => undefined}
+        onGenerate={async () => undefined}
         onPublish={async () => undefined}
         onSend={async () => undefined}
+        phase="candidate-ready"
       />
     );
   } else if (props.fixtureId === 'course-review') {

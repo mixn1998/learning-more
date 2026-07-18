@@ -5,6 +5,7 @@ import { AiContent, AiSurface, Button, Card, Dialog } from '@learning-more/ui';
 
 import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
+import { CandidateGenerationPending } from '../course-authoring/candidate-generation-pending.js';
 import type {
   OutlineChangeAttribution,
   OutlineChangeKind,
@@ -27,6 +28,9 @@ export type CourseRevisionCandidate = Readonly<{
   diff: OutlineMarkdownDiff;
   impact: string;
 }>;
+
+export type CourseRevisionPhase =
+  'opening' | 'ready' | 'thinking' | 'generating' | 'candidate-ready' | 'failed';
 
 const changeLabels: Readonly<Record<OutlineChangeStatus, string>> = {
   unchanged: '保持不变',
@@ -81,9 +85,13 @@ export function OutlineRevisionWorkspace(props: {
   readonly currentOutline?: CourseOutlineVersionView | undefined;
   readonly initialMessages?: readonly CourseRevisionMessage[] | undefined;
   readonly candidate?: CourseRevisionCandidate | undefined;
-  readonly busy?: boolean | undefined;
+  readonly phase: CourseRevisionPhase;
+  readonly generationCancelBusy?: boolean | undefined;
+  readonly hasUnappliedConversation?: boolean | undefined;
   readonly error?: string | undefined;
   readonly onBack: () => void;
+  readonly onCancelGeneration: () => Promise<void>;
+  readonly onGenerate: () => Promise<void>;
   readonly onPublish: (candidateVersionId: string) => Promise<void>;
   readonly onSend: (message: string) => Promise<void>;
 }) {
@@ -110,9 +118,10 @@ export function OutlineRevisionWorkspace(props: {
             module.lessons.filter((lesson) => lesson.status !== 'unchanged').length,
           0,
         );
+  const interactionBusy = props.phase === 'thinking' || props.phase === 'generating';
 
   const send = (message: string) => {
-    if (props.busy === true) return;
+    if (interactionBusy) return;
     setComposer('');
     void props.onSend(message);
   };
@@ -120,7 +129,7 @@ export function OutlineRevisionWorkspace(props: {
   const messages = props.initialMessages ?? [];
   const lastMessage = messages.at(-1);
   const lastUserMessageIndex = messages.findLastIndex((message) => message.role === 'user');
-  const followKey = `${messages.length}:${lastMessage?.markdown.length ?? 0}:${props.busy === true}`;
+  const followKey = `${messages.length}:${lastMessage?.markdown.length ?? 0}:${props.phase}`;
 
   const publish = () => {
     if (props.candidate === undefined || publishing) return;
@@ -156,13 +165,13 @@ export function OutlineRevisionWorkspace(props: {
         <Card className="ow-panel ow-panel--conversation">
           <header className="ow-panel-head">
             <strong>大纲调整对话</strong>
-            <span>继承起点评估、当前大纲和已完成 Review</span>
+            <span>保留历史对话 · 基于当前正式大纲调整</span>
           </header>
           <ConversationStream
             className="ow-chat"
             followKey={followKey}
             forceFollowKey={lastUserMessageIndex < 0 ? undefined : lastUserMessageIndex}
-            generating={props.busy}
+            generating={props.phase === 'thinking'}
             label="大纲调整对话"
           >
             {messages.map((message, index) =>
@@ -180,9 +189,9 @@ export function OutlineRevisionWorkspace(props: {
                 />
               ),
             )}
-            {props.busy === true ? (
+            {props.phase === 'thinking' ? (
               <p className="course-revision-busy" role="status">
-                正在更新候选大纲…
+                正在思考中……
               </p>
             ) : (
               <></>
@@ -191,14 +200,42 @@ export function OutlineRevisionWorkspace(props: {
           </ConversationStream>
           <ChatComposer
             className="ow-composer"
-            busy={props.busy}
             label="继续说明希望怎样调整大纲"
             placeholder="继续说明希望怎样调整大纲……"
             sendLabel="发送调整要求"
+            submitDisabled={interactionBusy}
             value={composer}
             onChange={setComposer}
             onSubmit={send}
           />
+          <div className="course-revision-controls">
+            <Button
+              busy={props.phase === 'generating'}
+              disabled={
+                props.phase === 'opening' ||
+                props.phase === 'thinking' ||
+                props.phase === 'generating' ||
+                publishing
+              }
+              type="button"
+              onClick={() => void props.onGenerate()}
+            >
+              {props.phase === 'generating' ? '正在生成……' : '生成新候选'}
+            </Button>
+            <Button
+              disabled={props.candidate === undefined || interactionBusy || publishing}
+              type="button"
+              variant="primary"
+              onClick={() => setConfirmOpen(true)}
+            >
+              确认并发布 v{nextVersionNumber}
+            </Button>
+          </div>
+          {props.hasUnappliedConversation === true && props.candidate !== undefined ? (
+            <p className="course-revision-unapplied" role="status">
+              当前候选未包含生成后的最新对话
+            </p>
+          ) : null}
         </Card>
 
         <Card className="ow-panel ow-panel--outline">
@@ -206,6 +243,12 @@ export function OutlineRevisionWorkspace(props: {
             <strong>当前大纲与调整候选</strong>
             <span>{props.candidate?.versionLabel ?? '当前正式版本保持不变'}</span>
           </header>
+          {props.phase === 'generating' ? (
+            <CandidateGenerationPending
+              cancelBusy={props.generationCancelBusy}
+              onCancel={() => void props.onCancelGeneration()}
+            />
+          ) : null}
           <AiSurface className="ow-outline course-revision-outlines">
             {props.candidate === undefined ? (
               <section className="course-revision-version course-revision-version--current">
@@ -379,17 +422,6 @@ export function OutlineRevisionWorkspace(props: {
               </>
             )}
           </AiSurface>
-          <footer className="ow-footer">
-            <span />
-            <Button
-              disabled={props.candidate === undefined}
-              type="button"
-              variant="primary"
-              onClick={() => setConfirmOpen(true)}
-            >
-              确认并发布 v{nextVersionNumber}
-            </Button>
-          </footer>
         </Card>
       </div>
 

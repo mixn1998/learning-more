@@ -5,6 +5,7 @@ import { AiContent, AiSurface, Button, Card } from '@learning-more/ui';
 
 import { courseModeDefinition } from '../../course-mode-registry.js';
 import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+import { CandidateGenerationPending } from './candidate-generation-pending.js';
 
 import './outline-workspace-view.css';
 
@@ -247,24 +248,10 @@ export function OutlineWorkspaceView(props: OutlineWorkspaceViewProps) {
             <span>完整 Markdown 快照 · 可继续对话调整</span>
           </header>
           {props.candidatePending ? (
-            <div aria-label="候选大纲生成状态" className="ow-candidate-pending" role="status">
-              <div className="ow-candidate-pending-copy">
-                <span aria-hidden="true" className="ow-candidate-pending-indicator" />
-                <span>
-                  <strong>正在生成候选大纲</strong>
-                  <small>AI 正在整理对话并组织课程结构，请稍候</small>
-                </span>
-              </div>
-              <Button
-                busy={props.generationCancelBusy === true}
-                className="ow-candidate-cancel"
-                disabled={props.generationCancelBusy === true}
-                type="button"
-                onClick={props.onCancelGeneration}
-              >
-                {props.generationCancelBusy ? '正在取消…' : '取消生成'}
-              </Button>
-            </div>
+            <CandidateGenerationPending
+              cancelBusy={props.generationCancelBusy}
+              onCancel={props.onCancelGeneration}
+            />
           ) : null}
           <AiSurface className="ow-outline">
             <div className="ow-outline-title">

@@ -132,6 +132,15 @@ export function decide(
   ) {
     return [{ type: 'AssessmentTurnFailed', userMessageId: command.userMessageId }];
   }
+  if (command.type === 'planCandidateGeneration' && session.state === 'candidate-ready') {
+    return [
+      {
+        type: 'CandidateGenerationPlanned',
+        action: command.action,
+        targetModuleIds: command.targetModuleIds,
+      },
+    ];
+  }
   if (command.type === 'requestCandidate') {
     if (
       session.state === 'collecting-input' ||
@@ -251,6 +260,15 @@ export function evolve(session: OutlineSession, event: OutlineSessionEvent): Out
     const { activeUserMessageId: _failedUserMessage, ...withoutActiveTurn } = session;
     void _failedUserMessage;
     return { ...withoutActiveTurn, state: 'candidate-ready' };
+  }
+  if (event.type === 'CandidateGenerationPlanned') {
+    return {
+      ...session,
+      pendingAlignment: {
+        action: event.action,
+        targetModuleIds: event.targetModuleIds,
+      },
+    };
   }
   if (event.type === 'CandidateGenerationStarted') {
     return {

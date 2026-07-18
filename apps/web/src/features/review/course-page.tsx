@@ -24,6 +24,7 @@ import {
   OutlineRevisionWorkspace,
   type CourseRevisionCandidate,
   type CourseRevisionMessage,
+  type CourseRevisionPhase,
 } from '../course/outline-revision-workspace.js';
 import type { CourseLessonRuntimeState } from '../course/outline-view.js';
 import { CourseReviewView } from './course-review-view.js';
@@ -31,10 +32,12 @@ import { CourseReviewView } from './course-review-view.js';
 type CoursePageAuthoringClient = Pick<
   CourseAuthoringClient,
   | 'appendMessage'
+  | 'cancelCandidateGeneration'
   | 'createOutlineAdjustmentSession'
   | 'getCourse'
   | 'getOutlineSession'
   | 'getOutlineVersion'
+  | 'requestCandidateGeneration'
   | 'reviseOutline'
 >;
 
@@ -112,6 +115,16 @@ function messagesFromSession(session: OutlineSessionView): readonly CourseRevisi
     .map((message) => ({ role: message.role, markdown: message.content }));
 }
 
+function hasUnappliedRevisionConversation(session: OutlineSessionView): boolean {
+  const messages = session.messages ?? [];
+  const generationMessageIndex = messages.findLastIndex(
+    (message) =>
+      message.role === 'assistant' &&
+      (message.alignmentAction === 'patch' || message.alignmentAction === 'regenerate'),
+  );
+  return generationMessageIndex >= 0 && generationMessageIndex < messages.length - 1;
+}
+
 async function waitForAdjustedSession(input: {
   readonly authoring: CoursePageAuthoringClient;
   readonly outlineSessionId: string;
@@ -144,6 +157,7 @@ async function waitForAdjustedSession(input: {
     ) {
       return session;
     }
+    if (candidateExpected && session.state === 'candidate-ready') return session;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error('outline_adjustment_generation_timeout');
@@ -175,12 +189,15 @@ export function CoursePage(props: {
   const [notice, setNotice] = useState<string>();
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [revisionBusy, setRevisionBusy] = useState(false);
+  const [revisionPhase, setRevisionPhase] = useState<CourseRevisionPhase>('opening');
+  const [generationCancelBusy, setGenerationCancelBusy] = useState(false);
+  const [hasUnappliedConversation, setHasUnappliedConversation] = useState(false);
   const [revisionError, setRevisionError] = useState<string>();
   const [revisionSession, setRevisionSession] = useState<OutlineSessionView>();
   const [revisionCandidate, setRevisionCandidate] = useState<CourseRevisionCandidate>();
   const [revisionMessages, setRevisionMessages] = useState<readonly CourseRevisionMessage[]>([]);
   const openedRevisionKey = useRef<string | undefined>(undefined);
+  const generationCancelled = useRef(false);
   const mounted = useRef(true);
 
   useAppShellHeaderStatus(
@@ -189,11 +206,15 @@ export function CoursePage(props: {
       : course.status === 'closed'
         ? { tone: 'readonly', text: '● 课程已关闭' }
         : view === 'revision'
-          ? revisionBusy
+          ? revisionPhase === 'opening'
             ? { tone: 'warning', text: '● 正在恢复调整会话' }
-            : revisionSession === undefined
-              ? { tone: 'readonly', text: '● 调整会话待恢复' }
-              : { tone: 'success', text: '● 调整会话已保存' }
+            : revisionPhase === 'thinking'
+              ? { tone: 'warning', text: '● AI 正在思考' }
+              : revisionPhase === 'generating'
+                ? { tone: 'warning', text: '● 正在生成候选大纲' }
+                : revisionSession === undefined
+                  ? { tone: 'readonly', text: '● 调整会话待恢复' }
+                  : { tone: 'success', text: '● 调整会话已保存' }
           : { tone: 'success', text: '● 课程进行中' },
   );
 
@@ -300,7 +321,7 @@ export function CoursePage(props: {
     if (openedRevisionKey.current === key) return;
     openedRevisionKey.current = key;
     let cancelled = false;
-    setRevisionBusy(true);
+    setRevisionPhase('opening');
     void authoring
       .createOutlineAdjustmentSession({
         courseId: course.courseId,
@@ -308,6 +329,21 @@ export function CoursePage(props: {
         pageInstanceId: getPageInstanceId(),
       })
       .then(async (opened) => {
+        if (!cancelled && mounted.current) {
+          setRevisionSession(opened);
+          setRevisionMessages(messagesFromSession(opened));
+          setRevisionCandidate(candidateFromSession(course, currentOutline, opened));
+          setHasUnappliedConversation(hasUnappliedRevisionConversation(opened));
+          setRevisionPhase(
+            opened.state === 'generating-candidates'
+              ? 'generating'
+              : opened.state === 'alignment-turn-running'
+                ? 'thinking'
+                : candidateFromSession(course, currentOutline, opened) === undefined
+                  ? 'ready'
+                  : 'candidate-ready',
+          );
+        }
         let restored = opened;
         if (opened.state === 'generating-candidates' || opened.state === 'alignment-turn-running') {
           restored = await waitForAdjustedSession({
@@ -320,15 +356,16 @@ export function CoursePage(props: {
         if (cancelled || !mounted.current) return;
         setRevisionSession(restored);
         setRevisionMessages(messagesFromSession(restored));
-        setRevisionCandidate(candidateFromSession(course, currentOutline, restored));
+        const candidate = candidateFromSession(course, currentOutline, restored);
+        setRevisionCandidate(candidate);
+        setHasUnappliedConversation(hasUnappliedRevisionConversation(restored));
+        setRevisionPhase(candidate === undefined ? 'ready' : 'candidate-ready');
       })
       .catch(() => {
         if (cancelled || !mounted.current) return;
         openedRevisionKey.current = undefined;
         setRevisionError('大纲调整会话暂时无法恢复，请稍后重试。');
-      })
-      .finally(() => {
-        if (!cancelled && mounted.current) setRevisionBusy(false);
+        setRevisionPhase('failed');
       });
     return () => {
       cancelled = true;
@@ -387,11 +424,17 @@ export function CoursePage(props: {
   };
 
   const sendRevision = async (message: string) => {
-    if (course === undefined || authoring === undefined || revisionBusy) {
-      setRevisionError('当前运行环境暂时无法创建大纲候选版本。');
+    if (
+      course === undefined ||
+      authoring === undefined ||
+      revisionPhase === 'opening' ||
+      revisionPhase === 'thinking' ||
+      revisionPhase === 'generating'
+    ) {
+      setRevisionError('当前调整会话暂时无法发送消息。');
       return;
     }
-    setRevisionBusy(true);
+    setRevisionPhase('thinking');
     setRevisionError(undefined);
     setRevisionMessages((current) => [...current, { role: 'user', markdown: message }]);
     try {
@@ -403,19 +446,13 @@ export function CoursePage(props: {
           pageInstanceId: getPageInstanceId(),
         });
       }
-      const baselineCandidateVersionId = session.candidateVersionId;
-      const appended = await authoring.appendMessage({
+      await authoring.appendMessage({
         outlineSessionId: session.outlineSessionId,
         content: message,
         resourceVersion: session.resourceVersion,
         pageInstanceId: getPageInstanceId(),
       });
-      const refreshed = await waitForAdjustedSession({
-        authoring,
-        outlineSessionId: session.outlineSessionId,
-        baselineCandidateVersionId,
-        appendState: appended.state,
-      });
+      const refreshed = await authoring.getOutlineSession(session.outlineSessionId);
       const candidate =
         currentOutline === undefined
           ? undefined
@@ -425,7 +462,8 @@ export function CoursePage(props: {
         .reverse()
         .find((message) => message.role === 'assistant')?.content;
       setRevisionSession(refreshed);
-      if (candidate !== undefined) setRevisionCandidate(candidate);
+      setRevisionCandidate(candidate);
+      setHasUnappliedConversation(candidate !== undefined);
       const authoritativeMessages = messagesFromSession(refreshed);
       setRevisionMessages(
         authoritativeMessages.length > 0
@@ -434,14 +472,11 @@ export function CoursePage(props: {
               { role: 'user', markdown: message },
               {
                 role: 'assistant',
-                markdown:
-                  assistantReply ??
-                  (candidate === undefined
-                    ? '我需要再确认一个边界；当前正式大纲仍保持不变。'
-                    : '已将这项要求纳入候选版本。你可以继续调整，或在核对变化后发布。'),
+                markdown: assistantReply ?? '我已记录这项调整想法；当前右侧大纲保持不变。',
               },
             ],
       );
+      setRevisionPhase(candidate === undefined ? 'ready' : 'candidate-ready');
     } catch (caught) {
       if (revisionSession !== undefined) {
         void authoring.getOutlineSession(revisionSession.outlineSessionId).then(
@@ -459,10 +494,94 @@ export function CoursePage(props: {
       setRevisionError(
         errorCode(caught) === 'version_conflict'
           ? '调整会话已在其他页面更新，请返回课程大纲后重新进入。'
-          : '候选大纲生成未完成；当前正式大纲没有发生变化，可以直接重试。',
+          : 'AI 回复未完成；当前大纲没有发生变化，可以直接重试。',
       );
+      setRevisionPhase('failed');
+    }
+  };
+
+  const generateRevisionCandidate = async () => {
+    if (
+      course === undefined ||
+      currentOutline === undefined ||
+      authoring === undefined ||
+      revisionSession === undefined ||
+      revisionPhase === 'thinking' ||
+      revisionPhase === 'generating'
+    ) {
+      return;
+    }
+    generationCancelled.current = false;
+    setRevisionPhase('generating');
+    setRevisionError(undefined);
+    const baselineCandidateVersionId = revisionSession.candidateVersionId;
+    try {
+      const accepted = await authoring.requestCandidateGeneration({
+        outlineSessionId: revisionSession.outlineSessionId,
+        resourceVersion: revisionSession.resourceVersion,
+        pageInstanceId: getPageInstanceId(),
+      });
+      if (accepted.failureCode !== undefined) {
+        throw Object.assign(new Error(accepted.failureCode), { code: accepted.failureCode });
+      }
+      setRevisionSession({
+        ...revisionSession,
+        state: 'generating-candidates',
+        generationTaskId: accepted.taskId,
+        resourceVersion: accepted.resourceVersion,
+      });
+      const refreshed = await waitForAdjustedSession({
+        authoring,
+        outlineSessionId: revisionSession.outlineSessionId,
+        baselineCandidateVersionId,
+        appendState: accepted.state,
+      });
+      if (generationCancelled.current || !mounted.current) return;
+      const candidate = candidateFromSession(course, currentOutline, refreshed);
+      if (candidate === undefined || refreshed.candidateVersionId === baselineCandidateVersionId) {
+        throw new Error('outline_adjustment_generation_incomplete');
+      }
+      setRevisionSession(refreshed);
+      setRevisionMessages(messagesFromSession(refreshed));
+      setRevisionCandidate(candidate);
+      setHasUnappliedConversation(false);
+      setRevisionPhase('candidate-ready');
+    } catch (caught) {
+      if (generationCancelled.current || !mounted.current) return;
+      setRevisionError(
+        errorCode(caught) === 'version_conflict'
+          ? '调整会话已在其他页面更新，请重新进入修改大纲。'
+          : '候选大纲生成未完成；当前正式大纲和上一候选均已保留。',
+      );
+      setRevisionPhase('failed');
+    }
+  };
+
+  const cancelRevisionGeneration = async () => {
+    if (authoring === undefined || revisionSession === undefined || generationCancelBusy) return;
+    generationCancelled.current = true;
+    setGenerationCancelBusy(true);
+    setRevisionError(undefined);
+    try {
+      await authoring.cancelCandidateGeneration({
+        outlineSessionId: revisionSession.outlineSessionId,
+        resourceVersion: revisionSession.resourceVersion,
+        pageInstanceId: getPageInstanceId(),
+      });
+      const restored = await authoring.getOutlineSession(revisionSession.outlineSessionId);
+      if (!mounted.current || course === undefined || currentOutline === undefined) return;
+      const candidate = candidateFromSession(course, currentOutline, restored);
+      setRevisionSession(restored);
+      setRevisionMessages(messagesFromSession(restored));
+      setRevisionCandidate(candidate);
+      setHasUnappliedConversation(hasUnappliedRevisionConversation(restored));
+      setRevisionPhase(candidate === undefined ? 'ready' : 'candidate-ready');
+    } catch {
+      generationCancelled.current = false;
+      setRevisionError('取消生成未完成，系统将继续读取当前候选任务状态。');
+      setRevisionPhase('generating');
     } finally {
-      setRevisionBusy(false);
+      setGenerationCancelBusy(false);
     }
   };
 
@@ -508,15 +627,19 @@ export function CoursePage(props: {
     return (
       <>
         <OutlineRevisionWorkspace
-          busy={revisionBusy}
           candidate={revisionCandidate}
           course={course}
           currentOutline={currentOutline}
           error={revisionError}
+          generationCancelBusy={generationCancelBusy}
+          hasUnappliedConversation={hasUnappliedConversation}
           initialMessages={revisionMessages}
           onBack={() => navigate(`/courses/${course.courseId}`)}
+          onCancelGeneration={cancelRevisionGeneration}
+          onGenerate={generateRevisionCandidate}
           onPublish={publishRevision}
           onSend={sendRevision}
+          phase={revisionPhase}
         />
         {notice === undefined ? null : <Toast>{notice}</Toast>}
       </>

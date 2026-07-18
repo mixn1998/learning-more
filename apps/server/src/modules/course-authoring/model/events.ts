@@ -16,6 +16,11 @@ export type OutlineSessionEvent =
       targetModuleIds: readonly string[];
     }>
   | Readonly<{ type: 'AlignmentTurnFailed'; userMessageId: string }>
+  | Readonly<{
+      type: 'CandidateGenerationPlanned';
+      action: 'regenerate' | 'patch';
+      targetModuleIds: readonly string[];
+    }>
   | Readonly<{ type: 'CandidateGenerationStarted'; generationTaskId: string }>
   | Readonly<{ type: 'CandidateVersionCreated'; candidateVersionId: string }>
   | Readonly<{ type: 'CandidateGenerationFailed'; generationTaskId: string }>

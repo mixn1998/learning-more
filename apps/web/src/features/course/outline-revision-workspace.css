@@ -21,6 +21,19 @@
   font-size: 12px;
 }
 
+.course-revision-page .course-revision-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 17px 16px;
+}
+
+.course-revision-page .course-revision-unapplied {
+  margin: -6px 17px 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .course-revision-page .course-revision-outlines {
   display: grid;
   gap: 18px;

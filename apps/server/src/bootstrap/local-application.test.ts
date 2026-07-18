@@ -561,6 +561,18 @@ describe('local CourseAuthoring application', () => {
       payload: { content: 'Strengthen the observable evidence loop' },
     });
     expect(revisionRequested.statusCode, revisionRequested.body).toBe(200);
+    const revisionReply = revisionRequested.json<{ resourceVersion: number }>();
+    const revisionGeneration = await app.inject({
+      method: 'POST',
+      url: `/api/v1/outline-sessions/${revisionSessionId}/candidate-generations`,
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'revision_generate_01',
+        'if-match': `"${revisionReply.resourceVersion}"`,
+      },
+      payload: {},
+    });
+    expect(revisionGeneration.statusCode, revisionGeneration.body).toBe(202);
     const revisionCandidate = await waitForCandidateReady(
       revisionSessionId,
       createdRevisionSession.candidateVersionId,

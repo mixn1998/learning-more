@@ -22,10 +22,7 @@ import {
 } from '../model/outline-session.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
 import type { AuthoringAgent } from '../ports/authoring-agent.js';
-import type {
-  CandidateAlignmentPlan,
-  CandidateAlignmentPlanner,
-} from '../ports/candidate-alignment-planner.js';
+import type { CandidateAlignmentPlanner } from '../ports/candidate-alignment-planner.js';
 import type { OutlineSessionRecord } from '../ports/outline-session-repository.js';
 import type { OutlineSessionDraftStore } from '../ports/outline-session-draft-store.js';
 import type { NextLessonRecommender } from '../../next-lesson/interface.js';
@@ -299,13 +296,11 @@ export function createCourseAuthoringFacade(options: {
     readonly record: OutlineSessionRecord;
     readonly userMessageId: string;
     readonly commandId: string;
-  }): Promise<{ record: OutlineSessionRecord; plan: CandidateAlignmentPlan }> {
+  }): Promise<OutlineSessionRecord> {
     try {
       const context = await assembleAuthoringContext(input.record.session.outlineSessionId);
-      const [plan, content] = await Promise.all([
-        options.candidateAlignmentPlanner.plan(context),
-        options.authoringAgent.respond(context),
-      ]);
+      const content = (await options.authoringAgent.respond(context)).trim();
+      if (content === '') throw new Error('authoring_agent_empty_response');
       const assistantMessageId = options.nextId('message');
       const session = evolveAll(
         input.record.session,
@@ -313,8 +308,8 @@ export function createCourseAuthoringFacade(options: {
           type: 'completeAlignmentTurn',
           userMessageId: input.userMessageId,
           assistantMessageId,
-          action: plan.action,
-          targetModuleIds: plan.targetModuleIds,
+          action: 'clarify',
+          targetModuleIds: [],
         }),
       );
       const completed: OutlineSessionRecord = {
@@ -325,12 +320,10 @@ export function createCourseAuthoringFacade(options: {
           {
             messageId: assistantMessageId,
             role: 'assistant',
-            content: content.trim(),
+            content,
             status: 'complete',
             createdAt: options.now().toISOString(),
             inReplyToMessageId: input.userMessageId,
-            alignmentAction: plan.action,
-            targetModuleIds: plan.targetModuleIds,
           },
         ],
       };
@@ -338,10 +331,7 @@ export function createCourseAuthoringFacade(options: {
         { transactionId: `tx_authoring_alignment_complete_${input.commandId}` },
         (tx) => options.authoring.outlineSessions.save(tx, completed, input.record.resourceVersion),
       );
-      return {
-        record: { ...completed, resourceVersion: input.record.resourceVersion + 1 },
-        plan,
-      };
+      return { ...completed, resourceVersion: input.record.resourceVersion + 1 };
     } catch (error) {
       const session = evolveAll(
         input.record.session,
@@ -546,25 +536,16 @@ export function createCourseAuthoringFacade(options: {
             userMessageId,
             commandId: context.commandId,
           });
-          let resourceVersion = completed.record.resourceVersion;
-          if (completed.plan.action !== 'clarify') {
-            const generated = await options.candidateGeneration.generate({
-              commandId: `${context.commandId}:alignment:${completed.plan.action}`,
-              outlineSessionId: command.outlineSessionId,
-            });
-            resourceVersion = generated.resourceVersion;
-          }
-          const current = await sessionRecord(command.outlineSessionId);
           return result(
             context,
             {
               kind: 'message',
               outlineSessionId: command.outlineSessionId,
-              state: current.session.state,
-              completedAssessmentRounds: current.session.completedAssessmentRounds,
-              canGenerateCandidate: canGenerateCandidate(current),
+              state: completed.session.state,
+              completedAssessmentRounds: completed.session.completedAssessmentRounds,
+              canGenerateCandidate: canGenerateCandidate(completed),
             },
-            resourceVersion,
+            completed.resourceVersion,
           );
         }
         const completed = await completeAuthoringTurn({
@@ -586,8 +567,60 @@ export function createCourseAuthoringFacade(options: {
       }
 
       if (command.type === 'RequestCandidateGeneration') {
-        const record = await sessionRecord(command.outlineSessionId);
+        let record = await sessionRecord(command.outlineSessionId);
         assertVersion(record.resourceVersion, context);
+        if (record.session.adjustmentCourseId !== undefined) {
+          const planned = await options.candidateAlignmentPlanner.plan(
+            await assembleAuthoringContext(record.session.outlineSessionId),
+          );
+          const plan: Readonly<{
+            action: 'patch' | 'regenerate';
+            rationale: string;
+            targetModuleIds: readonly string[];
+          }> =
+            planned.action === 'clarify'
+              ? {
+                  action: 'patch',
+                  rationale: planned.rationale,
+                  targetModuleIds: ['outline:root'],
+                }
+              : {
+                  action: planned.action,
+                  rationale: planned.rationale,
+                  targetModuleIds: planned.targetModuleIds,
+                };
+          const targetModuleIds =
+            plan.action === 'patch' && plan.targetModuleIds.length === 0
+              ? ['outline:root']
+              : plan.targetModuleIds;
+          const session = evolveAll(
+            record.session,
+            decide(record.session, {
+              type: 'planCandidateGeneration',
+              action: plan.action,
+              targetModuleIds,
+            }),
+          );
+          const latestAssistantIndex = record.messages.findLastIndex(
+            (message) => message.role === 'assistant',
+          );
+          const messages = record.messages.map((message, index) =>
+            index === latestAssistantIndex
+              ? {
+                  ...message,
+                  alignmentAction: plan.action,
+                  targetModuleIds,
+                }
+              : message,
+          );
+          const plannedRecord: OutlineSessionRecord = { ...record, session, messages };
+          await options.unitOfWork.execute(
+            { transactionId: `tx_plan_outline_candidate_${context.commandId}` },
+            (tx) =>
+              options.authoring.outlineSessions.save(tx, plannedRecord, record.resourceVersion),
+          );
+          record = { ...plannedRecord, resourceVersion: record.resourceVersion + 1 };
+        }
         decide(record.session, {
           type: 'requestCandidate',
           generationTaskId: 'eligibility-check',
