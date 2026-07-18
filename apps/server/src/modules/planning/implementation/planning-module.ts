@@ -6,7 +6,6 @@ import { RepositoryVersionConflictError } from '../../../persistence/repository-
 import type { TransactionContext, UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { PlanningCommand, PlanningModule } from '../interface.js';
 import {
-  overlaps,
   type ScheduleItem,
   ScheduleRuleError,
   validateScheduleInterval,
@@ -58,8 +57,7 @@ export function createPlanningModule(options: {
         (item) =>
           item.id !== candidate.id &&
           item.status === 'scheduled' &&
-          item.lessonId === candidate.lessonId &&
-          overlaps(item, candidate),
+          item.lessonId === candidate.lessonId,
       )
       .map((item) => item.id);
   }

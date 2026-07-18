@@ -180,6 +180,36 @@ describe('PlanFlowService', () => {
     expect(requested.suggestions.map((item) => item.lessonId)).toEqual(['lesson_02']);
   });
 
+  it('does not report a conflict when another lesson is planned on the same date', async () => {
+    const existing = {
+      id: 'schedule_other_course',
+      courseId: 'course_other',
+      lessonId: 'lesson_other',
+      startAt: '2026-07-14T11:00:00.000Z',
+      endAt: '2026-07-14T12:00:00.000Z',
+      timezoneAtCreation: 'Asia/Shanghai',
+      source: 'plan-flow' as const,
+      status: 'scheduled' as const,
+      locked: false,
+      createdAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+      processedCommandIds: [],
+      resourceVersion: 0,
+    };
+    const { service, schedules } = fixture([existing]);
+    await unitOfWork.execute({}, async (transaction) => {
+      await schedules.save(transaction, existing, existing.resourceVersion);
+    });
+
+    const requested = await service.requestPreview(previewInput, 'preview_same_date');
+
+    expect(requested.suggestions[0]).toMatchObject({
+      startAt: '2026-07-14T11:00:00.000Z',
+      endAt: '2026-07-14T12:00:00.000Z',
+    });
+    expect(requested.conflicts).toEqual([]);
+  });
+
   it('rejects late confirmation after a referenced course archive is permanently deleted', async () => {
     const { service, schedules, deleteCourseArchive } = fixture();
     const requested = await service.requestPreview(previewInput, 'preview_delete_race');
@@ -242,7 +272,7 @@ describe('PlanFlowService', () => {
           endAt: suggestions[0]!.endAt,
         },
       ]),
-    ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
+    ).resolves.toMatchObject({ conflicts: [] });
     await expect(
       service.markPreviewReady(requested.id, [
         { ...suggestions[1]!, startAt: suggestions[0]!.startAt, endAt: suggestions[0]!.endAt },

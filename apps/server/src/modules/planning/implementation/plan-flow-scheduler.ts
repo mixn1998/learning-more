@@ -197,9 +197,6 @@ export function buildPlanSuggestions(
   ) {
     throw new Error('plan_preview_invalid');
   }
-  const occupied = context.existingSchedule
-    .filter((item) => item.status !== 'removed')
-    .map((item) => ({ startAt: item.startAt, endAt: item.endAt }));
   const suggestions: PlanSuggestion[] = [];
   const outlinePositions = new Map(
     context.courses.map((course) => [
@@ -282,7 +279,11 @@ export function buildPlanSuggestions(
     }
     let endAt = new Date(Date.parse(startAt) + lesson.estimatedMinutes * 60_000).toISOString();
     for (;;) {
-      const conflict = [...occupied, ...suggestions]
+      // Schedule intervals are compatibility carriers for a learning date and estimated
+      // duration. They are not exclusive calendar slots. Only suggestions created in this
+      // preview are sequenced so their outline order remains deterministic; schedules from
+      // other courses may intentionally share the same learning date.
+      const conflict = suggestions
         .filter((item) => overlaps({ startAt, endAt }, item))
         .sort((left, right) => Date.parse(left.endAt) - Date.parse(right.endAt))[0];
       if (conflict === undefined) break;

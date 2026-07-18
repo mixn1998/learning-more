@@ -124,7 +124,7 @@ describe('PlanningModule', () => {
     ).rejects.toMatchObject({ code: 'lesson_not_plannable' });
   });
 
-  it('deduplicates a create command and reports concrete same-lesson overlaps', async () => {
+  it('deduplicates a create command and rejects a second active schedule for the same lesson', async () => {
     const { module } = fixture();
     const command = {
       type: 'CreateScheduleItem' as const,
@@ -141,7 +141,7 @@ describe('PlanningModule', () => {
     ).resolves.toEqual(created);
     await expect(
       module.execute(
-        { ...command, startAt: '2026-07-13T01:30:00.000Z', endAt: '2026-07-13T02:30:00.000Z' },
+        { ...command, startAt: '2026-07-14T01:00:00.000Z', endAt: '2026-07-14T02:00:00.000Z' },
         { ...baseContext, commandId: 'create_02' },
       ),
     ).rejects.toMatchObject({

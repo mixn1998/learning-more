@@ -208,7 +208,7 @@ describe('deterministic plan-flow scheduler', () => {
     });
   });
 
-  it('moves a lesson after an existing collision without calling an AI', () => {
+  it('keeps another course on the same learning date because schedules are date-based', () => {
     const existing = {
       courseId: 'other_course',
       lessonId: 'other_lesson',
@@ -227,8 +227,8 @@ describe('deterministic plan-flow scheduler', () => {
     );
 
     expect(result[0]).toMatchObject({
-      startAt: '2026-07-14T12:00:00.000Z',
-      endAt: '2026-07-14T12:45:00.000Z',
+      startAt: '2026-07-14T11:00:00.000Z',
+      endAt: '2026-07-14T11:45:00.000Z',
     });
   });
 

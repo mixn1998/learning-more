@@ -6,7 +6,6 @@ import { RepositoryVersionConflictError } from '../../../persistence/repository-
 import type { TransactionContext, UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { PlanFlow, PlanFlowScheduleMutation, PlanSuggestion } from '../model/plan-flow.js';
 import {
-  overlaps,
   type ScheduleItem,
   validateScheduleInterval,
   validateTimeZone,
@@ -197,16 +196,14 @@ export function createPlanFlowService(options: {
     if (expectedLessonIds.some((lessonId) => !lessonIds.has(lessonId))) {
       throw new PlanFlowError('plan_preview_invalid');
     }
-    for (const [index, suggestion] of suggestions.entries()) {
-      for (const other of suggestions.slice(index + 1)) {
-        if (overlaps(suggestion, other)) throw new PlanFlowError('plan_preview_invalid');
-      }
+    for (const suggestion of suggestions) {
       const prerequisiteIds = await options.getLessonPrerequisiteIds?.(suggestion.lessonId);
       for (const prerequisiteId of prerequisiteIds ?? []) {
         const prerequisite = suggestions.find((candidate) => candidate.lessonId === prerequisiteId);
         if (
           prerequisite !== undefined &&
-          Date.parse(prerequisite.endAt) > Date.parse(suggestion.startAt)
+          localDateAt(prerequisite.startAt, prerequisite.timezoneAtCreation) >
+            localDateAt(suggestion.startAt, suggestion.timezoneAtCreation)
         ) {
           throw new PlanFlowError('plan_preview_invalid');
         }
@@ -232,11 +229,15 @@ export function createPlanFlowService(options: {
           (item) => item.courseId === courseId && !suggestionLessonIds.has(item.lessonId),
         ),
         ...suggestions.filter((item) => item.courseId === courseId),
-      ].sort((left, right) =>
-        left.startAt === right.startAt
-          ? left.endAt.localeCompare(right.endAt)
-          : left.startAt.localeCompare(right.startAt),
-      );
+      ].sort((left, right) => {
+        const leftDate = localDateAt(left.startAt, left.timezoneAtCreation);
+        const rightDate = localDateAt(right.startAt, right.timezoneAtCreation);
+        return (
+          leftDate.localeCompare(rightDate) ||
+          (outlineIndex.get(left.lessonId) ?? Number.POSITIVE_INFINITY) -
+            (outlineIndex.get(right.lessonId) ?? Number.POSITIVE_INFINITY)
+        );
+      });
       let previousIndex = -1;
       for (const scheduledLesson of scheduledCourseLessons) {
         const currentIndex = outlineIndex.get(scheduledLesson.lessonId);
@@ -309,7 +310,7 @@ export function createPlanFlowService(options: {
     }
     if (
       mutation.beforeScheduleItems.some((before) =>
-        activeOtherItems.some((other) => overlaps(before, other)),
+        activeOtherItems.some((other) => before.lessonId === other.lessonId),
       )
     ) {
       throw new PlanFlowError('plan_flow_undo_conflict');
@@ -427,9 +428,7 @@ export function createPlanFlowService(options: {
         if (item.status === 'scheduled') scheduled.push(item);
       }
       const conflicts = suggestions.flatMap((suggestion) =>
-        scheduled
-          .filter((item) => item.lessonId === suggestion.lessonId || overlaps(item, suggestion))
-          .map((item) => item.id),
+        scheduled.filter((item) => item.lessonId === suggestion.lessonId).map((item) => item.id),
       );
       return save({ ...preview, conflicts: [...new Set(conflicts)].sort() });
     },
@@ -455,9 +454,7 @@ export function createPlanFlowService(options: {
         if (item.status === 'scheduled') scheduled.push(item);
       }
       const conflicts = suggestions.flatMap((suggestion) =>
-        scheduled
-          .filter((item) => item.lessonId === suggestion.lessonId || overlaps(item, suggestion))
-          .map((item) => item.id),
+        scheduled.filter((item) => item.lessonId === suggestion.lessonId).map((item) => item.id),
       );
       const { errorCode: _error, draftArtifactRef: _draft, ...withoutFailure } = current;
       void _error;
