@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+import type { MathPlotContract } from './math-plot-contract.js';
+
+vi.mock('./math-plot.js', () => ({
+  MathPlot: ({ spec }: { readonly spec: MathPlotContract }) => (
+    <figure data-testid="rendered-math-plot">{spec.title ?? '函数图像'}</figure>
+  ),
+}));
 
 import { AiContent } from './ai-content.js';
 
@@ -74,6 +82,35 @@ describe('AiContent', () => {
     expect(diagramCode).toBeInTheDocument();
     expect(diagramCode).toHaveTextContent('A --> B');
     expect(container.querySelector('svg')).toBeNull();
+  });
+
+  it('recognizes a safe math-plot block and lazy-renders the interactive graph', async () => {
+    const source = JSON.stringify({
+      version: 1,
+      title: '正弦函数',
+      view: { type: 'cartesian2d', xRange: [-6, 6], yRange: [-2, 2] },
+      series: [{ kind: 'explicit', expression: 'sin(x)' }],
+    });
+    const { container } = render(
+      <AiContent markdown={`正文\n\n\`\`\`math-plot\n${source}\n\`\`\``} />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('rendered-math-plot')).toHaveTextContent('正弦函数'),
+    );
+    expect(container.querySelector('pre [data-testid="rendered-math-plot"]')).toBeNull();
+    expect(container).toHaveTextContent('正文');
+  });
+
+  it('keeps invalid math plots readable without exposing executable HTML', () => {
+    const source = '{"version":1,"view":{"type":"cartesian2d"},"series":[],"script":"alert(1)"}';
+    const { container } = render(<AiContent markdown={`\`\`\`math-plot\n${source}\n\`\`\``} />);
+
+    expect(
+      container.querySelector('[data-math-plot-state="contract_invalid"]'),
+    ).toBeInTheDocument();
+    expect(container).toHaveTextContent('函数图像暂时无法渲染');
+    expect(container.querySelector('script')).toBeNull();
   });
 });
 

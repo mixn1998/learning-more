@@ -17,6 +17,7 @@ import {
 import { PlanFlowFixture, PlanningFixture } from './planning-fixture.js';
 import { PortraitFixture } from './profile-fixture.js';
 import { RuntimeFixture } from './runtime-fixture.js';
+import { MathPlotFixture } from './math-plot-fixture.js';
 import {
   LessonNavigationFixture,
   LessonRecordFixture,
@@ -179,6 +180,9 @@ export function VisualFixtureApp(props: { readonly fixtureId: string }) {
       case 'runtime-ready':
         content = <RuntimeFixture />;
         initialEntry = '/runtime';
+        break;
+      case 'math-plot':
+        content = <MathPlotFixture />;
         break;
       case 'lesson-not-started':
       case 'lesson-abandoned':

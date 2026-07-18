@@ -145,3 +145,132 @@ body {
   overflow-y: hidden;
   padding-block: 0.35em;
 }
+
+.lm-math-plot {
+  max-width: 100%;
+  margin: 1.1em 0;
+  overflow: hidden;
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-md);
+  background: color-mix(in srgb, var(--lm-paper) 96%, var(--lm-tint));
+}
+
+.lm-math-plot > figcaption {
+  padding: 0.9rem 1rem 0;
+  color: var(--lm-ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.lm-math-plot-description {
+  margin: 0.35rem 1rem 0.75rem;
+  color: var(--lm-muted);
+}
+
+.lm-math-plot-board.jxgbox {
+  position: relative;
+  width: calc(100% - 2rem);
+  height: clamp(20rem, 48vw, 32rem);
+  margin: 0.85rem 1rem 1rem;
+  overflow: hidden;
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-sm);
+  background: #fffdf9;
+  touch-action: none;
+}
+
+.lm-math-plot-board.is-3d {
+  height: clamp(24rem, 56vw, 38rem);
+}
+
+.lm-math-plot-board svg text {
+  cursor: default;
+  user-select: none;
+}
+
+.lm-math-plot-board .JXGtext {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: var(--lm-font-product);
+}
+
+.lm-math-plot-board .JXG_navigation {
+  position: absolute;
+  z-index: 2;
+  right: 0.55rem;
+  bottom: 0.45rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--lm-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 92%, var(--lm-tint));
+  font-size: 0.85rem;
+}
+
+.lm-math-plot-board .JXG_navigation_button {
+  color: var(--lm-muted);
+  cursor: pointer;
+}
+
+.lm-math-plot-summary {
+  margin: 0 1rem 1rem;
+  color: var(--lm-muted);
+  font-size: 0.9rem;
+}
+
+.lm-math-plot-summary summary,
+.lm-math-plot-fallback summary {
+  cursor: pointer;
+  color: var(--lm-ink);
+  font-weight: 600;
+}
+
+.lm-math-plot-summary ul {
+  margin: 0.55rem 0 0;
+  padding-inline-start: 1.4rem;
+}
+
+.lm-math-plot-loading,
+.lm-math-plot-fallback {
+  padding: 1rem;
+}
+
+.lm-math-plot-loading > figcaption,
+.lm-math-plot-fallback > figcaption {
+  padding: 0;
+}
+
+.lm-math-plot-loading p,
+.lm-math-plot-fallback p,
+.lm-math-plot-runtime-error {
+  margin: 0.45rem 0 0;
+  color: var(--lm-muted);
+}
+
+.lm-math-plot-runtime-fallback {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  margin: 0.85rem 1rem 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--lm-line);
+  border-radius: var(--lm-radius-sm);
+  background: var(--lm-paper-2);
+  text-align: center;
+}
+
+.lm-math-plot-fallback pre {
+  margin-top: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .lm-math-plot-board.jxgbox {
+    width: calc(100% - 1rem);
+    height: 21rem;
+    margin-inline: 0.5rem;
+  }
+
+  .lm-math-plot-board.is-3d {
+    height: 25rem;
+  }
+}

@@ -174,6 +174,10 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('是否还有疑惑或其他讲解需求');
     expect(fake.request()?.prompt).toContain('每一轮回复都必须以一个自然、容易回应');
     expect(fake.request()?.prompt).toContain('最终课程总结是唯一不再提出问题');
+    expect(fake.request()?.prompt).toContain('```math-plot');
+    expect(fake.request()?.prompt).toContain('vectorField2d');
+    expect(fake.request()?.prompt).toContain('odePhase2d');
+    expect(fake.request()?.prompt).toContain('不得输出 JavaScript');
     expect(fake.request()?.prompt).toContain('<learning-more-control>');
     expect(fake.request()?.prompt).toContain('interactionStatus');
     expect(fake.request()?.prompt).toContain('knowledge:kp_1');

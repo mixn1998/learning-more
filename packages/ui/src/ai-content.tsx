@@ -1,3 +1,4 @@
+import { Children, isValidElement, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import 'katex/dist/katex.min.css';
 import rehypeKatex from 'rehype-katex';
@@ -5,7 +6,10 @@ import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
+import { parseMathPlotContract } from './math-plot-contract.js';
+
 const mermaidLanguagePattern = /(?:^|\s)language-mermaid(?:\s|$)/;
+const mathPlotLanguagePattern = /(?:^|\s)language-math-plot(?:\s|$)/;
 const compactTableSeparatorPattern = /\|?\s*:?-{1,}:?\s*(?:\|\s*:?-{1,}:?\s*)+\|?/;
 
 function stripTableEdgePipes(value: string) {
@@ -80,6 +84,41 @@ function normalizeLatexMath(markdown: string) {
   return normalized.join('\n');
 }
 
+const LazyMathPlot = lazy(async () => {
+  const module = await import('./math-plot.js');
+  return { default: module.MathPlot };
+});
+
+function MathPlotBlock(props: { readonly source: string }) {
+  const parsed = parseMathPlotContract(props.source);
+  if (!parsed.ok) {
+    return (
+      <figure className="lm-math-plot lm-math-plot-fallback" data-math-plot-state={parsed.code}>
+        <figcaption>函数图像暂时无法渲染</figcaption>
+        <p>{parsed.detail}</p>
+        <details>
+          <summary>查看原始图像描述</summary>
+          <pre>
+            <code>{props.source}</code>
+          </pre>
+        </details>
+      </figure>
+    );
+  }
+  return (
+    <Suspense
+      fallback={
+        <figure className="lm-math-plot lm-math-plot-loading" aria-live="polite">
+          <figcaption>{parsed.value.title ?? '函数图像'}</figcaption>
+          <p>正在绘制函数图像……</p>
+        </figure>
+      }
+    >
+      <LazyMathPlot spec={parsed.value} />
+    </Suspense>
+  );
+}
+
 export function AiContent(props: { readonly markdown: string; readonly className?: string }) {
   const className = ['lm-ai-content', props.className].filter(Boolean).join(' ');
   return (
@@ -90,6 +129,17 @@ export function AiContent(props: { readonly markdown: string; readonly className
         // keeps raw HTML out while allowing the trusted renderer output through.
         rehypePlugins={[rehypeSanitize, rehypeKatex]}
         components={{
+          pre: ({ children, ...preProps }) => {
+            const child = Children.count(children) === 1 ? Children.only(children) : undefined;
+            const childClassName = isValidElement<{ className?: string }>(child)
+              ? child.props.className
+              : undefined;
+            return childClassName && mathPlotLanguagePattern.test(childClassName) ? (
+              child
+            ) : (
+              <pre {...preProps}>{children}</pre>
+            );
+          },
           table: ({ children, ...tableProps }) => (
             <div className="lm-ai-table-wrap">
               <table {...tableProps}>{children}</table>
@@ -97,6 +147,10 @@ export function AiContent(props: { readonly markdown: string; readonly className
           ),
           code: ({ children, className: codeClassName, ...codeProps }) => {
             const isMermaid = Boolean(codeClassName && mermaidLanguagePattern.test(codeClassName));
+            const isMathPlot = Boolean(
+              codeClassName && mathPlotLanguagePattern.test(codeClassName),
+            );
+            if (isMathPlot) return <MathPlotBlock source={String(children).trim()} />;
             return (
               <code
                 {...codeProps}

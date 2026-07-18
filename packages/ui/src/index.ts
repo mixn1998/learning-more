@@ -7,6 +7,7 @@ export * from './content-state.js';
 export * from './dialog.js';
 export * from './field.js';
 export * from './layout.js';
+export * from './math-plot-contract.js';
 export * from './status-banner.js';
 export * from './tabs.js';
 export * from './toast.js';
