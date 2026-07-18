@@ -39,9 +39,27 @@ export async function createLocalEventFactsRuntime(
     repository: factRepository,
     unitOfWork: input.unitOfWork,
   });
+  let cachedFacts: readonly LearningFact[] | undefined;
+  let factsGeneration = 0;
+  let factsLoad:
+    Readonly<{ generation: number; promise: Promise<readonly LearningFact[]> }> | undefined;
   for (const eventType of EVENT_TYPES) {
     eventDispatcher.register(eventType, async (event) => {
       await factProjector.project(event);
+      factsGeneration += 1;
+      if (cachedFacts === undefined) return;
+      const courseId = event.target_refs.courseId;
+      if (event.type === 'CourseArchiveDeleted' && courseId !== undefined) {
+        cachedFacts = cachedFacts.filter((fact) => fact.subjectRefs.courseId !== courseId);
+        return;
+      }
+      const projectedFacts = eventToFacts(event);
+      if (projectedFacts.length === 0) return;
+      const projectedIds = new Set(projectedFacts.map((fact) => fact.factId));
+      cachedFacts = [
+        ...cachedFacts.filter((fact) => !projectedIds.has(fact.factId)),
+        ...projectedFacts,
+      ].sort((left, right) => left.factId.localeCompare(right.factId));
     });
   }
   const durableFacts: LearningFact[] = [];
@@ -90,18 +108,11 @@ export async function createLocalEventFactsRuntime(
     dispatcher: eventDispatcher,
   });
   let barrier: Promise<void> = Promise.resolve();
-  let cachedFacts: readonly LearningFact[] | undefined = recoveredFacts ? undefined : durableFacts;
-  let factsGeneration = 0;
-  let factsLoad:
-    Readonly<{ generation: number; promise: Promise<readonly LearningFact[]> }> | undefined;
+  cachedFacts = recoveredFacts ? undefined : durableFacts;
 
   async function flush(): Promise<void> {
     const dispatch = barrier.then(async () => {
-      const dispatched = await outbox.dispatchPending(10_000);
-      if (dispatched > 0) {
-        factsGeneration += 1;
-        cachedFacts = undefined;
-      }
+      await outbox.dispatchPending(10_000);
     });
     barrier = dispatch.catch(() => undefined);
     await dispatch;

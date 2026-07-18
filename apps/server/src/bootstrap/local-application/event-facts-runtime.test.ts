@@ -34,6 +34,21 @@ function courseCreated(id: string): LearningEventEnvelope {
   };
 }
 
+function courseArchived(id: string, courseId: string): LearningEventEnvelope {
+  return {
+    id,
+    schema_version: 1,
+    type: 'CourseArchiveDeleted',
+    occurred_at: '2026-07-18T00:01:00.000Z',
+    recorded_at: '2026-07-18T00:01:00.000Z',
+    source: 'course-authoring',
+    target_refs: { courseId },
+    payload: { deletedCounts: { courses: 1, lessons: 0, facts: 1, evidence: 0 } },
+    idempotency_key: id,
+    correlation_id: id,
+  };
+}
+
 describe('local event facts runtime snapshots', () => {
   it('does not replay event transactions whose facts are already durable', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-fact-recovery-'));
@@ -66,7 +81,7 @@ describe('local event facts runtime snapshots', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it('reuses one fact snapshot across read models and invalidates it after dispatch', async () => {
+  it('reuses and incrementally updates one fact snapshot across read models', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-fact-cache-'));
     roots.push(directory);
     const foundation = await createLocalFoundation({ dataRoot: directory, csrfToken: 'test' });
@@ -87,7 +102,17 @@ describe('local event facts runtime snapshots', () => {
     );
     const history = await runtime.historyView();
 
-    expect(list).toHaveBeenCalledTimes(1);
+    expect(list).not.toHaveBeenCalled();
     expect(history.entries).toHaveLength(1);
+
+    await foundation.unitOfWork.execute({ transactionId: 'tx_archive_course' }, (tx) =>
+      runtime.outbox.enqueue(tx, [courseArchived('event_archive_01', 'course_event_01')]),
+    );
+    await runtime.flush();
+    list.mockClear();
+    const archivedHistory = await runtime.historyView();
+
+    expect(list).not.toHaveBeenCalled();
+    expect(archivedHistory.entries).toHaveLength(0);
   });
 });
