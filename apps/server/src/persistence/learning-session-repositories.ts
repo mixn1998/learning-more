@@ -12,6 +12,7 @@ import type { TransactionContext } from './unit-of-work.js';
 import { RepositoryVersionConflictError } from './repository-errors.js';
 import { DataRoot } from './data-root.js';
 import { checksumJson, decodeAggregateDocument } from './json-codec.js';
+import { mapConcurrentOrdered } from './concurrent-map.js';
 import { createStorePaths } from './paths.js';
 
 export type LearningSessionRecord = Readonly<{
@@ -166,10 +167,8 @@ export function createLocalFileLearningSessionRepositories(
           if (file.isFile() && file.name.endsWith('.json')) ids.push(file.name.slice(0, -5));
         }
       }
-      for (const id of ids.sort()) {
-        const record = await repository.get(id);
-        if (record !== undefined) yield record;
-      }
+      const records = await mapConcurrentOrdered(ids.sort(), (id) => repository.get(id));
+      for (const record of records) if (record !== undefined) yield record;
     },
   };
   return repository;

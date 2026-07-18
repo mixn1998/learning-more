@@ -21,11 +21,18 @@ export function createHomeRouteOptions(
 ): HomeRouteOptions {
   return {
     async getHome() {
-      const [draftRecords, courseRecords, scheduleRecords] = await Promise.all([
-        collect(input.course.access.listDraftSessions()),
-        collect(input.course.access.listCourses()),
-        input.planning.access.listSchedule(),
-      ]);
+      const [draftRecords, courseRecords, lessonRecords, learningRecords, scheduleRecords] =
+        await Promise.all([
+          collect(input.course.access.listDraftSessions()),
+          collect(input.course.access.listCourses()),
+          collect(input.course.access.listAllLessons()),
+          collect(input.learning.access.listRecords()),
+          input.planning.access.listSchedule(),
+        ]);
+      const lessonById = new Map(lessonRecords.map((lesson) => [lesson.id, lesson]));
+      const learningByLessonId = new Map(
+        learningRecords.map((record) => [record.lessonId, record]),
+      );
       const draftSessions = draftRecords.flatMap((record) =>
         record.session.state === 'confirmed' || record.session.savedAsDraft !== true
           ? []
@@ -42,50 +49,46 @@ export function createHomeRouteOptions(
       const courseBundles = await mapConcurrentOrdered(
         courseRecords,
         async (course) => {
-          const [confirmedOutline, lessonRows] = await Promise.all([
-            input.course.access.getOutlineVersion(course.outlineVersionId),
-            mapConcurrentOrdered(course.lessonIds, async (lessonId) => {
-              const [lesson, learning] = await Promise.all([
-                input.course.access.getLesson(lessonId),
-                input.learning.access.getRecord(lessonId),
-              ]);
-              if (lesson === undefined) return undefined;
-              const lastActivityAt = latestLearningActivityAt(learning?.intervals ?? []);
-              const recommendation = course.nextLessonRecommendation;
-              const recommendationRank =
-                recommendation === undefined
-                  ? -1
-                  : recommendation.rankedLessonIds.indexOf(lessonId);
-              return {
-                courseId: course.id,
-                lessonId,
-                title: lesson.title,
-                objective: lesson.objective,
-                coreKnowledgePoints: [...lesson.coreKnowledgePoints],
-                estimatedMinutes: lesson.estimatedMinutes,
-                progress: learning?.learning.progress ?? ('not_started' as const),
-                ...(learning?.learning.session?.id === undefined
-                  ? {}
-                  : { sessionId: learning.learning.session.id }),
-                recommended: lessonId === course.recommendedLessonId && recommendationRank <= 0,
-                ...(recommendation === undefined || recommendationRank < 0
-                  ? {}
-                  : {
-                      recommendation: {
-                        versionId: recommendation.versionId,
-                        rank: recommendationRank + 1,
-                        rationale: recommendation.rationale,
-                        evidenceRefs: [...recommendation.evidenceRefs],
-                        confidence: recommendation.confidence,
-                        expiresAt: recommendation.expiresAt,
-                        status: recommendation.status,
-                        warnings: [...recommendation.warnings],
-                      },
-                    }),
-                ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
-              };
-            }),
-          ]);
+          const confirmedOutline = await input.course.access.getOutlineVersion(
+            course.outlineVersionId,
+          );
+          const lessonRows = course.lessonIds.map((lessonId) => {
+            const lesson = lessonById.get(lessonId);
+            const learning = learningByLessonId.get(lessonId);
+            if (lesson === undefined) return undefined;
+            const lastActivityAt = latestLearningActivityAt(learning?.intervals ?? []);
+            const recommendation = course.nextLessonRecommendation;
+            const recommendationRank =
+              recommendation === undefined ? -1 : recommendation.rankedLessonIds.indexOf(lessonId);
+            return {
+              courseId: course.id,
+              lessonId,
+              title: lesson.title,
+              objective: lesson.objective,
+              coreKnowledgePoints: [...lesson.coreKnowledgePoints],
+              estimatedMinutes: lesson.estimatedMinutes,
+              progress: learning?.learning.progress ?? ('not_started' as const),
+              ...(learning?.learning.session?.id === undefined
+                ? {}
+                : { sessionId: learning.learning.session.id }),
+              recommended: lessonId === course.recommendedLessonId && recommendationRank <= 0,
+              ...(recommendation === undefined || recommendationRank < 0
+                ? {}
+                : {
+                    recommendation: {
+                      versionId: recommendation.versionId,
+                      rank: recommendationRank + 1,
+                      rationale: recommendation.rationale,
+                      evidenceRefs: [...recommendation.evidenceRefs],
+                      confidence: recommendation.confidence,
+                      expiresAt: recommendation.expiresAt,
+                      status: recommendation.status,
+                      warnings: [...recommendation.warnings],
+                    },
+                  }),
+              ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
+            };
+          });
           return {
             course: {
               courseId: course.id,

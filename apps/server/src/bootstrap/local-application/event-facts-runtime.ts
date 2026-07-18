@@ -1,6 +1,7 @@
 import { EVENT_TYPES } from '@learning-more/contracts';
 
 import { createFactProjector } from '../../modules/learning-facts/implementation/fact-projector.js';
+import { eventToFacts } from '../../modules/learning-facts/implementation/event-to-fact.js';
 import { createCalendarProjection } from '../../modules/learning-facts/implementation/projections/calendar.js';
 import { createCourseSummaryProjection } from '../../modules/learning-facts/implementation/projections/course-summary.js';
 import { createHistoryProjection } from '../../modules/learning-facts/implementation/projections/history.js';
@@ -43,7 +44,45 @@ export async function createLocalEventFactsRuntime(
       await factProjector.project(event);
     });
   }
-  for (const event of await eventLog.readAll()) await factProjector.project(event);
+  const durableFacts: LearningFact[] = [];
+  for await (const fact of factRepository.list()) durableFacts.push(fact);
+  const durableFactIds = new Set(durableFacts.map((fact) => fact.factId));
+  const durableCourseIds = new Set(
+    durableFacts.flatMap((fact) =>
+      fact.subjectRefs.courseId === undefined ? [] : [fact.subjectRefs.courseId],
+    ),
+  );
+  const events = await eventLog.readAll();
+  const archivedCourseIds = new Set(
+    events.flatMap((event) =>
+      event.type === 'CourseArchiveDeleted' && event.target_refs.courseId !== undefined
+        ? [event.target_refs.courseId]
+        : [],
+    ),
+  );
+  let recoveredFacts = false;
+  for (const event of events) {
+    const courseId = event.target_refs.courseId;
+    if (event.type === 'CourseArchiveDeleted') {
+      if (courseId !== undefined && durableCourseIds.has(courseId)) {
+        await factProjector.project(event);
+        recoveredFacts = true;
+        durableCourseIds.delete(courseId);
+      }
+      continue;
+    }
+    if (courseId !== undefined && archivedCourseIds.has(courseId)) continue;
+    const expectedFacts = eventToFacts(event);
+    if (
+      expectedFacts.length === 0 ||
+      expectedFacts.every((fact) => durableFactIds.has(fact.factId))
+    ) {
+      continue;
+    }
+    await factProjector.project(event);
+    recoveredFacts = true;
+    for (const fact of expectedFacts) durableFactIds.add(fact.factId);
+  }
   const outbox = createOutbox({
     dataRoot: input.dataRoot,
     unitOfWork: input.unitOfWork,
@@ -51,7 +90,7 @@ export async function createLocalEventFactsRuntime(
     dispatcher: eventDispatcher,
   });
   let barrier: Promise<void> = Promise.resolve();
-  let cachedFacts: readonly LearningFact[] | undefined;
+  let cachedFacts: readonly LearningFact[] | undefined = recoveredFacts ? undefined : durableFacts;
   let factsGeneration = 0;
   let factsLoad:
     Readonly<{ generation: number; promise: Promise<readonly LearningFact[]> }> | undefined;

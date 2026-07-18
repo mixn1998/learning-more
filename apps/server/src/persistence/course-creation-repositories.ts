@@ -4,6 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 import type { CourseCreationRepositories } from '../modules/course-authoring/ports/course-repositories.js';
+import { mapConcurrentOrdered } from './concurrent-map.js';
 import { DataRoot } from './data-root.js';
 import { checksumJson, decodeAggregateDocument } from './json-codec.js';
 import { createStorePaths } from './paths.js';
@@ -179,11 +180,14 @@ export function createLocalFileCourseCreationRepositories(
         await lessons.get(value.id),
       );
     },
+    async *list() {
+      const values = await mapConcurrentOrdered(await ids('lesson-definitions'), (id) =>
+        lessons.get(id),
+      );
+      for (const lesson of values) if (lesson !== undefined) yield lesson;
+    },
     async *listByCourse(courseId) {
-      for (const id of await ids('lesson-definitions')) {
-        const lesson = await lessons.get(id);
-        if (lesson?.courseId === courseId) yield lesson;
-      }
+      for await (const lesson of lessons.list()) if (lesson.courseId === courseId) yield lesson;
     },
   };
   return { courses, outlineVersions, lessons };

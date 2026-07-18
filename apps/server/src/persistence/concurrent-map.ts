@@ -1,7 +1,7 @@
 export async function mapConcurrentOrdered<T, TResult>(
   values: readonly T[],
   operation: (value: T, index: number) => Promise<TResult>,
-  concurrency = 32,
+  concurrency = 16,
 ): Promise<TResult[]> {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new RangeError('CONCURRENCY_INVALID');

@@ -5,7 +5,6 @@ import type { LearningEventEnvelope } from '@learning-more/contracts';
 import type { PlanningRouteOptions } from '../../http/routes/planning.js';
 import { createPlanFlowService } from '../../modules/planning/implementation/plan-flow-service.js';
 import { createPlanningModule } from '../../modules/planning/implementation/planning-module.js';
-import type { ScheduleItem } from '../../modules/planning/model/schedule-item.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import {
@@ -13,7 +12,6 @@ import {
   createLocalFileScheduleRepository,
 } from '../../persistence/planning-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
-import { mapConcurrentOrdered } from '../../persistence/concurrent-map.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalLearningRuntime } from './learning-runtime.js';
@@ -226,14 +224,16 @@ export function createLocalPlanningRuntime(
   });
 
   async function currentScheduleSnapshot() {
-    const snapshot = await planning.snapshot();
-    const current = await mapConcurrentOrdered(
-      snapshot.items,
-      async (item) => ((await currentLesson(item.lessonId)) === undefined ? undefined : item),
-      32,
-    );
+    const courseLessonIds: string[] = [];
+    const courseLoad = (async () => {
+      for await (const course of input.course.access.listCourses()) {
+        courseLessonIds.push(...course.lessonIds);
+      }
+    })();
+    const [snapshot] = await Promise.all([planning.snapshot(), courseLoad]);
+    const currentLessonIds = new Set(courseLessonIds);
     return {
-      items: current.filter((item): item is ScheduleItem => item !== undefined),
+      items: snapshot.items.filter((item) => currentLessonIds.has(item.lessonId)),
       resourceVersion: snapshot.resourceVersion,
     };
   }

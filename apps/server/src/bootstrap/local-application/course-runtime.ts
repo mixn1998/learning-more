@@ -38,6 +38,7 @@ export type CourseAccess = Readonly<{
   getOutlineVersion: CourseRepositories['outlineVersions']['get'];
   getMaterial: AuthoringRepositories['materials']['get'];
   listCourses: CourseRepositories['courses']['list'];
+  listAllLessons: CourseRepositories['lessons']['list'];
   listLessons: CourseRepositories['lessons']['listByCourse'];
   listDraftSessions: AuthoringRepositories['outlineSessions']['list'];
   saveCourse: CourseRepositories['courses']['save'];
@@ -281,6 +282,7 @@ export function createLocalCourseRuntime(
         courseRepositories.outlineVersions.get(outlineVersionId),
       getMaterial: (sourceRef) => authoringRepositories.materials.get(sourceRef),
       listCourses: listCoursesWithOutlineTitle,
+      listAllLessons: () => courseRepositories.lessons.list(),
       listLessons: (courseId) => courseRepositories.lessons.listByCourse(courseId),
       listDraftSessions: () => authoringRepositories.outlineSessions.list(),
       saveCourse: (tx, course, expectedVersion) =>

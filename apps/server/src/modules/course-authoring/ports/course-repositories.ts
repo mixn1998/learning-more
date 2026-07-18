@@ -24,6 +24,7 @@ export interface CourseCreationRepositories {
   readonly lessons: {
     get(id: string): Promise<LessonDefinition | undefined>;
     save(tx: TransactionContext, lesson: LessonDefinition, expectedVersion: 0): Promise<void>;
+    list(): AsyncIterable<LessonDefinition>;
     listByCourse(courseId: string): AsyncIterable<LessonDefinition>;
   };
 }
@@ -67,6 +68,9 @@ export function createInMemoryCourseCreationRepositories(): CourseCreationReposi
     lessons: {
       get: async (id) => structuredClone(lessons.get(id)),
       save: async (_tx, value, expected) => immutableSave(lessons, value, expected),
+      async *list() {
+        for (const lesson of lessons.values()) yield structuredClone(lesson);
+      },
       async *listByCourse(courseId) {
         for (const lesson of lessons.values()) {
           if (lesson.courseId === courseId) yield structuredClone(lesson);
