@@ -17,22 +17,11 @@ function displayMarkdown(markdown: string): string {
 }
 
 function friendlyEvidenceSummary(evidence: PortraitEvidence): string {
-  if (evidence.polarity !== 'supporting') {
-    return '这次学习记录提醒我们：上面的观察并不是在每次学习中都会出现。';
-  }
-  if (evidence.sourceGroup === 'behavior') {
-    return '在这次学习中，你也出现了与上面描述相符的做法。';
-  }
-  if (evidence.sourceGroup === 'outcome') {
-    return '这次学习结果与上面的观察相互印证。';
-  }
-  if (evidence.sourceGroup === 'reflection') {
-    return '这次复盘补充了上面观察成立的具体情境。';
-  }
-  if (evidence.sourceGroup === 'planning') {
-    return '这次学习安排与上面的观察相互印证。';
-  }
-  return '这次课节 Review 保留了与上面观察一致的记录。';
+  const concreteSummary = evidence.summary.trim();
+  if (concreteSummary !== '') return concreteSummary;
+  return evidence.polarity === 'supporting'
+    ? '该来源的具体摘要当前不可用。'
+    : '该限制性来源的具体摘要当前不可用。';
 }
 
 function nodeForEvidence(evidence: PortraitEvidence): PortraitEvidenceNode {

@@ -189,10 +189,28 @@ describe('reasoning evidence projector', () => {
     const evidenceRepositories = createInMemoryEvidenceRepositories();
     const episodes = new Map(
       [
-        ['episode_1', 'session_1', 'message_1', '2026-07-13T00:00:00.000Z'],
-        ['episode_2', 'session_1', 'message_2', '2026-07-13T00:01:00.000Z'],
-        ['episode_3', 'session_2', 'message_3', '2026-07-13T00:02:00.000Z'],
-      ].map(([episodeId, sessionId, messageId, observedAt]) => [
+        [
+          'episode_1',
+          'session_1',
+          'message_1',
+          '2026-07-13T00:00:00.000Z',
+          '先核查规则是否改变结论。',
+        ],
+        [
+          'episode_2',
+          'session_1',
+          'message_2',
+          '2026-07-13T00:01:00.000Z',
+          '再检查前一步是否保留后续条件。',
+        ],
+        [
+          'episode_3',
+          'session_2',
+          'message_3',
+          '2026-07-13T00:02:00.000Z',
+          '把变量之间的依赖画成连续链路。',
+        ],
+      ].map(([episodeId, sessionId, messageId, observedAt, behaviorSummary]) => [
         episodeId!,
         {
           episodeId: episodeId!,
@@ -201,7 +219,7 @@ describe('reasoning evidence projector', () => {
           lessonId: `lesson_${sessionId!.at(-1)}`,
           sessionId: sessionId!,
           courseMode: 'standard' as const,
-          behaviorSummary: 'A Review-produced session dimension.',
+          behaviorSummary: behaviorSummary!,
           sourceObservationRef: `review:${sessionId}`,
           sourceRefs: [`message:${messageId}`],
           sourceGroupId: `legacy:${episodeId}`,
@@ -299,8 +317,13 @@ describe('reasoning evidence projector', () => {
     expect(stored).toHaveLength(2);
     expect(stored.find((evidence) => evidence.sourceGroupId === 'session:session_1')).toMatchObject(
       {
-        summary: '前提核查：在形成判断前主动确认约束、规则和信息完整性。',
+        summary: '先核查规则是否改变结论；再检查前一步是否保留后续条件。',
         sourceRefs: ['message:message_1', 'message:message_2'],
+      },
+    );
+    expect(stored.find((evidence) => evidence.sourceGroupId === 'session:session_2')).toMatchObject(
+      {
+        summary: '把变量之间的依赖画成连续链路。',
       },
     );
     expect(stored.every((evidence) => !evidence.summary.includes('Concrete rationale'))).toBe(true);

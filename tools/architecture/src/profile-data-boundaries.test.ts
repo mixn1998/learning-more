@@ -39,4 +39,26 @@ describe('profile data architecture boundaries', () => {
       /candidate.?reject|portrait.?feedback|拒绝候选|画像反馈/iu,
     );
   });
+
+  it('[EQ-POR-10] preserves concrete per-session summaries in portrait evidence cards and legacy reads', () => {
+    const workspaceModel = readFileSync(
+      path.join(root, 'apps/web/src/features/profile/portrait-workspace-model.ts'),
+      'utf8',
+    );
+    const projector = readFileSync(
+      path.join(
+        root,
+        'apps/server/src/modules/profile-evidence/implementation/reasoning-evidence-projector.ts',
+      ),
+      'utf8',
+    );
+    const profileRuntime = readFileSync(
+      path.join(root, 'apps/server/src/bootstrap/local-application/profile-runtime.ts'),
+      'utf8',
+    );
+    expect(workspaceModel).toContain('evidence.summary.trim()');
+    expect(workspaceModel).not.toContain('在这次学习中，你也出现了与上面描述相符的做法。');
+    expect(projector).toContain('combineReasoningBehaviorSummaries');
+    expect(profileRuntime).toContain('reasoningEvidenceSummaryForRead');
+  });
 });

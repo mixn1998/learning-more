@@ -84,8 +84,8 @@ describe('ProfilePage', () => {
     ]);
     expect(screen.getByRole('heading', { name: '你在学习中反复出现的做法' })).toBeVisible();
     fireEvent.click(screen.getByText('这条观察从哪里来'));
-    expect(screen.getByText('在这次学习中，你也出现了与上面描述相符的做法。')).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain('完成课节后根据结果修改了原解释。');
+    expect(screen.getByText('完成课节后根据结果修改了原解释。')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('与上面描述相符的做法');
     expect(document.body.textContent).not.toContain('evidence_1');
     expect(document.body.textContent).not.toContain('confidence');
   });

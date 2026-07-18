@@ -186,6 +186,31 @@ describe('local profile runtime', () => {
         snapshot: { analyzerVersion: 'reasoning-global-analyzer@2', status: 'usable' },
       },
     });
+
+    const projected = evidence.find((candidate) =>
+      candidate.extractorVersion.endsWith(':reasoning-session-dimension@2'),
+    );
+    expect(projected).toBeDefined();
+    const currentProjected = await repositories.evidence.get(projected!.evidenceId);
+    expect(currentProjected).toBeDefined();
+    await foundation.unitOfWork.execute({ transactionId: 'tx_seed_legacy_summary' }, async (tx) => {
+      await repositories.evidence.save(
+        tx,
+        {
+          ...currentProjected!,
+          summary: '全局抽象维度：所有独立会话过去都显示同一句定义。',
+        },
+        currentProjected!.resourceVersion,
+      );
+    });
+    const visibleEvidence = await profile.profileRoutes.listEvidence();
+    expect(
+      visibleEvidence.find((candidate) => candidate.evidenceId === projected!.evidenceId),
+    ).toMatchObject({
+      summary: expect.stringContaining(
+        'The learner compares changing conditions before revising a judgment',
+      ),
+    });
   });
 
   it('allows an explicit portrait refresh after an earlier profile checkpoint failed', async () => {

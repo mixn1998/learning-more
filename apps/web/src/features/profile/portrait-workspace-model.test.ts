@@ -61,11 +61,11 @@ describe('portrait workspace projection', () => {
     expect(insight?.evidence).toEqual([
       expect.objectContaining({
         title: '学习行为',
-        summary: '在这次学习中，你也出现了与上面描述相符的做法。',
+        summary: 'support summary',
       }),
       expect.objectContaining({
         title: '复盘反思',
-        summary: '这次学习记录提醒我们：上面的观察并不是在每次学习中都会出现。',
+        summary: 'counter summary',
         boundary: true,
       }),
     ]);
@@ -84,6 +84,26 @@ describe('portrait workspace projection', () => {
       sourceGroup: 'boundary',
       boundary: true,
     });
+  });
+
+  it('keeps independent behavior sources concrete instead of collapsing them into one template', () => {
+    const [insight] = buildPortraitInsights({
+      portrait: {
+        ...portrait,
+        claims: [
+          {
+            ...portrait.claims[0]!,
+            evidenceIds: ['support-a', 'support-b'],
+          },
+        ],
+      },
+      evidence: [evidence('support-a', 'supporting'), evidence('support-b', 'supporting')],
+    });
+
+    expect(insight?.evidence.slice(0, 2).map((item) => item.summary)).toEqual([
+      'support-a summary',
+      'support-b summary',
+    ]);
   });
 
   it('formats the authoritative update timestamp in the product timezone', () => {

@@ -16,6 +16,7 @@ import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/
 import { assembleProfileEvidenceContext } from '../../modules/profile-evidence/implementation/profile-evidence-context-assembler.js';
 import { purgeDeprecatedReasoningEvidence } from '../../modules/profile-evidence/implementation/deprecated-reasoning-evidence-migration.js';
 import { createProfileEvidencePipeline } from '../../modules/profile-evidence/implementation/pipeline.js';
+import { reasoningEvidenceSummaryForRead } from '../../modules/profile-evidence/implementation/reasoning-evidence-summary.js';
 import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
 import { createReasoningEvidenceProjector } from '../../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
 import { isGovernedBehaviorDetail } from '../../modules/profile-evidence/interface.js';
@@ -492,8 +493,16 @@ export function createLocalProfileRuntime(
   const profileRoutes: ProfileRouteOptions = {
     getGlobalProfile: globalProfile,
     async listEvidence() {
+      const episodes = [];
+      for await (const episode of reasoningBehaviorRepository.listEpisodes())
+        episodes.push(episode);
       const evidence = [];
-      for await (const candidate of evidenceRepositories.evidence.list()) evidence.push(candidate);
+      for await (const candidate of evidenceRepositories.evidence.list()) {
+        evidence.push({
+          ...candidate,
+          summary: reasoningEvidenceSummaryForRead(candidate, episodes),
+        });
+      }
       return evidence;
     },
     async listReasoningEpisodes() {
