@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { LearningFactsRouteOptions } from '../../http/routes/learning-facts.js';
 import { createWeeklyReportScheduler } from '../../modules/learning-facts/implementation/weekly-report-scheduler.js';
 import { createWeeklyReportService } from '../../modules/learning-facts/implementation/weekly-report-service.js';
+import { weeklyReportMarkdownForRead } from '../../modules/learning-facts/implementation/weekly-report-output.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
@@ -117,7 +118,12 @@ export function createLocalInsightsRuntime(
             report.artifactRef === undefined
               ? undefined
               : (await input.artifactStore.read(report.artifactRef))?.content;
-          return { ...report, ...(markdown === undefined ? {} : { markdown }) };
+          return {
+            ...report,
+            ...(markdown === undefined
+              ? {}
+              : { markdown: weeklyReportMarkdownForRead(markdown, report.factSnapshot.length) }),
+          };
         },
       },
     },

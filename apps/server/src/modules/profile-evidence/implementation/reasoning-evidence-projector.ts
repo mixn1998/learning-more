@@ -8,7 +8,6 @@ import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import { isGlobalReasoningDimensionEvidence, type CandidateEvidence } from '../interface.js';
 import type { EvidenceRepositories } from '../ports/evidence-repository.js';
 import { parseCandidateEvidence } from './candidate-evidence.js';
-import { combineReasoningBehaviorSummaries } from './reasoning-evidence-summary.js';
 
 const GLOBAL_REASONING_ANALYZER_VERSION = 'reasoning-global-analyzer@2';
 
@@ -101,7 +100,7 @@ export function createReasoningEvidenceProjector(options: {
           observedAt: string;
           confidences: number[];
           episodeIds: Set<string>;
-          behaviorSummaries: Set<string>;
+          representativeRationale?: string;
         }
       >();
 
@@ -124,7 +123,6 @@ export function createReasoningEvidenceProjector(options: {
             observedAt: episode.observedAt,
             confidences: [],
             episodeIds: new Set<string>(),
-            behaviorSummaries: new Set<string>(),
           };
           for (const ref of refs.length === 0 ? [`message:${episode.episodeId}`] : refs) {
             group.sourceRefs.add(ref);
@@ -132,7 +130,7 @@ export function createReasoningEvidenceProjector(options: {
           if (episode.observedAt > group.observedAt) group.observedAt = episode.observedAt;
           group.confidences.push(label.confidence);
           group.episodeIds.add(episode.episodeId);
-          group.behaviorSummaries.add(episode.behaviorSummary);
+          group.representativeRationale ??= label.rationale.trim();
           groups.set(key, group);
         }
       }
@@ -160,10 +158,9 @@ export function createReasoningEvidenceProjector(options: {
           {
             evidenceId: existing?.evidenceId ?? `evidence_reasoning_${dedupKey.slice(0, 40)}`,
             claimDimension: group.claimDimension,
-            summary: combineReasoningBehaviorSummaries(
-              [...group.behaviorSummaries],
-              `${group.dimension.label}：${group.dimension.description}`,
-            ),
+            summary: `${group.dimension.label}：${
+              group.representativeRationale || group.dimension.description
+            }`,
             sourceGroup: 'behavior',
             sourceGroupId: group.sourceGroupId,
             dependentSourceGroupIds: [],

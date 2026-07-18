@@ -60,7 +60,7 @@ describe('portrait workspace projection', () => {
     });
     expect(insight?.evidence).toEqual([
       expect.objectContaining({
-        title: '学习行为',
+        title: '本次学习中的具体表现',
         summary: 'support summary',
       }),
       expect.objectContaining({

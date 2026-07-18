@@ -31,7 +31,7 @@ type PortraitSettings = Readonly<{
 }>;
 
 const sourceLabel = {
-  behavior: '学习行为',
+  behavior: '本次学习中的具体表现',
   outcome: '学习结果',
   reflection: '复盘反思',
   planning: '课程规划',

@@ -137,6 +137,7 @@ describe('WeeklyReportService', () => {
     const firstPrompt = submit.mock.calls[0]?.[0]?.prompt as string;
     expect(firstPrompt).toContain('【周报范围】');
     expect(firstPrompt).toContain('【可用学习证据】');
+    expect(firstPrompt).toContain('必须使用简体中文');
     expect(firstPrompt).toContain('来源标记：fact:inside');
     expect(firstPrompt).toContain('完成了一节课');
     expect(firstPrompt).toContain('10 分钟');
@@ -165,20 +166,20 @@ describe('WeeklyReportService', () => {
     expect(submit.mock.calls[1]?.[0]?.prompt).toBe(firstPrompt);
 
     await expect(
-      service.finalize('2026-W28', 'task_week_2', '# Weekly Review\n\nSolid progress.'),
+      service.finalize('2026-W28', 'task_week_2', '# 本周回顾\n\n学习有进展。'),
     ).rejects.toThrow('weekly_report_claim_missing_source');
     await expect(
       service.finalize(
         '2026-W28',
         'task_week_2',
-        '# Weekly Review\n\nSolid progress. <!-- sources:fact:invented -->',
+        '# 本周回顾\n\n学习有进展。 <!-- sources:fact:invented -->',
       ),
     ).rejects.toThrow('weekly_report_source_unsupported:fact:invented');
 
     const finalized = await service.finalize(
       '2026-W28',
       'task_week_2',
-      '# Weekly Review\n\nOne lesson was completed. <!-- sources:fact:inside -->',
+      '# 本周回顾\n\n本周完成了一节课。 <!-- sources:fact:inside -->',
     );
     expect(finalized).toMatchObject({
       state: 'finalized',

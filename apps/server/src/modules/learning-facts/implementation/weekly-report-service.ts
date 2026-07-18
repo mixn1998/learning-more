@@ -152,6 +152,7 @@ export function createWeeklyReportService(options: {
       providerId: options.providerId ?? 'current',
       priority: 20,
       prompt: [
+        '【输出语言】所有面向学习者的标题、正文和建议必须使用简体中文；必要的专有名词可以保留原文，但不得输出整段英文。',
         '生成简洁、有用、自然组织的 Markdown 周学习回顾。每个具体判断都必须来自下面冻结的学习证据；证据不足时应明确说明。',
         '每个包含具体判断的段落或列表块后，追加不可见溯源注释：<!-- sources:来源标记,来源标记 -->。只能使用背景中明确给出的来源标记。',
         '',

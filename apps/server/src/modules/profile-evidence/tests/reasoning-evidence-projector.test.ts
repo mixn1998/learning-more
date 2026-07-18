@@ -299,7 +299,11 @@ describe('reasoning evidence projector', () => {
           labels: [
             {
               dimensionId: 'dimension_condition_checking',
-              rationale: `Concrete rationale ${index} must not enter the global candidate.`,
+              rationale: [
+                '先确认规则是否会改变当前结论。',
+                '再检查前一步是否保留后续条件。',
+                '把变量依赖整理成连续链路。',
+              ][index]!,
               confidence: 0.9,
             },
           ],
@@ -317,16 +321,16 @@ describe('reasoning evidence projector', () => {
     expect(stored).toHaveLength(2);
     expect(stored.find((evidence) => evidence.sourceGroupId === 'session:session_1')).toMatchObject(
       {
-        summary: '先核查规则是否改变结论；再检查前一步是否保留后续条件。',
+        summary: '前提核查：先确认规则是否会改变当前结论。',
         sourceRefs: ['message:message_1', 'message:message_2'],
       },
     );
     expect(stored.find((evidence) => evidence.sourceGroupId === 'session:session_2')).toMatchObject(
       {
-        summary: '把变量之间的依赖画成连续链路。',
+        summary: '前提核查：把变量依赖整理成连续链路。',
       },
     );
-    expect(stored.every((evidence) => !evidence.summary.includes('Concrete rationale'))).toBe(true);
+    expect(stored.every((evidence) => !evidence.summary.includes('；'))).toBe(true);
   });
 
   it('supersedes candidates no longer supported by the latest stable global dimensions', async () => {
