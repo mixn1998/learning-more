@@ -209,6 +209,11 @@ export function OutlineRevisionWorkspace(props: {
             onSubmit={send}
           />
           <div className="course-revision-controls">
+            {props.hasUnappliedConversation === true && props.candidate !== undefined ? (
+              <p className="course-revision-unapplied" role="status">
+                当前候选未包含生成后的最新对话
+              </p>
+            ) : null}
             <Button
               busy={props.phase === 'generating'}
               disabled={
@@ -231,11 +236,6 @@ export function OutlineRevisionWorkspace(props: {
               确认并发布 v{nextVersionNumber}
             </Button>
           </div>
-          {props.hasUnappliedConversation === true && props.candidate !== undefined ? (
-            <p className="course-revision-unapplied" role="status">
-              当前候选未包含生成后的最新对话
-            </p>
-          ) : null}
         </Card>
 
         <Card className="ow-panel ow-panel--outline">
