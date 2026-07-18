@@ -8,19 +8,22 @@ describe('Home HTTP route', () => {
     const app = Fastify();
     await registerHomeRoutes(app, {
       getHome: async () => ({
-        generatedAt: '2026-07-13T00:00:00.000Z',
-        draftSessions: [
-          {
-            outlineSessionId: 'session_01',
-            topic: 'Probability',
-            courseMode: 'standard',
-            state: 'candidate-ready',
-            resourceVersion: 2,
-          },
-        ],
-        courses: [],
-        lessons: [],
-        schedule: [],
+        etag: 'home:1',
+        value: {
+          generatedAt: '2026-07-13T00:00:00.000Z',
+          draftSessions: [
+            {
+              outlineSessionId: 'session_01',
+              topic: 'Probability',
+              courseMode: 'standard',
+              state: 'candidate-ready',
+              resourceVersion: 2,
+            },
+          ],
+          courses: [],
+          lessons: [],
+          schedule: [],
+        },
       }),
     });
 
@@ -29,5 +32,12 @@ describe('Home HTTP route', () => {
     expect(response.json()).toMatchObject({
       draftSessions: [{ outlineSessionId: 'session_01' }],
     });
+    const unchanged = await app.inject({
+      method: 'GET',
+      url: '/api/v1/home',
+      headers: { 'if-none-match': response.headers.etag! },
+    });
+    expect(unchanged.statusCode).toBe(304);
+    expect(unchanged.body).toBe('');
   });
 });

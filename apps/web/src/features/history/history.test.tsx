@@ -36,7 +36,7 @@ function portraitClient(): ProfileClient {
 
 function client(): HistoryClient {
   return {
-    getDashboard: vi.fn().mockResolvedValue({
+    getCatalog: vi.fn().mockResolvedValue({
       generatedAt: '2026-07-14T00:00:00.000Z',
       draftSessions: [],
       courses: [
@@ -127,14 +127,52 @@ function client(): HistoryClient {
       currentStreakDays: 1,
       longestStreakDays: 1,
       definitions: { totalActualSeconds: 'metric.learning.actual_seconds' },
+      daily: [
+        {
+          localDate: '2026-07-03',
+          actualSeconds: 600,
+          completedLessonCount: 1,
+          closedCourseIds: ['course_01'],
+          abandonedCourseIds: [],
+          interactionPromptedCount: 0,
+          interactionRespondedCount: 0,
+          interactionSkippedCount: 0,
+          actualSecondsByCourse: { course_01: 600 },
+        },
+        {
+          localDate: '2026-07-05',
+          actualSeconds: 120,
+          completedLessonCount: 1,
+          closedCourseIds: [],
+          abandonedCourseIds: [],
+          interactionPromptedCount: 0,
+          interactionRespondedCount: 0,
+          interactionSkippedCount: 0,
+          actualSecondsByCourse: { course_01: 120 },
+        },
+      ],
+      courseRollups: [
+        {
+          courseId: 'course_01',
+          actualSeconds: 720,
+          completedLessonCount: 2,
+          abandonedLessonCount: 0,
+          latestActivityDate: '2026-07-05',
+        },
+      ],
       asOfEventId: 'event_f2',
       projectionVersion: 1,
-      freshness: 'current',
+      freshness: 'stale',
     }),
     getCalendar: vi.fn().mockResolvedValue({
       days: [
-        { localDate: '2026-07-03', actualSeconds: 600, completedLessonIds: ['lesson_01'] },
-        { localDate: '2026-07-05', actualSeconds: 0, completedLessonIds: [] },
+        {
+          localDate: '2026-07-03',
+          actualSeconds: 600,
+          completedLessonIds: ['lesson_01'],
+          completions: [{ lessonId: 'lesson_01', courseId: 'course_01', actualSeconds: 600 }],
+        },
+        { localDate: '2026-07-05', actualSeconds: 0, completedLessonIds: [], completions: [] },
       ],
       asOfEventId: 'event_f2',
       projectionVersion: 1,
@@ -161,7 +199,7 @@ describe('HistoryPage', () => {
 
   it('keeps the statistics workspace when the course catalog is unavailable', async () => {
     const api = client();
-    vi.mocked(api.getDashboard).mockRejectedValue(new Error('catalog_unavailable'));
+    vi.mocked(api.getCatalog).mockRejectedValue(new Error('catalog_unavailable'));
 
     renderHistory(api);
 
@@ -219,7 +257,7 @@ describe('HistoryPage', () => {
     );
 
     expect(await screen.findByRole('heading', { name: '学习画像' })).toBeVisible();
-    expect(historyApi.getDashboard).not.toHaveBeenCalled();
+    expect(historyApi.getCatalog).not.toHaveBeenCalled();
     expect(historyApi.getHistory).not.toHaveBeenCalled();
     expect(historyApi.getStatistics).not.toHaveBeenCalled();
     expect(historyApi.getCalendar).not.toHaveBeenCalled();
@@ -228,7 +266,7 @@ describe('HistoryPage', () => {
 
   it('renders statistics as soon as core metrics arrive while details continue in background', async () => {
     const api = client();
-    vi.mocked(api.getDashboard).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(api.getCatalog).mockReturnValue(new Promise(() => undefined));
     vi.mocked(api.getHistory).mockReturnValue(new Promise(() => undefined));
 
     renderHistory(api);
@@ -271,11 +309,11 @@ describe('HistoryPage', () => {
     );
   });
 
-  it('loads every cursor page into the real analytics model', async () => {
+  it('uses aggregate statistics without loading every history cursor page', async () => {
     const api = client();
     renderHistory(api);
     await screen.findByText('历史课程');
-    await waitFor(() => expect(api.getHistory).toHaveBeenCalledWith('cursor_1'));
+    await waitFor(() => expect(api.getHistory).not.toHaveBeenCalled());
     expect(screen.getByText(/lesson_01 \/ lesson_03/)).toBeInTheDocument();
     expect(screen.getByText('12m')).toBeInTheDocument();
   });

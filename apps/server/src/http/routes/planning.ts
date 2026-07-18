@@ -13,6 +13,7 @@ import type { PlanningModule } from '../../modules/planning/interface.js';
 import type { createPlanFlowService } from '../../modules/planning/implementation/plan-flow-service.js';
 import type { PlanFlow } from '../../modules/planning/model/plan-flow.js';
 import { buildCommandContext } from '../command-context.js';
+import { sendConditionalJson } from '../conditional-get.js';
 import { mapApplicationError } from '../error-mapper.js';
 
 export type PlanningRouteOptions = Readonly<{
@@ -119,9 +120,13 @@ export async function registerPlanningRoutes(
     }
   });
 
-  app.get('/api/v1/schedule', async (_request, reply) => {
+  app.get('/api/v1/schedule', async (request, reply) => {
     const view = await options.planning.snapshot();
-    return reply.header('etag', `"${view.resourceVersion}"`).code(200).send(view);
+    return sendConditionalJson(request, reply, {
+      etag: String(view.resourceVersion),
+      value: view,
+      projectionStatus: 'current',
+    });
   });
 
   app.delete('/api/v1/schedule', async (request, reply) => {

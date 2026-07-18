@@ -142,4 +142,18 @@ describe('LearningFacts HTTP routes', () => {
     expect(missingResponse.statusCode).toBe(503);
     expect(missingResponse.json()).toMatchObject({ code: 'projection_incomplete' });
   });
+
+  it('returns 304 without a projection body when the read model is unchanged', async () => {
+    const { app, queries } = fixture();
+    const first = await app.inject({ method: 'GET', url: '/api/v1/history/stats' });
+    const second = await app.inject({
+      method: 'GET',
+      url: '/api/v1/history/stats',
+      headers: { 'if-none-match': first.headers.etag! },
+    });
+
+    expect(second.statusCode).toBe(304);
+    expect(second.body).toBe('');
+    expect(queries.getStatistics).toHaveBeenCalledTimes(2);
+  });
 });

@@ -5,9 +5,9 @@ import {
   completedWeeklyReportWindow,
   nextWeeklyReportBoundary,
   type CalendarDay,
+  type CatalogIndexView,
   type CourseSummary,
   type HistoryEntry,
-  type HomeDashboardView,
   type StatisticsResponse,
   type WeeklyReportResponse,
 } from '@learning-more/contracts';
@@ -17,6 +17,12 @@ import { historyClient, type HistoryClient } from '../../client/history-client.j
 import { toBroadDisciplineLabel } from '../../discipline-label.js';
 import { profileClient, type ProfileClient } from '../../client/profile-client.js';
 import { useAppShellBrandSubtitle, useAppShellHeaderStatus } from '../../state/app-shell-header.js';
+import {
+  calendarSnapshotCache,
+  catalogIndexCache,
+  statisticsSnapshotCache,
+  weeklyReportSnapshotCache,
+} from '../../state/dashboard-query-caches.js';
 import { CourseSummaryDrawer } from './course-summary-drawer.js';
 import {
   HistoryCalendarWorkspace,
@@ -89,36 +95,52 @@ export function HistoryPage(props: {
   readonly portraitClient?: ProfileClient;
 }) {
   const api = props.client ?? historyClient;
+  const usesSharedCache = props.client === undefined;
   const portraitApi = props.portraitClient ?? profileClient;
   const location = useLocation();
   const navigate = useNavigate();
   const requestedTab = new URLSearchParams(location.search).get('tab');
   const showingWeekly = requestedTab === 'weekly';
-  const [loadAttempt, setLoadAttempt] = useState(0);
-  const [loadState, setLoadState] = useState<'loading' | 'ready'>('loading');
-  const [errors, setErrors] = useState<LoadErrors>({});
-  const [pageError, setPageError] = useState<string>();
-  const [entries, setEntries] = useState<readonly HistoryEntry[]>([]);
-  const [analyticsEntries, setAnalyticsEntries] = useState<readonly HistoryEntry[]>([]);
-  const [nextCursor, setNextCursor] = useState<string>();
-  const [statistics, setStatistics] = useState<StatisticsResponse>();
-  const [dashboard, setDashboard] = useState<HomeDashboardView>();
-  const [days, setDays] = useState<readonly CalendarDay[]>([]);
-  const [freshness, setFreshness] = useState<'current' | 'stale' | 'rebuilding'>('current');
-  const [asOf, setAsOf] = useState<string>();
-  const [factFilter, setFactFilter] = useState<HistoryFactFilter>('all');
-  const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse>();
-  const reportWindow = useMemo(
-    () => completedWeeklyReportWindow(new Date(), 'Asia/Shanghai'),
-    [loadAttempt],
-  );
-  const [section, setSection] = useState<HistorySection>(
+  const initialSection: HistorySection =
     requestedTab === 'calendar'
       ? 'calendar'
       : requestedTab === 'portrait'
         ? 'portrait'
-        : 'statistics',
+        : 'statistics';
+  const initialYear = localDate(new Date().toISOString()).slice(0, 4);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const reportWindow = useMemo(
+    () => completedWeeklyReportWindow(new Date(), 'Asia/Shanghai'),
+    [loadAttempt],
   );
+  const initialCatalog = usesSharedCache ? catalogIndexCache.read() : undefined;
+  const initialStatistics = usesSharedCache ? statisticsSnapshotCache.read() : undefined;
+  const initialCalendar = usesSharedCache ? calendarSnapshotCache(initialYear).read() : undefined;
+  const initialWeeklyReport = usesSharedCache
+    ? weeklyReportSnapshotCache(reportWindow.localWeekKey).read()?.report
+    : undefined;
+  const hasInitialSnapshot = showingWeekly
+    ? initialWeeklyReport !== undefined
+    : initialSection === 'calendar'
+      ? initialCalendar !== undefined
+      : initialSection === 'portrait' || initialStatistics !== undefined;
+  const [loadState, setLoadState] = useState<'loading' | 'ready'>(
+    hasInitialSnapshot ? 'ready' : 'loading',
+  );
+  const [errors, setErrors] = useState<LoadErrors>({});
+  const [pageError, setPageError] = useState<string>();
+  const [entries, setEntries] = useState<readonly HistoryEntry[]>([]);
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [statistics, setStatistics] = useState<StatisticsResponse | undefined>(initialStatistics);
+  const [dashboard, setDashboard] = useState<CatalogIndexView | undefined>(initialCatalog);
+  const [days, setDays] = useState<readonly CalendarDay[]>(initialCalendar?.days ?? []);
+  const [freshness, setFreshness] = useState<'current' | 'stale' | 'rebuilding'>('current');
+  const [asOf, setAsOf] = useState<string>();
+  const [factFilter, setFactFilter] = useState<HistoryFactFilter>('all');
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse | undefined>(
+    initialWeeklyReport,
+  );
+  const [section, setSection] = useState<HistorySection>(initialSection);
   useAppShellBrandSubtitle(
     showingWeekly
       ? '上周学习回顾'
@@ -155,69 +177,39 @@ export function HistoryPage(props: {
         current = false;
       };
     }
-    setLoadState('loading');
+    const sectionHasSnapshot = showingWeekly
+      ? weeklyReport !== undefined
+      : section === 'calendar'
+        ? days.length > 0
+        : statistics !== undefined;
+    if (!sectionHasSnapshot) setLoadState('loading');
     setErrors({});
     setPageError(undefined);
-    const loadAllHistory = async () => {
-      const first = await api.getHistory();
-      const all = [...first.entries];
-      const seen = new Set<string>();
-      let cursor = first.nextCursor;
-      while (cursor !== undefined && !seen.has(cursor)) {
-        seen.add(cursor);
-        const page = await api.getHistory(cursor);
-        all.push(...page.entries);
-        cursor = page.nextCursor;
-      }
-      return { first, all } as const;
-    };
-    const loadHistoryAndCalendars = async () => {
-      const history = await loadAllHistory();
-      const years = new Set([
-        year,
-        ...history.all.map((entry) => localDate(entry.occurredAt).slice(0, 4)),
-      ]);
-      const calendars = await Promise.allSettled(
-        [...years]
-          .sort()
-          .map((calendarYear) => api.getCalendar(`${calendarYear}-01-01`, `${calendarYear}-12-31`)),
-      );
-      return { history, calendars } as const;
-    };
-    const applyCatalog = (home: PromiseSettledResult<HomeDashboardView>) => {
+    const applyCatalog = (home: PromiseSettledResult<CatalogIndexView>) => {
       if (!current) return;
       if (home.status === 'fulfilled') setDashboard(home.value);
       else setErrors((value) => ({ ...value, catalog: errorMessage(home.reason) }));
     };
-    const applyHistoryBundle = (
-      historyBundle: PromiseSettledResult<Awaited<ReturnType<typeof loadHistoryAndCalendars>>>,
-    ) => {
-      if (!current) return;
-      const statuses: Array<'current' | 'stale' | 'rebuilding'> = [];
-      if (historyBundle.status === 'fulfilled') {
-        const { history, calendars } = historyBundle.value;
-        setEntries(history.first.entries);
-        setAnalyticsEntries(history.all);
-        setNextCursor(history.first.nextCursor);
-        setAsOf(history.first.asOfEventId);
-        statuses.push(history.first.freshness);
-        const calendarDays: CalendarDay[] = [];
-        for (const calendar of calendars) {
-          if (calendar.status === 'fulfilled') {
-            calendarDays.push(...calendar.value.days);
-            statuses.push(calendar.value.freshness);
-            setAsOf((value) => value ?? calendar.value.asOfEventId);
-          } else {
-            setErrors((value) => ({ ...value, calendar: errorMessage(calendar.reason) }));
-          }
-        }
-        setDays(calendarDays);
-      } else {
-        const message = errorMessage(historyBundle.reason);
-        setErrors((value) => ({ ...value, history: message, calendar: message }));
-      }
-      setFreshness((existing) => statuses.find((status) => status !== 'current') ?? existing);
-    };
+    const getCatalog = () =>
+      usesSharedCache
+        ? catalogIndexCache.revalidate().then(() => catalogIndexCache.read()!)
+        : api.getCatalog();
+    const getStatistics = () =>
+      usesSharedCache
+        ? statisticsSnapshotCache.revalidate().then(() => statisticsSnapshotCache.read()!)
+        : api.getStatistics();
+    const getCalendar = () =>
+      usesSharedCache
+        ? calendarSnapshotCache(year)
+            .revalidate()
+            .then(() => calendarSnapshotCache(year).read()!)
+        : api.getCalendar(`${year}-01-01`, `${year}-12-31`);
+    const getWeeklyReport = () =>
+      usesSharedCache
+        ? weeklyReportSnapshotCache(reportWindow.localWeekKey)
+            .revalidate()
+            .then(() => weeklyReportSnapshotCache(reportWindow.localWeekKey).read()?.report)
+        : api.getWeeklyReport(reportWindow.localWeekKey);
     const applyStatistics = (stats: PromiseSettledResult<StatisticsResponse>) => {
       if (!current) return;
       if (stats.status === 'fulfilled') {
@@ -230,10 +222,7 @@ export function HistoryPage(props: {
     };
 
     if (showingWeekly) {
-      void Promise.allSettled([
-        api.getDashboard(),
-        api.getWeeklyReport(reportWindow.localWeekKey),
-      ]).then(([home, report]) => {
+      void Promise.allSettled([getCatalog(), getWeeklyReport()]).then(([home, report]) => {
         if (!current) return;
         applyCatalog(home);
         if (report.status === 'fulfilled') setWeeklyReport(report.value);
@@ -241,21 +230,23 @@ export function HistoryPage(props: {
         setLoadState('ready');
       });
     } else if (section === 'calendar') {
-      void Promise.allSettled([api.getDashboard(), loadHistoryAndCalendars()]).then(
-        ([home, historyBundle]) => {
-          if (!current) return;
-          applyCatalog(home);
-          applyHistoryBundle(historyBundle);
-          setLoadState('ready');
-        },
-      );
-    } else {
-      const details = Promise.allSettled([api.getDashboard(), loadHistoryAndCalendars()]);
-      void details.then(([home, historyBundle]) => {
+      void Promise.allSettled([getCatalog(), getCalendar()]).then(([home, calendar]) => {
+        if (!current) return;
         applyCatalog(home);
-        applyHistoryBundle(historyBundle);
+        if (calendar.status === 'fulfilled') {
+          setDays(calendar.value.days);
+          setAsOf(calendar.value.asOfEventId);
+          setFreshness(calendar.value.freshness);
+        } else {
+          setErrors((value) => ({ ...value, calendar: errorMessage(calendar.reason) }));
+        }
+        setLoadState('ready');
       });
-      void Promise.allSettled([api.getStatistics()]).then(([stats]) => {
+    } else {
+      void Promise.allSettled([getCatalog()]).then(([home]) => {
+        applyCatalog(home);
+      });
+      void Promise.allSettled([getStatistics()]).then(([stats]) => {
         if (!current) return;
         applyStatistics(stats);
         setLoadState('ready');
@@ -264,7 +255,7 @@ export function HistoryPage(props: {
     return () => {
       current = false;
     };
-  }, [api, loadAttempt, reportWindow.localWeekKey, section, showingWeekly]);
+  }, [api, loadAttempt, reportWindow.localWeekKey, section, showingWeekly, usesSharedCache]);
 
   useEffect(() => {
     const now = new Date();
@@ -290,24 +281,21 @@ export function HistoryPage(props: {
   const calendarRecords = useMemo<readonly HistoryCalendarRecord[]>(() => {
     const lessonById = new Map(dashboard?.lessons.map((lesson) => [lesson.lessonId, lesson]) ?? []);
     const courseById = new Map(dashboard?.courses.map((course) => [course.courseId, course]) ?? []);
-    const factByLessonAndDate = new Map<string, HistoryEntry>();
-    for (const entry of analyticsEntries) {
-      const lessonId = entry.subjectRefs.lessonId;
-      if (entry.factType !== 'LessonCompletedFact' || lessonId === undefined) continue;
-      factByLessonAndDate.set(`${localDate(entry.occurredAt)}:${lessonId}`, entry);
-    }
     return days.flatMap((day) =>
-      day.completedLessonIds.map((lessonId) => {
+      ((day.completions ?? []).length > 0
+        ? day.completions
+        : day.completedLessonIds.map((lessonId) => ({
+            lessonId,
+            courseId: undefined,
+            actualSeconds:
+              day.completedLessonIds.length === 0
+                ? 0
+                : day.actualSeconds / day.completedLessonIds.length,
+          }))
+      ).map((completion) => {
+        const lessonId = completion.lessonId;
         const lesson = lessonById.get(lessonId);
-        const fact = factByLessonAndDate.get(`${day.localDate}:${lessonId}`);
-        const courseId = lesson?.courseId ?? fact?.subjectRefs.courseId;
-        const exactSeconds = fact?.payload.actualSeconds;
-        const seconds =
-          typeof exactSeconds === 'number'
-            ? exactSeconds
-            : day.completedLessonIds.length === 0
-              ? 0
-              : day.actualSeconds / day.completedLessonIds.length;
+        const courseId = completion.courseId ?? lesson?.courseId;
         return {
           localDate: day.localDate,
           ...(courseId === undefined ? {} : { courseId }),
@@ -317,14 +305,18 @@ export function HistoryPage(props: {
             toBroadDisciplineLabel(
               courseId === undefined ? undefined : courseById.get(courseId)?.disciplineTag,
             ) ?? '未分类领域',
-          minutes: Math.max(0, Math.round(seconds / 60)),
+          minutes: Math.max(0, Math.round(completion.actualSeconds / 60)),
         };
       }),
     );
-  }, [analyticsEntries, dashboard, days]);
+  }, [dashboard, days]);
   const statisticsCourses = useMemo(
-    () => buildStatisticsCourses({ dashboard, entries: analyticsEntries }),
-    [analyticsEntries, dashboard],
+    () =>
+      buildStatisticsCourses({
+        ...(dashboard === undefined ? {} : { dashboard }),
+        ...(statistics === undefined ? {} : { statistics }),
+      }),
+    [dashboard, statistics],
   );
   const completedWeeklySnapshotFacts = useMemo(
     () =>
@@ -386,12 +378,10 @@ export function HistoryPage(props: {
         custom,
         today,
         statistics,
-        days,
-        entries: analyticsEntries,
         dashboard,
       });
     },
-    [analyticsEntries, dashboard, days, statistics, today],
+    [dashboard, statistics, today],
   );
 
   const openSummary = (courseId: string) => {

@@ -1,5 +1,11 @@
+import { mkdtemp } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
+import { DataRoot } from '../../persistence/data-root.js';
+import { createReadRevisionTracker } from '../../persistence/read-revision.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
 import { createHomeRouteOptions } from './home-runtime.js';
 import type { LocalLearningRuntime } from './learning-runtime.js';
@@ -7,6 +13,7 @@ import type { LocalPlanningRuntime } from './planning-runtime.js';
 
 describe('home runtime query', () => {
   it('uses bulk lesson and learning snapshots without N+1 reads', async () => {
+    const dataRoot = DataRoot.create(await mkdtemp(path.join(os.tmpdir(), 'learning-more-home-')));
     const lessonIds = ['lesson_01', 'lesson_02', 'lesson_03', 'lesson_04'];
     const getLesson = vi.fn();
     const getRecord = vi.fn();
@@ -21,6 +28,8 @@ describe('home runtime query', () => {
     };
     const runtime = createHomeRouteOptions({
       now: () => new Date('2026-07-18T00:00:00.000Z'),
+      dataRoot,
+      readRevision: await createReadRevisionTracker(dataRoot),
       course: {
         access: {
           async *listDraftSessions() {},
@@ -58,6 +67,6 @@ describe('home runtime query', () => {
 
     expect(getLesson).not.toHaveBeenCalled();
     expect(getRecord).not.toHaveBeenCalled();
-    expect(view.lessons.map((lesson) => lesson.lessonId)).toEqual(lessonIds);
+    expect(view.value.lessons.map((lesson) => lesson.lessonId)).toEqual(lessonIds);
   });
 });

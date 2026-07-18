@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { HomeDashboardView } from '@learning-more/contracts';
 
@@ -93,6 +93,7 @@ export function PlanningWorkspaceView(props: {
   const [scheduleErrors, setScheduleErrors] = useState<Readonly<Record<string, string>>>({});
   const [clearingAll, setClearingAll] = useState(false);
   const [clearError, setClearError] = useState<string>();
+  const [visibleLimit, setVisibleLimit] = useState(60);
 
   const entries = useMemo<readonly PlanningEntry[]>(() => {
     const courseById = new Map(props.courses.map((course) => [course.courseId, course]));
@@ -150,6 +151,10 @@ export function PlanningWorkspaceView(props: {
       (disciplineFilter === '' || entry.metadata.disciplineTag === disciplineFilter)
     );
   });
+  useEffect(() => {
+    setVisibleLimit(60);
+  }, [disciplineFilter, entries.length, selectedDate, statusFilter]);
+  const renderedEntries = visibleEntries.slice(0, visibleLimit);
 
   async function saveSchedule(entry: PlanningEntry, date: string) {
     const lessonId = entry.lesson.lessonId;
@@ -350,7 +355,7 @@ export function PlanningWorkspaceView(props: {
           </div>
 
           <div className="planning-lesson-list">
-            {visibleEntries.map((entry) => {
+            {renderedEntries.map((entry) => {
               const scheduledDate =
                 entry.schedule === undefined ? undefined : localDate(entry.schedule.startAt);
               const status =
@@ -424,6 +429,15 @@ export function PlanningWorkspaceView(props: {
                 </article>
               );
             })}
+            {renderedEntries.length < visibleEntries.length ? (
+              <button
+                className="lm-btn planning-load-more"
+                type="button"
+                onClick={() => setVisibleLimit((current) => current + 60)}
+              >
+                显示更多（剩余 {visibleEntries.length - renderedEntries.length} 节）
+              </button>
+            ) : null}
           </div>
         </section>
       </div>

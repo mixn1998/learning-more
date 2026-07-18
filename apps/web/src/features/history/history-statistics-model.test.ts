@@ -69,15 +69,37 @@ const statistics: StatisticsResponse = {
   currentStreakDays: 3,
   longestStreakDays: 9,
   definitions: {},
+  daily: [],
+  courseRollups: [],
   projectionVersion: 1,
   freshness: 'current',
 };
 
 const days: readonly CalendarDay[] = [
-  { localDate: '2026-06-14', actualSeconds: 7_200, completedLessonIds: ['lesson_a1'] },
-  { localDate: '2026-06-15', actualSeconds: 1_800, completedLessonIds: ['lesson_a1'] },
-  { localDate: '2026-07-14', actualSeconds: 3_600, completedLessonIds: ['lesson_b1'] },
-  { localDate: '2025-12-31', actualSeconds: 900, completedLessonIds: ['lesson_b1'] },
+  {
+    localDate: '2026-06-14',
+    actualSeconds: 7_200,
+    completedLessonIds: ['lesson_a1'],
+    completions: [],
+  },
+  {
+    localDate: '2026-06-15',
+    actualSeconds: 1_800,
+    completedLessonIds: ['lesson_a1'],
+    completions: [],
+  },
+  {
+    localDate: '2026-07-14',
+    actualSeconds: 3_600,
+    completedLessonIds: ['lesson_b1'],
+    completions: [],
+  },
+  {
+    localDate: '2025-12-31',
+    actualSeconds: 900,
+    completedLessonIds: ['lesson_b1'],
+    completions: [],
+  },
 ];
 
 function fact(

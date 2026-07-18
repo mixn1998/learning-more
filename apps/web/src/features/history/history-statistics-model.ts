@@ -1,5 +1,6 @@
 import type {
   CalendarDay,
+  CatalogIndexView,
   HistoryEntry,
   HomeDashboardView,
   StatisticsResponse,
@@ -87,13 +88,15 @@ export function buildStatisticsSnapshot(input: {
   readonly custom: Readonly<{ start: string; end: string }>;
   readonly today: string;
   readonly statistics: StatisticsResponse;
-  readonly days: readonly CalendarDay[];
-  readonly entries: readonly HistoryEntry[];
-  readonly dashboard?: HomeDashboardView | undefined;
+  readonly days?: readonly CalendarDay[];
+  readonly entries?: readonly HistoryEntry[];
+  readonly dashboard?: HomeDashboardView | CatalogIndexView | undefined;
 }): HistoryStatisticsSnapshot {
   const selectedBounds = bounds(input.range, input.custom, input.today);
-  const selectedDays = input.days.filter((day) => inBounds(day.localDate, selectedBounds));
-  const selectedEntries = input.entries.filter((entry) =>
+  const allProjectedDaily = input.statistics.daily ?? [];
+  const projectedDaily = allProjectedDaily.filter((day) => inBounds(day.localDate, selectedBounds));
+  const selectedDays = (input.days ?? []).filter((day) => inBounds(day.localDate, selectedBounds));
+  const selectedEntries = (input.entries ?? []).filter((entry) =>
     inBounds(localDate(entry.occurredAt), selectedBounds),
   );
   const lessonCourse = new Map(
@@ -117,30 +120,38 @@ export function buildStatisticsSnapshot(input: {
     const courseId = courseIdForEntry(entry, lessonCourse);
     if (courseId !== undefined) completedCourseIds.add(courseId);
   }
-  const closedCourseIds = new Set(
-    selectedEntries
+  const closedCourseIds = new Set([
+    ...projectedDaily.flatMap((day) => day.closedCourseIds),
+    ...selectedEntries
       .filter((entry) => entry.factType === 'CourseClosedFact')
       .map((entry) => entry.subjectRefs.courseId)
       .filter((value): value is string => value !== undefined),
-  );
-  const abandonedCourseIds = new Set(
-    selectedEntries
+  ]);
+  const abandonedCourseIds = new Set([
+    ...projectedDaily.flatMap((day) => day.abandonedCourseIds),
+    ...selectedEntries
       .filter((entry) => entry.factType === 'LessonAbandonedFact')
       .map((entry) => courseIdForEntry(entry, lessonCourse))
       .filter((value): value is string => value !== undefined),
-  );
-  const aggregateFallback = selectedDays.length === 0 && input.statistics.lessonCompletedCount > 0;
+  ]);
+  const hasDailyProjection = allProjectedDaily.length > 0;
+  const aggregateFallback =
+    !hasDailyProjection && selectedDays.length === 0 && input.statistics.lessonCompletedCount > 0;
   const totalSeconds = aggregateFallback
     ? input.statistics.totalActualSeconds
-    : selectedDays.reduce((sum, day) => sum + day.actualSeconds, 0);
+    : hasDailyProjection
+      ? projectedDaily.reduce((sum, day) => sum + day.actualSeconds, 0)
+      : selectedDays.reduce((sum, day) => sum + day.actualSeconds, 0);
   const completionCount = aggregateFallback
     ? input.statistics.lessonCompletedCount
-    : selectedDays.reduce((sum, day) => sum + day.completedLessonIds.length, 0);
+    : hasDailyProjection
+      ? projectedDaily.reduce((sum, day) => sum + day.completedLessonCount, 0)
+      : selectedDays.reduce((sum, day) => sum + day.completedLessonIds.length, 0);
 
   const end = dateFromLocal(selectedBounds.end);
   const start = new Date(end.getTime() - 83 * DAY_MS);
   const rawBars = Array.from({ length: 12 }, () => 0);
-  for (const day of selectedDays) {
+  for (const day of hasDailyProjection ? projectedDaily : selectedDays) {
     const index = Math.floor(
       (dateFromLocal(day.localDate).getTime() - start.getTime()) / (7 * DAY_MS),
     );
@@ -152,6 +163,13 @@ export function buildStatisticsSnapshot(input: {
   );
 
   const secondsByDiscipline = new Map<string, number>();
+  for (const day of projectedDaily) {
+    for (const [courseId, seconds] of Object.entries(day.actualSecondsByCourse)) {
+      const label = courseDiscipline.get(courseId) ?? '未分类领域';
+      secondsByDiscipline.set(label, (secondsByDiscipline.get(label) ?? 0) + seconds);
+      completedCourseIds.add(courseId);
+    }
+  }
   for (const entry of selectedEntries) {
     if (entry.factType !== 'LessonCompletedFact') continue;
     const courseId = courseIdForEntry(entry, lessonCourse);
@@ -171,15 +189,15 @@ export function buildStatisticsSnapshot(input: {
           percent: Math.round((seconds / topSeconds) * 86),
           hours: compactHours(seconds),
         }));
-  const responded = selectedEntries.filter(
-    (entry) => entry.factType === 'InteractionRespondedFact',
-  ).length;
-  const skipped = selectedEntries.filter(
-    (entry) => entry.factType === 'InteractionSkippedFact',
-  ).length;
-  const prompted = selectedEntries.filter(
-    (entry) => entry.factType === 'InteractionPromptedFact',
-  ).length;
+  const responded = hasDailyProjection
+    ? projectedDaily.reduce((sum, day) => sum + day.interactionRespondedCount, 0)
+    : selectedEntries.filter((entry) => entry.factType === 'InteractionRespondedFact').length;
+  const skipped = hasDailyProjection
+    ? projectedDaily.reduce((sum, day) => sum + day.interactionSkippedCount, 0)
+    : selectedEntries.filter((entry) => entry.factType === 'InteractionSkippedFact').length;
+  const prompted = hasDailyProjection
+    ? projectedDaily.reduce((sum, day) => sum + day.interactionPromptedCount, 0)
+    : selectedEntries.filter((entry) => entry.factType === 'InteractionPromptedFact').length;
 
   return {
     hours: hoursLabel(totalSeconds),
@@ -188,8 +206,11 @@ export function buildStatisticsSnapshot(input: {
       input.range === 'all' ? input.statistics.courseClosedCount : closedCourseIds.size,
     activeDays: aggregateFallback
       ? input.statistics.activeDayCount
-      : selectedDays.filter((day) => day.actualSeconds > 0 || day.completedLessonIds.length > 0)
-          .length,
+      : hasDailyProjection
+        ? projectedDaily.filter((day) => day.actualSeconds > 0 || day.completedLessonCount > 0)
+            .length
+        : selectedDays.filter((day) => day.actualSeconds > 0 || day.completedLessonIds.length > 0)
+            .length,
     courseCount: completedCourseIds.size,
     abandonedCourseCount: abandonedCourseIds.size,
     currentStreakDays: input.statistics.currentStreakDays,
@@ -202,8 +223,9 @@ export function buildStatisticsSnapshot(input: {
 }
 
 export function buildStatisticsCourses(input: {
-  readonly dashboard?: HomeDashboardView | undefined;
-  readonly entries: readonly HistoryEntry[];
+  readonly dashboard?: HomeDashboardView | CatalogIndexView | undefined;
+  readonly entries?: readonly HistoryEntry[];
+  readonly statistics?: StatisticsResponse;
 }): readonly HistoryStatisticsCourse[] {
   const dashboard = input.dashboard;
   if (dashboard === undefined) return [];
@@ -211,16 +233,22 @@ export function buildStatisticsCourses(input: {
   return dashboard.courses.map((course) => {
     const lessons = dashboard.lessons.filter((lesson) => lesson.courseId === course.courseId);
     const lessonIds = new Set(lessons.map((lesson) => lesson.lessonId));
-    const completionFacts = input.entries.filter(
+    const completionFacts = (input.entries ?? []).filter(
       (entry) =>
         entry.factType === 'LessonCompletedFact' &&
         (entry.subjectRefs.courseId === course.courseId ||
           (entry.subjectRefs.lessonId !== undefined && lessonIds.has(entry.subjectRefs.lessonId))),
     );
-    const seconds = completionFacts.reduce((sum, entry) => sum + secondsOf(entry), 0);
-    const latest = completionFacts
-      .map((entry) => localDate(entry.occurredAt))
-      .sort((left, right) => right.localeCompare(left))[0];
+    const projected = input.statistics?.courseRollups?.find(
+      (rollup) => rollup.courseId === course.courseId,
+    );
+    const seconds =
+      projected?.actualSeconds ?? completionFacts.reduce((sum, entry) => sum + secondsOf(entry), 0);
+    const latest =
+      projected?.latestActivityDate ??
+      completionFacts
+        .map((entry) => localDate(entry.occurredAt))
+        .sort((left, right) => right.localeCompare(left))[0];
     const completed = lessons.filter((lesson) => lesson.progress === 'completed').length;
     const abandoned = lessons.filter((lesson) => lesson.progress === 'abandoned').length;
     return {

@@ -67,6 +67,7 @@ export async function assembleLocalApplication(
     course,
     learning,
     events,
+    readRevision: foundation.readRevision,
   });
   const review = createLocalReviewRuntime({
     dataRoot,
@@ -123,6 +124,8 @@ export async function assembleLocalApplication(
     course,
     learning,
     planning: planningRuntime,
+    dataRoot,
+    readRevision: foundation.readRevision,
   });
   const serverDependencies: ServerDependencies = {
     getRuntimeReadiness: async () => {

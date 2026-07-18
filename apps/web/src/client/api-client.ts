@@ -59,6 +59,35 @@ export async function apiRequest<T>(
   return { data: options.schema.parse(value), response };
 }
 
+export type ConditionalApiResult<T> =
+  | Readonly<{ status: 'unchanged'; etag: string | undefined; response: Response }>
+  | Readonly<{ status: 'updated'; data: T; etag: string | undefined; response: Response }>;
+
+export async function apiRequestConditional<T>(
+  url: string,
+  options: Readonly<{
+    schema: Readonly<{ parse(value: unknown): T }>;
+    etag?: string;
+    signal?: AbortSignal;
+  }>,
+): Promise<ConditionalApiResult<T>> {
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      ...(options.etag === undefined ? {} : { 'if-none-match': options.etag }),
+    },
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  const etag = response.headers.get('etag') ?? undefined;
+  if (response.status === 304) return { status: 'unchanged', etag, response };
+  const value: unknown = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    const problem = ApplicationProblemSchema.safeParse(value);
+    throw problem.success ? problem.data : new Error(`Unexpected HTTP ${response.status}`);
+  }
+  return { status: 'updated', data: options.schema.parse(value), etag, response };
+}
+
 export async function apiRequestOptional<T>(
   url: string,
   options: Readonly<{

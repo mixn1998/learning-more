@@ -43,6 +43,36 @@ export async function createLocalEventFactsRuntime(
   let factsGeneration = 0;
   let factsLoad:
     Readonly<{ generation: number; promise: Promise<readonly LearningFact[]> }> | undefined;
+  let historyCache:
+    | Readonly<{
+        generation: number;
+        value: ReturnType<ReturnType<typeof createHistoryProjection>['view']>;
+      }>
+    | undefined;
+  let courseSummaryCache:
+    | Readonly<{
+        generation: number;
+        value: ReturnType<ReturnType<typeof createCourseSummaryProjection>['view']>;
+      }>
+    | undefined;
+  let statisticsCache:
+    | Readonly<{
+        generation: number;
+        value: ReturnType<ReturnType<typeof createStatisticsProjection>['view']>;
+      }>
+    | undefined;
+  let calendarCache:
+    | Readonly<{
+        generation: number;
+        value: ReturnType<ReturnType<typeof createCalendarProjection>['view']>;
+      }>
+    | undefined;
+  let weeklyCache:
+    | Readonly<{
+        generation: number;
+        value: ReturnType<ReturnType<typeof createWeeklyProjection>['view']>;
+      }>
+    | undefined;
   for (const eventType of EVENT_TYPES) {
     eventDispatcher.register(eventType, async (event) => {
       await factProjector.project(event);
@@ -148,29 +178,49 @@ export async function createLocalEventFactsRuntime(
     flush,
     facts,
     async historyView() {
+      await flush();
+      if (historyCache?.generation === factsGeneration) return historyCache.value;
       const projection = createHistoryProjection();
       projection.apply(await facts());
-      return projection.view();
+      const value = projection.view();
+      historyCache = { generation: factsGeneration, value };
+      return value;
     },
     async courseSummaryView() {
+      await flush();
+      if (courseSummaryCache?.generation === factsGeneration) return courseSummaryCache.value;
       const projection = createCourseSummaryProjection();
       projection.apply(await facts());
-      return projection.view();
+      const value = projection.view();
+      courseSummaryCache = { generation: factsGeneration, value };
+      return value;
     },
     async statisticsView() {
+      await flush();
+      if (statisticsCache?.generation === factsGeneration) return statisticsCache.value;
       const projection = createStatisticsProjection('Asia/Shanghai');
       projection.apply(await facts());
-      return projection.view();
+      const value = projection.view();
+      statisticsCache = { generation: factsGeneration, value };
+      return value;
     },
     async calendarView() {
+      await flush();
+      if (calendarCache?.generation === factsGeneration) return calendarCache.value;
       const projection = createCalendarProjection('Asia/Shanghai');
       projection.apply(await facts());
-      return projection.view();
+      const value = projection.view();
+      calendarCache = { generation: factsGeneration, value };
+      return value;
     },
     async weeklyView() {
+      await flush();
+      if (weeklyCache?.generation === factsGeneration) return weeklyCache.value;
       const projection = createWeeklyProjection('Asia/Shanghai');
       projection.apply(await facts());
-      return projection.view();
+      const value = projection.view();
+      weeklyCache = { generation: factsGeneration, value };
+      return value;
     },
   };
 }

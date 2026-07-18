@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { LearningEventEnvelope } from '@learning-more/contracts';
+import { ScheduleViewResponseSchema, type LearningEventEnvelope } from '@learning-more/contracts';
 
 import type { PlanningRouteOptions } from '../../http/routes/planning.js';
 import { createPlanFlowService } from '../../modules/planning/implementation/plan-flow-service.js';
@@ -12,6 +12,8 @@ import {
   createLocalFileScheduleRepository,
 } from '../../persistence/planning-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
+import type { ReadRevisionTracker } from '../../persistence/read-revision.js';
+import { createSummarySnapshot } from '../../persistence/summary-snapshot.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalLearningRuntime } from './learning-runtime.js';
@@ -34,6 +36,7 @@ export function createLocalPlanningRuntime(
     course: LocalCourseRuntime;
     learning: LocalLearningRuntime;
     events: LocalEventFactsRuntime;
+    readRevision: ReadRevisionTracker;
   }>,
 ): LocalPlanningRuntime {
   const scheduleRepository = createLocalFileScheduleRepository(input.dataRoot);
@@ -223,7 +226,7 @@ export function createLocalPlanningRuntime(
     },
   });
 
-  async function currentScheduleSnapshot() {
+  async function buildCurrentScheduleSnapshot() {
     const courseLessonIds: string[] = [];
     const courseLoad = (async () => {
       for await (const course of input.course.access.listCourses()) {
@@ -236,6 +239,21 @@ export function createLocalPlanningRuntime(
       items: snapshot.items.filter((item) => currentLessonIds.has(item.lessonId)),
       resourceVersion: snapshot.resourceVersion,
     };
+  }
+
+  type CurrentScheduleSnapshot = Awaited<ReturnType<typeof buildCurrentScheduleSnapshot>>;
+
+  const currentSchedule = createSummarySnapshot<CurrentScheduleSnapshot>({
+    dataRoot: input.dataRoot,
+    name: 'current-schedule-v1',
+    schemaVersion: 1,
+    sourceRevision: () => input.readRevision.current(['catalog', 'schedule']),
+    parse: (value) => ScheduleViewResponseSchema.parse(value) as CurrentScheduleSnapshot,
+    build: buildCurrentScheduleSnapshot,
+  });
+
+  async function currentScheduleSnapshot() {
+    return (await currentSchedule.current()).value;
   }
 
   async function listCurrentSchedule() {

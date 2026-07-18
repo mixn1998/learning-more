@@ -140,6 +140,11 @@
   margin-top: 14px;
 }
 
+.planning-load-more {
+  width: 100%;
+  justify-content: center;
+}
+
 .planning-lesson {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

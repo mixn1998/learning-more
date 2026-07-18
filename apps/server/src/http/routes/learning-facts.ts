@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import { CalendarQuerySchema, HistoryQuerySchema, IsoWeekSchema } from '@learning-more/contracts';
@@ -11,6 +11,7 @@ import type { WeeklyView } from '../../modules/learning-facts/implementation/pro
 import type { WeeklyReportRecord } from '../../modules/learning-facts/ports/weekly-report-repository.js';
 import type { ReadModelStatus } from '../../modules/learning-facts/interface.js';
 import { HttpContractError } from '../command-context.js';
+import { sendConditionalJson } from '../conditional-get.js';
 import { mapApplicationError } from '../error-mapper.js';
 
 export type LearningFactsRouteOptions = Readonly<{
@@ -59,13 +60,17 @@ function compareEntry(
     : left.occurredAt.localeCompare(right.occurredAt);
 }
 
-function sendProjection<T extends ReadModelStatus & object>(reply: FastifyReply, view: T) {
+function sendProjection<T extends ReadModelStatus & object>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  view: T,
+) {
   const etag = `${view.asOfEventId ?? 'empty'}:${view.projectionVersion}`;
-  return reply
-    .header('etag', `"${etag}"`)
-    .header('x-projection-status', view.freshness)
-    .code(200)
-    .send(view);
+  return sendConditionalJson(request, reply, {
+    etag,
+    value: view,
+    projectionStatus: view.freshness,
+  });
 }
 
 export async function registerLearningFactsRoutes(
@@ -86,7 +91,7 @@ export async function registerLearningFactsRoutes(
         remaining.length > entries.length && last !== undefined
           ? encodeCursor({ occurredAt: last.occurredAt, factId: last.factId })
           : undefined;
-      return sendProjection(reply, {
+      return sendProjection(request, reply, {
         ...view,
         entries,
         ...(nextCursor === undefined ? {} : { nextCursor }),
@@ -101,7 +106,7 @@ export async function registerLearningFactsRoutes(
     try {
       const courseId = (request.params as { courseId: string }).courseId;
       const view = requireSnapshot(await options.queries.getCourseSummary());
-      return sendProjection(reply, {
+      return sendProjection(request, reply, {
         ...view,
         course: view.courses.find((course) => course.courseId === courseId),
       });
@@ -111,9 +116,9 @@ export async function registerLearningFactsRoutes(
     }
   });
 
-  app.get('/api/v1/history/stats', async (_request, reply) => {
+  app.get('/api/v1/history/stats', async (request, reply) => {
     try {
-      return sendProjection(reply, requireSnapshot(await options.queries.getStatistics()));
+      return sendProjection(request, reply, requireSnapshot(await options.queries.getStatistics()));
     } catch (error) {
       const problem = mapApplicationError(error, 'statistics_query');
       return reply.code(problem.status).send(problem);
@@ -129,7 +134,7 @@ export async function registerLearningFactsRoutes(
         throw new HttpContractError('request_invalid', 400);
       }
       const view = requireSnapshot(await options.queries.getCalendar());
-      return sendProjection(reply, {
+      return sendProjection(request, reply, {
         ...view,
         days: view.days.filter((day) => day.localDate >= query.from && day.localDate <= query.to),
       });
@@ -144,7 +149,7 @@ export async function registerLearningFactsRoutes(
       const isoWeek = IsoWeekSchema.parse((request.params as { isoWeek: string }).isoWeek);
       const view = requireSnapshot(await options.queries.getWeekly());
       const { weeks, ...projection } = view;
-      return sendProjection(reply, {
+      return sendProjection(request, reply, {
         ...projection,
         week: weeks.find((item) => item.isoWeek === isoWeek),
       });
@@ -159,7 +164,11 @@ export async function registerLearningFactsRoutes(
       const key = IsoWeekSchema.parse((request.params as { localWeekKey: string }).localWeekKey);
       const report = await options.queries.getWeeklyReport(key);
       if (report === undefined) throw notFound();
-      return reply.header('etag', `"${report.resourceVersion}"`).code(200).send(report);
+      return sendConditionalJson(request, reply, {
+        etag: String(report.resourceVersion),
+        value: report,
+        projectionStatus: 'current',
+      });
     } catch (error) {
       const problem = mapApplicationError(error, 'weekly_report_query');
       return reply.code(problem.status).send(problem);

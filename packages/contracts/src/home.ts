@@ -66,4 +66,11 @@ export const HomeDashboardResponseSchema = z.strictObject({
   ),
 });
 
+export const CatalogIndexResponseSchema = z.strictObject({
+  generatedAt: z.iso.datetime({ offset: true }),
+  courses: HomeDashboardResponseSchema.shape.courses,
+  lessons: HomeDashboardResponseSchema.shape.lessons,
+});
+
 export type HomeDashboardView = Readonly<z.infer<typeof HomeDashboardResponseSchema>>;
+export type CatalogIndexView = Readonly<z.infer<typeof CatalogIndexResponseSchema>>;

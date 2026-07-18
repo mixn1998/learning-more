@@ -42,12 +42,47 @@ export const StatisticsResponseSchema = ProjectionStatusSchema.extend({
   currentStreakDays: z.number().int().nonnegative(),
   longestStreakDays: z.number().int().nonnegative(),
   definitions: z.record(z.string(), z.string()),
+  daily: z
+    .array(
+      z.strictObject({
+        localDate: z.iso.date(),
+        actualSeconds: z.number().nonnegative(),
+        completedLessonCount: z.number().int().nonnegative(),
+        closedCourseIds: z.array(z.string().min(1)),
+        abandonedCourseIds: z.array(z.string().min(1)),
+        interactionPromptedCount: z.number().int().nonnegative(),
+        interactionRespondedCount: z.number().int().nonnegative(),
+        interactionSkippedCount: z.number().int().nonnegative(),
+        actualSecondsByCourse: z.record(z.string(), z.number().nonnegative()),
+      }),
+    )
+    .default([]),
+  courseRollups: z
+    .array(
+      z.strictObject({
+        courseId: z.string().min(1),
+        actualSeconds: z.number().nonnegative(),
+        completedLessonCount: z.number().int().nonnegative(),
+        abandonedLessonCount: z.number().int().nonnegative(),
+        latestActivityDate: z.iso.date().optional(),
+      }),
+    )
+    .default([]),
 });
 
 export const CalendarDaySchema = z.strictObject({
   localDate: z.iso.date(),
   actualSeconds: z.number().nonnegative(),
   completedLessonIds: z.array(z.string().min(1)),
+  completions: z
+    .array(
+      z.strictObject({
+        lessonId: z.string().min(1),
+        courseId: z.string().min(1).optional(),
+        actualSeconds: z.number().nonnegative(),
+      }),
+    )
+    .default([]),
 });
 
 export const CalendarResponseSchema = ProjectionStatusSchema.extend({

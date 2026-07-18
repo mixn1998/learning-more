@@ -12,6 +12,7 @@ import {
   useCommandAttempts,
   type CommandAttemptRegistry,
 } from '../../state/use-command-attempt.js';
+import { planningContextCache, scheduleSnapshotCache } from '../../state/dashboard-query-caches.js';
 import { PlanFlowPanel } from './plan-flow-panel.js';
 import { PlanningWorkspaceView, type PlanningLessonMetadata } from './planning-workspace-view.js';
 
@@ -48,22 +49,33 @@ export function PlanningPage(props: {
   readonly onNavigate?: (path: string) => void;
 }) {
   const api = props.client ?? planningClient;
-  const [items, setItems] = useState<readonly ScheduleItemView[]>([]);
-  const [version, setVersion] = useState(0);
-  const [courses, setCourses] = useState<HomeDashboardView['courses']>([]);
-  const [lessons, setLessons] = useState<HomeDashboardView['lessons']>([]);
+  const usesSharedCache = props.client === undefined;
+  const initialSchedule = usesSharedCache ? scheduleSnapshotCache.read() : undefined;
+  const initialContext = usesSharedCache ? planningContextCache.read() : undefined;
+  const [items, setItems] = useState<readonly ScheduleItemView[]>(initialSchedule?.items ?? []);
+  const [version, setVersion] = useState(initialSchedule?.resourceVersion ?? 0);
+  const [courses, setCourses] = useState<HomeDashboardView['courses']>(
+    initialContext?.courses ?? [],
+  );
+  const [lessons, setLessons] = useState<HomeDashboardView['lessons']>(
+    initialContext?.lessons ?? [],
+  );
   const [view, setView] = useState<'planner' | 'flow'>('planner');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    initialSchedule === undefined && initialContext === undefined,
+  );
   const [loadError, setLoadError] = useState(false);
   const [contextError, setContextError] = useState(false);
   const commands = useCommandAttempts();
   const anchorDate = today(props.now ?? new Date());
 
   const reload = useCallback(async () => {
-    const [scheduleResult, contextResult] = await Promise.allSettled([
-      api.getSchedule(),
-      api.getPlanningContext(),
-    ]);
+    const [scheduleResult, contextResult] = usesSharedCache
+      ? await Promise.allSettled([
+          scheduleSnapshotCache.revalidate().then(() => scheduleSnapshotCache.read()!),
+          planningContextCache.revalidate().then(() => planningContextCache.read()!),
+        ])
+      : await Promise.allSettled([api.getSchedule(), api.getPlanningContext()]);
     if (scheduleResult.status === 'fulfilled') {
       setItems(scheduleResult.value.items);
       setVersion(scheduleResult.value.resourceVersion);
@@ -79,11 +91,32 @@ export function PlanningPage(props: {
       setContextError(true);
     }
     setLoading(false);
-  }, [api]);
+  }, [api, usesSharedCache]);
 
   useEffect(() => {
+    const applySchedule = () => {
+      const value = scheduleSnapshotCache.read();
+      if (value === undefined) return;
+      setItems(value.items);
+      setVersion(value.resourceVersion);
+    };
+    const applyContext = () => {
+      const value = planningContextCache.read();
+      if (value === undefined) return;
+      setCourses(value.courses);
+      setLessons(value.lessons);
+    };
+    const unsubscribers = usesSharedCache
+      ? [
+          scheduleSnapshotCache.subscribe(applySchedule),
+          planningContextCache.subscribe(applyContext),
+        ]
+      : [];
     void reload();
-  }, [reload]);
+    return () => {
+      for (const unsubscribe of unsubscribers) unsubscribe();
+    };
+  }, [reload, usesSharedCache]);
 
   const planFlow = (
     <PlanFlowPanel

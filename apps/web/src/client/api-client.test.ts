@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { apiRequest } from './api-client.js';
+import { apiRequest, apiRequestConditional } from './api-client.js';
 
 describe('typed API client', () => {
   it('owns command identity, CSRF, and If-Match headers without changing them', async () => {
@@ -50,6 +50,30 @@ describe('typed API client', () => {
       '/api/v1/ai-runtime/reconnect',
       expect.objectContaining({
         headers: expect.objectContaining({ 'x-csrf-token': 'development-csrf' }),
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('sends If-None-Match and does not parse an empty 304 body', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 304,
+        headers: { etag: '"revision:7"' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+
+    const result = await apiRequestConditional('/api/v1/snapshot', {
+      etag: '"revision:7"',
+      schema: { parse: () => ({ shouldNotParse: true }) },
+    });
+
+    expect(result.status).toBe('unchanged');
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/v1/snapshot',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'if-none-match': '"revision:7"' }),
       }),
     );
     vi.unstubAllGlobals();

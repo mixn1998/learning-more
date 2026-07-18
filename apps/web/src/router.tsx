@@ -4,9 +4,9 @@ import { Link, useLocation, useNavigate, useRoutes, type RouteObject } from 'rea
 import type { HomeDashboardView } from '@learning-more/contracts';
 
 import { HomePage } from './features/home/home-page.js';
-import { homeClient } from './client/home-client.js';
 import { AppShell } from './layouts/app-shell.js';
 import type { AuthoringLocationState } from './state/authoring-start-intent.js';
+import { homeDashboardCache } from './state/home-dashboard-cache.js';
 import { useRuntimeState } from './state/version-guard.js';
 
 const CourseAuthoringRoute = lazy(async () => ({
@@ -91,14 +91,22 @@ function HomeRoute() {
   const location = useLocation();
   const { state: runtimeState } = useRuntimeState();
   const notice = (location.state as { notice?: string } | null)?.notice;
-  const [dashboard, setDashboard] = useState<HomeDashboardView>();
+  const [dashboard, setDashboard] = useState<HomeDashboardView | undefined>(() =>
+    homeDashboardCache.read(),
+  );
   const [error, setError] = useState(false);
   useEffect(() => {
     if (runtimeState.kind !== 'loaded') return undefined;
     const controller = new AbortController();
     setError(false);
-    void homeClient.getDashboard(controller.signal).then(setDashboard, () => setError(true));
-    return () => controller.abort();
+    const unsubscribe = homeDashboardCache.subscribe(() => setDashboard(homeDashboardCache.read()));
+    void homeDashboardCache.revalidate(controller.signal).catch(() => {
+      if (homeDashboardCache.read() === undefined) setError(true);
+    });
+    return () => {
+      unsubscribe();
+      controller.abort();
+    };
   }, [runtimeState.kind]);
   return (
     <HomePage

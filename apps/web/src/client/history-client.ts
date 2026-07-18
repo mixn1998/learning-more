@@ -2,14 +2,14 @@ import {
   CalendarResponseSchema,
   CourseSummaryResponseSchema,
   HistoryPageResponseSchema,
-  HomeDashboardResponseSchema,
+  CatalogIndexResponseSchema,
   StatisticsResponseSchema,
   WeeklyReportResponseSchema,
   WeeklyResponseSchema,
   type CalendarResponse,
   type CourseSummaryResponse,
   type HistoryPageResponse,
-  type HomeDashboardView,
+  type CatalogIndexView,
   type StatisticsResponse,
   type WeeklyReportResponse,
   type WeeklyResponse,
@@ -20,7 +20,7 @@ import { apiRequest, apiRequestOptional } from './api-client.js';
 export type { HistoryEntry } from '@learning-more/contracts';
 
 export interface HistoryClient {
-  getDashboard(): Promise<HomeDashboardView>;
+  getCatalog(): Promise<CatalogIndexView>;
   getHistory(cursor?: string): Promise<HistoryPageResponse>;
   getStatistics(): Promise<StatisticsResponse>;
   getCalendar(from: string, to: string): Promise<CalendarResponse>;
@@ -30,8 +30,8 @@ export interface HistoryClient {
 }
 
 export const historyClient: HistoryClient = {
-  async getDashboard() {
-    return (await apiRequest('/api/v1/home', { schema: HomeDashboardResponseSchema })).data;
+  async getCatalog() {
+    return (await apiRequest('/api/v1/catalog-index', { schema: CatalogIndexResponseSchema })).data;
   },
   async getHistory(cursor) {
     const suffix = cursor === undefined ? '' : `&cursor=${encodeURIComponent(cursor)}`;

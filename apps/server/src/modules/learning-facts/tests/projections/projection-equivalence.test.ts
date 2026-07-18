@@ -110,7 +110,12 @@ describe('LearningFacts projection equivalence', () => {
       longestStreakDays: 1,
     });
     expect(calendar.view().days).toEqual([
-      { localDate: '2026-07-03', actualSeconds: 3_600, completedLessonIds: ['lesson_01'] },
+      {
+        localDate: '2026-07-03',
+        actualSeconds: 3_600,
+        completedLessonIds: ['lesson_01'],
+        completions: [{ lessonId: 'lesson_01', courseId: 'course_01', actualSeconds: 3_600 }],
+      },
     ]);
     expect(weekly.view().weeks).toEqual([
       {

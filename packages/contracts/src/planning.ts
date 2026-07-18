@@ -38,6 +38,8 @@ export const ScheduleViewResponseSchema = z.strictObject({
   resourceVersion: z.number().int().nonnegative(),
 });
 
+export type ScheduleViewResponse = Readonly<z.infer<typeof ScheduleViewResponseSchema>>;
+
 export const ClearScheduleBodySchema = z.strictObject({
   scheduleItemIds: z.array(identifier).min(1),
 });

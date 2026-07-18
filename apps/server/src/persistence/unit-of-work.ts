@@ -4,6 +4,7 @@ import path from 'node:path';
 import { assertSafePathSegment, DataRoot } from './data-root.js';
 import { encodeJson } from './json-codec.js';
 import { acquireStoreWriteLease } from './store-write-lease.js';
+import type { ReadRevisionTracker } from './read-revision.js';
 import {
   applyJournalOperations,
   cleanupTransaction,
@@ -34,6 +35,7 @@ export interface UnitOfWork {
 export interface UnitOfWorkOptions {
   readonly dataRoot: DataRoot;
   readonly faultInjector?: TransactionFaultInjector;
+  readonly readRevision?: ReadRevisionTracker;
 }
 
 function validateRelativePath(relativePath: string): void {
@@ -113,6 +115,9 @@ export function createUnitOfWork(options: UnitOfWorkOptions): UnitOfWork {
           };
 
           const result = await work(context);
+          const nextReadRevision = await options.readRevision?.prepare(context, [
+            ...operations.keys(),
+          ]);
           journal.operations.push(
             ...[...operations.entries()]
               .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
@@ -131,6 +136,7 @@ export function createUnitOfWork(options: UnitOfWorkOptions): UnitOfWork {
           await writeTransactionJournal(options.dataRoot, journal);
           await options.faultInjector?.('journal:committed');
           await cleanupTransaction(options.dataRoot, journal, options.faultInjector);
+          if (nextReadRevision !== undefined) options.readRevision?.committed(nextReadRevision);
           return result;
         } finally {
           await lease.release();

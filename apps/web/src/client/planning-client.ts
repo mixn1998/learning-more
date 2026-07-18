@@ -1,6 +1,6 @@
 import {
   PlanFlowViewSchema,
-  HomeDashboardResponseSchema,
+  CatalogIndexResponseSchema,
   ScheduleAssignmentResponseSchema,
   ScheduleViewResponseSchema,
   type HomeDashboardView,
@@ -106,8 +106,8 @@ export const planningClient: PlanningClient = {
   },
   async getPlanningContext() {
     const view = (
-      await apiRequest('/api/v1/home', {
-        schema: HomeDashboardResponseSchema,
+      await apiRequest('/api/v1/planning-context', {
+        schema: CatalogIndexResponseSchema,
       })
     ).data;
     return { courses: view.courses, lessons: view.lessons };
