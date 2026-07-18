@@ -13,7 +13,9 @@ export function createRuntimeReadiness(
     const projectionStatus = input.getProjectionStatus();
     const providerStatus = input.getProviderStatus();
     return {
-      status: projectionStatus === 'ready' && providerStatus === 'ready' ? 'ready' : 'degraded',
+      // Derived projections can be rebuilt from their authoritative records. Their recovery
+      // must remain observable, but it must not take the core runtime or unrelated writes down.
+      status: providerStatus === 'ready' ? 'ready' : 'degraded',
       instanceId: input.instanceId,
       buildId: input.runtimeIdentity?.buildId ?? 'development',
       protocolVersion: input.runtimeIdentity?.protocolVersion ?? '1',
@@ -21,7 +23,7 @@ export function createRuntimeReadiness(
       projectionStatus,
       providerStatus,
       ...(projectionStatus === 'degraded'
-        ? { reasonCode: 'teaching_observation_recovery_failed' }
+        ? { reasonCode: 'background_projection_recovery_failed' }
         : {}),
       ...(input.runtimeIdentity === undefined
         ? {}

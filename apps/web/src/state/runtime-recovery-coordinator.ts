@@ -130,8 +130,7 @@ export function createRuntimeRecoveryCoordinator(): RuntimeRecoveryCoordinator {
         current.kind === 'failed' &&
         current.activation === undefined &&
         readiness.status === 'ready' &&
-        readiness.storeStatus === 'ready' &&
-        readiness.projectionStatus === 'ready'
+        readiness.storeStatus === 'ready'
       ) {
         publish({
           kind: 'completed',

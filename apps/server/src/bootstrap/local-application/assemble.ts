@@ -97,7 +97,9 @@ export async function assembleLocalApplication(
   // Markdown is compiled and the outline session is advanced. Resume both
   // pending work and terminal tasks whose authoring projection was not saved.
   void course.recoverGenerationTasks().catch(() => undefined);
-  await learning.recoverTeachingSessions();
+  // Teaching observations are derived from durable session history. Rebuild them in the
+  // background so an unrelated historical session cannot delay course authoring or startup.
+  void learning.recoverTeachingSessions().catch(() => undefined);
   profile.start();
   let backgroundRecovery: Promise<void> | undefined;
   const startBackgroundRecovery = () => {

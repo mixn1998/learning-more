@@ -184,4 +184,32 @@ describe('RuntimeRecoveryCoordinator', () => {
       aiRecoveryFailed: false,
     });
   });
+
+  it('accepts operational readiness while a background projection remains degraded', async () => {
+    const coordinator = createRuntimeRecoveryCoordinator();
+
+    await expect(
+      coordinator.recover({
+        verify: vi.fn().mockResolvedValue(undefined),
+        reconnect: vi.fn().mockResolvedValue({}),
+        waitUntilReady: vi.fn().mockRejectedValue(new Error('runtime_ready_timeout')),
+        verifyActivated: vi.fn(),
+        refreshRuntime: vi.fn(),
+        refreshAi: vi.fn(),
+      }),
+    ).rejects.toThrow('runtime_ready_timeout');
+
+    const backgroundDegraded = {
+      ...readiness,
+      projectionStatus: 'degraded' as const,
+      reasonCode: 'background_projection_recovery_failed',
+    };
+    coordinator.reconcileReadiness(backgroundDegraded);
+
+    expect(coordinator.snapshot()).toMatchObject({
+      kind: 'completed',
+      readiness: backgroundDegraded,
+      aiRecoveryFailed: false,
+    });
+  });
 });

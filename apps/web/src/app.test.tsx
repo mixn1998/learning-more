@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './app.js';
-import { RuntimeStatusCards } from './layouts/app-shell.js';
+import { AppShellView, RuntimeStatusCards } from './layouts/app-shell.js';
 
 const degradedReadiness = {
   status: 'degraded',
@@ -65,5 +65,35 @@ describe('App runtime readiness', () => {
 
     expect(screen.getByRole('link', { name: /本地服务/ })).toHaveTextContent('本地服务 · 重连中');
     expect(screen.getByRole('link', { name: /本地服务/ })).not.toHaveTextContent('需要处理');
+  });
+
+  it('keeps course writes available when only a background projection needs recovery', () => {
+    render(
+      <MemoryRouter>
+        <AppShellView
+          refresh={vi.fn()}
+          state={{
+            kind: 'loaded',
+            readiness: {
+              status: 'ready',
+              instanceId: 'instance-0001',
+              buildId: 'development',
+              protocolVersion: '1',
+              storeStatus: 'ready',
+              projectionStatus: 'degraded',
+              providerStatus: 'ready',
+              reasonCode: 'background_projection_recovery_failed',
+            },
+            version: { kind: 'compatible', writesAllowed: true },
+          }}
+        >
+          <button type="button">确认课程</button>
+        </AppShellView>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认课程' })).toBeEnabled();
+    expect(screen.getByRole('link', { name: /本地服务/ })).toHaveTextContent('本地服务 · 准备就绪');
   });
 });

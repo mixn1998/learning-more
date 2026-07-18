@@ -36,16 +36,12 @@ function bannerStatus(state: RuntimeUiState): StatusBannerStatus {
   if (
     state.readiness.status === 'degraded' ||
     state.readiness.storeStatus === 'degraded' ||
-    state.readiness.projectionStatus === 'degraded' ||
     state.readiness.providerStatus === 'degraded' ||
     state.readiness.providerStatus === 'unconfigured'
   ) {
     return 'degraded';
   }
-  if (
-    state.readiness.status === 'rebuilding' ||
-    state.readiness.projectionStatus === 'rebuilding'
-  ) {
+  if (state.readiness.status === 'rebuilding') {
     return 'rebuilding';
   }
   return 'ready';
@@ -151,7 +147,6 @@ export function AppShellView(props: {
     props.state.version.writesAllowed &&
     props.state.readiness.status === 'ready' &&
     props.state.readiness.storeStatus === 'ready' &&
-    props.state.readiness.projectionStatus === 'ready' &&
     props.state.readiness.providerStatus === 'ready' &&
     props.recovery?.kind !== 'recovering';
   const headerStatus = props.headerStatus ?? routeHeaderStatus;
