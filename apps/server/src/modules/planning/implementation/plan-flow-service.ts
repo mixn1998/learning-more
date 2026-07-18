@@ -269,6 +269,24 @@ export function createPlanFlowService(options: {
     return items.filter((item): item is ScheduleItem => item !== undefined);
   }
 
+  async function findScheduleConflicts(
+    suggestions: readonly PlanSuggestion[],
+    ignoredScheduleItemIds: ReadonlySet<string> = new Set(),
+  ): Promise<readonly string[]> {
+    const lessonIds = new Set(suggestions.map((suggestion) => suggestion.lessonId));
+    const conflicts: string[] = [];
+    for await (const item of options.scheduleRepository.list()) {
+      if (
+        item.status === 'scheduled' &&
+        !ignoredScheduleItemIds.has(item.id) &&
+        lessonIds.has(item.lessonId)
+      ) {
+        conflicts.push(item.id);
+      }
+    }
+    return [...new Set(conflicts)].sort();
+  }
+
   async function undoLastScheduleMutation(
     current: PlanFlow,
     context: CommandContext,
@@ -423,14 +441,8 @@ export function createPlanFlowService(options: {
         resourceVersion: 0,
       };
       await validateSuggestions(preview, suggestions);
-      const scheduled: ScheduleItem[] = [];
-      for await (const item of options.scheduleRepository.list()) {
-        if (item.status === 'scheduled') scheduled.push(item);
-      }
-      const conflicts = suggestions.flatMap((suggestion) =>
-        scheduled.filter((item) => item.lessonId === suggestion.lessonId).map((item) => item.id),
-      );
-      return save({ ...preview, conflicts: [...new Set(conflicts)].sort() });
+      const conflicts = await findScheduleConflicts(suggestions);
+      return save({ ...preview, conflicts });
     },
 
     async fail(id: string, errorCode: string, draftArtifactRef: string) {
@@ -449,13 +461,7 @@ export function createPlanFlowService(options: {
       const current = await options.repository.get(id);
       if (current === undefined) throw new PlanFlowError('plan_flow_not_found');
       await validateSuggestions(current, suggestions);
-      const scheduled: ScheduleItem[] = [];
-      for await (const item of options.scheduleRepository.list()) {
-        if (item.status === 'scheduled') scheduled.push(item);
-      }
-      const conflicts = suggestions.flatMap((suggestion) =>
-        scheduled.filter((item) => item.lessonId === suggestion.lessonId).map((item) => item.id),
-      );
+      const conflicts = await findScheduleConflicts(suggestions);
       const { errorCode: _error, draftArtifactRef: _draft, ...withoutFailure } = current;
       void _error;
       void _draft;
@@ -463,7 +469,7 @@ export function createPlanFlowService(options: {
         ...withoutFailure,
         state: 'preview-ready',
         suggestions,
-        conflicts: [...new Set(conflicts)].sort(),
+        conflicts,
         updatedAt: options.now().toISOString(),
       });
     },
@@ -482,7 +488,11 @@ export function createPlanFlowService(options: {
       if (scheduleVersion !== current.baseScheduleVersion) {
         throw new RepositoryVersionConflictError(scheduleVersion);
       }
-      if (current.conflicts.length > 0) throw new PlanFlowError('plan_flow_not_confirmable');
+      const conflicts = await findScheduleConflicts(
+        current.suggestions,
+        new Set(current.confirmedScheduleItemIds),
+      );
+      if (conflicts.length > 0) throw new PlanFlowError('plan_flow_not_confirmable');
 
       const timestamp = options.now().toISOString();
       const scheduleItems: ScheduleItem[] = current.suggestions.map((suggestion) => ({
@@ -553,6 +563,14 @@ export function createPlanFlowService(options: {
       return undoLastScheduleMutation(current, context);
     },
 
-    get: (id: string) => options.repository.get(id),
+    async get(id: string) {
+      const current = await options.repository.get(id);
+      if (current === undefined) return undefined;
+      const conflicts = await findScheduleConflicts(
+        current.suggestions,
+        new Set(current.confirmedScheduleItemIds),
+      );
+      return { ...current, conflicts };
+    },
   };
 }

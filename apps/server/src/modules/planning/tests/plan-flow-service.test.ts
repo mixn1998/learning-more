@@ -210,6 +210,46 @@ describe('PlanFlowService', () => {
     expect(requested.conflicts).toEqual([]);
   });
 
+  it('reprojects a legacy time-overlap conflict when reading or confirming a preview', async () => {
+    const existing = {
+      id: 'schedule_other_course',
+      courseId: 'course_other',
+      lessonId: 'lesson_other',
+      startAt: '2026-07-14T11:00:00.000Z',
+      endAt: '2026-07-14T12:00:00.000Z',
+      timezoneAtCreation: 'Asia/Shanghai',
+      source: 'plan-flow' as const,
+      status: 'scheduled' as const,
+      locked: false,
+      createdAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+      processedCommandIds: [],
+      resourceVersion: 0,
+    };
+    const { service, schedules, flows } = fixture([existing]);
+    await unitOfWork.execute({}, async (transaction) => {
+      await schedules.save(transaction, existing, existing.resourceVersion);
+    });
+    const requested = await service.requestPreview(previewInput, 'preview_legacy_conflict');
+    await unitOfWork.execute({}, async (transaction) => {
+      await flows.save(
+        transaction,
+        { ...requested, conflicts: [existing.id], resourceVersion: requested.resourceVersion },
+        requested.resourceVersion,
+      );
+    });
+    const stored = await flows.get(requested.id);
+
+    await expect(service.get(requested.id)).resolves.toMatchObject({ conflicts: [] });
+    await expect(
+      service.confirm(requested.id, {
+        ...context,
+        commandId: 'confirm_legacy_conflict',
+        expectedVersion: stored!.resourceVersion,
+      }),
+    ).resolves.toMatchObject({ state: 'confirmed' });
+  });
+
   it('rejects late confirmation after a referenced course archive is permanently deleted', async () => {
     const { service, schedules, deleteCourseArchive } = fixture();
     const requested = await service.requestPreview(previewInput, 'preview_delete_race');
