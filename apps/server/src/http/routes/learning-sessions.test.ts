@@ -32,6 +32,8 @@ function fixture(overrides: Partial<Parameters<typeof registerLearningSessionRou
     module,
     teaching: {
       advanceTurn: vi.fn().mockResolvedValue({ taskId: 'task_01', resourceVersion: 2 }),
+      reviseTurn: vi.fn().mockResolvedValue({ taskId: 'task_revision_01', resourceVersion: 3 }),
+      retryTurn: vi.fn().mockResolvedValue({ taskId: 'task_retry_01', resourceVersion: 3 }),
       openLesson: vi.fn().mockResolvedValue({ taskId: 'task_opening_01', resourceVersion: 2 }),
       stopTurn: vi.fn().mockResolvedValue({
         taskId: 'task_01',
@@ -112,7 +114,11 @@ describe('LearningSession HTTP contract', () => {
       payload: { markdown: 'What is probability?' },
     });
     expect(response.statusCode).toBe(202);
-    expect(response.json()).toEqual({ taskId: 'task_01', resourceVersion: 2 });
+    expect(response.json()).toEqual({
+      taskId: 'task_01',
+      resourceVersion: 2,
+      userMessageId: 'message_01',
+    });
     expect(options.saveUserMessage).toHaveBeenCalledWith('message_01', 'What is probability?');
     expect(options.teaching.advanceTurn).toHaveBeenCalledWith(
       {
@@ -124,6 +130,42 @@ describe('LearningSession HTTP contract', () => {
       },
       expect.objectContaining({ expectedVersion: 1 }),
     );
+  });
+
+  it('revises the pending user turn and retries generation without appending a duplicate message', async () => {
+    const { app, options } = fixture();
+    const revised = await app.inject({
+      method: 'POST',
+      url: '/api/v1/lesson-sessions/session_01/messages/message_original/revisions',
+      headers: { ...headers, 'if-match': '"2"' },
+      payload: { markdown: 'Revised question' },
+    });
+    expect(revised.statusCode).toBe(202);
+    expect(revised.json()).toEqual({
+      taskId: 'task_revision_01',
+      resourceVersion: 3,
+      userMessageId: 'message_01',
+    });
+    expect(options.teaching.reviseTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replacedUserMessageId: 'message_original',
+        userMessageId: 'message_01',
+      }),
+      expect.objectContaining({ expectedVersion: 2 }),
+    );
+
+    const retried = await app.inject({
+      method: 'POST',
+      url: '/api/v1/lesson-sessions/session_01/generation-retries',
+      headers: { ...headers, 'if-match': '"3"' },
+      payload: {},
+    });
+    expect(retried.statusCode).toBe(202);
+    expect(options.teaching.retryTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'session_01' }),
+      expect.objectContaining({ expectedVersion: 3 }),
+    );
+    expect(options.teaching.advanceTurn).not.toHaveBeenCalled();
   });
 
   it('resumes the same original session through an explicit command endpoint', async () => {

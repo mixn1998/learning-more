@@ -50,15 +50,68 @@
   text-align: right;
 }
 
-.chat-user-meta button {
+.chat-user-action,
+.chat-user-meta button.chat-user-action {
+  display: inline-grid;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   min-height: 28px;
-  padding: 2px 9px;
+  padding: 0;
   border: 1px solid var(--lm-line, var(--line));
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--lm-paper, var(--paper));
   color: var(--lm-ink, var(--ink));
   font: inherit;
+  font-size: 15px;
   cursor: pointer;
+  place-items: center;
+}
+
+.chat-user-action.primary {
+  border-color: color-mix(in srgb, var(--lm-accent-dark, var(--accent-dark)) 70%, transparent);
+  background: var(--lm-accent-dark, var(--accent-dark));
+  color: #fff;
+}
+
+.chat-user-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.chat-user-edit {
+  width: min(42rem, 80%);
+  min-width: min(18rem, 80%);
+  padding: 10px;
+  border-radius: 16px 16px 4px;
+  background: var(--lm-accent-dark, var(--accent-dark));
+}
+
+.chat-user-edit textarea {
+  width: 100%;
+  min-height: 82px;
+  padding: 7px 8px;
+  border: 1px solid rgb(255 255 255 / 45%);
+  border-radius: 9px;
+  outline: 0;
+  background: rgb(255 255 255 / 10%);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+.chat-user-edit textarea:focus {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 20%);
+}
+
+.chat-user-edit__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 8px;
 }
 
 .chat-composer {
@@ -170,8 +223,10 @@ button.chat-composer__send {
 
 @media (max-width: 600px) {
   .chat-user-bubble,
-  .chat-user-meta {
+  .chat-user-meta,
+  .chat-user-edit {
     max-width: 88%;
+    width: 88%;
   }
 
   .chat-composer {

@@ -136,19 +136,25 @@ export function LessonSessionFixture() {
         { title: '核心循环', detail: '连接连续动机', state: 'pending' },
       ]}
       paused={false}
+      editingDraft=""
       stopped={false}
       title="反馈不是奖励动画"
       writable
       onAbandon={() => undefined}
       onBackToOutline={() => undefined}
       onComplete={() => undefined}
+      onCancelEdit={() => undefined}
+      onEditDraft={() => undefined}
+      onEditMessage={() => undefined}
       onInput={() => undefined}
       onPause={() => undefined}
       onRestore={() => undefined}
       onRetryOpening={() => undefined}
+      onRetryMessage={() => undefined}
       onSkipOpening={() => undefined}
       onResume={() => undefined}
       onSend={() => undefined}
+      onSubmitEdit={() => undefined}
       onStop={() => undefined}
       onTransfer={() => undefined}
     />

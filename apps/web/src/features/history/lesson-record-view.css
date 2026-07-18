@@ -107,8 +107,21 @@ body:has(.lesson-record-workspace) .runtime-write-boundary {
   color: var(--muted);
   font-size: 11px;
 }
+.lesson-record-start-supplementary {
+  width: 100%;
+  margin-top: 16px;
+}
+.lesson-record-chat-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
 .lesson-record-chat {
+  flex: 1;
   padding: 28px;
+}
+.lesson-record-chat-column .chat-composer {
+  margin: 0 28px 24px;
 }
 .lesson-record-chat .learn-ai {
   max-width: 760px;

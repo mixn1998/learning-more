@@ -5,6 +5,27 @@ import { learningClient } from './learning-client.js';
 afterEach(() => vi.unstubAllGlobals());
 
 describe('LearningClient SSE', () => {
+  it('always bypasses the HTTP cache for authoritative lesson progress', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          lessonId: 'lesson_01',
+          progress: 'completed',
+          resourceVersion: 9,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await learningClient.getLessonState('lesson_01');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/lessons/lesson_01/learning-state',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
+  });
+
   it('delivers a complete frame before the HTTP stream closes', async () => {
     const encoder = new TextEncoder();
     let releasedSecondFrame = false;

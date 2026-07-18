@@ -7,6 +7,11 @@ export type LearningSessionCommand =
       messageId: string;
     }>
   | Readonly<{
+      type: 'replacePendingUserTurn';
+      replacedMessageIds: readonly string[];
+      messageId: string;
+    }>
+  | Readonly<{
       type: 'commitAssistantMessage';
       sessionId: string;
       generationTaskId: string;

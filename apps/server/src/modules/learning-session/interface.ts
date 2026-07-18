@@ -22,6 +22,13 @@ export type LearningSessionCommand =
       }>)
   | (LessonCommand &
       Readonly<{
+        type: 'ReplacePendingUserTurn';
+        replacedMessageIds: readonly string[];
+        messageId: string;
+        contentArtifactRef: string;
+      }>)
+  | (LessonCommand &
+      Readonly<{
         type: 'CommitAssistantMessage';
         sessionId: string;
         messageId: string;

@@ -66,7 +66,17 @@ export interface LearningClient {
     sessionId: string;
     markdown: string;
     resourceVersion: number;
-  }): Promise<{ taskId: string; resourceVersion: number }>;
+  }): Promise<{ taskId: string; resourceVersion: number; userMessageId?: string | undefined }>;
+  reviseMessage(input: {
+    sessionId: string;
+    messageId: string;
+    markdown: string;
+    resourceVersion: number;
+  }): Promise<{ taskId: string; resourceVersion: number; userMessageId?: string | undefined }>;
+  retryGeneration(
+    sessionId: string,
+    resourceVersion: number,
+  ): Promise<{ taskId: string; resourceVersion: number }>;
   stream(taskId: string, onEvent: (event: AuthoringStreamEvent) => void): Promise<void>;
   stop(input: {
     sessionId: string;
@@ -145,6 +155,7 @@ export const learningClient: LearningClient = {
     return (
       await apiRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/learning-state`, {
         schema: LessonEntryStateResponseSchema,
+        cache: 'no-store',
       })
     ).data;
   },
@@ -188,6 +199,21 @@ export const learningClient: LearningClient = {
       body: { markdown: input.markdown },
       schema: GenerationTaskAcceptedResponseSchema,
       resourceVersion: input.resourceVersion,
+    }),
+  reviseMessage: (input) =>
+    commandRequest(
+      `/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/messages/${encodeURIComponent(input.messageId)}/revisions`,
+      {
+        body: { markdown: input.markdown },
+        schema: GenerationTaskAcceptedResponseSchema,
+        resourceVersion: input.resourceVersion,
+      },
+    ),
+  retryGeneration: (sessionId, resourceVersion) =>
+    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/generation-retries`, {
+      body: {},
+      schema: GenerationTaskAcceptedResponseSchema,
+      resourceVersion,
     }),
   async stream(taskId, onEvent) {
     await streamGenerationEvents({ taskId, onEvent });

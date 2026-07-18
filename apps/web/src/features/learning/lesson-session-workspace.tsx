@@ -55,8 +55,18 @@ export function LessonSessionWorkspace(props: {
   readonly canStop: boolean;
   readonly stopped: boolean;
   readonly sendError?: string | undefined;
+  readonly editableMessageId?: string | undefined;
+  readonly retryableMessageId?: string | undefined;
+  readonly retryLabel?: string | undefined;
+  readonly editingMessageId?: string | undefined;
+  readonly editingDraft: string;
   readonly onInput: (value: string) => void;
   readonly onSend: () => void;
+  readonly onEditMessage: (messageId: string, markdown: string) => void;
+  readonly onEditDraft: (value: string) => void;
+  readonly onSubmitEdit: () => void;
+  readonly onCancelEdit: () => void;
+  readonly onRetryMessage: () => void;
   readonly onStop: () => void;
   readonly onTransfer: () => void;
   readonly onPause: () => void;
@@ -196,9 +206,23 @@ export function LessonSessionWorkspace(props: {
                     </article>
                   ) : (
                     <UserMessageRow
-                      errorText="发送失败 · 内容已恢复到输入框"
+                      editing={props.editingMessageId === message.id}
+                      editValue={props.editingDraft}
+                      errorText="消息未发送"
                       key={message.id}
                       messageId={message.id}
+                      onEdit={
+                        props.editableMessageId === message.id
+                          ? () => props.onEditMessage(message.id, messageText(message))
+                          : undefined
+                      }
+                      onRetry={
+                        props.retryableMessageId === message.id ? props.onRetryMessage : undefined
+                      }
+                      onEditCancel={props.onCancelEdit}
+                      onEditChange={props.onEditDraft}
+                      onEditSubmit={props.onSubmitEdit}
+                      retryLabel={props.retryLabel}
                       status={message.status}
                       text={messageText(message)}
                     />
@@ -223,6 +247,7 @@ export function LessonSessionWorkspace(props: {
               label="学习输入"
               placeholder="回答问题、追问，或要求换一种解释方式……"
               sendLabel="发送"
+              submitDisabled={props.editingMessageId !== undefined}
               value={props.input}
               onChange={props.onInput}
               onSubmit={() => props.onSend()}

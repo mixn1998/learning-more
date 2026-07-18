@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OutlineView } from './outline-view.js';
@@ -9,6 +9,42 @@ import { OutlineView } from './outline-view.js';
 afterEach(cleanup);
 
 describe('OutlineView', () => {
+  it('projects an authoritative completed lesson directly to its learning record', () => {
+    const onOpenLesson = vi.fn();
+    render(
+      <OutlineView
+        course={{
+          courseId: 'course_completed',
+          title: '微积分',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_completed',
+          lessonIds: ['lesson_completed'],
+          lessons: [
+            {
+              lessonId: 'lesson_completed',
+              outlineVersionId: 'outline_completed',
+              title: '函数与图像',
+              objective: '理解函数的多种表示。',
+              coreKnowledgePoints: ['函数', '图像'],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+          ],
+          outlineMarkdown: '# 微积分\n\n## 函数\n\n### 函数与图像',
+          resourceVersion: 1,
+        }}
+        lessonStates={{ lesson_completed: { progress: 'completed' } }}
+        onOpenLesson={onOpenLesson}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /点击查看课节记录/u }));
+
+    expect(onOpenLesson).toHaveBeenCalledWith('lesson_completed', 'record');
+    expect(screen.queryByText('学习中 · 继续学习')).not.toBeInTheDocument();
+  });
+
   it('renders the formal lesson objective without parsing a Markdown list lead-in as its summary', () => {
     render(
       <OutlineView

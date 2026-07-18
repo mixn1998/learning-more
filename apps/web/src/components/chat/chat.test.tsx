@@ -20,6 +20,42 @@ describe('shared chat components', () => {
     expect(bubble).toHaveClass('chat-user-bubble');
   });
 
+  it('edits inside the message row and exposes compact icon actions', () => {
+    const onEditChange = vi.fn();
+    const onEditSubmit = vi.fn();
+    const onRetry = vi.fn();
+    const { rerender } = render(
+      <UserMessageRow
+        messageId="message_1"
+        onEdit={() => undefined}
+        onRetry={onRetry}
+        retryLabel="重新发送"
+        text="原始消息"
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '重新发送' })).toHaveTextContent('↻');
+    expect(screen.getByRole('button', { name: '重新编辑' })).toHaveTextContent('✎');
+
+    rerender(
+      <UserMessageRow
+        editing
+        editValue="原始消息"
+        messageId="message_1"
+        text="原始消息"
+        onEditChange={onEditChange}
+        onEditSubmit={onEditSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '编辑消息' }), {
+      target: { value: '修改后的消息' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+
+    expect(onEditChange).toHaveBeenCalledWith('修改后的消息');
+    expect(onEditSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it('disables empty submission and submits trimmed text from Enter', () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();

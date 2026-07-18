@@ -11,6 +11,12 @@ export type LearningSessionEvent =
       }>)
   | (EventBase &
       Readonly<{
+        type: 'PendingUserTurnReplaced';
+        replacedMessageIds: readonly string[];
+        messageId: string;
+      }>)
+  | (EventBase &
+      Readonly<{
         type: 'AssistantMessageCommitted';
         messageId: string;
       }>)

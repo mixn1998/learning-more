@@ -26,6 +26,8 @@ function client(overrides: Partial<LearningClient> = {}): LearningClient {
       learning: { progress: 'in_progress', session: { state: 'active' } },
     }),
     sendMessage: vi.fn().mockResolvedValue({ taskId: 'task_01', resourceVersion: 3 }),
+    reviseMessage: vi.fn().mockResolvedValue({ taskId: 'task_revision_01', resourceVersion: 5 }),
+    retryGeneration: vi.fn().mockResolvedValue({ taskId: 'task_retry_01', resourceVersion: 5 }),
     stream: vi.fn().mockImplementation(async (_taskId, onEvent) => {
       onEvent({ type: 'message.delta', data: { markdown: 'Assistant answer' } });
       onEvent({ type: 'task.completed', data: { resultRef: 'draft_task_01' } });
@@ -140,18 +142,104 @@ describe('learning SessionPage', () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('restores the composer and marks the local message when request acceptance fails', async () => {
-    const sendMessage = vi.fn().mockRejectedValue(new Error('offline'));
+  it('retries an unaccepted message in place without restoring or duplicating it', async () => {
+    const sendMessage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementationOnce(() => new Promise<never>(() => undefined));
     render(<SessionPage lessonId="lesson_01" client={client({ sendMessage })} />);
 
     const input = await screen.findByLabelText('学习输入');
     fireEvent.change(input, { target: { value: 'Keep this question' } });
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('消息发送失败，请重试');
-    expect(input).toHaveValue('Keep this question');
-    expect(screen.getByText('发送失败 · 内容已恢复到输入框')).toBeInTheDocument();
+    expect(await screen.findByText('消息未发送')).toBeInTheDocument();
+    expect(input).toHaveValue('');
+    expect(screen.getByRole('button', { name: '重新发送' })).toBeInTheDocument();
     expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+    expect(screen.getAllByText('Keep this question')).toHaveLength(1);
+    expect(input).toHaveValue('');
+    expect(screen.getByRole('status', { name: 'AI 回复状态' })).toHaveTextContent('正在思考中');
+  });
+
+  it('cancels an active generation before resubmitting an edited user message', async () => {
+    const stream = vi.fn(() => new Promise<void>(() => undefined));
+    const stop = vi.fn().mockResolvedValue({
+      taskId: 'task_01',
+      draftArtifactRef: 'draft_task_01',
+      resourceVersion: 4,
+    });
+    const reviseMessage = vi.fn().mockResolvedValue({
+      taskId: 'task_revision_01',
+      resourceVersion: 6,
+      userMessageId: 'message_revised_01',
+    });
+    const api = client({
+      sendMessage: vi.fn().mockResolvedValue({
+        taskId: 'task_01',
+        resourceVersion: 3,
+        userMessageId: 'message_user_01',
+      }),
+      stream,
+      stop,
+      reviseMessage,
+    });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: '原始问题' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await screen.findByRole('button', { name: '停止生成' });
+    fireEvent.click(await screen.findByRole('button', { name: '重新编辑' }));
+
+    await waitFor(() =>
+      expect(stop).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'task_01' })),
+    );
+    const inlineEditor = await screen.findByRole('textbox', { name: '编辑消息' });
+    expect(inlineEditor).toHaveValue('原始问题');
+    expect(input).toHaveValue('');
+    fireEvent.change(inlineEditor, { target: { value: '修改后的问题' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+
+    await waitFor(() =>
+      expect(reviseMessage).toHaveBeenCalledWith({
+        sessionId: 'session_01',
+        messageId: 'message_user_01',
+        markdown: '修改后的问题',
+        resourceVersion: 4,
+      }),
+    );
+  });
+
+  it('retries a failed AI response without appending the user message again', async () => {
+    const retryGeneration = vi
+      .fn()
+      .mockResolvedValue({ taskId: 'task_retry_01', resourceVersion: 5 });
+    const stream = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('generation failed'))
+      .mockResolvedValueOnce(undefined);
+    const api = client({
+      sendMessage: vi.fn().mockResolvedValue({
+        taskId: 'task_01',
+        resourceVersion: 3,
+        userMessageId: 'message_user_01',
+      }),
+      retryGeneration,
+      stream,
+    });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: '请重新解释' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    fireEvent.click(await screen.findByRole('button', { name: '重新生成' }));
+
+    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 3));
+    expect(api.sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it('streams one response for a duplicate send and keeps completed Markdown', async () => {
@@ -431,14 +519,6 @@ describe('learning SessionPage', () => {
   });
 
   it('hydrates a completed session and its immutable final Review after refresh', async () => {
-    const startSupplementary = vi.fn().mockResolvedValue({
-      id: 'supplementary_01',
-      resourceVersion: 1,
-    });
-    const sendSupplementary = vi.fn().mockResolvedValue({
-      id: 'supplementary_01',
-      resourceVersion: 2,
-    });
     const api = client({
       getSession: vi.fn().mockResolvedValue({
         resourceVersion: 7,
@@ -448,8 +528,6 @@ describe('learning SessionPage', () => {
         },
         finalReview: { markdown: '# Preserved final Review' },
       }),
-      startSupplementary,
-      sendSupplementary,
     });
     render(<SessionPage lessonId="lesson_01" client={api} />);
 
@@ -459,13 +537,7 @@ describe('learning SessionPage', () => {
     expect(screen.queryByRole('button', { name: '开始补充学习' })).not.toBeInTheDocument();
     fireEvent.keyDown(reviewDialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '开始补充学习' }));
-    const supplementaryInput = await screen.findByLabelText('补充学习输入');
-    fireEvent.change(supplementaryInput, { target: { value: 'A follow-up question' } });
-    fireEvent.click(screen.getByRole('button', { name: '发送补充消息' }));
-    await waitFor(() =>
-      expect(sendSupplementary).toHaveBeenCalledWith('supplementary_01', 'A follow-up question', 1),
-    );
+    expect(screen.queryByRole('button', { name: '开始补充学习' })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 

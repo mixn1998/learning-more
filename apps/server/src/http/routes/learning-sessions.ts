@@ -12,6 +12,7 @@ import {
   LearningSessionViewResponseSchema,
   LessonRecordResponseSchema,
   LessonEntryStateResponseSchema,
+  ReviseLessonMessageBodySchema,
   StartLessonSessionBodySchema,
   StartSupplementarySessionBodySchema,
   StopLessonGenerationBodySchema,
@@ -99,7 +100,11 @@ export async function registerLearningSessionRoutes(
           const state = LessonEntryStateResponseSchema.parse(
             await options.getLessonEntryState!(request.params.lessonId),
           );
-          return reply.header('etag', `"${state.resourceVersion}"`).code(200).send(state);
+          return reply
+            .header('cache-control', 'no-store')
+            .header('etag', `"${state.resourceVersion}"`)
+            .code(200)
+            .send(state);
         } catch (error) {
           const problem = mapApplicationError(error, correlation);
           return reply.code(problem.status).send(problem);
@@ -275,6 +280,72 @@ export async function registerLearningSessionRoutes(
           },
           context,
         );
+        const response = GenerationTaskAcceptedResponseSchema.parse({
+          ...task,
+          userMessageId: messageId,
+        });
+        return reply.header('etag', `"${response.resourceVersion}"`).code(202).send(response);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string; messageId: string } }>(
+    '/api/v1/lesson-sessions/:sessionId/messages/:messageId/revisions',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const body = ReviseLessonMessageBodySchema.parse(request.body);
+        const reference = await options.resolveSession(request.params.sessionId);
+        const messageId = options.nextMessageId();
+        const contentArtifactRef = await options.saveUserMessage(messageId, body.markdown);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const task = await options.teaching.reviseTurn(
+          {
+            courseId: reference.courseId,
+            lessonId: reference.lessonId,
+            sessionId: reference.sessionId,
+            replacedUserMessageId: request.params.messageId,
+            userMessageId: messageId,
+            userContentArtifactRef: contentArtifactRef,
+          },
+          context,
+        );
+        const response = GenerationTaskAcceptedResponseSchema.parse({
+          ...task,
+          userMessageId: messageId,
+        });
+        return reply.header('etag', `"${response.resourceVersion}"`).code(202).send(response);
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/lesson-sessions/:sessionId/generation-retries',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        EmptyLearningSessionCommandBodySchema.parse(request.body ?? {});
+        const reference = await options.resolveSession(request.params.sessionId);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const task = await options.teaching.retryTurn(reference, context);
         const response = GenerationTaskAcceptedResponseSchema.parse(task);
         return reply.header('etag', `"${response.resourceVersion}"`).code(202).send(response);
       } catch (error) {

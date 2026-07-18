@@ -2,7 +2,7 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LessonRecordView } from './lesson-record-view.js';
 
@@ -49,11 +49,27 @@ describe('lesson history record', () => {
     );
   });
 
-  it('keeps the original conversation readonly and exposes no supplementary-learning creation control', () => {
+  it('keeps the original conversation readonly when supplementary learning is unavailable', () => {
     renderRecord();
     expect(screen.getByLabelText('只读学习对话')).toHaveTextContent('原始内容不可修改');
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '开始补充学习' })).not.toBeInTheDocument();
+  });
+
+  it('exposes supplementary learning only from a completed lesson record', async () => {
+    const onStartSupplementary = vi.fn().mockResolvedValue({ sessionId: 'supplement-2' });
+    render(
+      <LessonRecordView
+        original={{ sessionId: 'original', label: '原始学习', messages: [] }}
+        progress="completed"
+        supplementary={[]}
+        onStartSupplementary={onStartSupplementary}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '开始补充学习' }));
+
+    expect(onStartSupplementary).toHaveBeenCalledTimes(1);
   });
 
   it('renders message roles from structured data instead of parsing visible prefixes', () => {

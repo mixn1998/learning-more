@@ -383,7 +383,7 @@ export function createLocalReviewRuntime(
           endIntent: body.endIntent,
           expectedSessionVersion: current.resourceVersion,
         });
-        await sessionModule.execute(
+        const completed = await sessionModule.execute(
           { type: 'CompleteLessonPendingReview', lessonId },
           {
             ...context,
@@ -393,7 +393,11 @@ export function createLocalReviewRuntime(
           },
         );
         void scheduleLessonClosureFinalization(closure, context);
-        return { ...closure, progress: 'completed' as const };
+        return {
+          ...closure,
+          progress: 'completed' as const,
+          resourceVersion: completed.value.resourceVersion,
+        };
       },
       async closeCourse(courseId, confirmAbandoned, context) {
         const course = await input.course.access.getCourse(courseId);

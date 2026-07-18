@@ -117,6 +117,25 @@ export function decide(
       }),
     ];
   }
+  if (command.type === 'replacePendingUserTurn') {
+    if (session.state !== 'active' || session.activeGenerationTaskId !== undefined) {
+      throw new LearningSessionError('session_not_writable');
+    }
+    if (command.replacedMessageIds.length === 0) {
+      throw new LearningSessionError('session_conflict');
+    }
+    const tail = session.messageIds.slice(-command.replacedMessageIds.length);
+    if (JSON.stringify(tail) !== JSON.stringify(command.replacedMessageIds)) {
+      throw new LearningSessionError('session_conflict');
+    }
+    return [
+      event(commandId, {
+        type: 'PendingUserTurnReplaced',
+        replacedMessageIds: command.replacedMessageIds,
+        messageId: command.messageId,
+      }),
+    ];
+  }
   if (command.type === 'commitAssistantMessage') {
     if (session.id !== command.sessionId) throw new LearningSessionError('session_conflict');
     if (session.state !== 'active' && session.state !== 'paused') {
@@ -219,6 +238,19 @@ export function evolve(learning: LessonLearning, event: LearningSessionEvent): L
           ? withoutActiveGeneration(session)
           : session),
         messageIds: [...session.messageIds, event.messageId],
+      },
+      processedCommandIds,
+    };
+  }
+  if (event.type === 'PendingUserTurnReplaced') {
+    return {
+      ...learning,
+      session: {
+        ...session,
+        messageIds: [
+          ...session.messageIds.slice(0, -event.replacedMessageIds.length),
+          event.messageId,
+        ],
       },
       processedCommandIds,
     };

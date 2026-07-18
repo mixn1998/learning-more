@@ -20,6 +20,12 @@ export type LearningMessage = Readonly<{
 
 export interface MessageLog {
   stageAppend(tx: TransactionContext, sessionId: string, message: LearningMessage): Promise<void>;
+  stageReplaceTail(
+    tx: TransactionContext,
+    sessionId: string,
+    replacedMessageIds: readonly string[],
+    message: LearningMessage,
+  ): Promise<void>;
   list(sessionId: string): Promise<readonly LearningMessage[]>;
 }
 
@@ -72,6 +78,17 @@ export function createInMemoryMessageLog(): MessageLog {
       if (current.some((candidate) => candidate.id === message.id)) return;
       messages.set(sessionId, [...current, structuredClone(message)]);
     },
+    async stageReplaceTail(_tx, sessionId, replacedMessageIds, message) {
+      const current = messages.get(sessionId) ?? [];
+      const tail = current.slice(-replacedMessageIds.length).map((candidate) => candidate.id);
+      if (JSON.stringify(tail) !== JSON.stringify(replacedMessageIds)) {
+        throw new ImmutableResourceError();
+      }
+      messages.set(sessionId, [
+        ...current.slice(0, -replacedMessageIds.length),
+        structuredClone(message),
+      ]);
+    },
     async list(sessionId) {
       return structuredClone(messages.get(sessionId) ?? []);
     },
@@ -89,6 +106,21 @@ export function createLocalFileMessageLog(dataRoot: DataRoot): MessageLog {
         return;
       }
       const content = [...messages, message]
+        .map((item) => encodeJson({ message: item, checksum: checksumJson(item) }))
+        .join('');
+      await tx.stageText(relativePath(sessionId), content);
+    },
+    async stageReplaceTail(tx, sessionId, replacedMessageIds, input) {
+      const message = LearningMessageSchema.parse(input);
+      const messages = await readMessages(dataRoot, sessionId);
+      const tail = messages.slice(-replacedMessageIds.length).map((candidate) => candidate.id);
+      if (
+        replacedMessageIds.length === 0 ||
+        JSON.stringify(tail) !== JSON.stringify(replacedMessageIds)
+      ) {
+        throw new ImmutableResourceError();
+      }
+      const content = [...messages.slice(0, -replacedMessageIds.length), message]
         .map((item) => encodeJson({ message: item, checksum: checksumJson(item) }))
         .join('');
       await tx.stageText(relativePath(sessionId), content);

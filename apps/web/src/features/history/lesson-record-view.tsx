@@ -4,7 +4,7 @@ import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface, tabId, tabPanelId, Tabs } from '@learning-more/ui';
 import type { ReviewDocument } from '@learning-more/contracts';
 
-import { ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
 import {
   LessonFinalReviewDocumentView,
   LessonStageReviewDocumentView,
@@ -60,11 +60,17 @@ export function LessonRecordView(props: {
   readonly reviewDocument?: ReviewDocument;
   readonly onBackHome?: () => void;
   readonly onBackToOutline?: () => void;
+  readonly onStartSupplementary?: (() => Promise<{ sessionId: string }>) | undefined;
+  readonly onSendSupplementary?:
+    ((sessionId: string, markdown: string) => Promise<void>) | undefined;
 }) {
   const [topTab, setTopTab] = useState<'conversation' | 'review'>(
     props.initialTab ?? 'conversation',
   );
   const [sessionId, setSessionId] = useState(props.original.sessionId);
+  const [supplementaryInput, setSupplementaryInput] = useState('');
+  const [supplementaryBusy, setSupplementaryBusy] = useState(false);
+  const [supplementaryError, setSupplementaryError] = useState<string>();
   const sessions = [props.original, ...props.supplementary];
   const selected = sessions.find((session) => session.sessionId === sessionId) ?? props.original;
   const date = props.completedAt ?? '完成时间已归档';
@@ -181,17 +187,67 @@ export function LessonRecordView(props: {
                       </span>
                     </button>
                   ))}
+                  {props.progress === 'completed' && props.onStartSupplementary !== undefined ? (
+                    <button
+                      className="lm-btn lesson-record-start-supplementary"
+                      disabled={supplementaryBusy}
+                      type="button"
+                      onClick={() => {
+                        setSupplementaryBusy(true);
+                        setSupplementaryError(undefined);
+                        void props.onStartSupplementary!().then(
+                          (created) => {
+                            setSessionId(created.sessionId);
+                            setSupplementaryBusy(false);
+                          },
+                          () => {
+                            setSupplementaryError('补充学习创建失败，请重试。');
+                            setSupplementaryBusy(false);
+                          },
+                        );
+                      }}
+                    >
+                      开始补充学习
+                    </button>
+                  ) : null}
                 </aside>
-                <ConversationStream
-                  as="main"
-                  className="lesson-record-chat"
-                  followKey={`${selected.sessionId}:${selected.messages.length}`}
-                  label="只读学习对话"
-                >
-                  {selected.messages.map((message) => (
-                    <ReadonlyMessage key={message.id} message={message} />
-                  ))}
-                </ConversationStream>
+                <main className="lesson-record-chat-column">
+                  <ConversationStream
+                    className="lesson-record-chat"
+                    followKey={`${selected.sessionId}:${selected.messages.length}`}
+                    label="只读学习对话"
+                  >
+                    {selected.messages.map((message) => (
+                      <ReadonlyMessage key={message.id} message={message} />
+                    ))}
+                  </ConversationStream>
+                  {selected.sessionId !== props.original.sessionId &&
+                  props.onSendSupplementary !== undefined ? (
+                    <ChatComposer
+                      busy={supplementaryBusy}
+                      error={supplementaryError}
+                      label="补充学习输入"
+                      placeholder="继续追问或补充你的思考…"
+                      sendLabel="发送补充消息"
+                      value={supplementaryInput}
+                      onChange={setSupplementaryInput}
+                      onSubmit={(markdown) => {
+                        setSupplementaryBusy(true);
+                        setSupplementaryError(undefined);
+                        void props.onSendSupplementary!(selected.sessionId, markdown).then(
+                          () => {
+                            setSupplementaryInput('');
+                            setSupplementaryBusy(false);
+                          },
+                          () => {
+                            setSupplementaryError('补充消息发送失败，请重试。');
+                            setSupplementaryBusy(false);
+                          },
+                        );
+                      }}
+                    />
+                  ) : null}
+                </main>
               </div>
             </section>
           )}

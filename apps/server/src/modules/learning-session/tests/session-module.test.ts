@@ -68,6 +68,68 @@ function fixture(
 }
 
 describe('LearningSession module', () => {
+  it('atomically replaces only the pending user turn and its interrupted assistant tail', async () => {
+    const { module, messageLog } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_revision' },
+      context('start_revision', 'page_a'),
+    );
+    await module.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_revision',
+        messageId: 'message_original',
+        contentArtifactRef: 'artifact:original',
+      },
+      { ...context('append_original', 'page_a'), expectedVersion: 1 },
+    );
+    await module.execute(
+      { type: 'StartSessionGeneration', lessonId: 'lesson_revision', taskId: 'task_original' },
+      { ...context('start_generation', 'page_a'), expectedVersion: 2 },
+    );
+    await module.execute(
+      {
+        type: 'CommitAssistantMessage',
+        lessonId: 'lesson_revision',
+        sessionId: 'session_01',
+        messageId: 'message_interrupted',
+        contentArtifactRef: 'artifact:interrupted',
+        generationTaskId: 'task_original',
+        completionStatus: 'interrupted',
+      },
+      { ...context('interrupt_generation', 'page_a'), expectedVersion: 3 },
+    );
+
+    const replaced = await module.execute(
+      {
+        type: 'ReplacePendingUserTurn',
+        lessonId: 'lesson_revision',
+        replacedMessageIds: ['message_original', 'message_interrupted'],
+        messageId: 'message_revised',
+        contentArtifactRef: 'artifact:revised',
+      },
+      { ...context('replace_turn', 'page_a'), expectedVersion: 4 },
+    );
+
+    expect(replaced.value.resourceVersion).toBe(5);
+    expect((await messageLog.list('session_01')).map((message) => message.id)).toEqual([
+      'message_revised',
+    ]);
+    expect(
+      (
+        await module.query(
+          { type: 'GetLessonLearning', lessonId: 'lesson_revision' },
+          {
+            correlationId: 'query_revision',
+            actor: 'local-user',
+            requestedAt: nowIso(),
+            receivedAt: nowIso(),
+          },
+        )
+      ).learning.session?.messageIds,
+    ).toEqual(['message_revised']);
+  });
+
   it('rejects starting an obsolete lesson while preserving an existing historical session', async () => {
     const assertLessonStartable = vi
       .fn<(lessonId: string) => Promise<void>>()

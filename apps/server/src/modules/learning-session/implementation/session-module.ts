@@ -47,6 +47,13 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
       messageId: command.messageId,
     };
   }
+  if (command.type === 'ReplacePendingUserTurn') {
+    return {
+      type: 'replacePendingUserTurn',
+      replacedMessageIds: command.replacedMessageIds,
+      messageId: command.messageId,
+    };
+  }
   if (command.type === 'CommitAssistantMessage') {
     return {
       type: 'commitAssistantMessage',
@@ -297,6 +304,24 @@ export function createSessionModule(options: {
                   ? (command.completionStatus ?? 'complete')
                   : 'complete',
             });
+          }
+          if (
+            events.length > 0 &&
+            learning.session !== undefined &&
+            command.type === 'ReplacePendingUserTurn'
+          ) {
+            await options.messageLog.stageReplaceTail(
+              tx,
+              learning.session.id,
+              command.replacedMessageIds,
+              {
+                id: command.messageId,
+                role: 'user',
+                createdAt: now.toISOString(),
+                contentArtifactRef: command.contentArtifactRef,
+                completionStatus: 'complete',
+              },
+            );
           }
           if (events.length > 0) {
             await options.repositories.save(tx, stored, base.resourceVersion);

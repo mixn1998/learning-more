@@ -34,12 +34,22 @@ export type UserMessageRowProps = Readonly<{
   errorText?: string | undefined;
   timestamp?: string | undefined;
   onRetry?: (() => void) | undefined;
+  retryLabel?: string | undefined;
+  onEdit?: (() => void) | undefined;
+  editing?: boolean | undefined;
+  editValue?: string | undefined;
+  onEditChange?: ((value: string) => void) | undefined;
+  onEditSubmit?: (() => void) | undefined;
+  onEditCancel?: (() => void) | undefined;
 }>;
 
 export function UserMessageRow(props: UserMessageRowProps) {
   const status = props.status ?? 'complete';
   const showMeta =
-    status !== 'complete' || props.timestamp !== undefined || props.onRetry !== undefined;
+    status !== 'complete' ||
+    props.timestamp !== undefined ||
+    props.onRetry !== undefined ||
+    props.onEdit !== undefined;
   return (
     <article
       aria-label="你的消息"
@@ -47,7 +57,43 @@ export function UserMessageRow(props: UserMessageRowProps) {
       data-message-id={props.messageId}
       data-message-status={status}
     >
-      <UserMessageBubble text={props.text} tone={status === 'failed' ? 'danger' : 'normal'} />
+      {props.editing === true ? (
+        <div className="chat-user-edit">
+          <label className="sr-only" htmlFor={`chat-user-edit-${props.messageId}`}>
+            编辑消息
+          </label>
+          <textarea
+            autoFocus
+            id={`chat-user-edit-${props.messageId}`}
+            rows={3}
+            value={props.editValue ?? props.text}
+            onChange={(event) => props.onEditChange?.(event.currentTarget.value)}
+          />
+          <div className="chat-user-edit__actions">
+            <button
+              aria-label="取消编辑"
+              className="chat-user-action"
+              title="取消编辑"
+              type="button"
+              onClick={props.onEditCancel}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+            <button
+              aria-label="保存修改"
+              className="chat-user-action primary"
+              disabled={(props.editValue ?? props.text).trim() === ''}
+              title="保存修改"
+              type="button"
+              onClick={props.onEditSubmit}
+            >
+              <span aria-hidden="true">✓</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <UserMessageBubble text={props.text} tone={status === 'failed' ? 'danger' : 'normal'} />
+      )}
       {showMeta ? (
         <footer className="chat-user-meta">
           {status === 'submitting' ? <span>正在发送…</span> : null}
@@ -58,8 +104,25 @@ export function UserMessageRow(props: UserMessageRowProps) {
           ) : null}
           {props.timestamp === undefined ? null : <time>{props.timestamp}</time>}
           {props.onRetry === undefined ? null : (
-            <button type="button" onClick={props.onRetry}>
-              重试
+            <button
+              aria-label={props.retryLabel ?? '重试'}
+              className="chat-user-action"
+              title={props.retryLabel ?? '重试'}
+              type="button"
+              onClick={props.onRetry}
+            >
+              <span aria-hidden="true">↻</span>
+            </button>
+          )}
+          {props.onEdit === undefined ? null : (
+            <button
+              aria-label="重新编辑"
+              className="chat-user-action"
+              title="重新编辑"
+              type="button"
+              onClick={props.onEdit}
+            >
+              <span aria-hidden="true">✎</span>
             </button>
           )}
         </footer>

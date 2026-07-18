@@ -9,6 +9,9 @@ export const StartLessonSessionBodySchema = z.strictObject({});
 export const AppendLessonMessageBodySchema = z.strictObject({
   markdown: z.string().trim().min(1).max(200_000),
 });
+export const ReviseLessonMessageBodySchema = z.strictObject({
+  markdown: z.string().trim().min(1).max(200_000),
+});
 export const EmptyLearningSessionCommandBodySchema = z.strictObject({});
 export const StopLessonGenerationBodySchema = z.strictObject({ taskId: identifier });
 export const StartSupplementarySessionBodySchema = z.strictObject({});
@@ -26,6 +29,7 @@ export const LessonSessionStartedResponseSchema = z.strictObject({
 export const GenerationTaskAcceptedResponseSchema = z.strictObject({
   taskId: identifier,
   resourceVersion: z.number().int().nonnegative(),
+  userMessageId: identifier.optional(),
 });
 export const GenerationStoppedResponseSchema = z.strictObject({
   taskId: identifier,

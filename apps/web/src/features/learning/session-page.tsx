@@ -3,7 +3,6 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import type { LessonFinalReviewDocument } from '@learning-more/contracts';
 
 import { learningClient, type LearningClient } from '../../client/learning-client.js';
-import { ChatComposer } from '../../components/chat/chat.js';
 import { ReviewDialog } from '../review/review-dialog.js';
 import type { SessionMessageView } from './message-stream.js';
 import { LessonSessionWorkspace } from './lesson-session-workspace.js';
@@ -29,6 +28,10 @@ type State = Readonly<{
         status: 'submitting' | 'complete' | 'failed';
       }>
     | undefined;
+  revisingMessageId?: string | undefined;
+  editingMessageId?: string | undefined;
+  editingTargetMessageId?: string | undefined;
+  editingDraft: string;
   sendError?: string | undefined;
   taskId?: string | undefined;
   draftArtifactRef?: string | undefined;
@@ -40,9 +43,6 @@ type State = Readonly<{
   reviewDocument?: LessonFinalReviewDocument;
   stageReviewStatus?: 'generating' | 'failed' | 'ready' | undefined;
   reviewDismissed: boolean;
-  supplementarySessionId?: string;
-  supplementaryVersion?: number;
-  supplementaryInput: string;
   messages: readonly SessionMessageView[];
   teachingProgress?: TeachingProgress;
   sessionSnapshotHash?: string;
@@ -77,13 +77,33 @@ type Action =
       teachingProgress?: TeachingProgress;
     }>
   | Readonly<{ type: 'input'; value: string }>
-  | Readonly<{ type: 'send-started'; content: string; messageId: string }>
+  | Readonly<{
+      type: 'send-started';
+      content: string;
+      messageId: string;
+      revisingMessageId?: string | undefined;
+    }>
+  | Readonly<{
+      type: 'edit-started';
+      messageId: string;
+      targetMessageId: string;
+      markdown: string;
+      resourceVersion: number;
+    }>
+  | Readonly<{ type: 'edit-input'; value: string }>
+  | Readonly<{ type: 'edit-cancelled' }>
+  | Readonly<{ type: 'retry-started' }>
   | Readonly<{
       type: 'send-failed';
       content: string;
       requestAccepted: boolean;
     }>
-  | Readonly<{ type: 'generating'; taskId: string; resourceVersion: number }>
+  | Readonly<{
+      type: 'generating';
+      taskId: string;
+      resourceVersion: number;
+      userMessageId?: string | undefined;
+    }>
   | Readonly<{ type: 'delta'; markdown: string }>
   | Readonly<{ type: 'completed' }>
   | Readonly<{ type: 'stopped'; draftArtifactRef: string; resourceVersion: number }>
@@ -111,15 +131,13 @@ type Action =
       resourceVersion: number;
       error?: string;
     }>
-  | Readonly<{ type: 'supplementary-started'; sessionId: string; resourceVersion: number }>
-  | Readonly<{ type: 'supplementary-input'; value: string }>
-  | Readonly<{ type: 'supplementary-sent'; resourceVersion: number }>
   | Readonly<{ type: 'tick' }>;
 
 const initial: State = {
   resourceVersion: 0,
   writable: false,
   input: '',
+  editingDraft: '',
   assistantMarkdown: '',
   assistantPending: false,
   opening: false,
@@ -129,7 +147,6 @@ const initial: State = {
   activity: 'active',
   actualSeconds: 0,
   reviewDismissed: false,
-  supplementaryInput: '',
   messages: [],
 };
 
@@ -183,7 +200,14 @@ function reducer(state: State, action: Action): State {
       ...(action.reviewDocument === undefined ? {} : { reviewDocument: action.reviewDocument }),
       ...(action.messages === undefined
         ? {}
-        : { messages: action.messages, assistantMarkdown: '' }),
+        : {
+            messages: action.messages,
+            assistantMarkdown: '',
+            ...(state.revisingMessageId !== undefined &&
+            !action.messages.some((message) => message.id === state.revisingMessageId)
+              ? { revisingMessageId: undefined }
+              : {}),
+          }),
       ...(pendingUserPersisted ? { pendingUserMessage: undefined } : {}),
       ...(action.actualSeconds === undefined ? {} : { actualSeconds: action.actualSeconds }),
       ...(action.sessionSnapshotHash === undefined
@@ -198,6 +222,28 @@ function reducer(state: State, action: Action): State {
     };
   }
   if (action.type === 'input') return { ...state, input: action.value };
+  if (action.type === 'edit-input') return { ...state, editingDraft: action.value };
+  if (action.type === 'edit-cancelled') {
+    return {
+      ...state,
+      editingMessageId: undefined,
+      editingTargetMessageId: undefined,
+      editingDraft: '',
+      sendError:
+        state.pendingUserMessage?.status === 'failed' ? undefined : 'AI 回复生成中断，请重试。',
+    };
+  }
+  if (action.type === 'retry-started') {
+    return {
+      ...state,
+      phase: 'generating',
+      assistantMarkdown: '',
+      assistantPending: true,
+      taskId: undefined,
+      sendError: undefined,
+      draftArtifactRef: undefined,
+    };
+  }
   if (action.type === 'review-dismissed') return { ...state, reviewDismissed: true };
   if (action.type === 'closure-requested') {
     const { closureError: _closureError, ...withoutClosureError } = state;
@@ -229,20 +275,39 @@ function reducer(state: State, action: Action): State {
         status: 'submitting',
       },
       sendError: undefined,
+      revisingMessageId: action.revisingMessageId,
+      editingMessageId: undefined,
+      editingTargetMessageId: undefined,
+      editingDraft: '',
       opening: false,
       openingError: false,
       taskId: undefined,
       draftArtifactRef: undefined,
     };
   }
+  if (action.type === 'edit-started') {
+    return {
+      ...state,
+      editingMessageId: action.messageId,
+      editingTargetMessageId: action.targetMessageId,
+      editingDraft: action.markdown,
+      resourceVersion: action.resourceVersion,
+      phase: 'ready',
+      assistantMarkdown: '',
+      assistantPending: false,
+      taskId: undefined,
+      draftArtifactRef: undefined,
+      sendError: undefined,
+    };
+  }
   if (action.type === 'send-failed') {
     return {
       ...state,
       phase: 'ready',
-      input: action.requestAccepted ? state.input : action.content,
+      input: '',
       assistantPending: false,
       taskId: undefined,
-      sendError: action.requestAccepted ? 'AI 回复生成中断，请重试。' : '消息发送失败，请重试。',
+      sendError: action.requestAccepted ? 'AI 回复生成中断，请重试。' : undefined,
       pendingUserMessage:
         state.pendingUserMessage === undefined
           ? undefined
@@ -263,7 +328,11 @@ function reducer(state: State, action: Action): State {
       pendingUserMessage:
         state.pendingUserMessage === undefined
           ? undefined
-          : { ...state.pendingUserMessage, status: 'complete' },
+          : {
+              ...state.pendingUserMessage,
+              ...(action.userMessageId === undefined ? {} : { id: action.userMessageId }),
+              status: 'complete',
+            },
     };
   }
   if (action.type === 'delta') {
@@ -308,19 +377,6 @@ function reducer(state: State, action: Action): State {
   }
   if (action.type === 'activity') {
     return { ...state, activity: action.activity, resourceVersion: action.resourceVersion };
-  }
-  if (action.type === 'supplementary-started') {
-    return {
-      ...state,
-      supplementarySessionId: action.sessionId,
-      supplementaryVersion: action.resourceVersion,
-    };
-  }
-  if (action.type === 'supplementary-input') {
-    return { ...state, supplementaryInput: action.value };
-  }
-  if (action.type === 'supplementary-sent') {
-    return { ...state, supplementaryInput: '', supplementaryVersion: action.resourceVersion };
   }
   if (action.type === 'tick') return { ...state, actualSeconds: state.actualSeconds + 1 };
   if (action.type === 'closure') {
@@ -457,6 +513,7 @@ export function SessionPage(props: {
   const api = props.client ?? learningClient;
   const [state, dispatch] = useReducer(reducer, initial);
   const inFlight = useRef(new Set<string>());
+  const generationAttempt = useRef(0);
   const teachingRefreshes = useRef(new Set<string>());
   const [navigationError, setNavigationError] = useState<string>();
 
@@ -676,10 +733,41 @@ export function SessionPage(props: {
     }
   };
 
+  const finishMessageTask = async (
+    task: Awaited<ReturnType<LearningClient['sendMessage']>>,
+    content: string,
+    attempt: number,
+  ) => {
+    dispatch({
+      type: 'generating',
+      taskId: task.taskId,
+      resourceVersion: task.resourceVersion,
+      ...(task.userMessageId === undefined ? {} : { userMessageId: task.userMessageId }),
+    });
+    try {
+      await api.stream(task.taskId, (event) => {
+        if (generationAttempt.current !== attempt) return;
+        if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+          dispatch({ type: 'delta', markdown: event.data.markdown });
+        }
+      });
+    } catch {
+      if (generationAttempt.current !== attempt) return;
+      dispatch({ type: 'send-failed', content, requestAccepted: true });
+      return;
+    }
+    if (generationAttempt.current !== attempt) return;
+    const refreshed = await api.getSession(state.sessionId!);
+    hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
+    dispatch({ type: 'completed' });
+  };
+
   const send = () =>
     once('send', async () => {
       if (state.sessionId === undefined || state.input.trim() === '') return;
       const content = state.input.trim();
+      const attempt = generationAttempt.current + 1;
+      generationAttempt.current = attempt;
       dispatch({
         type: 'send-started',
         content,
@@ -698,20 +786,162 @@ export function SessionPage(props: {
         dispatch({ type: 'send-failed', content, requestAccepted: false });
         return;
       }
-      dispatch({ type: 'generating', taskId: task.taskId, resourceVersion: task.resourceVersion });
+      await finishMessageTask(task, content, attempt);
+    });
+
+  const editMessage = (messageId: string, markdown: string) =>
+    once('edit-message', async () => {
+      if (state.sessionId === undefined) return;
+      setNavigationError(undefined);
       try {
+        let resourceVersion = state.resourceVersion;
+        if (state.taskId !== undefined) {
+          const stopped = await withLatestSessionVersion((latestVersion) =>
+            api.stop({
+              sessionId: state.sessionId!,
+              taskId: state.taskId!,
+              resourceVersion: latestVersion,
+            }),
+          );
+          resourceVersion = stopped.resourceVersion;
+        }
+        generationAttempt.current += 1;
+        inFlight.current.delete('send');
+        inFlight.current.delete('retry-generation');
+        dispatch({
+          type: 'edit-started',
+          messageId,
+          targetMessageId: state.revisingMessageId ?? messageId,
+          markdown,
+          resourceVersion,
+        });
+      } catch {
+        setNavigationError('无法取消当前生成，请重试后再编辑。');
+      }
+    });
+
+  const submitEdit = () =>
+    once('submit-edit', async () => {
+      if (
+        state.sessionId === undefined ||
+        state.editingMessageId === undefined ||
+        state.editingTargetMessageId === undefined ||
+        state.editingDraft.trim() === ''
+      ) {
+        return;
+      }
+      const content = state.editingDraft.trim();
+      const targetMessageId = state.editingTargetMessageId;
+      const isUnacceptedLocalMessage =
+        state.pendingUserMessage?.id === targetMessageId &&
+        state.pendingUserMessage.status === 'failed' &&
+        state.revisingMessageId === undefined;
+      const attempt = generationAttempt.current + 1;
+      generationAttempt.current = attempt;
+      dispatch({
+        type: 'send-started',
+        content,
+        messageId: isUnacceptedLocalMessage ? targetMessageId : `local-revision-${Date.now()}`,
+        ...(isUnacceptedLocalMessage ? {} : { revisingMessageId: targetMessageId }),
+      });
+      let task: Awaited<ReturnType<LearningClient['sendMessage']>>;
+      try {
+        task = await withLatestSessionVersion((resourceVersion) =>
+          isUnacceptedLocalMessage
+            ? api.sendMessage({
+                sessionId: state.sessionId!,
+                markdown: content,
+                resourceVersion,
+              })
+            : api.reviseMessage({
+                sessionId: state.sessionId!,
+                messageId: targetMessageId,
+                markdown: content,
+                resourceVersion,
+              }),
+        );
+      } catch {
+        dispatch({ type: 'send-failed', content, requestAccepted: false });
+        return;
+      }
+      await finishMessageTask(task, content, attempt);
+    });
+
+  const retryFailedMessage = () =>
+    once('retry-message', async () => {
+      if (
+        state.sessionId === undefined ||
+        state.pendingUserMessage === undefined ||
+        state.pendingUserMessage.status !== 'failed'
+      ) {
+        return;
+      }
+      const content = state.pendingUserMessage.markdown;
+      const targetMessageId = state.revisingMessageId;
+      const attempt = generationAttempt.current + 1;
+      generationAttempt.current = attempt;
+      dispatch({
+        type: 'send-started',
+        content,
+        messageId: state.pendingUserMessage.id,
+        ...(targetMessageId === undefined ? {} : { revisingMessageId: targetMessageId }),
+      });
+      let task: Awaited<ReturnType<LearningClient['sendMessage']>>;
+      try {
+        task = await withLatestSessionVersion((resourceVersion) =>
+          targetMessageId === undefined
+            ? api.sendMessage({
+                sessionId: state.sessionId!,
+                markdown: content,
+                resourceVersion,
+              })
+            : api.reviseMessage({
+                sessionId: state.sessionId!,
+                messageId: targetMessageId,
+                markdown: content,
+                resourceVersion,
+              }),
+        );
+      } catch {
+        dispatch({ type: 'send-failed', content, requestAccepted: false });
+        return;
+      }
+      await finishMessageTask(task, content, attempt);
+    });
+
+  const retryGeneration = () =>
+    once('retry-generation', async () => {
+      if (state.sessionId === undefined) return;
+      const content =
+        state.pendingUserMessage?.markdown ??
+        state.messages.findLast((message) => message.role === 'user')?.markdown ??
+        '';
+      const attempt = generationAttempt.current + 1;
+      generationAttempt.current = attempt;
+      dispatch({ type: 'retry-started' });
+      try {
+        const task = await withLatestSessionVersion((resourceVersion) =>
+          api.retryGeneration(state.sessionId!, resourceVersion),
+        );
+        dispatch({
+          type: 'generating',
+          taskId: task.taskId,
+          resourceVersion: task.resourceVersion,
+        });
         await api.stream(task.taskId, (event) => {
+          if (generationAttempt.current !== attempt) return;
           if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
             dispatch({ type: 'delta', markdown: event.data.markdown });
           }
         });
+        if (generationAttempt.current !== attempt) return;
+        const refreshed = await api.getSession(state.sessionId!);
+        hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
+        dispatch({ type: 'completed' });
       } catch {
+        if (generationAttempt.current !== attempt) return;
         dispatch({ type: 'send-failed', content, requestAccepted: true });
-        return;
       }
-      const refreshed = await api.getSession(state.sessionId);
-      hydrateAndRefreshTeachingProgress(state.sessionId, refreshed);
-      dispatch({ type: 'completed' });
     });
 
   const retryOpening = () => {
@@ -880,35 +1110,15 @@ export function SessionPage(props: {
       }
     });
 
-  const startSupplementary = () =>
-    once('start-supplementary', async () => {
-      const session = await api.startSupplementary(props.lessonId);
-      dispatch({
-        type: 'supplementary-started',
-        sessionId: session.id,
-        resourceVersion: session.resourceVersion,
-      });
-    });
-
-  const sendSupplementary = (markdown = state.supplementaryInput) =>
-    once('send-supplementary', async () => {
-      if (
-        state.supplementarySessionId === undefined ||
-        state.supplementaryVersion === undefined ||
-        markdown.trim() === ''
-      )
-        return;
-      const session = await api.sendSupplementary(
-        state.supplementarySessionId,
-        markdown,
-        state.supplementaryVersion,
-      );
-      dispatch({ type: 'supplementary-sent', resourceVersion: session.resourceVersion });
-    });
-
   const lessonPath = buildLessonPath(state, props.knowledgePoints ?? []);
+  const revisionIndex =
+    state.revisingMessageId === undefined
+      ? -1
+      : state.messages.findIndex((message) => message.id === state.revisingMessageId);
+  const visibleStoredMessages =
+    revisionIndex < 0 ? state.messages : state.messages.slice(0, revisionIndex);
   const messages = [
-    ...state.messages.map((message) => ({
+    ...visibleStoredMessages.map((message) => ({
       id: message.id,
       role: message.role,
       markdown: message.markdown,
@@ -933,6 +1143,19 @@ export function SessionPage(props: {
           },
         ]),
   ];
+  const latestUserMessage = messages.findLast((message) => message.role === 'user');
+  const editAvailable =
+    latestUserMessage !== undefined &&
+    state.editingMessageId === undefined &&
+    (state.phase === 'generating' ||
+      state.sendError !== undefined ||
+      state.pendingUserMessage?.status === 'failed');
+  const messageSendFailed = state.pendingUserMessage?.status === 'failed';
+  const generationFailed = state.sendError === 'AI 回复生成中断，请重试。';
+  const retryAvailable =
+    latestUserMessage !== undefined &&
+    state.editingMessageId === undefined &&
+    (messageSendFailed || generationFailed);
 
   return (
     <>
@@ -947,6 +1170,9 @@ export function SessionPage(props: {
         canStop={state.taskId !== undefined}
         courseTitle={props.courseTitle ?? '当前课程'}
         elapsedSeconds={state.actualSeconds}
+        editableMessageId={editAvailable ? latestUserMessage.id : undefined}
+        editingDraft={state.editingDraft}
+        editingMessageId={state.editingMessageId}
         generating={state.phase === 'generating'}
         opening={state.opening}
         openingError={state.openingError}
@@ -956,20 +1182,27 @@ export function SessionPage(props: {
         outlineVersionLabel={props.outlineVersionLabel ?? '大纲 v1'}
         path={lessonPath}
         paused={state.activity === 'paused'}
-        sendError={navigationError ?? state.sendError}
+        retryableMessageId={retryAvailable ? latestUserMessage.id : undefined}
+        retryLabel={messageSendFailed ? '重新发送' : '重新生成'}
+        sendError={navigationError}
         stopped={state.draftArtifactRef !== undefined}
         title={props.title ?? '当前课节'}
         writable={state.writable && state.progress === 'in_progress'}
         onAbandon={() => void abandon()}
         onBackToOutline={backToOutline}
         onComplete={() => void finish()}
+        onEditMessage={(messageId, markdown) => void editMessage(messageId, markdown)}
+        onEditDraft={(value) => dispatch({ type: 'edit-input', value })}
+        onCancelEdit={() => dispatch({ type: 'edit-cancelled' })}
         onInput={(value) => dispatch({ type: 'input', value })}
         onPause={() => void pause()}
         onRestore={() => void restore()}
         onRetryOpening={retryOpening}
+        onRetryMessage={() => void (messageSendFailed ? retryFailedMessage() : retryGeneration())}
         onSkipOpening={() => dispatch({ type: 'opening-skipped' })}
         onResume={() => void resume()}
         onSend={() => void send()}
+        onSubmitEdit={() => void submitEdit()}
         onStop={() => void stop()}
         onTransfer={() => void transfer()}
       />
@@ -1026,28 +1259,6 @@ export function SessionPage(props: {
           )
         }
       />
-      {state.progress === 'completed' &&
-      (state.reviewMarkdown === undefined || state.reviewDismissed) ? (
-        <section className="lesson-supplementary-controls">
-          {state.supplementarySessionId === undefined ? (
-            <button className="lm-btn" type="button" onClick={() => void startSupplementary()}>
-              开始补充学习
-            </button>
-          ) : (
-            <>
-              <p>补充学习会话已独立创建</p>
-              <ChatComposer
-                label="补充学习输入"
-                placeholder="继续追问或补充你的思考…"
-                sendLabel="发送补充消息"
-                value={state.supplementaryInput}
-                onChange={(value) => dispatch({ type: 'supplementary-input', value })}
-                onSubmit={(markdown) => void sendSupplementary(markdown)}
-              />
-            </>
-          )}
-        </section>
-      ) : null}
     </>
   );
 }

@@ -25,6 +25,10 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
   const [searchParams] = useSearchParams();
   const [record, setRecord] = useState<LessonRecord>();
   const [failed, setFailed] = useState(false);
+  const [activeSupplementary, setActiveSupplementary] = useState<{
+    id: string;
+    resourceVersion: number;
+  }>();
   const api = props.api ?? lessonRecordClient;
 
   useEffect(() => {
@@ -56,6 +60,32 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
       actualSeconds={record.actualSeconds}
       onBackHome={() => navigate('/')}
       onBackToOutline={() => navigate(`/courses/${record.courseId}`)}
+      onStartSupplementary={
+        record.progress !== 'completed' ||
+        record.reviewStatus !== 'ready' ||
+        api.startSupplementary === undefined
+          ? undefined
+          : async () => {
+              const session = await api.startSupplementary!(lessonId);
+              setActiveSupplementary(session);
+              const refreshed = await api.getLessonRecord(lessonId);
+              setRecord(refreshed);
+              return { sessionId: session.id };
+            }
+      }
+      onSendSupplementary={
+        activeSupplementary === undefined || api.sendSupplementary === undefined
+          ? undefined
+          : async (sessionId, markdown) => {
+              const updated = await api.sendSupplementary!(
+                sessionId,
+                markdown,
+                activeSupplementary.resourceVersion,
+              );
+              setActiveSupplementary(updated);
+              setRecord(await api.getLessonRecord(lessonId));
+            }
+      }
     />
   );
 }

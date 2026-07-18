@@ -529,6 +529,126 @@ export function createInteractiveTeaching(options: {
         observe: true,
       });
     },
+    async reviseTurn(input, context) {
+      let learning = await options.sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: input.lessonId },
+        {
+          correlationId: context.correlationId,
+          actor: context.actor,
+          requestedAt: context.requestedAt,
+          receivedAt: context.receivedAt,
+        },
+      );
+      const activeTaskId = learning.learning.session?.activeGenerationTaskId;
+      if (activeTaskId !== undefined) {
+        await module.stopTurn(
+          { sessionId: input.sessionId, taskId: activeTaskId },
+          { ...context, expectedVersion: learning.resourceVersion },
+        );
+        learning = await options.sessionModule.query(
+          { type: 'GetLessonLearning', lessonId: input.lessonId },
+          {
+            correlationId: context.correlationId,
+            actor: context.actor,
+            requestedAt: context.requestedAt,
+            receivedAt: context.receivedAt,
+          },
+        );
+      }
+      const messages = await options.contextSources.listMessages(input.sessionId);
+      const replacedIndex = messages.findIndex(
+        (message) => message.messageId === input.replacedUserMessageId,
+      );
+      const replacedTail = replacedIndex < 0 ? [] : messages.slice(replacedIndex);
+      if (
+        replacedTail.length === 0 ||
+        replacedTail[0]?.role !== 'user' ||
+        replacedTail
+          .slice(1)
+          .some((message) => message.role === 'user' || message.completionStatus === 'complete')
+      ) {
+        throw Object.assign(new Error('teaching_turn_not_revisable'), {
+          code: 'session_conflict',
+        });
+      }
+      const replaced = await options.sessionModule.execute(
+        {
+          type: 'ReplacePendingUserTurn',
+          lessonId: input.lessonId,
+          replacedMessageIds: replacedTail.map((message) => message.messageId),
+          messageId: input.userMessageId,
+          contentArtifactRef: input.userContentArtifactRef,
+        },
+        {
+          ...context,
+          commandId: `${context.commandId}:replace-turn`,
+          idempotencyKey: `${context.idempotencyKey}:replace-turn`,
+          expectedVersion: learning.resourceVersion,
+        },
+      );
+      const state = await markObservationPending(input.courseId, input.lessonId, input.sessionId);
+      const assembled = await options.contextAssembler.assemble({
+        courseId: input.courseId,
+        lessonId: input.lessonId,
+        sessionId: input.sessionId,
+        currentUserMessageId: input.userMessageId,
+        teachingState: state,
+        unobservedMessageIds: [input.userMessageId],
+      });
+      return scheduleGeneration({
+        ...input,
+        context,
+        assembled,
+        expectedVersion: replaced.value.resourceVersion,
+        observe: true,
+      });
+    },
+    async retryTurn(input, context) {
+      const learning = await options.sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: input.lessonId },
+        {
+          correlationId: context.correlationId,
+          actor: context.actor,
+          requestedAt: context.requestedAt,
+          receivedAt: context.receivedAt,
+        },
+      );
+      const activeTaskId = learning.learning.session?.activeGenerationTaskId;
+      if (activeTaskId !== undefined) {
+        return { taskId: activeTaskId, resourceVersion: learning.resourceVersion };
+      }
+      const messages = await options.contextSources.listMessages(input.sessionId);
+      const lastUser = messages.findLast((message) => message.role === 'user');
+      const lastUserIndex = lastUser === undefined ? -1 : messages.indexOf(lastUser);
+      if (
+        lastUser === undefined ||
+        messages
+          .slice(lastUserIndex + 1)
+          .some(
+            (message) => message.role === 'assistant' && message.completionStatus === 'complete',
+          )
+      ) {
+        throw Object.assign(new Error('teaching_turn_not_retryable'), {
+          code: 'session_conflict',
+        });
+      }
+      const state = await markObservationPending(input.courseId, input.lessonId, input.sessionId);
+      const assembled = await options.contextAssembler.assemble({
+        courseId: input.courseId,
+        lessonId: input.lessonId,
+        sessionId: input.sessionId,
+        currentUserMessageId: lastUser.messageId,
+        teachingState: state,
+        unobservedMessageIds: [lastUser.messageId],
+      });
+      return scheduleGeneration({
+        ...input,
+        context,
+        assembled,
+        expectedVersion: learning.resourceVersion,
+        observe: true,
+      });
+    },
     async openLesson(input, context) {
       const learning = await options.sessionModule.query(
         { type: 'GetLessonLearning', lessonId: input.lessonId },
