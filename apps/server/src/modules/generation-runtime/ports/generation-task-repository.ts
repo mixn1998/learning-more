@@ -14,6 +14,7 @@ export interface GenerationTask {
   readonly priority?: number | undefined;
   readonly providerId?: string | undefined;
   readonly model?: string | undefined;
+  readonly reasoningEffort?: string | undefined;
   readonly fallbackProviderIds?: readonly string[] | undefined;
   readonly maxAttempts?: number | undefined;
   readonly attempts?: readonly GenerationAttempt[] | undefined;

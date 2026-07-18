@@ -16,6 +16,28 @@ export const AI_SCENARIOS = [
 
 export type AiScenario = (typeof AI_SCENARIOS)[number];
 
+export type AiReasoningEffort = 'low' | 'medium' | 'high';
+
+const SCENARIO_REASONING_EFFORT: Readonly<Partial<Record<AiScenario, AiReasoningEffort>>> = {
+  'course-authoring-conversation': 'medium',
+  'outline-candidate': 'high',
+  'outline-candidate-alignment': 'medium',
+  'interactive-teaching': 'medium',
+  'interactive-teaching-observation': 'medium',
+  'stage-review': 'medium',
+  'final-review': 'medium',
+  'course-review': 'medium',
+  'weekly-report': 'low',
+  'learning-portrait': 'medium',
+  'next-lesson-recommendation': 'low',
+  'reasoning-behavior-analysis': 'medium',
+  'profile-evidence-extraction': 'medium',
+};
+
+export function reasoningEffortForScenario(taskKind: string): AiReasoningEffort | undefined {
+  return SCENARIO_REASONING_EFFORT[taskKind as AiScenario];
+}
+
 export function assertKnownAiScenario(taskKind: string): asserts taskKind is AiScenario {
   if (!(AI_SCENARIOS as readonly string[]).includes(taskKind)) {
     throw Object.assign(new Error(`unknown_ai_scenario:${taskKind}`), {

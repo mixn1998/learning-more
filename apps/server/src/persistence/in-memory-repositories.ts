@@ -63,6 +63,7 @@ const GenerationTaskSchema: z.ZodType<GenerationTask> = z.object({
   priority: z.number().optional(),
   providerId: z.string().optional(),
   model: z.string().optional(),
+  reasoningEffort: z.string().optional(),
   fallbackProviderIds: z.array(z.string()).optional(),
   maxAttempts: z.number().int().positive().optional(),
   attempts: z

@@ -184,6 +184,42 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     });
   });
 
+  it('persists and forwards scenario-specific reasoning effort', async () => {
+    const repositories = createInMemoryRepositories();
+    const provider = createMockProvider({
+      id: 'mock',
+      script: [{ type: 'text', text: 'answer' }],
+    });
+    const generateSpy = vi.spyOn(provider, 'generate');
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [provider],
+      nextId: () => 'task_routed',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+
+    const handle = await runtime.submit({
+      taskKey: 'teaching:turn:1',
+      inputSnapshotHash: 'hash-turn-1',
+      taskKind: 'interactive-teaching',
+      taskGroup: 'interactive',
+      ownerRef: 'session_01',
+      providerId: 'mock',
+      priority: 100,
+      prompt: 'teach',
+    });
+
+    await expect(runtime.get(handle.taskId)).resolves.toMatchObject({
+      reasoningEffort: 'medium',
+    });
+    await runtime.runNext();
+    expect(generateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningEffort: 'medium' }),
+      expect.any(AbortSignal),
+    );
+  });
+
   it('atomically claims different queued tasks when dispatchers run concurrently', async () => {
     const repositories = createInMemoryRepositories();
     const provider = createMockProvider({

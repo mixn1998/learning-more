@@ -10,6 +10,7 @@ export interface GenerationRequest {
   readonly ownerRef: string;
   readonly providerId: string;
   readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly fallbackProviderIds?: readonly string[];
   readonly maxAttempts?: number;
   readonly priority: number;

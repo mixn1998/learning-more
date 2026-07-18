@@ -311,25 +311,6 @@ export function createInteractiveTeaching(options: {
     applyTeachingDirective(base, input.directive);
   }
 
-  function resetObservationProjection(state: Awaited<ReturnType<typeof initialState>>) {
-    return {
-      ...state,
-      evidenceCheckpoint: false,
-      scopeStatus: 'aligned' as const,
-      knowledgePoints: state.knowledgePoints.map((point) => ({
-        ...point,
-        delivery: 'not_addressed' as const,
-        verification: 'not_observed' as const,
-        teachingEvidenceRefs: [],
-        learnerEvidenceRefs: [],
-        unresolvedEntryRefs: [],
-      })),
-      openLoops: [],
-      explorationBranches: [],
-      recentLearnerSignals: [],
-    };
-  }
-
   async function observeCompletedTurn(input: {
     courseId: string;
     lessonId: string;
@@ -349,7 +330,17 @@ export function createInteractiveTeaching(options: {
             facts.lesson.coreKnowledgePoints.map((point) => point.ref),
           );
     const allMessages = await options.contextSources.listMessages(input.sessionId);
-    const messages = allMessages;
+    const interactionBackfillRequired = current?.observations.some(
+      (observation) => observation.status === 'active' && observation.interactions === undefined,
+    );
+    const observedThroughIndex =
+      interactionBackfillRequired === true || previousState.observedThroughMessageId === undefined
+        ? -1
+        : allMessages.findIndex(
+            (message) => message.messageId === previousState.observedThroughMessageId,
+          );
+    const messages =
+      observedThroughIndex < 0 ? allMessages : allMessages.slice(observedThroughIndex);
     if (messages.length === 0) return;
     const sourceSnapshotHash = sha256(
       JSON.stringify(
@@ -398,17 +389,10 @@ export function createInteractiveTeaching(options: {
         candidate.sourceSnapshotHash === validated.sourceSnapshotHash &&
         candidate.observerVersion === validated.observerVersion,
     );
-    const nextState = reduceTeachingState(resetObservationProjection(previousState), validated);
+    const nextState = reduceTeachingState(previousState, validated);
     const observations =
       duplicate === undefined
-        ? [
-            ...(current?.observations ?? []).map((candidate) =>
-              candidate.status === 'active'
-                ? ({ ...candidate, status: 'superseded' as const } as TeachingObservation)
-                : candidate,
-            ),
-            validated,
-          ]
+        ? [...(current?.observations ?? []), validated]
         : (current?.observations ?? []);
     await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
       options.ledgerRepository.save(

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { AI_SCENARIOS, assertKnownAiScenario } from '../scenario-registry.js';
+import {
+  AI_SCENARIOS,
+  assertKnownAiScenario,
+  reasoningEffortForScenario,
+} from '../scenario-registry.js';
 
 describe('AI scenario registry', () => {
   it('has unique production scenario names and rejects unknown kinds', () => {
@@ -20,4 +24,17 @@ describe('AI scenario registry', () => {
       );
     },
   );
+});
+
+describe('generation scenario reasoning policy', () => {
+  it('keeps outline synthesis deep while routing latency-sensitive tasks lower', () => {
+    expect(reasoningEffortForScenario('outline-candidate')).toBe('high');
+    expect(reasoningEffortForScenario('interactive-teaching')).toBe('medium');
+    expect(reasoningEffortForScenario('interactive-teaching-observation')).toBe('medium');
+    expect(reasoningEffortForScenario('next-lesson-recommendation')).toBe('low');
+  });
+
+  it('leaves unknown extension scenarios to provider defaults', () => {
+    expect(reasoningEffortForScenario('custom-extension')).toBeUndefined();
+  });
 });

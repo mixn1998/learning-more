@@ -125,7 +125,8 @@ describe('GenerationTeachingObserver', () => {
       'scope.alignment=direct|supporting|adjacent|unclear|off_scope',
     );
     expect(request?.prompt).toContain('qualityFlags 只能使用 direct|complete|ambiguous');
-    expect(request?.prompt).toContain('完整学习会话历史');
+    expect(request?.prompt).toContain('本轮教学观察增量');
+    expect(request?.prompt).not.toContain('完整学习会话历史');
     expect(request?.prompt).toContain('普通澄清问句和课末自由答疑不属于关键互动');
     expect(request?.prompt).toContain(
       'interactionId 必须严格写成 interaction:<首次发起该互动的助手消息 ID>',

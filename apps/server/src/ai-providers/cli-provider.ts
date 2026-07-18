@@ -45,7 +45,11 @@ export function createCliProvider(options: {
       const selected = models?.models.find((candidate) => candidate.id === request.model);
       return {
         model: request.model,
-        reasoningEffort: activeReasoningEffort ?? selected?.defaultReasoningEffort ?? 'medium',
+        reasoningEffort:
+          request.reasoningEffort ??
+          activeReasoningEffort ??
+          selected?.defaultReasoningEffort ??
+          'medium',
       };
     }
     if (activeModel !== undefined) {
@@ -53,14 +57,22 @@ export function createCliProvider(options: {
       const selected = models?.models.find((candidate) => candidate.id === activeModel);
       return {
         model: activeModel,
-        reasoningEffort: activeReasoningEffort ?? selected?.defaultReasoningEffort ?? 'medium',
+        reasoningEffort:
+          request.reasoningEffort ??
+          activeReasoningEffort ??
+          selected?.defaultReasoningEffort ??
+          'medium',
       };
     }
     const probe = await adapter?.probe();
     const first = probe?.models[0];
     return {
       model: first?.id ?? '',
-      reasoningEffort: activeReasoningEffort ?? first?.defaultReasoningEffort ?? 'medium',
+      reasoningEffort:
+        request.reasoningEffort ??
+        activeReasoningEffort ??
+        first?.defaultReasoningEffort ??
+        'medium',
     };
   }
 

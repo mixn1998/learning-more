@@ -12,15 +12,15 @@ import type { GenerationExecution } from '../../generation-runtime/interface.js'
 import type { TeachingObserver } from '../ports/teaching-observer.js';
 
 const OBSERVATION_CAPABILITY = [
-  '每轮读取给定的完整学习会话历史，并据此重建当前课节的教学观察。不要把输入理解成相对于前一账本的增量。',
-  '相同历史事实跨轮重建时必须保持 entryId 稳定；entryId 应由条目 kind、首个来源消息 ID 和简短语义标识确定，不得加入轮次号或 observationId。',
+  '每轮只读取上次观察锚点与本轮新增消息，并结合 previousState 生成本轮教学观察增量；不要重复输出 previousState 已经保留且本轮没有变化的事实。',
+  'entryId 应由条目 kind、首个来源消息 ID 和简短语义标识确定，不得加入轮次号或 observationId；需要关闭旧条目时使用 resolvesEntryRefs。',
   '所有关系和条目必须引用给定的有效来源 ID；不能推断稳定人格、能力等级或永久思维类型。',
   '可以记录用户实际表现出的具体思维行为，但行为类型和摘要保持开放语义，不使用固定维度表。',
   '被中断的助手输出可以留作过程记录，但不能作为完整教学或学习效果证据。',
   '与课程相关但不属于本课的探索记为 adjacent；不确定时使用 unclear；没有可靠变化时返回空 entries。',
   'JSON 形状：scope={alignment,relationRefs,rationale}；entries 每项={entryId,kind,summary,knowledgePointRefs,sourceRefs,resolvesEntryRefs,qualityFlags}，assessment、explicitness、elicitation 可按证据选填。',
   '同时返回 interactions 数组，只记录教学智能体为了检验理解、激活思考或决定教学路径而明确发起的关键互动；普通澄清问句和课末自由答疑不属于关键互动。',
-  'interactions 每项={interactionId,knowledgePointRefs,promptSourceRef,outcome,responseSourceRef}。interactionId 必须严格写成 interaction:<首次发起该互动的助手消息 ID>，跨轮全量重建时不得变化。',
+  'interactions 每项={interactionId,knowledgePointRefs,promptSourceRef,outcome,responseSourceRef}。interactionId 必须严格写成 interaction:<首次发起该互动的助手消息 ID>，跨轮不得变化。',
   'promptSourceRef 必须引用发起关键互动的完整助手消息；outcome=pending|responded|skipped。responded 或 skipped 时 responseSourceRef 必须引用对应用户消息，pending 时不要填写 responseSourceRef。',
   '只使用以下枚举：scope.alignment=direct|supporting|adjacent|unclear|off_scope；kind=teaching_delivery|learner_demonstration|learner_misconception|learner_question|learner_intent|learner_reasoning_behavior|adjacent_exploration|open_loop。',
   'assessment=supports|limits|uncertain；explicitness=user_declared|ai_observed；elicitation=spontaneous|elicited|mixed|unknown；qualityFlags 只能使用 direct|complete|ambiguous。不要创造 aligned、current、explicit、teaching_clarification 等新值。',

@@ -15,6 +15,7 @@ import type {
   GenerationTaskRepository,
 } from '../ports/generation-task-repository.js';
 import { ProviderExecutionError } from '../../../ai-providers/provider.js';
+import { reasoningEffortForScenario } from '../scenario-registry.js';
 
 export interface GenerationRuntimeOptions {
   readonly repository: GenerationTaskRepository;
@@ -144,6 +145,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     const id = nextId();
     const providerId = request.providerId === 'current' ? currentProviderId : request.providerId;
     const model = request.model ?? (request.providerId === 'current' ? currentModel : undefined);
+    const reasoningEffort = request.reasoningEffort ?? reasoningEffortForScenario(request.taskKind);
     const fallbackProviderIds = request.fallbackProviderIds ?? options.defaultFallbackProviderIds;
     const maxAttempts = request.maxAttempts ?? options.defaultMaxAttempts;
     await options.unitOfWork.execute({ transactionId: `tx_generation_${randomUUID()}` }, (tx) =>
@@ -163,6 +165,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           priority: request.priority,
           providerId,
           ...(model === undefined ? {} : { model }),
+          ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
           ...(fallbackProviderIds === undefined
             ? {}
             : { fallbackProviderIds: [...fallbackProviderIds] }),
@@ -233,6 +236,9 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
             taskId: current.id,
             prompt: current.prompt ?? '',
             ...(current.model === undefined ? {} : { model: current.model }),
+            ...(current.reasoningEffort === undefined
+              ? {}
+              : { reasoningEffort: current.reasoningEffort }),
           },
           controller.signal,
         )) {

@@ -195,4 +195,52 @@ describe('TeachingContextAssembler', () => {
     expect(context.teachingState.openLoops).toHaveLength(1);
     expect(context.personalization.signals).toEqual([]);
   });
+
+  it('keeps a bounded recent window plus unresolved source messages', async () => {
+    const base = sources('standard');
+    const messages = Array.from({ length: 12 }, (_, index) => ({
+      messageId: `message_${index + 1}`,
+      role: index % 2 === 0 ? ('assistant' as const) : ('user' as const),
+      completionStatus: 'complete' as const,
+      markdown: `Message ${index + 1}`,
+      sourceRef: `message:message_${index + 1}`,
+    }));
+    const assembler = createTeachingContextAssembler({
+      sources: {
+        ...base,
+        async listMessages() {
+          return messages;
+        },
+      },
+      maxRecentMessages: 4,
+    });
+    const teachingState = {
+      ...state(),
+      openLoops: [
+        {
+          entryId: 'open_old',
+          summary: 'An unresolved early question.',
+          knowledgePointRefs: ['knowledge:kp_1'],
+          sourceRefs: ['message:message_2'],
+        },
+      ],
+    };
+
+    const context = await assembler.assemble({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      currentUserMessageId: 'message_12',
+      teachingState,
+      unobservedMessageIds: ['message_12'],
+    });
+
+    expect(context.recentMessages.map((message) => message.messageId)).toEqual([
+      'message_2',
+      'message_9',
+      'message_10',
+      'message_11',
+      'message_12',
+    ]);
+  });
 });

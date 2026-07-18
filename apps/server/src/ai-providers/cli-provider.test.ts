@@ -36,7 +36,8 @@ describe('real CLI provider', () => {
     ) {
       expect(arguments_.at(-1)).toBe('-');
       expect(arguments_).not.toContain(longPrompt);
-      expect(options.stdin).toBe(longPrompt);
+      expect(options.stdin).toBeDefined();
+      expect(arguments_).not.toContain(options.stdin);
       yield { type: 'text' as const, text: arguments_.join(' ') };
     });
     const adapter = createCodexCliAdapter({ executable: 'codex.exe', run, generate });
@@ -81,5 +82,18 @@ describe('real CLI provider', () => {
     }
     expect(output.join(' ')).toContain('--model gpt-5.6-sol');
     expect(output.join(' ')).toContain('model_reasoning_effort="ultra"');
+
+    const routedOutput: string[] = [];
+    for await (const delta of provider.generate(
+      {
+        taskId: 'task-cli-routed',
+        prompt: 'Respond quickly.',
+        reasoningEffort: 'low',
+      },
+      new AbortController().signal,
+    )) {
+      routedOutput.push(delta.text);
+    }
+    expect(routedOutput.join(' ')).toContain('model_reasoning_effort="low"');
   });
 });

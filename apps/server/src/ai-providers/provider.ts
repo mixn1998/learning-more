@@ -21,6 +21,7 @@ export interface NormalizedGenerationRequest {
   readonly taskId: string;
   readonly prompt: string;
   readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly baseUrl?: string;
   readonly apiKey?: string;
   readonly executable?: string;

@@ -15,9 +15,41 @@ function emptyPersonalization(view: PersonalizationView): PersonalizationView {
   return { ...view, signals: [] };
 }
 
+function messageIdFromSourceRef(sourceRef: string): string | undefined {
+  return sourceRef.startsWith('message:') ? sourceRef.slice('message:'.length) : undefined;
+}
+
+function selectRecentMessages(input: {
+  allMessages: readonly MaterializedTeachingMessage[];
+  currentUserMessageId?: string;
+  unobservedIds: ReadonlySet<string>;
+  teachingState: TeachingContextPackage['teachingState'];
+  maxRecentMessages: number;
+}): MaterializedTeachingMessage[] {
+  const protectedIds = new Set<string>();
+  if (input.currentUserMessageId !== undefined) protectedIds.add(input.currentUserMessageId);
+  for (const messageId of input.unobservedIds) protectedIds.add(messageId);
+  const unresolvedSourceRefs = [
+    ...input.teachingState.openLoops.flatMap((loop) => loop.sourceRefs),
+    ...input.teachingState.explorationBranches
+      .filter((branch) => branch.status === 'active')
+      .flatMap((branch) => branch.sourceRefs),
+  ];
+  for (const sourceRef of unresolvedSourceRefs) {
+    const messageId = messageIdFromSourceRef(sourceRef);
+    if (messageId !== undefined) protectedIds.add(messageId);
+  }
+
+  const recentStart = Math.max(0, input.allMessages.length - input.maxRecentMessages);
+  return input.allMessages.filter(
+    (message, index) => index >= recentStart || protectedIds.has(message.messageId),
+  );
+}
+
 export function createTeachingContextAssembler(options: {
   sources: TeachingContextSources;
   maxContextCharacters?: number;
+  maxRecentMessages?: number;
 }): TeachingContextAssembler {
   return {
     async assemble(input): Promise<TeachingContextPackage> {
@@ -68,6 +100,15 @@ export function createTeachingContextAssembler(options: {
       }
 
       const unobservedIds = new Set(input.unobservedMessageIds);
+      const recentMessages = selectRecentMessages({
+        allMessages,
+        ...(input.currentUserMessageId === undefined
+          ? {}
+          : { currentUserMessageId: input.currentUserMessageId }),
+        unobservedIds,
+        teachingState: input.teachingState,
+        maxRecentMessages: Math.max(2, options.maxRecentMessages ?? 8),
+      });
       let context: TeachingContextPackage = {
         schemaVersion: 1,
         ...(turnKind === 'opening' ? { turnKind } : {}),
@@ -78,7 +119,7 @@ export function createTeachingContextAssembler(options: {
         readingMaterialExcerpts: [...materials],
         personalization,
         teachingState: input.teachingState,
-        recentMessages: [...allMessages],
+        recentMessages,
         unobservedMessages: allMessages.filter((message) => unobservedIds.has(message.messageId)),
       };
 
