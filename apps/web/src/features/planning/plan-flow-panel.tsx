@@ -303,7 +303,9 @@ export function PlanFlowPanel(props: {
     setBusy(true);
     setError(undefined);
     try {
-      setPreview(await props.onConfirm(preview));
+      const confirmed = await props.onConfirm(preview);
+      setPreview(confirmed);
+      props.onClose?.();
     } catch {
       setPreviewInputKey(undefined);
       setError('排期版本已变化，请重新预览。');

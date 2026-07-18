@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PlanFlowPanel } from './plan-flow-panel.js';
@@ -148,6 +148,82 @@ describe('PlanFlowPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新生成排期' }));
     expect(onPreview).toHaveBeenCalledTimes(2);
     expect(onPreview).toHaveBeenLastCalledWith(expect.objectContaining({ strategy: 'focus' }));
+  });
+
+  it('closes only after the confirmed schedule has been saved', async () => {
+    const course = {
+      courseId: 'course_confirm',
+      title: 'Confirm and close course',
+      status: 'active' as const,
+      courseMode: 'standard' as const,
+      outlineVersionId: 'outline_confirm',
+      resourceVersion: 1,
+    };
+    const lesson = {
+      courseId: course.courseId,
+      lessonId: 'lesson_confirm',
+      title: 'Confirm and close lesson',
+      progress: 'not_started' as const,
+      recommended: true,
+    };
+    const preview = {
+      id: 'plan_flow_confirm',
+      state: 'preview-ready' as const,
+      constraintsArtifactRef: 'constraints_manual',
+      courseRefs: [course.courseId],
+      lessonRefs: [lesson.lessonId],
+      timeWindowRefs: ['strategy:balanced'],
+      existingScheduleSnapshotRef: 'schedule_0',
+      baseScheduleVersion: 0,
+      generationTaskId: 'rules_confirm',
+      suggestions: [
+        {
+          courseId: course.courseId,
+          lessonId: lesson.lessonId,
+          startAt: '2026-07-15T11:00:00.000Z',
+          endAt: '2026-07-15T11:45:00.000Z',
+          timezoneAtCreation: 'Asia/Shanghai',
+          explanation: 'Test schedule',
+        },
+      ],
+      conflicts: [],
+      confirmationReceipts: {},
+      confirmedScheduleItemIds: [],
+      source: 'plan-flow' as const,
+      createdAt: '2026-07-15T00:00:00.000Z',
+      updatedAt: '2026-07-15T00:00:00.000Z',
+      resourceVersion: 1,
+    };
+    let finishConfirmation:
+      ((value: Omit<typeof preview, 'state'> & { state: 'confirmed' }) => void) | undefined;
+    const onConfirm = vi.fn(
+      () =>
+        new Promise<Omit<typeof preview, 'state'> & { state: 'confirmed' }>((resolve) => {
+          finishConfirmation = resolve;
+        }),
+    );
+    const onClose = vi.fn();
+    render(
+      <PlanFlowPanel
+        courses={[course]}
+        initialStartDate="2026-07-15"
+        lessons={[lesson]}
+        onClose={onClose}
+        onConfirm={onConfirm}
+        onManage={vi.fn()}
+        onPreview={vi.fn().mockResolvedValue(preview)}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成计划预览' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认计划流' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    finishConfirmation?.({ ...preview, state: 'confirmed' });
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   });
 
   it('groups the confirmation preview by week and summarizes daily lesson load', async () => {
