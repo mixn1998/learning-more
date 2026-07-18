@@ -13,6 +13,7 @@ import {
   createLocalFileScheduleRepository,
 } from '../../persistence/planning-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
+import { mapConcurrentOrdered } from '../../persistence/concurrent-map.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalLearningRuntime } from './learning-runtime.js';
@@ -224,13 +225,21 @@ export function createLocalPlanningRuntime(
     },
   });
 
+  async function currentScheduleSnapshot() {
+    const snapshot = await planning.snapshot();
+    const current = await mapConcurrentOrdered(
+      snapshot.items,
+      async (item) => ((await currentLesson(item.lessonId)) === undefined ? undefined : item),
+      32,
+    );
+    return {
+      items: current.filter((item): item is ScheduleItem => item !== undefined),
+      resourceVersion: snapshot.resourceVersion,
+    };
+  }
+
   async function listCurrentSchedule() {
-    const items = await planning.list();
-    const current: ScheduleItem[] = [];
-    for (const item of items) {
-      if ((await currentLesson(item.lessonId)) !== undefined) current.push(item);
-    }
-    return current;
+    return (await currentScheduleSnapshot()).items;
   }
 
   return {
@@ -238,6 +247,7 @@ export function createLocalPlanningRuntime(
       planning: {
         execute: planning.execute,
         clearAll: planning.clearAll,
+        snapshot: currentScheduleSnapshot,
         list: listCurrentSchedule,
         getVersion: planning.getVersion,
       },

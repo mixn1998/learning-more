@@ -32,6 +32,10 @@ export type PlanningClearResult = Readonly<{
   removedItems: readonly ScheduleItem[];
   resourceVersion: number;
 }>;
+export type PlanningScheduleSnapshot = Readonly<{
+  items: readonly ScheduleItem[];
+  resourceVersion: number;
+}>;
 
 export type PlanningOutlineRevisionInput = Readonly<{
   courseId: string;
@@ -51,6 +55,7 @@ export interface PlanningOutlineRevisionParticipant {
 export interface PlanningModule {
   execute(command: PlanningCommand, context: CommandContext): Promise<PlanningResult>;
   clearAll(context: CommandContext): Promise<PlanningClearResult>;
+  snapshot(): Promise<PlanningScheduleSnapshot>;
   list(): Promise<readonly ScheduleItem[]>;
   getVersion(): Promise<number>;
 }

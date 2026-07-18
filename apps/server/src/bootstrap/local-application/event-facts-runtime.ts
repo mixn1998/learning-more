@@ -51,10 +51,18 @@ export async function createLocalEventFactsRuntime(
     dispatcher: eventDispatcher,
   });
   let barrier: Promise<void> = Promise.resolve();
+  let cachedFacts: readonly LearningFact[] | undefined;
+  let factsGeneration = 0;
+  let factsLoad:
+    Readonly<{ generation: number; promise: Promise<readonly LearningFact[]> }> | undefined;
 
   async function flush(): Promise<void> {
     const dispatch = barrier.then(async () => {
-      await outbox.dispatchPending(10_000);
+      const dispatched = await outbox.dispatchPending(10_000);
+      if (dispatched > 0) {
+        factsGeneration += 1;
+        cachedFacts = undefined;
+      }
     });
     barrier = dispatch.catch(() => undefined);
     await dispatch;
@@ -62,9 +70,25 @@ export async function createLocalEventFactsRuntime(
 
   async function facts(): Promise<readonly LearningFact[]> {
     await flush();
-    const result: LearningFact[] = [];
-    for await (const fact of factRepository.list()) result.push(fact);
-    return result;
+    if (cachedFacts !== undefined) return cachedFacts;
+    if (factsLoad?.generation !== factsGeneration) {
+      factsLoad = {
+        generation: factsGeneration,
+        promise: (async () => {
+          const result: LearningFact[] = [];
+          for await (const fact of factRepository.list()) result.push(fact);
+          return result;
+        })(),
+      };
+    }
+    const currentLoad = factsLoad;
+    try {
+      const result = await currentLoad.promise;
+      if (currentLoad.generation === factsGeneration) cachedFacts = result;
+      return result;
+    } finally {
+      if (factsLoad === currentLoad) factsLoad = undefined;
+    }
   }
 
   await flush();

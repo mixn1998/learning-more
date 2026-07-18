@@ -68,6 +68,14 @@ export function createPlanningModule(options: {
     return (await all()).reduce((total, item) => total + item.resourceVersion, 0);
   }
 
+  async function snapshot() {
+    const items = await all();
+    return {
+      items: items.filter((item) => item.status === 'scheduled'),
+      resourceVersion: items.reduce((total, item) => total + item.resourceVersion, 0),
+    };
+  }
+
   async function persist(
     item: ScheduleItem,
     eventType: ScheduleEvent['type'],
@@ -213,7 +221,8 @@ export function createPlanningModule(options: {
         resourceVersion: await aggregateVersion(),
       };
     },
-    list: () => all().then((items) => items.filter((item) => item.status === 'scheduled')),
+    snapshot,
+    list: () => snapshot().then((view) => view.items),
     getVersion: aggregateVersion,
   };
 }

@@ -112,9 +112,8 @@ export async function registerPlanningRoutes(
   });
 
   app.get('/api/v1/schedule', async (_request, reply) => {
-    const items = await options.planning.list();
-    const version = await options.planning.getVersion();
-    return reply.header('etag', `"${version}"`).code(200).send({ items, resourceVersion: version });
+    const view = await options.planning.snapshot();
+    return reply.header('etag', `"${view.resourceVersion}"`).code(200).send(view);
   });
 
   app.delete('/api/v1/schedule', async (request, reply) => {
@@ -128,11 +127,11 @@ export async function registerPlanningRoutes(
         requirePageInstanceId: true,
       });
       const result = await options.planning.clearAll(context);
-      const items = await options.planning.list();
+      const view = await options.planning.snapshot();
       return reply
         .header('etag', `"${result.resourceVersion}"`)
         .code(200)
-        .send({ items, resourceVersion: result.resourceVersion });
+        .send({ items: view.items, resourceVersion: result.resourceVersion });
     } catch (error) {
       const problem = mapApplicationError(error, correlation);
       return reply.code(problem.status).send(problem);

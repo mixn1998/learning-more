@@ -30,11 +30,13 @@ function fixture() {
     resourceVersion: 4,
   });
   const clearAll = vi.fn().mockResolvedValue({ removedItems: [], resourceVersion: 5 });
+  const snapshot = vi.fn().mockResolvedValue({ items: [], resourceVersion: 0 });
   const app = Fastify();
   void registerPlanningRoutes(app, {
     planning: {
       execute,
       clearAll,
+      snapshot,
       list: vi.fn().mockResolvedValue([]),
       getVersion: vi.fn().mockResolvedValue(0),
     },
@@ -43,10 +45,20 @@ function fixture() {
     nextCorrelationId: () => 'correlation_01',
     now: () => new Date('2026-07-13T00:00:00.000Z'),
   });
-  return { app, execute, requestPreview, confirm, get, manage, clearAll };
+  return { app, execute, requestPreview, confirm, get, manage, clearAll, snapshot };
 }
 
 describe('Planning HTTP routes', () => {
+  it('reads schedule items and collection version from one snapshot', async () => {
+    const { app, snapshot } = fixture();
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/schedule' });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toEqual({ items: [], resourceVersion: 0 });
+    expect(snapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('creates manual schedule assignments and rejects invalid intervals', async () => {
     const { app, execute } = fixture();
     const invalid = await app.inject({

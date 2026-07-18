@@ -7,6 +7,7 @@ import type { PlanFlow } from '../modules/planning/model/plan-flow.js';
 import type { ScheduleItem } from '../modules/planning/model/schedule-item.js';
 import type { PlanFlowRepository } from '../modules/planning/ports/plan-flow-repository.js';
 import type { ScheduleRepository } from '../modules/planning/ports/schedule-repository.js';
+import { mapConcurrentOrdered } from './concurrent-map.js';
 import { DataRoot } from './data-root.js';
 import { checksumJson, decodeAggregateDocument } from './json-codec.js';
 import { createStorePaths } from './paths.js';
@@ -147,10 +148,8 @@ export function createLocalFileScheduleRepository(dataRoot: DataRoot): ScheduleR
           if (file.isFile() && file.name.endsWith('.json')) ids.push(file.name.slice(0, -5));
         }
       }
-      for (const id of ids.sort()) {
-        const item = await repository.get(id);
-        if (item !== undefined) yield item;
-      }
+      const items = await mapConcurrentOrdered(ids.sort(), (id) => repository.get(id));
+      for (const item of items) if (item !== undefined) yield item;
     },
   };
   return repository;
@@ -198,10 +197,8 @@ export function createLocalFilePlanFlowRepository(dataRoot: DataRoot): PlanFlowR
           if (file.isFile() && file.name.endsWith('.json')) ids.push(file.name.slice(0, -5));
         }
       }
-      for (const id of ids.sort()) {
-        const flow = await repository.get(id);
-        if (flow !== undefined) yield flow;
-      }
+      const flows = await mapConcurrentOrdered(ids.sort(), (id) => repository.get(id));
+      for (const flow of flows) if (flow !== undefined) yield flow;
     },
   };
   return repository;

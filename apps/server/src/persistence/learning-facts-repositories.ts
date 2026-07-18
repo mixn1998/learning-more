@@ -11,6 +11,7 @@ import type { FactRepository } from '../modules/learning-facts/ports/fact-reposi
 import { courseDeletionBarrierExists } from './course-archive-store.js';
 import { DataRoot } from './data-root.js';
 import { checksumJson, decodeAggregateDocument } from './json-codec.js';
+import { mapConcurrentOrdered } from './concurrent-map.js';
 
 const FactSchema = z.strictObject({
   factId: z.string().min(1),
@@ -96,15 +97,17 @@ export function createLocalFileFactRepository(dataRoot: DataRoot): FactRepositor
     },
     async *list() {
       const root = path.join(dataRoot.absolutePath, 'read-models', 'learning-facts');
-      const facts: LearningFact[] = [];
+      const factIds: string[] = [];
       for (const shard of await readdir(root, { withFileTypes: true }).catch(() => [])) {
         if (!shard.isDirectory()) continue;
         for (const file of await readdir(path.join(root, shard.name), { withFileTypes: true })) {
           if (!file.isFile() || !file.name.endsWith('.json')) continue;
-          const fact = await repository.get(file.name.slice(0, -5));
-          if (fact !== undefined) facts.push(fact);
+          factIds.push(file.name.slice(0, -5));
         }
       }
+      const facts = (
+        await mapConcurrentOrdered(factIds, (factId) => repository.get(factId))
+      ).filter((fact): fact is LearningFact => fact !== undefined);
       for (const fact of facts.sort((left, right) =>
         left.occurredAt === right.occurredAt
           ? left.factId.localeCompare(right.factId)
