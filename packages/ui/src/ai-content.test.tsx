@@ -75,6 +75,57 @@ describe('AiContent', () => {
     expect(container.querySelector('.katex-display')).toBeInTheDocument();
   });
 
+  it('renders TeX display math inside Markdown blockquotes', () => {
+    const { container } = render(
+      <AiContent markdown={'> 给定函数，记作  \n> \\[\n> f:A\\to B.\n> \\]'} />,
+    );
+
+    const blockquote = container.querySelector('blockquote');
+    expect(blockquote).toBeInTheDocument();
+    expect(blockquote?.querySelector('.katex-display')).toBeInTheDocument();
+    expect(blockquote).not.toHaveTextContent('[ f:A\\to B. ]');
+  });
+
+  it('renders display math in nested blockquotes and list items', () => {
+    const nestedQuote = render(<AiContent markdown={'> > \\[\n> > x^2+y^2=z^2\n> > \\]'} />);
+    expect(nestedQuote.container.querySelectorAll('blockquote')).toHaveLength(2);
+    expect(nestedQuote.container.querySelector('.katex-display')).toBeInTheDocument();
+    nestedQuote.unmount();
+
+    const list = render(<AiContent markdown={'- \\[\n  x^2\n  \\]\n- 下一项'} />);
+    expect(list.container.querySelectorAll('li')).toHaveLength(2);
+    expect(list.container.querySelector('li .katex-display')).toBeInTheDocument();
+    list.unmount();
+
+    const nestedList = render(
+      <AiContent markdown={'- 外层\n  - \\[\n    x^2\n    \\]\n  - 下一项'} />,
+    );
+    expect(nestedList.container.querySelectorAll('li')).toHaveLength(3);
+    expect(nestedList.container.querySelector('li li .katex-display')).toBeInTheDocument();
+  });
+
+  it('normalizes bracketed display math inside a blockquote', () => {
+    const { container } = render(<AiContent markdown={'> [\\lim_{x\\to a} f(x)=L]'} />);
+
+    expect(container.querySelector('blockquote .katex-display')).toBeInTheDocument();
+  });
+
+  it('does not normalize TeX-like text in quoted fenced or inline code', () => {
+    const { container } = render(
+      <AiContent
+        markdown={'> ```tex\n> \\[\n> f:A\\to B.\n> \\]\n> ```\n\n> `\\(x\\to y\\)`\n\n\\(z\\)'}
+      />,
+    );
+
+    expect(container.querySelectorAll('.katex')).toHaveLength(1);
+    expect(container.querySelector('pre .katex')).toBeNull();
+    expect(container.querySelector('p code .katex')).toBeNull();
+    expect(container.querySelector('pre code')).toHaveTextContent('\\[');
+    expect(container.querySelector('pre code')).toHaveTextContent('f:A\\to B.');
+    expect(container.querySelector('pre code')).toHaveTextContent('\\]');
+    expect(container.querySelector('p code')).toHaveTextContent('\\(x\\to y\\)');
+  });
+
   it('keeps Mermaid diagrams readable as a safe code fallback', () => {
     const { container } = render(<AiContent markdown={'```mermaid\ngraph TD\n  A --> B\n```'} />);
 

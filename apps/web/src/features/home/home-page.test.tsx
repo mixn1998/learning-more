@@ -74,6 +74,147 @@ describe('home page', () => {
     expect(screen.queryByRole('button', { name: '开始学习' })).not.toBeInTheDocument();
   });
 
+  it('shows completion only in the home timetable and today agenda', () => {
+    const { container } = render(
+      <HomePage
+        client={client()}
+        courses={[{ courseId: 'course_01', title: 'Course' }]}
+        lessons={[
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_done',
+            title: 'Completed lesson',
+            progress: 'completed',
+          },
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_pending',
+            title: 'Pending lesson',
+            progress: 'not_started',
+          },
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_tomorrow',
+            title: 'Tomorrow lesson',
+            progress: 'not_started',
+          },
+        ]}
+        schedule={[
+          {
+            scheduleItemId: 'schedule_done',
+            courseId: 'course_01',
+            lessonId: 'lesson_done',
+            startAt: '2026-07-18T09:00:00+08:00',
+            endAt: '2026-07-18T10:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+          {
+            scheduleItemId: 'schedule_pending',
+            courseId: 'course_01',
+            lessonId: 'lesson_pending',
+            startAt: '2026-07-18T10:00:00+08:00',
+            endAt: '2026-07-18T11:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+          {
+            scheduleItemId: 'schedule_tomorrow',
+            courseId: 'course_01',
+            lessonId: 'lesson_tomorrow',
+            startAt: '2026-07-19T09:00:00+08:00',
+            endAt: '2026-07-19T10:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+        ]}
+        now={new Date('2026-07-18T08:00:00+08:00')}
+        onNavigate={() => undefined}
+      />,
+    );
+
+    const completedInTimetable = container.querySelector('.week .mini--completed');
+    expect(completedInTimetable).toHaveTextContent('Completed lesson');
+    expect(completedInTimetable).toHaveClass('mini--completed');
+
+    const agenda = screen.getByRole('heading', { name: /今日学习/ }).closest('section');
+    expect(agenda).not.toBeNull();
+    expect(within(agenda!).getByRole('button', { name: /Completed lesson/ })).toHaveTextContent(
+      '已完成',
+    );
+    expect(within(agenda!).getByRole('button', { name: /Pending lesson/ })).toHaveTextContent(
+      '待学习',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Tomorrow lesson/ }));
+    const futureAgenda = screen.getByRole('heading', { name: /学习安排/ }).closest('section');
+    expect(futureAgenda).not.toBeNull();
+    expect(within(futureAgenda!).queryByText('已完成')).not.toBeInTheDocument();
+    expect(within(futureAgenda!).queryByText('待学习')).not.toBeInTheDocument();
+  });
+
+  it('excludes completed schedules from today-to-learn and overdue counts', () => {
+    render(
+      <HomePage
+        client={client()}
+        courses={[{ courseId: 'course_01', title: 'Course' }]}
+        lessons={[
+          {
+            courseId: 'course_01',
+            lessonId: 'completed_yesterday',
+            title: 'Completed yesterday',
+            progress: 'completed',
+          },
+          {
+            courseId: 'course_01',
+            lessonId: 'completed_today',
+            title: 'Completed today',
+            progress: 'completed',
+          },
+          {
+            courseId: 'course_01',
+            lessonId: 'pending_today',
+            title: 'Pending today',
+            progress: 'not_started',
+          },
+        ]}
+        schedule={[
+          {
+            scheduleItemId: 'schedule_completed_yesterday',
+            courseId: 'course_01',
+            lessonId: 'completed_yesterday',
+            startAt: '2026-07-17T09:00:00+08:00',
+            endAt: '2026-07-17T10:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+          {
+            scheduleItemId: 'schedule_completed_today',
+            courseId: 'course_01',
+            lessonId: 'completed_today',
+            startAt: '2026-07-18T09:00:00+08:00',
+            endAt: '2026-07-18T10:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+          {
+            scheduleItemId: 'schedule_pending_today',
+            courseId: 'course_01',
+            lessonId: 'pending_today',
+            startAt: '2026-07-18T10:00:00+08:00',
+            endAt: '2026-07-18T11:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+        ]}
+        now={new Date('2026-07-18T12:00:00+08:00')}
+        onNavigate={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText('今日待学 1 节，逾期 0 节，待规划 0 节')).toBeVisible();
+  });
+
   it('deletes a draft directly from its draft card without resuming it', async () => {
     const navigate = vi.fn();
     const deleteOutlineSession = vi.fn().mockResolvedValue({

@@ -32,6 +32,12 @@ function monthDay(value: string): string {
   return value.slice(5).replace('-', '/');
 }
 
+function previousLocalDate(value: string): string {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 export function WeeklyReportWorkspace(props: {
   readonly startLocalDate: string;
   readonly endLocalDate: string;
@@ -72,8 +78,9 @@ export function WeeklyReportWorkspace(props: {
           <div className="lm-kicker">WEEKLY REFLECTION</div>
           <h1>上周学习回顾</h1>
           <p>
-            {props.startLocalDate.replaceAll('-', '/')} — {monthDay(props.endLocalDate)} · 已完成{' '}
-            {props.completedLessonCount} 节课
+            {props.startLocalDate.replaceAll('-', '/')} —{' '}
+            {monthDay(previousLocalDate(props.endLocalDate))} · 已完成 {props.completedLessonCount}{' '}
+            节课
           </p>
         </div>
         <button className="lm-btn" onClick={props.onBack} type="button">
@@ -130,26 +137,6 @@ export function WeeklyReportWorkspace(props: {
               <span aria-hidden="true">{expanded ? '−' : '+'}</span>
             </button>
             <div className="weekly-report-body" hidden={!expanded}>
-              <p className="weekly-report-lineage">
-                冻结证据 {props.evidenceSourceCount ?? 0} 条
-                {(props.exclusionCount ?? 0) === 0
-                  ? ' · 本周窗口内来源已核验'
-                  : ` · ${props.exclusionCount} 条来源因不在本周窗口或已失效而排除`}
-              </p>
-              <div className="weekly-report-metrics">
-                <div className="weekly-report-metric">
-                  <span>完成课节</span>
-                  <b>{props.completedLessonCount}</b>
-                </div>
-                <div className="weekly-report-metric">
-                  <span>学习时长</span>
-                  <b>{Math.round(props.actualSeconds / 60)} min</b>
-                </div>
-                <div className="weekly-report-metric">
-                  <span>活跃天数</span>
-                  <b>{props.activeDayCount}</b>
-                </div>
-              </div>
               {props.reportState === 'finalized' ? (
                 <div className="weekly-report-insights">
                   <section>
@@ -171,7 +158,7 @@ export function WeeklyReportWorkspace(props: {
                   {props.reportState === 'generating'
                     ? '本周快照生成中。完成后将冻结展示至下周日。'
                     : props.reportState === 'failed'
-                      ? '本周快照生成失败；学习事实不受影响。'
+                      ? '周报生成失败；完成课节事实不受影响，系统将自动重新汇总。'
                       : '本周快照生成中。'}
                 </div>
               )}

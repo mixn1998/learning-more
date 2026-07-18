@@ -155,7 +155,7 @@ export function HistoryPage(props: {
       ? weeklyReport?.state === 'finalized'
         ? { tone: 'success', text: '● 周报已生成' }
         : weeklyReport?.state === 'failed'
-          ? { tone: 'danger', text: '● 本周快照生成失败' }
+          ? { tone: 'danger', text: '● 周报生成失败' }
           : { tone: 'warning', text: '● 本周快照生成中' }
       : undefined,
   );

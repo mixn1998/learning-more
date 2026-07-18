@@ -33,6 +33,6 @@ describe('weekly snapshot state', () => {
 
   it('shows the current snapshot failure state without a previous report fallback', () => {
     renderState('failed');
-    expect(screen.getByRole('alert')).toHaveTextContent('本周快照生成失败');
+    expect(screen.getByRole('alert')).toHaveTextContent('周报生成失败');
   });
 });

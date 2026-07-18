@@ -6,7 +6,6 @@ import {
   Badge,
   Button,
   ContentState,
-  Grid,
   Inline,
   Panel,
   SectionHeader,
@@ -35,32 +34,16 @@ export function WeeklyReportView(props: {
           </Inline>
         }
       />
-      {props.week === undefined ? null : (
-        <Grid className="weekly-summary-grid" columns={3}>
-          <p>
-            <strong>{props.week.completedLessonCount}</strong>
-            <small>完成课节</small>
-          </p>
-          <p>
-            <strong>{props.week.actualSeconds}</strong>
-            <small>学习秒数</small>
-          </p>
-          <p>
-            <strong>{props.week.activeDayCount}</strong>
-            <small>活跃天</small>
-          </p>
-        </Grid>
-      )}
       {!expanded ? null : props.report?.state === 'finalized' &&
         props.report.markdown !== undefined ? (
         <AiContent markdown={props.report.markdown} />
       ) : props.report?.state === 'generating' ? (
-        <ContentState title="本周快照生成中" description="完成后会冻结展示至下周日。" />
+        <ContentState title="周报生成中" description="正在汇总上一完整周的完成课节。" />
       ) : props.report?.state === 'failed' ? (
         <ContentState
           role="alert"
-          title="本周快照生成失败"
-          description="学习事实不受影响；本周不回退显示上一份快照。"
+          title="周报生成失败"
+          description="完成课节事实不受影响，系统将自动重新汇总。"
         />
       ) : (
         <p className="lm-content-state">暂无周报</p>

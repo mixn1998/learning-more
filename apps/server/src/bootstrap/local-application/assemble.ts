@@ -89,8 +89,8 @@ export async function assembleLocalApplication(
     now: runtimeNow,
     generation,
     events,
+    course,
     learning,
-    profile,
   });
   await insights.start();
   await generationRuntime.recoverExpiredLeases();

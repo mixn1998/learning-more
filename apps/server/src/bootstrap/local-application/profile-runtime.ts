@@ -6,7 +6,6 @@ import { createGenerationReasoningBehaviorAnalyzer } from '../../modules/global-
 import { createReasoningBehaviorModule } from '../../modules/global-user-profile/implementation/reasoning-behavior-module.js';
 import type { ReasoningBehaviorAnalysisRecord } from '../../modules/global-user-profile/ports/reasoning-behavior-repository.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
-import type { AdditionalWeeklyEvidence } from '../../modules/learning-facts/implementation/weekly-evidence-assembler.js';
 import { packPortraitEvidence } from '../../modules/learning-portrait/implementation/evidence-packer.js';
 import { createPortraitModule } from '../../modules/learning-portrait/implementation/portrait-module.js';
 import { createPortraitRefreshCoordinator } from '../../modules/learning-portrait/implementation/portrait-refresh-coordinator.js';
@@ -45,7 +44,6 @@ export type LocalProfileRuntime = Readonly<{
   portraitRoutes: PortraitRouteOptions;
   requestPortraitRefresh: PortraitRouteOptions['requestRefresh'];
   getTeachingPersonalization: TeachingContextSources['getPersonalizationView'];
-  listWeeklyReasoningEvidence(): Promise<readonly AdditionalWeeklyEvidence[]>;
   recoverReasoningAnalysis(): Promise<void>;
   getProjectionStatus(): 'ready' | 'degraded';
   start(): void;
@@ -559,34 +557,6 @@ export function createLocalProfileRuntime(
     portraitRoutes,
     requestPortraitRefresh,
     getTeachingPersonalization,
-    async listWeeklyReasoningEvidence() {
-      const evidence: AdditionalWeeklyEvidence[] = [];
-      for await (const episode of reasoningBehaviorRepository.listEpisodes()) {
-        if (
-          episode.status !== 'active' ||
-          episode.extractorVersion !== 'reasoning-episode-extractor@1'
-        ) {
-          continue;
-        }
-        evidence.push({
-          factId: `reasoning:${episode.episodeId}`,
-          sourceRef: `reasoning:${episode.episodeId}`,
-          kind: 'reasoning-evidence',
-          occurredAt: episode.observedAt,
-          summary: episode.behaviorSummary,
-          payload: {
-            elicitation: episode.elicitation,
-            sourceRefs: episode.sourceRefs,
-            extractorVersion: episode.extractorVersion,
-          },
-          courseId: episode.courseId,
-          lessonId: episode.lessonId,
-          actualSeconds: 0,
-          topicTags: [],
-        });
-      }
-      return evidence;
-    },
     recoverReasoningAnalysis,
     getProjectionStatus: () => projectionStatus,
     start: weeklyPortraitScheduler.start,

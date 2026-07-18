@@ -124,38 +124,6 @@
   display: block;
 }
 
-.weekly-report-workspace .weekly-report-lineage {
-  margin: 0 0 14px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.weekly-report-workspace .weekly-report-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
-  margin-bottom: 14px;
-}
-
-.weekly-report-workspace .weekly-report-metric {
-  min-height: 72px;
-  padding: 10px 12px;
-  border-radius: 9px;
-  background: #f8f4ee;
-}
-
-.weekly-report-workspace .weekly-report-metric span {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.weekly-report-workspace .weekly-report-metric b {
-  display: block;
-  margin-top: 4px;
-  font-size: 18px;
-}
-
 .weekly-report-workspace .weekly-report-insights {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -286,7 +254,6 @@
     height: auto;
     overflow: visible;
   }
-  .weekly-report-workspace .weekly-report-metrics,
   .weekly-report-workspace .weekly-report-filters,
   .weekly-report-workspace .weekly-report-insights {
     grid-template-columns: 1fr;

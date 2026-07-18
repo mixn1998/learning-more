@@ -47,6 +47,16 @@ describe('validateWeeklyReportMarkdown', () => {
     ).toEqual({ sourceRefs: [] });
   });
 
+  it('limits the visible weekly report to 300 characters', () => {
+    const source = '<!-- sources:fact:completed -->';
+    expect(() =>
+      validateWeeklyReportMarkdown(`${'学'.repeat(300)} ${source}`, new Set(['fact:completed'])),
+    ).not.toThrow();
+    expect(() =>
+      validateWeeklyReportMarkdown(`${'学'.repeat(301)} ${source}`, new Set(['fact:completed'])),
+    ).toThrow('weekly_report_visible_text_too_long');
+  });
+
   it('projects an already-finalized English empty report to the localized empty state', () => {
     expect(
       weeklyReportMarkdownForRead(

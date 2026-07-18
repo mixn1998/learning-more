@@ -8,10 +8,7 @@ import type {
   WeeklyReportRecord,
   WeeklyReportRepository,
 } from '../ports/weekly-report-repository.js';
-import {
-  assembleWeeklyEvidence,
-  type AdditionalWeeklyEvidence,
-} from './weekly-evidence-assembler.js';
+import { assembleWeeklyEvidence } from './weekly-evidence-assembler.js';
 import { validateWeeklyReportMarkdown } from './weekly-report-output.js';
 
 class WeeklyReportError extends Error {
@@ -25,35 +22,26 @@ function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-const FACT_SUMMARIES: Readonly<Record<string, string>> = {
-  LessonStartedFact: '开始了一节课',
-  LessonPausedFact: '暂停了一节正在学习的课程',
-  LessonAbandonedFact: '放弃了一节课',
-  LessonRestoredFact: '恢复了一节此前放弃的课程',
-  LessonCompletedFact: '完成了一节课',
-  CourseCreatedFact: '创建了一门课程',
-  CourseClosedFact: '关闭了一门课程',
-  ReviewFinalizedFact: '完成了一次课时 Review',
-  CourseReviewFinalizedFact: '完成了一次课程总 Review',
-  ScheduleConfirmedFact: '确认了一项学习计划',
-  InteractionPromptedFact: '教学中出现了一次互动邀请',
-  InteractionRespondedFact: '回应了一次教学互动',
-  InteractionSkippedFact: '跳过了一次教学互动',
-};
+type CompletedLessonDetails = Readonly<{
+  title: string;
+  disciplineTag: string;
+  summary: string;
+}>;
 
-function evidenceKind(kind: WeeklyFactSnapshotEntry['kind']): string {
-  if (kind === 'learning-session') return '课程学习记录';
-  if (kind === 'teaching-ledger') return '互动教学观察';
-  if (kind === 'review') return 'Review 记录';
-  if (kind === 'plan-change') return '学习计划变化';
-  if (kind === 'reasoning-evidence') return '思维行为观察';
-  return '学习事实';
-}
-
-function durationText(actualSeconds: number): string | undefined {
-  if (actualSeconds <= 0) return undefined;
-  const minutes = Math.round((actualSeconds / 60) * 10) / 10;
-  return `${minutes} 分钟`;
+function lessonDetails(entry: WeeklyFactSnapshotEntry): CompletedLessonDetails {
+  const title =
+    typeof entry.payload?.title === 'string' && entry.payload.title.trim() !== ''
+      ? entry.payload.title.trim()
+      : (entry.lessonId ?? '未命名课节');
+  const summary =
+    typeof entry.payload?.lessonSummary === 'string' && entry.payload.lessonSummary.trim() !== ''
+      ? entry.payload.lessonSummary.trim()
+      : '完成了本课的主要学习内容。';
+  return {
+    title,
+    disciplineTag: entry.disciplineTag?.trim() || '未分类领域',
+    summary,
+  };
 }
 
 function renderWeeklyEvidence(
@@ -62,42 +50,79 @@ function renderWeeklyEvidence(
     'startLocalDate' | 'endLocalDate' | 'timezone' | 'factSnapshot' | 'snapshotExclusions'
   >,
 ): string {
-  const evidence = record.factSnapshot.map((entry, index) => {
+  const disciplineCounts = new Map<string, number>();
+  for (const entry of record.factSnapshot) {
+    const discipline = lessonDetails(entry).disciplineTag;
+    disciplineCounts.set(discipline, (disciplineCounts.get(discipline) ?? 0) + 1);
+  }
+  const lessons = record.factSnapshot.map((entry) => {
     const sourceRef = entry.sourceRef ?? `fact:${entry.factId}`;
-    const summary = FACT_SUMMARIES[entry.summary ?? ''] ?? entry.summary ?? '记录了一次学习活动';
-    const duration = durationText(entry.actualSeconds);
-    const tags = entry.topicTags.length === 0 ? undefined : entry.topicTags.join('、');
+    const details = lessonDetails(entry);
     return [
-      `### 学习证据 ${index + 1}`,
+      `- ${details.title}（${details.disciplineTag}）：${details.summary}`,
       `来源标记：${sourceRef}`,
-      `发生时间：${entry.occurredAt}`,
-      `证据类型：${evidenceKind(entry.kind)}`,
-      `观察摘要：${summary}`,
-      duration === undefined ? undefined : `实际学习时长：${duration}`,
-      entry.disciplineTag === undefined ? undefined : `学科范围：${entry.disciplineTag}`,
-      tags === undefined ? undefined : `主题范围：${tags}`,
-    ]
-      .filter((value): value is string => value !== undefined)
-      .join('\n');
+    ].join('\n');
   });
-  const exclusionCount = record.snapshotExclusions?.length ?? 0;
+  const distribution = [...disciplineCounts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, 'zh-CN'))
+    .map(([discipline, count]) => `${discipline}：${count} 节`)
+    .join('；');
   return [
-    `【周报范围】\n${record.startLocalDate} 至 ${record.endLocalDate}，按 ${record.timezone} 统计。`,
-    exclusionCount === 0 ? undefined : `有 ${exclusionCount} 条记录因不在本周范围内而未纳入分析。`,
-    `【可用学习证据】\n${evidence.length === 0 ? '本周没有足够的可用学习证据。' : evidence.join('\n\n')}`,
-  ]
-    .filter((value): value is string => value !== undefined)
-    .join('\n\n');
+    `【周报范围】\n${record.startLocalDate} 至 ${record.endLocalDate}（结束日期不计入），按 ${record.timezone} 统计。`,
+    `【完成概况】\n共完成 ${record.factSnapshot.length} 节课。\n领域分布：${distribution || '本周没有完成课节。'}`,
+    `【已完成课节】\n${lessons.length === 0 ? '本周没有完成课节。' : lessons.join('\n')}`,
+  ].join('\n\n');
+}
+
+function truncateText(value: string, maximumCharacters: number): string {
+  const characters = Array.from(value.trim());
+  return characters.length <= maximumCharacters
+    ? characters.join('')
+    : `${characters.slice(0, Math.max(1, maximumCharacters - 1)).join('')}…`;
+}
+
+export function deterministicWeeklyReportMarkdown(
+  record: Pick<WeeklyReportRecord, 'factSnapshot'>,
+): string {
+  if (record.factSnapshot.length === 0) {
+    return '# 上周学习回顾\n\n暂无证据表明上周有已完成课节，暂不生成学习内容概括。';
+  }
+  const disciplineCounts = new Map<string, number>();
+  for (const entry of record.factSnapshot) {
+    const discipline = lessonDetails(entry).disciplineTag;
+    disciplineCounts.set(discipline, (disciplineCounts.get(discipline) ?? 0) + 1);
+  }
+  const distribution = [...disciplineCounts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, 'zh-CN'))
+    .map(([discipline, count]) => `${discipline}${count}节`)
+    .join('、');
+  let body = `上周完成${record.factSnapshot.length}节课，领域分布：${distribution}。主要内容：`;
+  let included = 0;
+  for (const entry of record.factSnapshot) {
+    const details = lessonDetails(entry);
+    const segment = `${details.title}：${truncateText(details.summary, 48)}`;
+    const candidate = `${body}${included === 0 ? '' : '；'}${segment}`;
+    if (Array.from(candidate).length > 278) break;
+    body = candidate;
+    included += 1;
+  }
+  if (included < record.factSnapshot.length) {
+    const remainder = `；另有${record.factSnapshot.length - included}节课已完成`;
+    if (Array.from(`${body}${remainder}`).length <= 290) body += remainder;
+  }
+  body += '。';
+  const sourceRefs = record.factSnapshot.map((entry) => entry.sourceRef ?? `fact:${entry.factId}`);
+  return `# 上周学习回顾\n\n${body}<!-- sources:${sourceRefs.join(',')} -->`;
 }
 
 export function createWeeklyReportService(options: {
   repository: WeeklyReportRepository;
   factRepository: FactRepository;
-  assembleAdditionalEvidence?(window: {
-    startLocalDate: string;
-    endLocalDate: string;
-    timezone: string;
-  }): Promise<readonly AdditionalWeeklyEvidence[]>;
+  prepareSnapshot?(): Promise<void>;
+  resolveCompletedLesson?(input: {
+    courseId?: string;
+    lessonId?: string;
+  }): Promise<CompletedLessonDetails | undefined>;
   unitOfWork: UnitOfWork;
   generationRuntime: {
     submit(request: {
@@ -153,12 +178,59 @@ export function createWeeklyReportService(options: {
       priority: 20,
       prompt: [
         '【输出语言】所有面向学习者的标题、正文和建议必须使用简体中文；必要的专有名词可以保留原文，但不得输出整段英文。',
-        '生成简洁、有用、自然组织的 Markdown 周学习回顾。每个具体判断都必须来自下面冻结的学习证据；证据不足时应明确说明。',
+        '根据下面的确定性周汇总生成简洁、自然的 Markdown 学习成果概括。可见正文不超过 300 个可见字符。',
+        '只可概括完成课节数、领域分布、课节标题及一句话摘要；不得增加排期、时长、暂停、互动、教学观察、推理行为、画像或其他数据。',
         '每个包含具体判断的段落或列表块后，追加不可见溯源注释：<!-- sources:来源标记,来源标记 -->。只能使用背景中明确给出的来源标记。',
         '',
         evidenceBackground,
       ].join('\n'),
     });
+  }
+
+  async function buildSnapshot(window: { startLocalDate: string; endLocalDate: string }): Promise<
+    Readonly<{
+      factSnapshot: readonly WeeklyFactSnapshotEntry[];
+      factSnapshotHash: string;
+      snapshotExclusions: readonly string[];
+      projectionCursor?: string;
+    }>
+  > {
+    await options.prepareSnapshot?.();
+    const facts: LearningFact[] = [];
+    for await (const fact of options.factRepository.list()) facts.push(fact);
+    const assembled = assembleWeeklyEvidence({
+      facts,
+      startLocalDate: window.startLocalDate,
+      endLocalDate: window.endLocalDate,
+      timeZone: options.timeZone,
+    });
+    const factSnapshot = await Promise.all(
+      assembled.snapshot.map(async (entry): Promise<WeeklyFactSnapshotEntry> => {
+        const details =
+          (await options.resolveCompletedLesson?.({
+            ...(entry.courseId === undefined ? {} : { courseId: entry.courseId }),
+            ...(entry.lessonId === undefined ? {} : { lessonId: entry.lessonId }),
+          })) ?? lessonDetails(entry);
+        return {
+          ...entry,
+          actualSeconds: 0,
+          disciplineTag: details.disciplineTag,
+          topicTags: [],
+          payload: {
+            title: details.title,
+            lessonSummary: details.summary,
+          },
+        };
+      }),
+    );
+    return {
+      factSnapshot,
+      factSnapshotHash: sha256(JSON.stringify(factSnapshot)),
+      snapshotExclusions: assembled.exclusions,
+      ...(assembled.projectionCursor === undefined
+        ? {}
+        : { projectionCursor: assembled.projectionCursor }),
+    };
   }
 
   return {
@@ -171,32 +243,18 @@ export function createWeeklyReportService(options: {
       const existing = await options.repository.get(command.localWeekKey);
       if (existing !== undefined) return existing;
       void command.commandId;
-      const facts: LearningFact[] = [];
-      for await (const fact of options.factRepository.list()) {
-        facts.push(fact);
-      }
-      const additionalEvidence = await options.assembleAdditionalEvidence?.({
+      const snapshot = await buildSnapshot({
         startLocalDate: command.startLocalDate,
         endLocalDate: command.endLocalDate,
-        timezone: options.timeZone,
       });
-      const assembled = assembleWeeklyEvidence({
-        facts,
-        ...(additionalEvidence === undefined ? {} : { additionalEvidence }),
-        startLocalDate: command.startLocalDate,
-        endLocalDate: command.endLocalDate,
-        timeZone: options.timeZone,
-      });
-      const factSnapshot = assembled.snapshot;
-      const factSnapshotHash = sha256(JSON.stringify(factSnapshot));
       const task = await submit({
         localWeekKey: command.localWeekKey,
         startLocalDate: command.startLocalDate,
         endLocalDate: command.endLocalDate,
         timezone: options.timeZone,
-        factSnapshot,
-        factSnapshotHash,
-        snapshotExclusions: assembled.exclusions,
+        factSnapshot: snapshot.factSnapshot,
+        factSnapshotHash: snapshot.factSnapshotHash,
+        snapshotExclusions: snapshot.snapshotExclusions,
       });
       const timestamp = options.now().toISOString();
       return save({
@@ -205,13 +263,13 @@ export function createWeeklyReportService(options: {
         startLocalDate: command.startLocalDate,
         endLocalDate: command.endLocalDate,
         state: 'generating',
-        factSnapshot,
-        factSnapshotHash,
-        ...(assembled.projectionCursor === undefined
+        factSnapshot: snapshot.factSnapshot,
+        factSnapshotHash: snapshot.factSnapshotHash,
+        ...(snapshot.projectionCursor === undefined
           ? {}
-          : { projectionCursor: assembled.projectionCursor }),
-        snapshotExclusions: assembled.exclusions,
-        metricDefinitionVersion: 1,
+          : { projectionCursor: snapshot.projectionCursor }),
+        snapshotExclusions: snapshot.snapshotExclusions,
+        metricDefinitionVersion: 2,
         generationTaskId: task.taskId,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -236,13 +294,37 @@ export function createWeeklyReportService(options: {
       const current = await options.repository.get(localWeekKey);
       if (current === undefined) throw new WeeklyReportError('weekly_report_not_found');
       if (current.state === 'finalized') throw new WeeklyReportError('weekly_report_immutable');
-      const task = await submit(current);
-      const { errorCode: _error, draftArtifactRef: _draft, ...withoutFailure } = current;
+      const snapshot = await buildSnapshot({
+        startLocalDate: current.startLocalDate,
+        endLocalDate: current.endLocalDate,
+      });
+      const task = await submit({
+        ...current,
+        factSnapshot: snapshot.factSnapshot,
+        factSnapshotHash: snapshot.factSnapshotHash,
+        snapshotExclusions: snapshot.snapshotExclusions,
+      });
+      const {
+        errorCode: _error,
+        draftArtifactRef: _draft,
+        projectionCursor: _oldProjectionCursor,
+        sourceRefs: _oldSourceRefs,
+        ...withoutFailure
+      } = current;
       void _error;
       void _draft;
+      void _oldProjectionCursor;
+      void _oldSourceRefs;
       return save({
         ...withoutFailure,
         state: 'generating',
+        factSnapshot: snapshot.factSnapshot,
+        factSnapshotHash: snapshot.factSnapshotHash,
+        snapshotExclusions: snapshot.snapshotExclusions,
+        ...(snapshot.projectionCursor === undefined
+          ? {}
+          : { projectionCursor: snapshot.projectionCursor }),
+        metricDefinitionVersion: 2,
         generationTaskId: task.taskId,
         updatedAt: options.now().toISOString(),
       });

@@ -18,7 +18,7 @@ function fact(factId: string, factType: LearningFactType, occurredAt: string): L
 }
 
 describe('assembleWeeklyEvidence', () => {
-  it('freezes timezone-bounded sessions, ledger events, Reviews, plan changes, and reasoning evidence', () => {
+  it('keeps only completed lessons in the completed local-week window', () => {
     const result = assembleWeeklyEvidence({
       timeZone: 'Asia/Shanghai',
       startLocalDate: '2026-07-06',
@@ -30,27 +30,17 @@ describe('assembleWeeklyEvidence', () => {
         fact('plan', 'ScheduleConfirmedFact', '2026-07-09T01:00:00.000Z'),
         fact('outside', 'LessonCompletedFact', '2026-07-13T01:00:00.000Z'),
       ],
-      additionalEvidence: [
-        {
-          factId: 'reasoning:episode_01',
-          sourceRef: 'reasoning:episode_01',
-          kind: 'reasoning-evidence',
-          occurredAt: '2026-07-10T01:00:00.000Z',
-          summary: 'Compared two explanations before revising a claim.',
-          payload: { status: 'active' },
-          actualSeconds: 0,
-          topicTags: [],
-        },
-      ],
     });
 
-    expect(result.snapshot.map((entry) => entry.kind)).toEqual([
-      'learning-session',
-      'teaching-ledger',
-      'review',
-      'plan-change',
-      'reasoning-evidence',
+    expect(result.snapshot).toEqual([
+      expect.objectContaining({
+        factId: 'session',
+        kind: 'learning-session',
+        summary: 'LessonCompletedFact',
+      }),
     ]);
+    expect(result.snapshot[0]).not.toHaveProperty('payload');
     expect(result.exclusions).toEqual(['outside_window:fact:outside']);
+    expect(result.projectionCursor).toBe('event_outside');
   });
 });

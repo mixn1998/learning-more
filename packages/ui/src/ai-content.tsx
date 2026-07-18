@@ -38,6 +38,121 @@ function normalizeCompactGfmTables(markdown: string) {
     .join('\n');
 }
 
+type MarkdownContainer = {
+  readonly prefix: string;
+  readonly continuationPrefix: string;
+  readonly content: string;
+  readonly isIndentedCode: boolean;
+};
+
+const blockquotePrefixPattern = /^[ \t]{0,3}>[ \t]?/;
+const listPrefixPattern = /^[ \t]{0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/;
+
+/**
+ * Separate Markdown container markers from their content so model-friendly
+ * TeX delimiters can be normalized without flattening quotes or list items.
+ */
+function splitMarkdownContainer(line: string): MarkdownContainer {
+  let content = line;
+  let prefix = '';
+  let continuationPrefix = '';
+
+  while (content.length > 0) {
+    const blockquoteMatch = blockquotePrefixPattern.exec(content);
+    if (blockquoteMatch) {
+      prefix += blockquoteMatch[0];
+      continuationPrefix += blockquoteMatch[0];
+      content = content.slice(blockquoteMatch[0].length);
+      continue;
+    }
+
+    const listMatch = listPrefixPattern.exec(content);
+    if (listMatch) {
+      prefix += listMatch[0];
+      continuationPrefix += ' '.repeat(listMatch[0].length);
+      content = content.slice(listMatch[0].length);
+      continue;
+    }
+
+    break;
+  }
+
+  const indentation = /^[ \t]*/.exec(content)?.[0] ?? '';
+  prefix += indentation;
+  continuationPrefix += indentation;
+  content = content.slice(indentation.length);
+
+  return {
+    prefix,
+    continuationPrefix,
+    content,
+    isIndentedCode: indentation.includes('\t') || indentation.length >= 4,
+  };
+}
+
+type MarkdownFence = {
+  readonly marker: '`' | '~';
+  readonly length: number;
+};
+
+function readFenceStart(content: string): MarkdownFence | undefined {
+  const match = /^(`{3,}|~{3,})/.exec(content);
+  if (!match) return undefined;
+  const marker = match[0][0];
+  if (marker !== '`' && marker !== '~') return undefined;
+  return { marker, length: match[0].length };
+}
+
+function isFenceEnd(content: string, fence: MarkdownFence) {
+  const match = /^(`{3,}|~{3,})[ \t]*$/.exec(content);
+  return Boolean(match && match[0][0] === fence.marker && match[0].trim().length >= fence.length);
+}
+
+function replaceOutsideInlineCode(value: string, replace: (plainText: string) => string) {
+  let cursor = 0;
+  let plainStart = 0;
+  let result = '';
+
+  while (cursor < value.length) {
+    if (value[cursor] !== '`') {
+      cursor += 1;
+      continue;
+    }
+
+    let openingEnd = cursor + 1;
+    while (value[openingEnd] === '`') openingEnd += 1;
+    const openingLength = openingEnd - cursor;
+    let closingStart = openingEnd;
+    let closingEnd = -1;
+
+    while (closingStart < value.length) {
+      if (value[closingStart] !== '`') {
+        closingStart += 1;
+        continue;
+      }
+      let runEnd = closingStart + 1;
+      while (value[runEnd] === '`') runEnd += 1;
+      if (runEnd - closingStart === openingLength) {
+        closingEnd = runEnd;
+        break;
+      }
+      closingStart = runEnd;
+    }
+
+    if (closingEnd < 0) {
+      cursor = openingEnd;
+      continue;
+    }
+
+    result += replace(value.slice(plainStart, cursor));
+    result += value.slice(cursor, closingEnd);
+    cursor = closingEnd;
+    plainStart = closingEnd;
+  }
+
+  return result + replace(value.slice(plainStart));
+}
+
 /**
  * Models commonly emit LaTeX with TeX delimiters or a bare bracketed display
  * block. Normalize those equivalent forms to remark-math's `$` delimiters,
@@ -45,39 +160,62 @@ function normalizeCompactGfmTables(markdown: string) {
  */
 function normalizeLatexMath(markdown: string) {
   const normalized: string[] = [];
-  let inFence = false;
+  let activeFence: MarkdownFence | undefined;
+  let inTexDisplay = false;
 
   for (const line of markdown.split('\n')) {
-    if (/^\s*```/.test(line)) {
-      inFence = !inFence;
+    const container = splitMarkdownContainer(line);
+
+    if (activeFence) {
+      normalized.push(line);
+      if (isFenceEnd(container.content, activeFence)) activeFence = undefined;
+      continue;
+    }
+
+    const fenceStart = readFenceStart(container.content);
+    if (fenceStart) {
+      activeFence = fenceStart;
       normalized.push(line);
       continue;
     }
 
-    if (inFence) {
+    if (inTexDisplay && /^\\\][ \t]*$/.test(container.content)) {
+      normalized.push(`${container.prefix}$$`);
+      inTexDisplay = false;
+      continue;
+    }
+
+    if (container.isIndentedCode) {
       normalized.push(line);
       continue;
     }
 
-    if (/^\s*\\\[\s*$/.test(line)) {
-      normalized.push('$$');
+    if (/^\\\[[ \t]*$/.test(container.content)) {
+      normalized.push(`${container.prefix}$$`);
+      inTexDisplay = true;
       continue;
     }
-    if (/^\s*\\\]\s*$/.test(line)) {
-      normalized.push('$$');
+    if (/^\\\][ \t]*$/.test(container.content)) {
+      normalized.push(`${container.prefix}$$`);
       continue;
     }
 
-    const trimmed = line.trim();
+    const trimmed = container.content.trim();
     if (trimmed.startsWith('[') && trimmed.endsWith(']') && /\\[A-Za-z]+/.test(trimmed)) {
-      normalized.push('$$', trimmed.slice(1, -1).trim(), '$$');
+      normalized.push(
+        `${container.prefix}$$`,
+        `${container.continuationPrefix}${trimmed.slice(1, -1).trim()}`,
+        `${container.continuationPrefix}$$`,
+      );
       continue;
     }
 
     normalized.push(
-      line
-        .replace(/\\\[([^\n]*?)\\\]/g, (_, expression: string) => `$$${expression}$$`)
-        .replace(/\\\(([^\n]*?)\\\)/g, (_, expression: string) => `$${expression}$`),
+      `${container.prefix}${replaceOutsideInlineCode(container.content, (plainText) =>
+        plainText
+          .replace(/\\\[([^\n]*?)\\\]/g, (_, expression: string) => `$$${expression}$$`)
+          .replace(/\\\(([^\n]*?)\\\)/g, (_, expression: string) => `$${expression}$`),
+      )}`,
     );
   }
 

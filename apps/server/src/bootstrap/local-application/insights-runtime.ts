@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 import type { LearningFactsRouteOptions } from '../../http/routes/learning-facts.js';
 import { createWeeklyReportScheduler } from '../../modules/learning-facts/implementation/weekly-report-scheduler.js';
-import { createWeeklyReportService } from '../../modules/learning-facts/implementation/weekly-report-service.js';
+import {
+  createWeeklyReportService,
+  deterministicWeeklyReportMarkdown,
+} from '../../modules/learning-facts/implementation/weekly-report-service.js';
 import { weeklyReportMarkdownForRead } from '../../modules/learning-facts/implementation/weekly-report-output.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
@@ -11,7 +14,34 @@ import { createLocalFileWeeklyReportRepository } from '../../persistence/weekly-
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalGenerationRuntime } from './generation-runtime.js';
 import type { LocalLearningRuntime } from './learning-runtime.js';
-import type { LocalProfileRuntime } from './profile-runtime.js';
+import type { LocalCourseRuntime } from './course-runtime.js';
+
+function broadDiscipline(value: string | undefined): string {
+  const normalized = value?.trim();
+  if (!normalized) return '未分类领域';
+  if (/(?:商业|创业|business|entrepreneur)/iu.test(normalized)) return '商业';
+  if (/(?:数学|mathematics?|calculus)/iu.test(normalized)) return '数学';
+  return normalized;
+}
+
+function oneSentence(value: string | undefined, fallback: string): string {
+  const normalized = (value?.trim() || fallback)
+    .replace(/<!--[^]*?-->/gu, ' ')
+    .replace(/^[#>*\-+\d.\s]+/gmu, '')
+    .replace(/[*_`~]/gu, '')
+    .replaceAll('[', '')
+    .replaceAll(']', '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const sentence = normalized.match(/^.*?[。！？!?](?:\s|$)/u)?.[0]?.trim() ?? normalized;
+  const characters = Array.from(sentence);
+  return characters.length <= 100 ? sentence : `${characters.slice(0, 99).join('')}…`;
+}
+
+function reviewCoreInsight(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || !('coreInsight' in value)) return undefined;
+  return typeof value.coreInsight === 'string' ? value.coreInsight : undefined;
+}
 
 export type LocalInsightsRuntime = Readonly<{
   routes: LearningFactsRouteOptions;
@@ -27,19 +57,30 @@ export function createLocalInsightsRuntime(
     now: () => Date;
     generation: LocalGenerationRuntime;
     events: LocalEventFactsRuntime;
+    course: LocalCourseRuntime;
     learning: LocalLearningRuntime;
-    profile: LocalProfileRuntime;
   }>,
 ): LocalInsightsRuntime {
   const repository = createLocalFileWeeklyReportRepository(input.dataRoot);
   const weeklyReports = createWeeklyReportService({
     repository,
     factRepository: input.events.factRepository,
-    async assembleAdditionalEvidence() {
-      const evidence = [];
-      evidence.push(...(await input.learning.listWeeklyTeachingEvidence()));
-      evidence.push(...(await input.profile.listWeeklyReasoningEvidence()));
-      return evidence;
+    prepareSnapshot: input.events.flush,
+    async resolveCompletedLesson({ lessonId }) {
+      if (lessonId === undefined) return undefined;
+      const lesson = await input.course.access.getLesson(lessonId);
+      if (lesson === undefined) return undefined;
+      const course = await input.course.access.getCourse(lesson.courseId);
+      const outline =
+        course === undefined
+          ? undefined
+          : await input.course.access.getOutlineVersion(course.outlineVersionId);
+      const learning = await input.learning.access.getRecord(lessonId);
+      return {
+        title: lesson.title,
+        disciplineTag: broadDiscipline(outline?.disciplineTag),
+        summary: oneSentence(reviewCoreInsight(learning?.finalReview?.document), lesson.objective),
+      };
     },
     unitOfWork: input.unitOfWork,
     generationRuntime: input.generation.runtime,
@@ -73,7 +114,7 @@ export function createLocalInsightsRuntime(
     timeZone: 'Asia/Shanghai',
     hasReport: async (localWeekKey) => {
       const state = (await repository.get(localWeekKey))?.state;
-      return state === 'finalized' || state === 'failed';
+      return state === 'finalized';
     },
     now: input.now,
     async enqueue(command) {
@@ -99,7 +140,23 @@ export function createLocalInsightsRuntime(
         );
         return;
       }
-      await weeklyReports.finalize(command.localWeekKey, report.generationTaskId, markdown);
+      try {
+        await weeklyReports.finalize(command.localWeekKey, report.generationTaskId, markdown);
+      } catch (error) {
+        try {
+          await weeklyReports.finalize(
+            command.localWeekKey,
+            report.generationTaskId,
+            deterministicWeeklyReportMarkdown(report),
+          );
+        } catch {
+          await weeklyReports.fail(
+            command.localWeekKey,
+            error instanceof Error ? error.message : 'weekly_report_output_invalid',
+            `draft_${report.generationTaskId}`,
+          );
+        }
+      }
     },
   });
 

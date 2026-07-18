@@ -4,7 +4,10 @@ import type { LearningFact } from '../interface.js';
 import { createInMemoryFactRepository } from '../ports/fact-repository.js';
 import { createInMemoryWeeklyReportRepository } from '../ports/weekly-report-repository.js';
 import { createWeeklyReportScheduler } from '../implementation/weekly-report-scheduler.js';
-import { createWeeklyReportService } from '../implementation/weekly-report-service.js';
+import {
+  createWeeklyReportService,
+  deterministicWeeklyReportMarkdown,
+} from '../implementation/weekly-report-service.js';
 
 const tx = {
   stageJson: async () => undefined,
@@ -96,7 +99,7 @@ describe('WeeklyReportScheduler', () => {
 });
 
 describe('WeeklyReportService', () => {
-  it('freezes completion facts, retries the same snapshot after failure, and finalizes immutably', async () => {
+  it('freezes compact completion summaries, rebuilds failed snapshots, and finalizes immutably', async () => {
     const facts = createInMemoryFactRepository();
     await facts.append(tx, completedFact('inside', '2026-07-08T12:00:00.000Z'));
     await facts.append(tx, completedFact('outside', '2026-07-12T16:30:00.000Z'));
@@ -107,9 +110,26 @@ describe('WeeklyReportService', () => {
       .mockResolvedValueOnce({ taskId: 'task_week_2' });
     const finalizeArtifact = vi.fn().mockResolvedValue(undefined);
     const recordFinalized = vi.fn().mockResolvedValue(undefined);
+    const prepareSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(async () => {
+        await facts.append(tx, completedFact('late', '2026-07-10T12:00:00.000Z'));
+      });
     const service = createWeeklyReportService({
       repository: reports,
       factRepository: facts,
+      prepareSnapshot,
+      async resolveCompletedLesson({ lessonId }) {
+        return {
+          title: lessonId === 'lesson_inside' ? '概率基础' : '随机变量',
+          disciplineTag: '数学',
+          summary:
+            lessonId === 'lesson_inside'
+              ? '理解概率空间如何描述随机试验。'
+              : '理解随机变量如何把结果映射为数值。',
+        };
+      },
       unitOfWork,
       generationRuntime: { submit },
       finalizeArtifact,
@@ -125,9 +145,19 @@ describe('WeeklyReportService', () => {
     });
     expect(generating).toMatchObject({
       state: 'generating',
-      factSnapshot: [expect.objectContaining({ factId: 'inside', actualSeconds: 600 })],
+      factSnapshot: [
+        expect.objectContaining({
+          factId: 'inside',
+          disciplineTag: '数学',
+          payload: {
+            title: '概率基础',
+            lessonSummary: '理解概率空间如何描述随机试验。',
+          },
+        }),
+      ],
       generationTaskId: 'task_week_1',
       resourceVersion: 1,
+      metricDefinitionVersion: 2,
     });
     expect(submit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -136,11 +166,16 @@ describe('WeeklyReportService', () => {
     );
     const firstPrompt = submit.mock.calls[0]?.[0]?.prompt as string;
     expect(firstPrompt).toContain('【周报范围】');
-    expect(firstPrompt).toContain('【可用学习证据】');
+    expect(firstPrompt).toContain('【完成概况】');
+    expect(firstPrompt).toContain('共完成 1 节课');
+    expect(firstPrompt).toContain('数学：1 节');
+    expect(firstPrompt).toContain('概率基础（数学）：理解概率空间如何描述随机试验。');
     expect(firstPrompt).toContain('必须使用简体中文');
     expect(firstPrompt).toContain('来源标记：fact:inside');
-    expect(firstPrompt).toContain('完成了一节课');
-    expect(firstPrompt).toContain('10 分钟');
+    expect(firstPrompt).toContain('不超过 300 个可见字符');
+    expect(firstPrompt).not.toContain('10 分钟');
+    expect(firstPrompt).not.toContain('ScheduleConfirmedFact');
+    expect(firstPrompt).not.toContain('LessonPausedFact');
     expect(firstPrompt).not.toContain('factSnapshotHash');
     expect(firstPrompt).not.toContain('localWeekKey');
     expect(firstPrompt).not.toContain('factId');
@@ -158,12 +193,17 @@ describe('WeeklyReportService', () => {
     expect(retrying).toMatchObject({
       state: 'generating',
       generationTaskId: 'task_week_2',
-      factSnapshotHash: generating.factSnapshotHash,
+      factSnapshot: [
+        expect.objectContaining({ factId: 'inside' }),
+        expect.objectContaining({ factId: 'late' }),
+      ],
     });
+    expect(retrying.factSnapshotHash).not.toBe(generating.factSnapshotHash);
+    expect(prepareSnapshot).toHaveBeenCalledTimes(2);
     expect(submit.mock.calls[1]?.[0]).toMatchObject({
-      inputSnapshotHash: generating.factSnapshotHash,
+      inputSnapshotHash: retrying.factSnapshotHash,
     });
-    expect(submit.mock.calls[1]?.[0]?.prompt).toBe(firstPrompt);
+    expect(submit.mock.calls[1]?.[0]?.prompt).toContain('共完成 2 节课');
 
     await expect(
       service.finalize('2026-W28', 'task_week_2', '# 本周回顾\n\n学习有进展。'),
@@ -176,15 +216,16 @@ describe('WeeklyReportService', () => {
       ),
     ).rejects.toThrow('weekly_report_source_unsupported:fact:invented');
 
-    const finalized = await service.finalize(
-      '2026-W28',
-      'task_week_2',
-      '# 本周回顾\n\n本周完成了一节课。 <!-- sources:fact:inside -->',
+    const fallbackMarkdown = deterministicWeeklyReportMarkdown(retrying);
+    expect(Array.from(fallbackMarkdown.replace(/<!--[^]*?-->/gu, '')).length).toBeLessThanOrEqual(
+      300,
     );
+    expect(fallbackMarkdown).toContain('上周完成2节课');
+    const finalized = await service.finalize('2026-W28', 'task_week_2', fallbackMarkdown);
     expect(finalized).toMatchObject({
       state: 'finalized',
       artifactRef: 'weekly_report_2026-W28',
-      sourceRefs: ['fact:inside'],
+      sourceRefs: ['fact:inside', 'fact:late'],
     });
     expect(finalizeArtifact).toHaveBeenCalledWith(
       expect.objectContaining({ artifactId: 'weekly_report_2026-W28', immutable: true }),

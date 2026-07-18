@@ -335,7 +335,7 @@ describe('HistoryPage', () => {
       localWeekKey: '2026-W27',
       timezone: 'Asia/Shanghai',
       startLocalDate: '2026-06-29',
-      endLocalDate: '2026-07-05',
+      endLocalDate: '2026-07-06',
       state: 'finalized',
       factSnapshot: [
         {
@@ -369,8 +369,8 @@ describe('HistoryPage', () => {
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('冻结证据 1 条 · 本周窗口内来源已核验')).toBeVisible();
-    expect(screen.getByText('10 min')).toBeVisible();
+    expect(screen.queryByText(/冻结证据/u)).not.toBeInTheDocument();
+    expect(screen.queryByText('10 min')).not.toBeInTheDocument();
     expect(screen.queryByText('1667 min')).not.toBeInTheDocument();
     expect(screen.getByText('已建立可追溯的判断标准。')).toBeVisible();
     expect(screen.getByText('继续验证反馈是否改变行动。')).toBeVisible();

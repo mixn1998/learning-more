@@ -98,8 +98,25 @@ export function selectContinueTarget(
   );
 }
 
+function scheduleLesson(
+  item: HomeScheduleItem,
+  lessons: readonly HomeLessonCandidate[],
+): HomeLessonCandidate | undefined {
+  return lessons.find(
+    (lesson) => lesson.courseId === item.courseId && lesson.lessonId === item.lessonId,
+  );
+}
+
 function scheduleTitle(item: HomeScheduleItem, lessons: readonly HomeLessonCandidate[]): string {
-  return lessons.find((lesson) => lesson.lessonId === item.lessonId)?.title ?? item.lessonId;
+  return scheduleLesson(item, lessons)?.title ?? item.lessonId;
+}
+
+function isPendingSchedule(
+  item: HomeScheduleItem,
+  lessons: readonly HomeLessonCandidate[],
+): boolean {
+  const progress = scheduleLesson(item, lessons)?.progress;
+  return progress !== 'completed' && progress !== 'abandoned';
 }
 
 function Prompt(props: {
@@ -217,10 +234,10 @@ export function HomePage(props: {
     (item) => localDateKey(new Date(item.startAt)) === selectedDate,
   );
   const todayCount = schedule.filter(
-    (item) => localDateKey(new Date(item.startAt)) === todayKey,
+    (item) => localDateKey(new Date(item.startAt)) === todayKey && isPendingSchedule(item, lessons),
   ).length;
   const overdueCount = schedule.filter(
-    (item) => localDateKey(new Date(item.startAt)) < todayKey,
+    (item) => localDateKey(new Date(item.startAt)) < todayKey && isPendingSchedule(item, lessons),
   ).length;
   const scheduledLessons = new Set(schedule.map((item) => item.lessonId));
   const pendingCount = lessons.filter(
@@ -394,7 +411,17 @@ export function HomePage(props: {
                     <span className="day-empty">暂无安排</span>
                   ) : (
                     items.map((item) => (
-                      <span key={item.scheduleItemId} className="mini">
+                      <span
+                        key={item.scheduleItemId}
+                        className={[
+                          'mini',
+                          scheduleLesson(item, lessons)?.progress === 'completed'
+                            ? 'mini--completed'
+                            : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
                         {scheduleTitle(item, lessons)}
                       </span>
                     ))
@@ -421,8 +448,26 @@ export function HomePage(props: {
                       props.onNavigate(`/courses/${item.courseId}/lessons/${item.lessonId}`)
                     }
                   >
-                    <b>{scheduleTitle(item, lessons)}</b>
-                    <span>
+                    <b className="agenda-item__title">
+                      {scheduleTitle(item, lessons)}
+                      {selectedDate === todayKey ? (
+                        <span
+                          className={[
+                            'agenda-item__status',
+                            scheduleLesson(item, lessons)?.progress === 'completed'
+                              ? 'agenda-item__status--completed'
+                              : undefined,
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        >
+                          {scheduleLesson(item, lessons)?.progress === 'completed'
+                            ? '已完成'
+                            : '待学习'}
+                        </span>
+                      ) : null}
+                    </b>
+                    <span className="agenda-item__meta">
                       {courses.find((course) => course.courseId === item.courseId)?.title ??
                         item.courseId}{' '}
                       ·{' '}

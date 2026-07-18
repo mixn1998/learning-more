@@ -12,7 +12,6 @@ import { createGenerationTeachingAgent } from '../../modules/interactive-teachin
 import { createGenerationTeachingObserver } from '../../modules/interactive-teaching/implementation/generation-teaching-observer.js';
 import { createInteractiveTeaching } from '../../modules/interactive-teaching/implementation/interactive-teaching.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
-import type { AdditionalWeeklyEvidence } from '../../modules/learning-facts/implementation/weekly-evidence-assembler.js';
 import { createLocalFileMessageLog } from '../../modules/learning-session/implementation/message-log.js';
 import { createSessionModule } from '../../modules/learning-session/implementation/session-module.js';
 import { createSupplementarySessionModule } from '../../modules/learning-session/implementation/supplementary-session-module.js';
@@ -50,7 +49,6 @@ export type LearningAccess = Readonly<{
 export type LocalLearningRuntime = Readonly<{
   routes: LearningSessionRouteOptions;
   access: LearningAccess;
-  listWeeklyTeachingEvidence(): Promise<readonly AdditionalWeeklyEvidence[]>;
   recoverTeachingSessions(): Promise<void>;
   getProjectionStatus(): 'ready' | 'degraded';
 }>;
@@ -536,34 +534,6 @@ export function createLocalLearningRuntime(
       listMessages: (sessionId) => messageLog.list(sessionId),
       getTeachingLedger: (sessionId) => teachingLedgerRepository.get(sessionId),
       captureTeachingProfileCheckpoint,
-    },
-    async listWeeklyTeachingEvidence() {
-      const evidence: AdditionalWeeklyEvidence[] = [];
-      for await (const ledger of teachingLedgerRepository.list()) {
-        for (const observation of ledger.observations) {
-          if (observation.status !== 'active') continue;
-          evidence.push({
-            factId: `teaching-observation:${observation.observationId}`,
-            sourceRef: `teaching-observation:${observation.observationId}`,
-            kind: 'teaching-ledger',
-            occurredAt: observation.observedAt,
-            summary: observation.entries.map((entry) => entry.summary).join('；'),
-            payload: {
-              scope: observation.scope,
-              entries: observation.entries.map((entry) => ({
-                kind: entry.kind,
-                summary: entry.summary,
-                sourceRefs: entry.sourceRefs,
-              })),
-            },
-            courseId: ledger.courseId,
-            lessonId: ledger.lessonId,
-            actualSeconds: 0,
-            topicTags: [],
-          });
-        }
-      }
-      return evidence;
     },
     async recoverTeachingSessions() {
       for await (const record of learningRepositories.list()) {
