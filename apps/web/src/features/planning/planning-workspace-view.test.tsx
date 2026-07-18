@@ -61,7 +61,7 @@ type WorkspaceProps = ComponentProps<typeof PlanningWorkspaceView>;
 
 function renderWorkspace(
   overrides: {
-    onClearAll?: WorkspaceProps['onClearAll'];
+    onClear?: WorkspaceProps['onClear'];
     onCreate?: WorkspaceProps['onCreate'];
     onMove?: WorkspaceProps['onMove'];
   } = {},
@@ -69,15 +69,15 @@ function renderWorkspace(
   const onCreate =
     overrides.onCreate ?? vi.fn<WorkspaceProps['onCreate']>().mockResolvedValue(undefined);
   const onMove = overrides.onMove ?? vi.fn<WorkspaceProps['onMove']>().mockResolvedValue(undefined);
-  const onClearAll =
-    overrides.onClearAll ?? vi.fn<WorkspaceProps['onClearAll']>().mockResolvedValue(undefined);
+  const onClear =
+    overrides.onClear ?? vi.fn<WorkspaceProps['onClear']>().mockResolvedValue(undefined);
   render(
     <PlanningWorkspaceView
       anchorDate="2026-07-15"
       courses={courses}
       items={[todayItem]}
       lessons={lessons}
-      onClearAll={onClearAll}
+      onClear={onClear}
       onCreate={onCreate}
       onGeneratePlanFlow={() => undefined}
       onMove={onMove}
@@ -85,19 +85,19 @@ function renderWorkspace(
       onReturn={() => undefined}
     />,
   );
-  return { onClearAll, onCreate, onMove };
+  return { onClear, onCreate, onMove };
 }
 
 describe('PlanningWorkspaceView date scheduling', () => {
-  it('clears all active schedules from one explicit planning action', async () => {
+  it('clears only the scheduled lessons in the current filtered result', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const onClearAll = vi.fn<WorkspaceProps['onClearAll']>().mockResolvedValue(undefined);
-    renderWorkspace({ onClearAll });
+    const onClear = vi.fn<WorkspaceProps['onClear']>().mockResolvedValue(undefined);
+    renderWorkspace({ onClear });
 
-    fireEvent.click(screen.getByRole('button', { name: '清空排期' }));
+    fireEvent.click(screen.getByRole('button', { name: '清空当前筛选结果中的排期' }));
 
-    await waitFor(() => expect(onClearAll).toHaveBeenCalledOnce());
-    expect(confirm).toHaveBeenCalledWith('确定清空当前全部排期吗？已完成的学习事实不会被删除。');
+    await waitFor(() => expect(onClear).toHaveBeenCalledWith(['schedule_01']));
+    expect(confirm).toHaveBeenCalledWith('清空当前筛选结果中的排期');
     confirm.mockRestore();
   });
 
@@ -133,7 +133,7 @@ describe('PlanningWorkspaceView date scheduling', () => {
             recommended: false,
           },
         ]}
-        onClearAll={async () => undefined}
+        onClear={async () => undefined}
         onCreate={async () => undefined}
         onGeneratePlanFlow={() => undefined}
         onMove={async () => undefined}

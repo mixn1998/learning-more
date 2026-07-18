@@ -1332,7 +1332,6 @@ a {
   border: 0;
 }
 
-.plan-flow-policy,
 .plan-flow-strategies > label {
   display: flex;
   align-items: flex-start;
@@ -1343,14 +1342,11 @@ a {
   background: var(--lm-paper);
 }
 
-.plan-flow-policy span,
-.plan-flow-policy small,
 .plan-flow-strategies span,
 .plan-flow-strategies small {
   display: block;
 }
 
-.plan-flow-policy small,
 .plan-flow-strategies small {
   margin-top: 3px;
   color: var(--lm-muted);

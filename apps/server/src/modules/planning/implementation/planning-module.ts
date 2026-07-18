@@ -173,7 +173,7 @@ export function createPlanningModule(options: {
         ),
       };
     },
-    async clearAll(context: CommandContext) {
+    async clear(scheduleItemIds: readonly string[], context: CommandContext) {
       const items = await all();
       const existingReceipt = items.filter((item) =>
         item.processedCommandIds.includes(context.commandId),
@@ -186,16 +186,19 @@ export function createPlanningModule(options: {
         throw new RepositoryVersionConflictError(currentVersion);
       }
       const timestamp = options.now().toISOString();
-      const scheduled = items.filter((item) => item.status === 'scheduled');
+      const selectedIds = new Set(scheduleItemIds);
+      const scheduled = items.filter(
+        (item) => item.status === 'scheduled' && selectedIds.has(item.id),
+      );
       if (scheduled.length === 0) return { removedItems: [], resourceVersion: currentVersion };
       await options.unitOfWork.execute(
-        { transactionId: `tx_schedule_clear_${randomUUID()}` },
+        { transactionId: `tx_schedule_clear_selection_${randomUUID()}` },
         async (tx) => {
           for (const current of scheduled) {
             const removed: ScheduleItem = {
               ...current,
               status: 'removed',
-              cancelReason: 'user_cleared_all',
+              cancelReason: 'user_removed',
               updatedAt: timestamp,
               processedCommandIds: [...current.processedCommandIds, context.commandId],
             };

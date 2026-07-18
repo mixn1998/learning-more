@@ -20,22 +20,20 @@ function fixture() {
   const get = vi.fn().mockResolvedValue({
     id: 'plan_flow_01',
     state: 'confirmed',
-    lifecycleState: 'active',
     resourceVersion: 3,
   });
   const manage = vi.fn().mockResolvedValue({
     id: 'plan_flow_01',
     state: 'confirmed',
-    lifecycleState: 'paused',
     resourceVersion: 4,
   });
-  const clearAll = vi.fn().mockResolvedValue({ removedItems: [], resourceVersion: 5 });
+  const clear = vi.fn().mockResolvedValue({ removedItems: [], resourceVersion: 5 });
   const snapshot = vi.fn().mockResolvedValue({ items: [], resourceVersion: 0 });
   const app = Fastify();
   void registerPlanningRoutes(app, {
     planning: {
       execute,
-      clearAll,
+      clear,
       snapshot,
       list: vi.fn().mockResolvedValue([]),
       getVersion: vi.fn().mockResolvedValue(0),
@@ -45,7 +43,7 @@ function fixture() {
     nextCorrelationId: () => 'correlation_01',
     now: () => new Date('2026-07-13T00:00:00.000Z'),
   });
-  return { app, execute, requestPreview, confirm, get, manage, clearAll, snapshot };
+  return { app, execute, requestPreview, confirm, get, manage, clear, snapshot };
 }
 
 describe('Planning HTTP routes', () => {
@@ -167,17 +165,19 @@ describe('Planning HTTP routes', () => {
     );
   });
 
-  it('clears all current schedule assignments through one versioned command', async () => {
-    const { app, clearAll } = fixture();
+  it('clears the selected schedule assignments through one command', async () => {
+    const { app, clear } = fixture();
     const response = await app.inject({
       method: 'DELETE',
       url: '/api/v1/schedule',
       headers: { ...headers, 'if-match': '"4"' },
+      payload: { scheduleItemIds: ['schedule_01'] },
     });
 
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json()).toEqual({ items: [], resourceVersion: 5 });
-    expect(clearAll).toHaveBeenCalledWith(
+    expect(clear).toHaveBeenCalledWith(
+      ['schedule_01'],
       expect.objectContaining({ expectedVersion: 4, pageInstanceId: 'page_01' }),
     );
   });
@@ -196,12 +196,12 @@ describe('Planning HTTP routes', () => {
       method: 'POST',
       url: '/api/v1/plan-flows/plan_flow_01/actions',
       headers: { ...headers, 'if-match': '"3"' },
-      payload: { action: 'pause' },
+      payload: { action: 'undo' },
     });
     expect(action.statusCode, action.body).toBe(200);
     expect(manage).toHaveBeenCalledWith(
       'plan_flow_01',
-      'pause',
+      'undo',
       expect.objectContaining({ expectedVersion: 3 }),
     );
   });

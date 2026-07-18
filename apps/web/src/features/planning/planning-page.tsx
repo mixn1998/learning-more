@@ -166,9 +166,13 @@ export function PlanningPage(props: {
           ]);
           setVersion((current) => current + 1);
         }}
-        onClearAll={async () => {
-          const key = `schedule-clear:${version}`;
-          const cleared = await api.clearSchedule(version, commands.attemptFor(key));
+        onClear={async (scheduleItemIds) => {
+          const key = `schedule-clear:${version}:${scheduleItemIds.join(',')}`;
+          const cleared = await api.clearSchedule(
+            scheduleItemIds,
+            version,
+            commands.attemptFor(key),
+          );
           commands.complete(key);
           setItems(cleared.items);
           setVersion(cleared.resourceVersion);

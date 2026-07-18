@@ -341,37 +341,4 @@ describe('PlanFlowService', () => {
       }),
     ).rejects.toMatchObject({ code: 'plan_flow_undo_conflict' });
   });
-
-  it('reflows remaining lessons and can restore the exact prior batch', async () => {
-    const { service, schedules } = fixture();
-    const ready = await service.requestPreview(previewInput, 'preview_for_reflow');
-    const confirmed = await service.confirm(ready.id, {
-      ...context,
-      commandId: 'confirm_for_reflow',
-      expectedVersion: ready.resourceVersion,
-    });
-    const originalIds = confirmed.confirmedScheduleItemIds;
-    const reflowed = await service.manage(confirmed.id, 'reflow', {
-      ...context,
-      commandId: 'reflow_01',
-      expectedVersion: confirmed.resourceVersion,
-    });
-    expect(reflowed.confirmedScheduleItemIds).not.toEqual(originalIds);
-
-    const restored = await service.manage(reflowed.id, 'undo', {
-      ...context,
-      commandId: 'undo_reflow',
-      expectedVersion: reflowed.resourceVersion,
-    });
-    expect(restored.confirmedScheduleItemIds).toEqual(originalIds);
-    for (const id of originalIds) {
-      await expect(schedules.get(id)).resolves.toMatchObject({ status: 'scheduled' });
-    }
-    for (const id of reflowed.confirmedScheduleItemIds) {
-      await expect(schedules.get(id)).resolves.toMatchObject({
-        status: 'removed',
-        cancelReason: 'plan_flow_undone',
-      });
-    }
-  });
 });

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import {
+  ClearScheduleBodySchema,
   ConfirmPlanFlowBodySchema,
   CreateScheduleAssignmentBodySchema,
   PlanFlowActionBodySchema,
@@ -33,7 +34,14 @@ function correlationId(request: FastifyRequest, options: PlanningRouteOptions): 
 }
 
 function planFlowView(flow: PlanFlow) {
-  const { lastScheduleMutation, ...view } = flow;
+  const {
+    lastScheduleMutation,
+    lifecycleState: _legacyLifecycleState,
+    ...view
+  } = flow as PlanFlow & {
+    lifecycleState?: 'active' | 'paused' | 'deleted';
+  };
+  void _legacyLifecycleState;
   return { ...view, undoAvailable: lastScheduleMutation !== undefined };
 }
 
@@ -119,6 +127,7 @@ export async function registerPlanningRoutes(
   app.delete('/api/v1/schedule', async (request, reply) => {
     const correlation = correlationId(request, options);
     try {
+      const body = ClearScheduleBodySchema.parse(request.body);
       const context = buildCommandContext(request, {
         commandId: options.nextCommandId(),
         correlationId: correlation,
@@ -126,7 +135,7 @@ export async function registerPlanningRoutes(
         requireIfMatch: true,
         requirePageInstanceId: true,
       });
-      const result = await options.planning.clearAll(context);
+      const result = await options.planning.clear(body.scheduleItemIds, context);
       const view = await options.planning.snapshot();
       return reply
         .header('etag', `"${result.resourceVersion}"`)

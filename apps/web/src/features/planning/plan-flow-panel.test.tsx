@@ -28,7 +28,6 @@ describe('PlanFlowPanel', () => {
     const confirmed = {
       id: 'plan_flow_undo',
       state: 'confirmed' as const,
-      lifecycleState: 'active' as const,
       constraintsArtifactRef: 'constraints_manual',
       courseRefs: [course.courseId],
       lessonRefs: [lesson.lessonId],
@@ -70,6 +69,10 @@ describe('PlanFlowPanel', () => {
       'undo',
     );
     expect(confirmUndo).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '暂停计划流' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '恢复计划流' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新排剩余' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除计划' })).not.toBeInTheDocument();
     confirmUndo.mockRestore();
   });
 

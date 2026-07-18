@@ -208,7 +208,7 @@ export function PlanningFixture() {
         items={items}
         lessons={lessons}
         metadata={metadata}
-        onClearAll={async () => undefined}
+        onClear={async () => undefined}
         onCreate={async () => undefined}
         onGeneratePlanFlow={() => undefined}
         onMove={async () => undefined}
@@ -228,7 +228,7 @@ export function PlanFlowFixture() {
       initialStartDate="2026-07-13"
       lessons={lessons}
       onClose={() => undefined}
-      onConfirm={async () => ({ ...preview, state: 'confirmed', lifecycleState: 'active' })}
+      onConfirm={async () => ({ ...preview, state: 'confirmed' })}
       onManage={async (flow) => flow}
       onPreview={async () => preview}
     />

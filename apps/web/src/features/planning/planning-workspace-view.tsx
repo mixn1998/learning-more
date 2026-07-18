@@ -80,7 +80,7 @@ export function PlanningWorkspaceView(props: {
     draft: Readonly<{ startAt: string; endAt: string }>,
   ) => Promise<void>;
   readonly onRemove: (item: ScheduleItemView) => Promise<void>;
-  readonly onClearAll: () => Promise<void>;
+  readonly onClear: (scheduleItemIds: readonly string[]) => Promise<void>;
   readonly onGeneratePlanFlow: () => void;
   readonly onReturn: () => void;
 }) {
@@ -92,7 +92,7 @@ export function PlanningWorkspaceView(props: {
   const [savingLessonIds, setSavingLessonIds] = useState<ReadonlySet<string>>(new Set());
   const [scheduleErrors, setScheduleErrors] = useState<Readonly<Record<string, string>>>({});
   const [clearingAll, setClearingAll] = useState(false);
-  const [clearAllError, setClearAllError] = useState<string>();
+  const [clearError, setClearError] = useState<string>();
 
   const entries = useMemo<readonly PlanningEntry[]>(() => {
     const courseById = new Map(props.courses.map((course) => [course.courseId, course]));
@@ -197,19 +197,20 @@ export function PlanningWorkspaceView(props: {
     }
   }
 
-  async function clearAllSchedules() {
-    if (clearingAll || !window.confirm('确定清空当前全部排期吗？已完成的学习事实不会被删除。')) {
+  const visibleScheduleItemIds = visibleEntries.flatMap((entry) =>
+    entry.schedule === undefined ? [] : [entry.schedule.id],
+  );
+
+  async function clearVisibleSchedules() {
+    if (clearingAll || !window.confirm('清空当前筛选结果中的排期')) {
       return;
     }
     setClearingAll(true);
-    setClearAllError(undefined);
+    setClearError(undefined);
     try {
-      await props.onClearAll();
-      setSelectedDate('');
-      setStatusFilter('');
-      setDisciplineFilter('');
+      await props.onClear(visibleScheduleItemIds);
     } catch {
-      setClearAllError('清空失败，排期版本可能已经变化，请重试。');
+      setClearError('清空失败，排期版本可能已经变化，请重试。');
     } finally {
       setClearingAll(false);
     }
@@ -225,11 +226,13 @@ export function PlanningWorkspaceView(props: {
         <div className="lm-actions">
           <button
             className="lm-btn"
-            disabled={clearingAll || savingLessonIds.size > 0 || props.items.length === 0}
+            disabled={
+              clearingAll || savingLessonIds.size > 0 || visibleScheduleItemIds.length === 0
+            }
             type="button"
-            onClick={() => void clearAllSchedules()}
+            onClick={() => void clearVisibleSchedules()}
           >
-            {clearingAll ? '正在清空…' : '清空排期'}
+            {clearingAll ? '正在清空…' : '清空当前筛选结果中的排期'}
           </button>
           <button
             className="lm-btn primary"
@@ -244,9 +247,9 @@ export function PlanningWorkspaceView(props: {
           </button>
         </div>
       </section>
-      {clearAllError === undefined ? null : (
+      {clearError === undefined ? null : (
         <p className="pf-note" role="alert">
-          {clearAllError}
+          {clearError}
         </p>
       )}
 

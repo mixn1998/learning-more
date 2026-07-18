@@ -54,7 +54,7 @@ export interface PlanningOutlineRevisionParticipant {
 
 export interface PlanningModule {
   execute(command: PlanningCommand, context: CommandContext): Promise<PlanningResult>;
-  clearAll(context: CommandContext): Promise<PlanningClearResult>;
+  clear(scheduleItemIds: readonly string[], context: CommandContext): Promise<PlanningClearResult>;
   snapshot(): Promise<PlanningScheduleSnapshot>;
   list(): Promise<readonly ScheduleItem[]>;
   getVersion(): Promise<number>;

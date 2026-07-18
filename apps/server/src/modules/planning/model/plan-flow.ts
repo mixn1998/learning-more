@@ -17,7 +17,6 @@ export type PlanFlowScheduleMutation = Readonly<{
   kind: 'confirm' | 'reflow';
   occurredAt: string;
   beforeState: PlanFlowState;
-  beforeLifecycleState?: 'active' | 'paused' | 'deleted';
   beforeSuggestions: readonly PlanSuggestion[];
   beforeConfirmedScheduleItemIds: readonly string[];
   beforeScheduleItems: readonly ScheduleItem[];
@@ -42,7 +41,6 @@ export type PlanFlow = Readonly<{
   confirmationReceipts: Readonly<Record<string, readonly string[]>>;
   confirmedScheduleItemIds: readonly string[];
   lastScheduleMutation?: PlanFlowScheduleMutation;
-  lifecycleState?: 'active' | 'paused' | 'deleted';
   processedCommandIds?: readonly string[];
   source: ScheduleSource;
   errorCode?: string;

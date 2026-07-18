@@ -246,7 +246,7 @@ export function createLocalPlanningRuntime(
     routes: {
       planning: {
         execute: planning.execute,
-        clearAll: planning.clearAll,
+        clear: planning.clear,
         snapshot: currentScheduleSnapshot,
         list: listCurrentSchedule,
         getVersion: planning.getVersion,

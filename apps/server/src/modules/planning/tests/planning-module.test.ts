@@ -207,7 +207,7 @@ describe('PlanningModule', () => {
     ]);
   });
 
-  it('clears every active schedule atomically while preserving removed records', async () => {
+  it('clears only the selected active schedules', async () => {
     const { module, repository, events } = fixture();
     for (const lessonId of ['lesson_01', 'lesson_02']) {
       await module.execute(
@@ -224,30 +224,26 @@ describe('PlanningModule', () => {
       );
     }
 
-    const cleared = await module.clearAll({
+    const cleared = await module.clear(['schedule_1'], {
       ...baseContext,
-      commandId: 'clear_all',
+      commandId: 'clear_selection',
       expectedVersion: 2,
     });
 
-    expect(cleared.removedItems).toHaveLength(2);
-    await expect(module.list()).resolves.toEqual([]);
+    expect(cleared.removedItems).toHaveLength(1);
+    await expect(module.list()).resolves.toEqual([
+      expect.objectContaining({ id: 'schedule_2', status: 'scheduled' }),
+    ]);
     await expect(repository.get('schedule_1')).resolves.toMatchObject({
       status: 'removed',
-      cancelReason: 'user_cleared_all',
+      cancelReason: 'user_removed',
       resourceVersion: 2,
     });
     await expect(repository.get('schedule_2')).resolves.toMatchObject({
-      status: 'removed',
-      cancelReason: 'user_cleared_all',
-      resourceVersion: 2,
+      status: 'scheduled',
+      resourceVersion: 1,
     });
-    expect(events).toEqual([
-      'SchedulePlanned',
-      'SchedulePlanned',
-      'ScheduleCancelled',
-      'ScheduleCancelled',
-    ]);
+    expect(events).toEqual(['SchedulePlanned', 'SchedulePlanned', 'ScheduleCancelled']);
   });
 
   it('round-trips UTC intervals and sorts deterministically over 2,000 generated cases', () => {

@@ -38,6 +38,10 @@ export const ScheduleViewResponseSchema = z.strictObject({
   resourceVersion: z.number().int().nonnegative(),
 });
 
+export const ClearScheduleBodySchema = z.strictObject({
+  scheduleItemIds: z.array(identifier).min(1),
+});
+
 export const CreateScheduleAssignmentBodySchema = z
   .strictObject({
     courseId: identifier,
@@ -73,7 +77,7 @@ export const UpdateScheduleAssignmentBodySchema = z.union([
 ]);
 
 export const PlanFlowActionBodySchema = z.strictObject({
-  action: z.enum(['pause', 'resume', 'reflow', 'undo', 'end']),
+  action: z.literal('undo'),
 });
 
 export const PlanSuggestionSchema = z.strictObject({
@@ -96,7 +100,6 @@ export const PlanFlowViewSchema = z.strictObject({
     'failed',
     'cancelled',
   ]),
-  lifecycleState: z.enum(['active', 'paused', 'deleted']).optional(),
   constraintsArtifactRef: identifier,
   courseRefs: z.array(identifier),
   lessonRefs: z.array(identifier),

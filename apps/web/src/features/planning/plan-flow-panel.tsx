@@ -713,38 +713,12 @@ export function PlanFlowPanel(props: {
                 ) : preview.state === 'confirmed' ? (
                   <div className="pf-actions">
                     <button
-                      className="pf-btn soft"
-                      disabled={busy}
-                      type="button"
-                      onClick={() =>
-                        void manage(preview.lifecycleState === 'paused' ? 'resume' : 'pause')
-                      }
-                    >
-                      {preview.lifecycleState === 'paused' ? '恢复计划流' : '暂停计划流'}
-                    </button>
-                    <button
-                      className="pf-btn"
-                      disabled={busy}
-                      type="button"
-                      onClick={() => void manage('reflow')}
-                    >
-                      重新排剩余
-                    </button>
-                    <button
                       className="pf-btn"
                       disabled={busy || preview.undoAvailable !== true}
                       type="button"
                       onClick={() => void manage('undo')}
                     >
                       撤回排期
-                    </button>
-                    <button
-                      className="pf-btn danger"
-                      disabled={busy}
-                      type="button"
-                      onClick={() => void manage('end')}
-                    >
-                      删除计划
                     </button>
                   </div>
                 ) : previewIsStale ? (

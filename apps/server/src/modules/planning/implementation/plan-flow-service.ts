@@ -13,7 +13,6 @@ import {
 } from '../model/schedule-item.js';
 import type { PlanFlowRepository } from '../ports/plan-flow-repository.js';
 import type { ScheduleRepository } from '../ports/schedule-repository.js';
-import { applyPlanFlowAction, type PlanFlowAction } from './plan-flow-policy.js';
 import { buildPlanSuggestions } from './plan-flow-scheduler.js';
 
 class PlanFlowError extends Error {
@@ -269,130 +268,6 @@ export function createPlanFlowService(options: {
     return items.filter((item): item is ScheduleItem => item !== undefined);
   }
 
-  function scheduleItemsFromSuggestions(
-    suggestions: readonly PlanSuggestion[],
-    commandId: string,
-    timestamp: string,
-  ): readonly ScheduleItem[] {
-    return suggestions.map((suggestion) => ({
-      id: options.nextScheduleItemId(),
-      courseId: suggestion.courseId,
-      lessonId: suggestion.lessonId,
-      startAt: suggestion.startAt,
-      endAt: suggestion.endAt,
-      timezoneAtCreation: suggestion.timezoneAtCreation,
-      source: 'plan-flow',
-      status: 'scheduled',
-      locked: false,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      processedCommandIds: [commandId],
-      resourceVersion: 0,
-    }));
-  }
-
-  async function reflow(current: PlanFlow, context: CommandContext): Promise<PlanFlow> {
-    if ((current.lifecycleState ?? 'active') !== 'active') {
-      throw new PlanFlowError('plan_flow_not_confirmable');
-    }
-    const priorItems = await loadScheduleItems(current.confirmedScheduleItemIds);
-    const preserved = priorItems.filter(
-      (item) => item.status === 'scheduled' && item.locked === true,
-    );
-    const reflowTargets = priorItems.filter(
-      (item) => item.status === 'scheduled' && item.locked !== true,
-    );
-    const preservedLessonIds = new Set(preserved.map((item) => item.lessonId));
-    const lessonIds: string[] = [];
-    for (const lessonId of current.lessonRefs) {
-      if (!preservedLessonIds.has(lessonId) && (await options.lessonIsPlannable(lessonId))) {
-        lessonIds.push(lessonId);
-      }
-    }
-    const previewContext = await options.assemblePreviewContext(current);
-    const ignoredIds = new Set(reflowTargets.map((item) => item.id));
-    const today = localDateAt(options.now().toISOString(), previewContext.timezone);
-    const effectiveContext: PlanPreviewContext = {
-      ...previewContext,
-      availability: {
-        ...previewContext.availability,
-        startLocalDate:
-          previewContext.availability.startLocalDate === undefined ||
-          previewContext.availability.startLocalDate < today
-            ? today
-            : previewContext.availability.startLocalDate,
-      },
-      lessons: previewContext.lessons.filter((lesson) => lessonIds.includes(lesson.lessonId)),
-      existingSchedule: previewContext.existingSchedule.filter(
-        (item) => item.id === undefined || !ignoredIds.has(item.id),
-      ),
-      fixedCommitments: previewContext.fixedCommitments.filter(
-        (item) => item.id === undefined || !ignoredIds.has(item.id),
-      ),
-    };
-    let suggestions: readonly PlanSuggestion[];
-    try {
-      suggestions = buildPlanSuggestions(effectiveContext, lessonIds);
-    } catch {
-      throw new PlanFlowError('plan_flow_not_confirmable');
-    }
-    await validateSuggestions(current, suggestions, lessonIds, ignoredIds);
-    const existing = effectiveContext.existingSchedule.filter((item) => item.status !== 'removed');
-    if (suggestions.some((suggestion) => existing.some((item) => overlaps(item, suggestion)))) {
-      throw new PlanFlowError('plan_flow_not_confirmable');
-    }
-
-    const timestamp = options.now().toISOString();
-    const created = scheduleItemsFromSuggestions(suggestions, context.commandId, timestamp);
-    const cancelled = reflowTargets.map((item): ScheduleItem => ({
-      ...item,
-      status: 'removed',
-      cancelReason: 'plan_flow_reflowed',
-      updatedAt: timestamp,
-      processedCommandIds: [...item.processedCommandIds, context.commandId],
-    }));
-    const expectedScheduleVersions = Object.fromEntries([
-      ...cancelled.map((item) => [item.id, item.resourceVersion + 1] as const),
-      ...created.map((item) => [item.id, item.resourceVersion + 1] as const),
-    ]);
-    const next: PlanFlow = {
-      ...current,
-      suggestions,
-      conflicts: [],
-      confirmedScheduleItemIds: [
-        ...preserved.map((item) => item.id),
-        ...created.map((item) => item.id),
-      ],
-      lastScheduleMutation: {
-        kind: 'reflow',
-        occurredAt: timestamp,
-        beforeState: current.state,
-        ...(current.lifecycleState === undefined
-          ? {}
-          : { beforeLifecycleState: current.lifecycleState }),
-        beforeSuggestions: current.suggestions,
-        beforeConfirmedScheduleItemIds: current.confirmedScheduleItemIds,
-        beforeScheduleItems: reflowTargets,
-        createdScheduleItemIds: created.map((item) => item.id),
-        expectedScheduleVersions,
-      },
-      processedCommandIds: [...(current.processedCommandIds ?? []), context.commandId],
-      updatedAt: timestamp,
-    };
-    await options.unitOfWork.execute(
-      { transactionId: `tx_reflow_plan_flow_${current.id}_${randomUUID()}` },
-      async (tx) => {
-        for (const item of cancelled) {
-          await options.scheduleRepository.save(tx, item, item.resourceVersion);
-        }
-        for (const item of created) await options.scheduleRepository.save(tx, item, 0);
-        await options.recordScheduleMutation?.({ planned: created, cancelled }, current.id, tx);
-        await options.repository.save(tx, next, current.resourceVersion);
-      },
-    );
-    return (await options.repository.get(current.id))!;
-  }
-
   async function undoLastScheduleMutation(
     current: PlanFlow,
     context: CommandContext,
@@ -462,19 +337,11 @@ export function createPlanFlowService(options: {
     });
     const scheduleVersionAfterUndo =
       (await options.getScheduleVersion()) + cancelled.length + restored.length;
-    const {
-      lastScheduleMutation: _lastScheduleMutation,
-      lifecycleState: _lifecycleState,
-      ...flowWithoutMutation
-    } = current;
+    const { lastScheduleMutation: _lastScheduleMutation, ...flowWithoutMutation } = current;
     void _lastScheduleMutation;
-    void _lifecycleState;
     const next: PlanFlow = {
       ...flowWithoutMutation,
       state: mutation.beforeState,
-      ...(mutation.beforeLifecycleState === undefined
-        ? {}
-        : { lifecycleState: mutation.beforeLifecycleState }),
       suggestions: mutation.beforeSuggestions,
       confirmedScheduleItemIds: mutation.beforeConfirmedScheduleItemIds,
       baseScheduleVersion:
@@ -644,9 +511,6 @@ export function createPlanFlowService(options: {
         kind: 'confirm',
         occurredAt: timestamp,
         beforeState: current.state,
-        ...(current.lifecycleState === undefined
-          ? {}
-          : { beforeLifecycleState: current.lifecycleState }),
         beforeSuggestions: current.suggestions,
         beforeConfirmedScheduleItemIds: current.confirmedScheduleItemIds,
         beforeScheduleItems: [],
@@ -656,7 +520,6 @@ export function createPlanFlowService(options: {
       const confirmed: PlanFlow = {
         ...current,
         state: 'confirmed',
-        lifecycleState: 'active',
         processedCommandIds: [...(current.processedCommandIds ?? []), context.commandId],
         confirmationReceipts: {
           ...current.confirmationReceipts,
@@ -681,7 +544,7 @@ export function createPlanFlowService(options: {
       return (await options.repository.get(id))!;
     },
 
-    async manage(id: string, action: PlanFlowAction | 'undo' | 'end', context: CommandContext) {
+    async manage(id: string, action: 'undo', context: CommandContext) {
       const current = await options.repository.get(id);
       if (current === undefined) throw new PlanFlowError('plan_flow_not_found');
       if (current.state !== 'confirmed') throw new PlanFlowError('plan_flow_not_confirmable');
@@ -689,26 +552,8 @@ export function createPlanFlowService(options: {
       if (context.expectedVersion !== current.resourceVersion) {
         throw new RepositoryVersionConflictError(current.resourceVersion);
       }
-      if (action === 'undo') return undoLastScheduleMutation(current, context);
-      if (action === 'reflow') return reflow(current, context);
-      let lifecycleState: 'active' | 'paused' | 'deleted';
-      try {
-        lifecycleState = applyPlanFlowAction(
-          current.lifecycleState ?? 'active',
-          action === 'end' ? 'delete' : action,
-        );
-      } catch {
-        throw new PlanFlowError('plan_flow_not_confirmable');
-      }
-      return save(
-        {
-          ...current,
-          lifecycleState,
-          processedCommandIds: [...(current.processedCommandIds ?? []), context.commandId],
-          updatedAt: options.now().toISOString(),
-        },
-        false,
-      );
+      void action;
+      return undoLastScheduleMutation(current, context);
     },
 
     get: (id: string) => options.repository.get(id),
