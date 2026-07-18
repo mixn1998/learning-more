@@ -208,6 +208,7 @@ export function PlanningFixture() {
         items={items}
         lessons={lessons}
         metadata={metadata}
+        onClearAll={async () => undefined}
         onCreate={async () => undefined}
         onGeneratePlanFlow={() => undefined}
         onMove={async () => undefined}

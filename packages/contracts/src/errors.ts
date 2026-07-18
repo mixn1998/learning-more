@@ -48,6 +48,8 @@ export const ERROR_CODES = [
   'plan_flow_not_found',
   'plan_preview_invalid',
   'plan_flow_not_confirmable',
+  'plan_flow_nothing_to_undo',
+  'plan_flow_undo_conflict',
   'weekly_report_not_found',
   'weekly_report_immutable',
   'course_closed',

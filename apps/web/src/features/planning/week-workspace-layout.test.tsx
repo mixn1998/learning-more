@@ -83,6 +83,7 @@ describe('shared week workspace presentation', () => {
             recommended: false,
           },
         ]}
+        onClearAll={async () => undefined}
         onCreate={async () => undefined}
         onGeneratePlanFlow={() => undefined}
         onMove={async () => undefined}

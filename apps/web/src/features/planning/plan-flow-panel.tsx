@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import type { HomeDashboardView } from '@learning-more/contracts';
+import { ApplicationProblemSchema, type HomeDashboardView } from '@learning-more/contracts';
 
 import type { PlanFlowAction, PlanFlowPreviewView } from '../../client/planning-client.js';
 
@@ -314,12 +314,27 @@ export function PlanFlowPanel(props: {
 
   async function manage(action: PlanFlowAction) {
     if (preview === undefined) return;
+    if (
+      action === 'undo' &&
+      !window.confirm(
+        '仅撤回该计划流最近一次自动排期，不会修改手动排期；如恢复排期与后续手动修改冲突，系统将拒绝撤回。确定继续吗？',
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
       setPreview(await props.onManage(preview, action));
-    } catch {
-      setError('计划流状态已变化，请刷新后重试。');
+    } catch (caught) {
+      const problem = ApplicationProblemSchema.safeParse(caught);
+      setError(
+        problem.success && problem.data.code === 'plan_flow_undo_conflict'
+          ? '无法撤回：计划流排期在上次操作后已被手动修改，或恢复日期与现有排期冲突。未修改任何排期。'
+          : problem.success && problem.data.code === 'plan_flow_nothing_to_undo'
+            ? '当前没有可撤回的计划流排期操作。'
+            : '计划流状态已变化，请刷新后重试。',
+      );
     } finally {
       setBusy(false);
     }
@@ -714,6 +729,14 @@ export function PlanFlowPanel(props: {
                       onClick={() => void manage('reflow')}
                     >
                       重新排剩余
+                    </button>
+                    <button
+                      className="pf-btn"
+                      disabled={busy || preview.undoAvailable !== true}
+                      type="button"
+                      onClick={() => void manage('undo')}
+                    >
+                      撤回排期
                     </button>
                     <button
                       className="pf-btn danger"

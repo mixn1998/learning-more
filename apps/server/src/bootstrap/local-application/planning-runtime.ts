@@ -154,6 +154,8 @@ export function createLocalPlanningRuntime(
     },
     getLessonPrerequisiteIds: async (lessonId) =>
       (await currentLesson(lessonId))?.prerequisiteLessonIds ?? [],
+    getCourseLessonIds: async (courseId) =>
+      (await input.course.access.getCourse(courseId))?.lessonIds ?? [],
     nextPlanFlowId: () => `plan_flow_${randomUUID()}`,
     nextScheduleItemId: () => `schedule_${randomUUID()}`,
     now: () => new Date(),
@@ -183,6 +185,43 @@ export function createLocalPlanningRuntime(
         }),
       );
     },
+    async recordScheduleMutation(mutation, planFlowId, tx) {
+      const timestamp = new Date().toISOString();
+      await input.events.outbox.enqueue(
+        tx,
+        [
+          ...mutation.planned.map((item) => ({ item, type: 'SchedulePlanned' as const })),
+          ...mutation.cancelled.map((item) => ({
+            item,
+            type: 'ScheduleCancelled' as const,
+          })),
+        ].map(({ item, type }) => {
+          const eventId = `event_${randomUUID()}`;
+          return {
+            id: eventId,
+            schema_version: 1,
+            type,
+            occurred_at: timestamp,
+            recorded_at: timestamp,
+            source: 'Planning',
+            target_refs: {
+              scheduleItemId: item.id,
+              courseId: item.courseId,
+              lessonId: item.lessonId,
+              planFlowId,
+            },
+            payload: {
+              scheduleItemId: item.id,
+              planFlowId,
+              source: 'plan-flow',
+              ...(item.cancelReason === undefined ? {} : { reason: item.cancelReason }),
+            },
+            idempotency_key: eventId,
+            correlation_id: eventId,
+          } satisfies LearningEventEnvelope;
+        }),
+      );
+    },
   });
 
   async function listCurrentSchedule() {
@@ -198,7 +237,9 @@ export function createLocalPlanningRuntime(
     routes: {
       planning: {
         execute: planning.execute,
+        clearAll: planning.clearAll,
         list: listCurrentSchedule,
+        getVersion: planning.getVersion,
       },
       planFlows: {
         requestPreview: planFlows.requestPreview,

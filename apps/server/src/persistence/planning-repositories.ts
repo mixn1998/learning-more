@@ -22,7 +22,16 @@ const ScheduleItemSchema = z.strictObject({
   source: z.enum(['manual', 'plan-flow']),
   status: z.enum(['scheduled', 'removed']),
   locked: z.boolean().optional(),
-  cancelReason: z.enum(['lesson_abandoned', 'user_removed', 'outline_revised']).optional(),
+  cancelReason: z
+    .enum([
+      'lesson_abandoned',
+      'user_removed',
+      'user_cleared_all',
+      'outline_revised',
+      'plan_flow_reflowed',
+      'plan_flow_undone',
+    ])
+    .optional(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
   processedCommandIds: z.array(z.string().min(1)),
@@ -36,6 +45,26 @@ const PlanSuggestionSchema = z.strictObject({
   endAt: z.iso.datetime({ offset: true }),
   timezoneAtCreation: z.string().min(1),
   explanation: z.string(),
+});
+
+const PlanFlowScheduleMutationSchema = z.strictObject({
+  kind: z.enum(['confirm', 'reflow']),
+  occurredAt: z.iso.datetime({ offset: true }),
+  beforeState: z.enum([
+    'draft',
+    'previewing',
+    'preview-ready',
+    'confirming',
+    'confirmed',
+    'failed',
+    'cancelled',
+  ]),
+  beforeLifecycleState: z.enum(['active', 'paused', 'deleted']).optional(),
+  beforeSuggestions: z.array(PlanSuggestionSchema),
+  beforeConfirmedScheduleItemIds: z.array(z.string().min(1)),
+  beforeScheduleItems: z.array(ScheduleItemSchema),
+  createdScheduleItemIds: z.array(z.string().min(1)),
+  expectedScheduleVersions: z.record(z.string().min(1), z.number().int().nonnegative()),
 });
 
 const PlanFlowSchema = z.strictObject({
@@ -66,6 +95,7 @@ const PlanFlowSchema = z.strictObject({
   conflicts: z.array(z.string().min(1)),
   confirmationReceipts: z.record(z.string().min(1), z.array(z.string().min(1))),
   confirmedScheduleItemIds: z.array(z.string().min(1)),
+  lastScheduleMutation: PlanFlowScheduleMutationSchema.optional(),
   processedCommandIds: z.array(z.string().min(1)).optional(),
   source: z.literal('plan-flow'),
   errorCode: z.string().min(1).optional(),

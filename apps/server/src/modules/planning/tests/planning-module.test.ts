@@ -207,6 +207,49 @@ describe('PlanningModule', () => {
     ]);
   });
 
+  it('clears every active schedule atomically while preserving removed records', async () => {
+    const { module, repository, events } = fixture();
+    for (const lessonId of ['lesson_01', 'lesson_02']) {
+      await module.execute(
+        {
+          type: 'CreateScheduleItem',
+          courseId: 'course_01',
+          lessonId,
+          startAt: `2026-07-${lessonId === 'lesson_01' ? '13' : '14'}T01:00:00.000Z`,
+          endAt: `2026-07-${lessonId === 'lesson_01' ? '13' : '14'}T02:00:00.000Z`,
+          timezoneAtCreation: 'Asia/Shanghai',
+          source: 'manual',
+        },
+        { ...baseContext, commandId: `create_${lessonId}` },
+      );
+    }
+
+    const cleared = await module.clearAll({
+      ...baseContext,
+      commandId: 'clear_all',
+      expectedVersion: 2,
+    });
+
+    expect(cleared.removedItems).toHaveLength(2);
+    await expect(module.list()).resolves.toEqual([]);
+    await expect(repository.get('schedule_1')).resolves.toMatchObject({
+      status: 'removed',
+      cancelReason: 'user_cleared_all',
+      resourceVersion: 2,
+    });
+    await expect(repository.get('schedule_2')).resolves.toMatchObject({
+      status: 'removed',
+      cancelReason: 'user_cleared_all',
+      resourceVersion: 2,
+    });
+    expect(events).toEqual([
+      'SchedulePlanned',
+      'SchedulePlanned',
+      'ScheduleCancelled',
+      'ScheduleCancelled',
+    ]);
+  });
+
   it('round-trips UTC intervals and sorts deterministically over 2,000 generated cases', () => {
     fc.assert(
       fc.property(

@@ -1,4 +1,5 @@
 import type { ScheduleSource } from './schedule-item.js';
+import type { ScheduleItem } from './schedule-item.js';
 
 export type PlanFlowState =
   'draft' | 'previewing' | 'preview-ready' | 'confirming' | 'confirmed' | 'failed' | 'cancelled';
@@ -10,6 +11,18 @@ export type PlanSuggestion = Readonly<{
   endAt: string;
   timezoneAtCreation: string;
   explanation: string;
+}>;
+
+export type PlanFlowScheduleMutation = Readonly<{
+  kind: 'confirm' | 'reflow';
+  occurredAt: string;
+  beforeState: PlanFlowState;
+  beforeLifecycleState?: 'active' | 'paused' | 'deleted';
+  beforeSuggestions: readonly PlanSuggestion[];
+  beforeConfirmedScheduleItemIds: readonly string[];
+  beforeScheduleItems: readonly ScheduleItem[];
+  createdScheduleItemIds: readonly string[];
+  expectedScheduleVersions: Readonly<Record<string, number>>;
 }>;
 
 export type PlanFlow = Readonly<{
@@ -28,6 +41,7 @@ export type PlanFlow = Readonly<{
   conflicts: readonly string[];
   confirmationReceipts: Readonly<Record<string, readonly string[]>>;
   confirmedScheduleItemIds: readonly string[];
+  lastScheduleMutation?: PlanFlowScheduleMutation;
   lifecycleState?: 'active' | 'paused' | 'deleted';
   processedCommandIds?: readonly string[];
   source: ScheduleSource;

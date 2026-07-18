@@ -207,7 +207,7 @@ export function runEquivalenceCheck(
   const entries = readEquivalenceMatrix(matrixPath);
   const sourceEntries = extractEquivalenceSource(readFileSync(sourcePath, 'utf8'));
   const issues: unknown[] = [
-    ...checkEquivalence(entries, 78, (testPath) =>
+    ...checkEquivalence(entries, 80, (testPath) =>
       existsSync(path.resolve(repositoryRoot, testPath)),
     ),
     ...checkEquivalenceSource(entries, sourceEntries),

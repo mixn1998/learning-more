@@ -12,7 +12,7 @@ import { apiRequest, type CommandAttempt } from './api-client.js';
 
 export type ScheduleItemView = ContractScheduleItemView;
 export type PlanFlowPreviewView = PlanFlowView;
-export type PlanFlowAction = 'pause' | 'resume' | 'reflow' | 'end';
+export type PlanFlowAction = 'pause' | 'resume' | 'reflow' | 'undo' | 'end';
 
 type CreateScheduleInput = Readonly<{
   courseId: string;
@@ -25,6 +25,10 @@ type CreateScheduleInput = Readonly<{
 export interface PlanningClient {
   getSchedule(): Promise<{ items: readonly ScheduleItemView[]; resourceVersion: number }>;
   getPlanningContext(): Promise<Pick<HomeDashboardView, 'courses' | 'lessons'>>;
+  clearSchedule(
+    resourceVersion: number,
+    command: CommandAttempt,
+  ): Promise<{ items: readonly ScheduleItemView[]; resourceVersion: number }>;
   createSchedule(
     input: CreateScheduleInput,
     command: CommandAttempt,
@@ -106,6 +110,16 @@ export const planningClient: PlanningClient = {
       })
     ).data;
     return { courses: view.courses, lessons: view.lessons };
+  },
+  async clearSchedule(resourceVersion, command) {
+    return (
+      await apiRequest('/api/v1/schedule', {
+        method: 'DELETE',
+        schema: ScheduleViewResponseSchema,
+        command,
+        resourceVersion,
+      })
+    ).data;
   },
   async createSchedule(input, command) {
     return (

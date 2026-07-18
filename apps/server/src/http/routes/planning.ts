@@ -10,6 +10,7 @@ import {
 
 import type { PlanningModule } from '../../modules/planning/interface.js';
 import type { createPlanFlowService } from '../../modules/planning/implementation/plan-flow-service.js';
+import type { PlanFlow } from '../../modules/planning/model/plan-flow.js';
 import { buildCommandContext } from '../command-context.js';
 import { mapApplicationError } from '../error-mapper.js';
 
@@ -29,6 +30,11 @@ function correlationId(request: FastifyRequest, options: PlanningRouteOptions): 
   return typeof supplied === 'string' && supplied.trim() !== ''
     ? supplied
     : options.nextCorrelationId();
+}
+
+function planFlowView(flow: PlanFlow) {
+  const { lastScheduleMutation, ...view } = flow;
+  return { ...view, undoAvailable: lastScheduleMutation !== undefined };
 }
 
 export async function registerPlanningRoutes(
@@ -75,7 +81,7 @@ export async function registerPlanningRoutes(
         .header('location', `/api/v1/plan-flows/${result.id}`)
         .header('etag', `"${result.resourceVersion}"`)
         .code(202)
-        .send(result);
+        .send(planFlowView(result));
     } catch (error) {
       const problem = mapApplicationError(error, correlation);
       return reply.code(problem.status).send(problem);
@@ -98,7 +104,7 @@ export async function registerPlanningRoutes(
         .header('location', `/api/v1/plan-flows/${result.id}`)
         .header('etag', `"${result.resourceVersion}"`)
         .code(201)
-        .send(result);
+        .send(planFlowView(result));
     } catch (error) {
       const problem = mapApplicationError(error, correlation);
       return reply.code(problem.status).send(problem);
@@ -107,8 +113,30 @@ export async function registerPlanningRoutes(
 
   app.get('/api/v1/schedule', async (_request, reply) => {
     const items = await options.planning.list();
-    const version = items.reduce((maximum, item) => Math.max(maximum, item.resourceVersion), 0);
+    const version = await options.planning.getVersion();
     return reply.header('etag', `"${version}"`).code(200).send({ items, resourceVersion: version });
+  });
+
+  app.delete('/api/v1/schedule', async (request, reply) => {
+    const correlation = correlationId(request, options);
+    try {
+      const context = buildCommandContext(request, {
+        commandId: options.nextCommandId(),
+        correlationId: correlation,
+        now: options.now(),
+        requireIfMatch: true,
+        requirePageInstanceId: true,
+      });
+      const result = await options.planning.clearAll(context);
+      const items = await options.planning.list();
+      return reply
+        .header('etag', `"${result.resourceVersion}"`)
+        .code(200)
+        .send({ items, resourceVersion: result.resourceVersion });
+    } catch (error) {
+      const problem = mapApplicationError(error, correlation);
+      return reply.code(problem.status).send(problem);
+    }
   });
 
   app.patch<{ Params: { scheduleItemId: string } }>(
@@ -189,7 +217,7 @@ export async function registerPlanningRoutes(
           correlationId: correlationId(request, options),
         });
       }
-      return reply.header('etag', `"${flow.resourceVersion}"`).code(200).send(flow);
+      return reply.header('etag', `"${flow.resourceVersion}"`).code(200).send(planFlowView(flow));
     },
   );
 
@@ -211,7 +239,7 @@ export async function registerPlanningRoutes(
           body.action,
           context,
         );
-        return reply.header('etag', `"${flow.resourceVersion}"`).code(200).send(flow);
+        return reply.header('etag', `"${flow.resourceVersion}"`).code(200).send(planFlowView(flow));
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);

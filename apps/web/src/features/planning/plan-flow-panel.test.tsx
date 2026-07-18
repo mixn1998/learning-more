@@ -9,6 +9,70 @@ import { PlanFlowPanel } from './plan-flow-panel.js';
 afterEach(cleanup);
 
 describe('PlanFlowPanel', () => {
+  it('offers one-step undo only for a confirmed flow with a reversible batch', async () => {
+    const course = {
+      courseId: 'course_undo',
+      title: '撤回测试课程',
+      status: 'active' as const,
+      courseMode: 'standard' as const,
+      outlineVersionId: 'outline_undo',
+      resourceVersion: 1,
+    };
+    const lesson = {
+      courseId: course.courseId,
+      lessonId: 'lesson_undo',
+      title: '撤回测试课节',
+      progress: 'not_started' as const,
+      recommended: true,
+    };
+    const confirmed = {
+      id: 'plan_flow_undo',
+      state: 'confirmed' as const,
+      lifecycleState: 'active' as const,
+      constraintsArtifactRef: 'constraints_manual',
+      courseRefs: [course.courseId],
+      lessonRefs: [lesson.lessonId],
+      timeWindowRefs: ['daily:45'],
+      existingScheduleSnapshotRef: 'schedule_0',
+      baseScheduleVersion: 0,
+      generationTaskId: 'rules_undo',
+      suggestions: [],
+      conflicts: [],
+      confirmationReceipts: {},
+      confirmedScheduleItemIds: ['schedule_undo'],
+      undoAvailable: true,
+      source: 'plan-flow' as const,
+      createdAt: '2026-07-15T00:00:00.000Z',
+      updatedAt: '2026-07-15T00:00:00.000Z',
+      resourceVersion: 2,
+    };
+    const onManage = vi.fn().mockResolvedValue({ ...confirmed, undoAvailable: false });
+    const confirmUndo = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <PlanFlowPanel
+        courses={[course]}
+        initialStartDate="2026-07-15"
+        lessons={[lesson]}
+        onConfirm={vi.fn()}
+        onManage={onManage}
+        onPreview={vi.fn().mockResolvedValue(confirmed)}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成计划预览' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: '撤回排期' }));
+
+    expect(onManage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'plan_flow_undo' }),
+      'undo',
+    );
+    expect(confirmUndo).toHaveBeenCalled();
+    confirmUndo.mockRestore();
+  });
+
   it('requires a regenerated preview after the scheduling strategy changes', async () => {
     const course = {
       courseId: 'course_1',

@@ -156,6 +156,34 @@ describe('deterministic plan-flow scheduler', () => {
     ]);
   });
 
+  it('uses the formal outline order even when lessons have no prerequisite edges', () => {
+    const input = context({
+      courses: [
+        {
+          courseId: 'course_01',
+          title: 'Probability',
+          lessonIds: ['lesson_01', 'lesson_02', 'lesson_03'],
+        },
+      ],
+      lessons: [
+        ...context().lessons.map((lesson) => ({ ...lesson, prerequisiteLessonIds: [] })),
+        {
+          lessonId: 'lesson_03',
+          courseId: 'course_01',
+          title: 'Advanced applications',
+          objective: 'Apply the sequence',
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 45,
+          progress: 'not_started',
+        },
+      ],
+    });
+
+    const result = buildPlanSuggestions(input, ['lesson_03', 'lesson_01', 'lesson_02']);
+
+    expect(result.map((item) => item.lessonId)).toEqual(['lesson_01', 'lesson_02', 'lesson_03']);
+  });
+
   it('keeps a lesson whole when it exceeds the daily target', () => {
     const result = buildPlanSuggestions(
       context({

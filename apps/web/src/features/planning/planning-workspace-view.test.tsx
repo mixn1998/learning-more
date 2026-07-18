@@ -61,6 +61,7 @@ type WorkspaceProps = ComponentProps<typeof PlanningWorkspaceView>;
 
 function renderWorkspace(
   overrides: {
+    onClearAll?: WorkspaceProps['onClearAll'];
     onCreate?: WorkspaceProps['onCreate'];
     onMove?: WorkspaceProps['onMove'];
   } = {},
@@ -68,12 +69,15 @@ function renderWorkspace(
   const onCreate =
     overrides.onCreate ?? vi.fn<WorkspaceProps['onCreate']>().mockResolvedValue(undefined);
   const onMove = overrides.onMove ?? vi.fn<WorkspaceProps['onMove']>().mockResolvedValue(undefined);
+  const onClearAll =
+    overrides.onClearAll ?? vi.fn<WorkspaceProps['onClearAll']>().mockResolvedValue(undefined);
   render(
     <PlanningWorkspaceView
       anchorDate="2026-07-15"
       courses={courses}
       items={[todayItem]}
       lessons={lessons}
+      onClearAll={onClearAll}
       onCreate={onCreate}
       onGeneratePlanFlow={() => undefined}
       onMove={onMove}
@@ -81,10 +85,22 @@ function renderWorkspace(
       onReturn={() => undefined}
     />,
   );
-  return { onCreate, onMove };
+  return { onClearAll, onCreate, onMove };
 }
 
 describe('PlanningWorkspaceView date scheduling', () => {
+  it('clears all active schedules from one explicit planning action', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onClearAll = vi.fn<WorkspaceProps['onClearAll']>().mockResolvedValue(undefined);
+    renderWorkspace({ onClearAll });
+
+    fireEvent.click(screen.getByRole('button', { name: '清空排期' }));
+
+    await waitFor(() => expect(onClearAll).toHaveBeenCalledOnce());
+    expect(confirm).toHaveBeenCalledWith('确定清空当前全部排期吗？已完成的学习事实不会被删除。');
+    confirm.mockRestore();
+  });
+
   it('builds the discipline filter from confirmed course discipline tags', () => {
     render(
       <PlanningWorkspaceView
@@ -117,6 +133,7 @@ describe('PlanningWorkspaceView date scheduling', () => {
             recommended: false,
           },
         ]}
+        onClearAll={async () => undefined}
         onCreate={async () => undefined}
         onGeneratePlanFlow={() => undefined}
         onMove={async () => undefined}

@@ -64,6 +64,10 @@ export function createPlanningModule(options: {
       .map((item) => item.id);
   }
 
+  async function aggregateVersion(): Promise<number> {
+    return (await all()).reduce((total, item) => total + item.resourceVersion, 0);
+  }
+
   async function persist(
     item: ScheduleItem,
     eventType: ScheduleEvent['type'],
@@ -161,6 +165,55 @@ export function createPlanningModule(options: {
         ),
       };
     },
+    async clearAll(context: CommandContext) {
+      const items = await all();
+      const existingReceipt = items.filter((item) =>
+        item.processedCommandIds.includes(context.commandId),
+      );
+      if (existingReceipt.length > 0) {
+        return { removedItems: existingReceipt, resourceVersion: await aggregateVersion() };
+      }
+      const currentVersion = items.reduce((total, item) => total + item.resourceVersion, 0);
+      if (context.expectedVersion !== currentVersion) {
+        throw new RepositoryVersionConflictError(currentVersion);
+      }
+      const timestamp = options.now().toISOString();
+      const scheduled = items.filter((item) => item.status === 'scheduled');
+      if (scheduled.length === 0) return { removedItems: [], resourceVersion: currentVersion };
+      await options.unitOfWork.execute(
+        { transactionId: `tx_schedule_clear_${randomUUID()}` },
+        async (tx) => {
+          for (const current of scheduled) {
+            const removed: ScheduleItem = {
+              ...current,
+              status: 'removed',
+              cancelReason: 'user_cleared_all',
+              updatedAt: timestamp,
+              processedCommandIds: [...current.processedCommandIds, context.commandId],
+            };
+            await options.repository.save(tx, removed, current.resourceVersion);
+            await options.recordEvent?.(
+              {
+                type: 'ScheduleCancelled',
+                scheduleItemId: current.id,
+                courseId: current.courseId,
+                lessonId: current.lessonId,
+                occurredAt: timestamp,
+              },
+              tx,
+            );
+          }
+        },
+      );
+      const removedItems = await Promise.all(
+        scheduled.map((item) => options.repository.get(item.id)),
+      );
+      return {
+        removedItems: removedItems.filter((item): item is ScheduleItem => item !== undefined),
+        resourceVersion: await aggregateVersion(),
+      };
+    },
     list: () => all().then((items) => items.filter((item) => item.status === 'scheduled')),
+    getVersion: aggregateVersion,
   };
 }

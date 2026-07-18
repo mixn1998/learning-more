@@ -13,7 +13,16 @@ export const ScheduleItemSchema = z.strictObject({
   source: z.enum(['manual', 'plan-flow']),
   status: z.enum(['scheduled', 'removed']),
   locked: z.boolean().optional(),
-  cancelReason: z.enum(['lesson_abandoned', 'user_removed', 'outline_revised']).optional(),
+  cancelReason: z
+    .enum([
+      'lesson_abandoned',
+      'user_removed',
+      'user_cleared_all',
+      'outline_revised',
+      'plan_flow_reflowed',
+      'plan_flow_undone',
+    ])
+    .optional(),
   createdAt: utcInstant,
   updatedAt: utcInstant,
   processedCommandIds: z.array(identifier),
@@ -64,7 +73,7 @@ export const UpdateScheduleAssignmentBodySchema = z.union([
 ]);
 
 export const PlanFlowActionBodySchema = z.strictObject({
-  action: z.enum(['pause', 'resume', 'reflow', 'end']),
+  action: z.enum(['pause', 'resume', 'reflow', 'undo', 'end']),
 });
 
 export const PlanSuggestionSchema = z.strictObject({
@@ -104,6 +113,7 @@ export const PlanFlowViewSchema = z.strictObject({
   conflicts: z.array(identifier),
   confirmationReceipts: z.record(identifier, z.array(identifier)),
   confirmedScheduleItemIds: z.array(identifier),
+  undoAvailable: z.boolean().optional(),
   processedCommandIds: z.array(identifier).optional(),
   source: z.enum(['manual', 'plan-flow']),
   errorCode: z.string().optional(),

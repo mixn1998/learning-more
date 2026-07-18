@@ -29,15 +29,21 @@ function fixture() {
     lifecycleState: 'paused',
     resourceVersion: 4,
   });
+  const clearAll = vi.fn().mockResolvedValue({ removedItems: [], resourceVersion: 5 });
   const app = Fastify();
   void registerPlanningRoutes(app, {
-    planning: { execute, list: vi.fn().mockResolvedValue([]) },
+    planning: {
+      execute,
+      clearAll,
+      list: vi.fn().mockResolvedValue([]),
+      getVersion: vi.fn().mockResolvedValue(0),
+    },
     planFlows: { requestPreview, confirm, get, manage },
     nextCommandId: () => 'command_01',
     nextCorrelationId: () => 'correlation_01',
     now: () => new Date('2026-07-13T00:00:00.000Z'),
   });
-  return { app, execute, requestPreview, confirm, get, manage };
+  return { app, execute, requestPreview, confirm, get, manage, clearAll };
 }
 
 describe('Planning HTTP routes', () => {
@@ -146,6 +152,21 @@ describe('Planning HTTP routes', () => {
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'RemoveScheduleItem' }),
       expect.any(Object),
+    );
+  });
+
+  it('clears all current schedule assignments through one versioned command', async () => {
+    const { app, clearAll } = fixture();
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/schedule',
+      headers: { ...headers, 'if-match': '"4"' },
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toEqual({ items: [], resourceVersion: 5 });
+    expect(clearAll).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedVersion: 4, pageInstanceId: 'page_01' }),
     );
   });
 

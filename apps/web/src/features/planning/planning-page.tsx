@@ -166,6 +166,13 @@ export function PlanningPage(props: {
           ]);
           setVersion((current) => current + 1);
         }}
+        onClearAll={async () => {
+          const key = `schedule-clear:${version}`;
+          const cleared = await api.clearSchedule(version, commands.attemptFor(key));
+          commands.complete(key);
+          setItems(cleared.items);
+          setVersion(cleared.resourceVersion);
+        }}
         onGeneratePlanFlow={() => setView('flow')}
         onMove={async (item, draft) => {
           const moveKey = `schedule-move:${item.id}:${item.resourceVersion}:${draft.startAt}:${draft.endAt}`;

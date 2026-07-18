@@ -78,23 +78,41 @@ type LessonGraph = Readonly<{
 }>;
 
 function buildLessonGraph(context: PlanPreviewContext, lessonRefs: readonly string[]): LessonGraph {
-  const position = new Map(lessonRefs.map((lessonId, index) => [lessonId, index]));
-  if (position.size !== lessonRefs.length) throw new Error('plan_preview_invalid');
+  const inputPosition = new Map(lessonRefs.map((lessonId, index) => [lessonId, index]));
+  if (inputPosition.size !== lessonRefs.length) throw new Error('plan_preview_invalid');
   const lessons = new Map(
     context.lessons
-      .filter((lesson) => position.has(lesson.lessonId))
+      .filter((lesson) => inputPosition.has(lesson.lessonId))
       .map((lesson) => [lesson.lessonId, lesson]),
   );
   if (lessons.size !== lessonRefs.length) throw new Error('plan_preview_invalid');
 
+  const position = new Map<string, number>();
+  for (const course of context.courses) {
+    for (const [index, lessonId] of (course.lessonIds ?? []).entries()) {
+      if (inputPosition.has(lessonId)) position.set(lessonId, index);
+    }
+  }
+  for (const [lessonId, index] of inputPosition) {
+    if (!position.has(lessonId)) position.set(lessonId, index);
+  }
+
   const indegree = new Map<string, number>();
   const dependents = new Map<string, string[]>();
   for (const lessonId of lessonRefs) {
-    const prerequisites = lessons
-      .get(lessonId)!
-      .prerequisiteLessonIds.filter((prerequisiteId) => lessons.has(prerequisiteId));
-    indegree.set(lessonId, prerequisites.length);
-    for (const prerequisiteId of prerequisites) {
+    const lesson = lessons.get(lessonId)!;
+    const dependencies = new Set(
+      lesson.prerequisiteLessonIds.filter((prerequisiteId) => lessons.has(prerequisiteId)),
+    );
+    const outlineOrder = context.courses
+      .find((course) => course.courseId === lesson.courseId)
+      ?.lessonIds?.filter((candidateId) => lessons.get(candidateId)?.courseId === lesson.courseId);
+    const outlineIndex = outlineOrder?.indexOf(lessonId) ?? -1;
+    if (outlineOrder !== undefined && outlineIndex > 0) {
+      dependencies.add(outlineOrder[outlineIndex - 1]!);
+    }
+    indegree.set(lessonId, dependencies.size);
+    for (const prerequisiteId of dependencies) {
       dependents.set(prerequisiteId, [...(dependents.get(prerequisiteId) ?? []), lessonId]);
     }
   }
@@ -183,6 +201,12 @@ export function buildPlanSuggestions(
     .filter((item) => item.status !== 'removed')
     .map((item) => ({ startAt: item.startAt, endAt: item.endAt }));
   const suggestions: PlanSuggestion[] = [];
+  const outlinePositions = new Map(
+    context.courses.map((course) => [
+      course.courseId,
+      new Map((course.lessonIds ?? []).map((lessonId, index) => [lessonId, index])),
+    ]),
+  );
   const usedMinutes = new Map<string, number>();
   let localDate = nextLearningDate(startLocalDate, learningDays, context.timezone);
   let balancedCourseIndex = -1;
@@ -236,6 +260,26 @@ export function buildPlanSuggestions(
     if (lesson === undefined) throw new Error('plan_preview_invalid');
 
     let startAt = zonedInstant(localDate, context.timezone, DEFAULT_START_HOUR);
+    const coursePositions = outlinePositions.get(lesson.courseId);
+    const lessonPosition = coursePositions?.get(lesson.lessonId);
+    if (lessonPosition !== undefined) {
+      const precedingEnd = context.existingSchedule
+        .filter(
+          (item) =>
+            item.status !== 'removed' &&
+            item.courseId === lesson.courseId &&
+            (coursePositions?.get(item.lessonId) ?? Number.POSITIVE_INFINITY) < lessonPosition,
+        )
+        .reduce((latest, item) => Math.max(latest, Date.parse(item.endAt)), 0);
+      if (precedingEnd > Date.parse(startAt)) {
+        const precedingDate = localDateAt(new Date(precedingEnd).toISOString(), context.timezone);
+        localDate = nextLearningDate(precedingDate, learningDays, context.timezone);
+        startAt = zonedInstant(localDate, context.timezone, DEFAULT_START_HOUR);
+        if (localDate === precedingDate && precedingEnd > Date.parse(startAt)) {
+          startAt = new Date(precedingEnd).toISOString();
+        }
+      }
+    }
     let endAt = new Date(Date.parse(startAt) + lesson.estimatedMinutes * 60_000).toISOString();
     for (;;) {
       const conflict = [...occupied, ...suggestions]
@@ -244,6 +288,20 @@ export function buildPlanSuggestions(
       if (conflict === undefined) break;
       startAt = conflict.endAt;
       endAt = new Date(Date.parse(startAt) + lesson.estimatedMinutes * 60_000).toISOString();
+    }
+    if (lessonPosition !== undefined) {
+      const followingStart = context.existingSchedule
+        .filter(
+          (item) =>
+            item.status !== 'removed' &&
+            item.courseId === lesson.courseId &&
+            (coursePositions?.get(item.lessonId) ?? Number.NEGATIVE_INFINITY) > lessonPosition,
+        )
+        .reduce(
+          (earliest, item) => Math.min(earliest, Date.parse(item.startAt)),
+          Number.POSITIVE_INFINITY,
+        );
+      if (Date.parse(endAt) > followingStart) throw new Error('plan_preview_invalid');
     }
     if (localDateAt(startAt, context.timezone) !== localDate) {
       localDate = nextLearningDate(addLocalDays(localDate, 1), learningDays, context.timezone);

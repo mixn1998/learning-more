@@ -39,7 +39,13 @@ function fixture(existingSchedule: PlanPreviewContext['existingSchedule'] = []) 
     unitOfWork,
     async assemblePreviewContext() {
       return {
-        courses: [{ courseId: 'course_01', title: 'Probability' }],
+        courses: [
+          {
+            courseId: 'course_01',
+            title: 'Probability',
+            lessonIds: ['lesson_01', 'lesson_02'],
+          },
+        ],
         lessons: [
           {
             lessonId: 'lesson_01',
@@ -55,7 +61,7 @@ function fixture(existingSchedule: PlanPreviewContext['existingSchedule'] = []) 
             courseId: 'course_01',
             title: 'Applications',
             objective: 'Apply foundations',
-            prerequisiteLessonIds: ['lesson_01'],
+            prerequisiteLessonIds: [],
             estimatedMinutes: 60,
             progress: 'not_started' as const,
           },
@@ -79,6 +85,7 @@ function fixture(existingSchedule: PlanPreviewContext['existingSchedule'] = []) 
     getScheduleVersion: async () => scheduleVersion,
     lessonIsPlannable: async (lessonId) =>
       lessonsAvailable && ['lesson_01', 'lesson_02'].includes(lessonId),
+    getCourseLessonIds: async () => ['lesson_01', 'lesson_02'],
     nextPlanFlowId: () => 'plan_flow_01',
     nextScheduleItemId: () => `schedule_${++scheduleId}`,
     now: () => new Date('2026-07-13T00:00:00.000Z'),
@@ -124,6 +131,17 @@ const suggestions = [
 ];
 
 describe('PlanFlowService', () => {
+  it('rejects a plan-flow request that skips an earlier unfinished outline lesson', async () => {
+    const { service } = fixture();
+
+    await expect(
+      service.requestPreview(
+        { ...previewInput, lessonRefs: ['lesson_02'] },
+        'preview_skips_outline_lesson',
+      ),
+    ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
+  });
+
   it('accepts an atomic lesson longer than the daily target', async () => {
     const { service } = fixture();
     const requested = await service.requestPreview(
@@ -227,6 +245,12 @@ describe('PlanFlowService', () => {
     ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
     await expect(
       service.markPreviewReady(requested.id, [
+        { ...suggestions[1]!, startAt: suggestions[0]!.startAt, endAt: suggestions[0]!.endAt },
+        { ...suggestions[0]!, startAt: suggestions[1]!.startAt, endAt: suggestions[1]!.endAt },
+      ]),
+    ).rejects.toMatchObject({ code: 'plan_preview_invalid' });
+    await expect(
+      service.markPreviewReady(requested.id, [
         { ...suggestions[0]!, startAt: '2026-07-13T11:00:00.000Z' },
         suggestions[1]!,
       ]),
@@ -265,5 +289,89 @@ describe('PlanFlowService', () => {
     const items = [];
     for await (const item of schedules.list()) items.push(item.id);
     expect(items).toEqual(['schedule_1', 'schedule_2']);
+  });
+
+  it('undoes the initial confirmation as one batch and leaves history records removed', async () => {
+    const { service, schedules } = fixture();
+    const ready = await service.requestPreview(previewInput, 'preview_for_undo');
+    const confirmed = await service.confirm(ready.id, {
+      ...context,
+      commandId: 'confirm_for_undo',
+      expectedVersion: ready.resourceVersion,
+    });
+
+    const undone = await service.manage(confirmed.id, 'undo', {
+      ...context,
+      commandId: 'undo_confirm',
+      expectedVersion: confirmed.resourceVersion,
+    });
+
+    expect(undone.state).toBe('preview-ready');
+    expect(undone.confirmedScheduleItemIds).toEqual([]);
+    expect(undone.lastScheduleMutation).toBeUndefined();
+    const items = [];
+    for await (const item of schedules.list()) items.push(item);
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => item.status === 'removed')).toBe(true);
+    expect(items.every((item) => item.cancelReason === 'plan_flow_undone')).toBe(true);
+  });
+
+  it('refuses to undo after a generated assignment was manually changed', async () => {
+    const { service, schedules } = fixture();
+    const ready = await service.requestPreview(previewInput, 'preview_for_conflict');
+    const confirmed = await service.confirm(ready.id, {
+      ...context,
+      commandId: 'confirm_for_conflict',
+      expectedVersion: ready.resourceVersion,
+    });
+    const generated = await schedules.get(confirmed.confirmedScheduleItemIds[0]!);
+    await unitOfWork.execute({}, async (transaction) => {
+      await schedules.save(
+        transaction,
+        { ...generated!, locked: true, resourceVersion: generated!.resourceVersion },
+        generated!.resourceVersion,
+      );
+    });
+
+    await expect(
+      service.manage(confirmed.id, 'undo', {
+        ...context,
+        commandId: 'undo_conflict',
+        expectedVersion: confirmed.resourceVersion,
+      }),
+    ).rejects.toMatchObject({ code: 'plan_flow_undo_conflict' });
+  });
+
+  it('reflows remaining lessons and can restore the exact prior batch', async () => {
+    const { service, schedules } = fixture();
+    const ready = await service.requestPreview(previewInput, 'preview_for_reflow');
+    const confirmed = await service.confirm(ready.id, {
+      ...context,
+      commandId: 'confirm_for_reflow',
+      expectedVersion: ready.resourceVersion,
+    });
+    const originalIds = confirmed.confirmedScheduleItemIds;
+    const reflowed = await service.manage(confirmed.id, 'reflow', {
+      ...context,
+      commandId: 'reflow_01',
+      expectedVersion: confirmed.resourceVersion,
+    });
+    expect(reflowed.confirmedScheduleItemIds).not.toEqual(originalIds);
+
+    const restored = await service.manage(reflowed.id, 'undo', {
+      ...context,
+      commandId: 'undo_reflow',
+      expectedVersion: reflowed.resourceVersion,
+    });
+    expect(restored.confirmedScheduleItemIds).toEqual(originalIds);
+    for (const id of originalIds) {
+      await expect(schedules.get(id)).resolves.toMatchObject({ status: 'scheduled' });
+    }
+    for (const id of reflowed.confirmedScheduleItemIds) {
+      await expect(schedules.get(id)).resolves.toMatchObject({
+        status: 'removed',
+        cancelReason: 'plan_flow_undone',
+      });
+    }
   });
 });

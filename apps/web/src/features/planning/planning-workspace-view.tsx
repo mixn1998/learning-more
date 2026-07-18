@@ -80,6 +80,7 @@ export function PlanningWorkspaceView(props: {
     draft: Readonly<{ startAt: string; endAt: string }>,
   ) => Promise<void>;
   readonly onRemove: (item: ScheduleItemView) => Promise<void>;
+  readonly onClearAll: () => Promise<void>;
   readonly onGeneratePlanFlow: () => void;
   readonly onReturn: () => void;
 }) {
@@ -90,6 +91,8 @@ export function PlanningWorkspaceView(props: {
   const [pendingDates, setPendingDates] = useState<Readonly<Record<string, string>>>({});
   const [savingLessonIds, setSavingLessonIds] = useState<ReadonlySet<string>>(new Set());
   const [scheduleErrors, setScheduleErrors] = useState<Readonly<Record<string, string>>>({});
+  const [clearingAll, setClearingAll] = useState(false);
+  const [clearAllError, setClearAllError] = useState<string>();
 
   const entries = useMemo<readonly PlanningEntry[]>(() => {
     const courseById = new Map(props.courses.map((course) => [course.courseId, course]));
@@ -194,6 +197,24 @@ export function PlanningWorkspaceView(props: {
     }
   }
 
+  async function clearAllSchedules() {
+    if (clearingAll || !window.confirm('确定清空当前全部排期吗？已完成的学习事实不会被删除。')) {
+      return;
+    }
+    setClearingAll(true);
+    setClearAllError(undefined);
+    try {
+      await props.onClearAll();
+      setSelectedDate('');
+      setStatusFilter('');
+      setDisciplineFilter('');
+    } catch {
+      setClearAllError('清空失败，排期版本可能已经变化，请重试。');
+    } finally {
+      setClearingAll(false);
+    }
+  }
+
   return (
     <main className="lm-page planning-workspace">
       <section className="lm-card planning-hero">
@@ -202,6 +223,14 @@ export function PlanningWorkspaceView(props: {
           <h1>安排课节学习日期</h1>
         </div>
         <div className="lm-actions">
+          <button
+            className="lm-btn"
+            disabled={clearingAll || savingLessonIds.size > 0 || props.items.length === 0}
+            type="button"
+            onClick={() => void clearAllSchedules()}
+          >
+            {clearingAll ? '正在清空…' : '清空排期'}
+          </button>
           <button
             className="lm-btn primary"
             disabled={savingLessonIds.size > 0}
@@ -215,6 +244,11 @@ export function PlanningWorkspaceView(props: {
           </button>
         </div>
       </section>
+      {clearAllError === undefined ? null : (
+        <p className="pf-note" role="alert">
+          {clearAllError}
+        </p>
+      )}
 
       <div className="planner-layout week-workspace-layout">
         <aside className="lm-card planning-days week-workspace-rail" aria-label="今日起 7 天">
