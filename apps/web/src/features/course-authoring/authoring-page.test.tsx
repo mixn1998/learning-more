@@ -513,7 +513,23 @@ describe('CourseAuthoring page', () => {
     expect(await screen.findByRole('heading', { name: 'long-running candidate' })).toBeVisible();
   });
 
-  it('connects to an adjustment generation task returned through the refreshed session', async () => {
+  it('keeps adjustment replies separate and generates a new candidate only when requested', async () => {
+    const messages = [
+      {
+        messageId: 'message_user_adjust',
+        role: 'user' as const,
+        content: 'add practical examples',
+        status: 'complete' as const,
+        createdAt: '2026-07-18T04:00:00.000Z',
+      },
+      {
+        messageId: 'message_assistant_adjust',
+        role: 'assistant' as const,
+        content: 'I understand the practical-example adjustment.',
+        status: 'complete' as const,
+        createdAt: '2026-07-18T04:00:01.000Z',
+      },
+    ];
     const getOutlineSession = vi
       .fn()
       .mockResolvedValueOnce({
@@ -533,21 +549,20 @@ describe('CourseAuthoring page', () => {
       .mockResolvedValueOnce({
         outlineSessionId: 'session_adjust',
         resourceVersion: 5,
-        state: 'generating-candidates',
-        generationTaskId: 'task_adjust',
+        state: 'candidate-ready',
         topic: 'probability',
         courseMode: 'standard',
         completedAssessmentRounds: 3,
-        canGenerateCandidate: false,
+        canGenerateCandidate: true,
         candidateVersionIds: ['candidate_old'],
         candidateVersionId: 'candidate_old',
         candidateMarkdown: '# old candidate',
-        messages: [],
+        messages,
         materials: [],
       })
       .mockResolvedValue({
         outlineSessionId: 'session_adjust',
-        resourceVersion: 6,
+        resourceVersion: 7,
         state: 'candidate-ready',
         topic: 'probability',
         courseMode: 'standard',
@@ -556,7 +571,7 @@ describe('CourseAuthoring page', () => {
         candidateVersionIds: ['candidate_old', 'candidate_new'],
         candidateVersionId: 'candidate_new',
         candidateMarkdown: '# adjusted candidate',
-        messages: [],
+        messages,
         materials: [],
       });
     const streamGeneration = vi.fn().mockImplementation(async (_taskId, handlers) => {
@@ -567,8 +582,13 @@ describe('CourseAuthoring page', () => {
       streamGeneration,
       appendMessage: vi.fn().mockResolvedValue({
         outlineSessionId: 'session_adjust',
-        state: 'generating-candidates',
-        resourceVersion: 5,
+        state: 'candidate-ready',
+        resourceVersion: 4,
+      }),
+      requestCandidateGeneration: vi.fn().mockResolvedValue({
+        taskId: 'task_adjust',
+        state: 'running',
+        resourceVersion: 6,
       }),
     });
     render(<AuthoringPage client={api} initialOutlineSessionId="session_adjust" />);
@@ -577,12 +597,19 @@ describe('CourseAuthoring page', () => {
     fireEvent.change(composer, { target: { value: 'add practical examples' } });
     fireEvent.click(screen.getByRole('button', { name: '保存调整' }));
 
+    expect(await screen.findByText('I understand the practical-example adjustment.')).toBeVisible();
+    expect(api.requestCandidateGeneration).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '生成新候选' }));
+
     await waitFor(() =>
       expect(streamGeneration).toHaveBeenCalledWith(
         'task_adjust',
         expect.anything(),
         expect.anything(),
       ),
+    );
+    expect(api.requestCandidateGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ outlineSessionId: 'session_adjust', resourceVersion: 5 }),
     );
     expect(await screen.findByRole('heading', { name: 'adjusted candidate' })).toBeVisible();
   });
@@ -638,7 +665,7 @@ describe('CourseAuthoring page', () => {
 
     expect(await screen.findByRole('heading', { name: 'candidate-ready' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '继续调整' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '生成新版本' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成新候选' })).toBeEnabled();
     expect(getOutlineSession).toHaveBeenCalledTimes(2);
   });
 

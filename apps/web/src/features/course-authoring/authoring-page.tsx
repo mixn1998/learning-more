@@ -1009,13 +1009,13 @@ export function AuthoringPage(props: {
         materialTools={materialTools}
         primaryBusyLabel={state.phase === 'generating' ? '正在生成…' : '正在创建…'}
         primaryLabel={workspacePrimaryLabel(state.phase)}
-        secondaryActionVisible={false}
-        secondaryLabel=""
+        secondaryActionVisible={state.phase === 'candidate-ready'}
+        secondaryLabel="生成新候选"
         sendBusy={state.assistantPending || inFlight.current.has('assessment')}
         sendDisabled={!canSubmitAssessment || state.assessment.trim() === ''}
         sendLabel={state.phase === 'assessing' ? '完成评估' : '保存调整'}
         turnError={state.turnError}
-        onAdjust={() => composerRef.current?.focus()}
+        onAdjust={() => void generate()}
         onComposerChange={(value) => dispatch({ type: 'edit-assessment', value })}
         onConfirm={runPrimaryAction}
         onSend={() => void completeAssessment()}
