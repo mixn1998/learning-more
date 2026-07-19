@@ -56,4 +56,29 @@ describe('GenerationFrameLog recovery', () => {
       ],
     });
   });
+
+  it('serializes concurrent appends for the same task', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-frame-concurrency-'));
+    roots.push(directory);
+    const dataRoot = DataRoot.create(directory);
+    await initializeStoreLayout(createStorePaths(dataRoot));
+    const log = createGenerationFrameLog(dataRoot);
+    const taskId = 'task_concurrent';
+    await log.ensureTask(taskId, 'running');
+
+    await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        log.append(taskId, 'message.delta', {
+          messageId: 'message_01',
+          markdown: String(index),
+        }),
+      ),
+    );
+
+    const result = await log.readAfter(taskId, 0);
+    expect(result.frames.map((frame) => frame.sequence)).toEqual(
+      Array.from({ length: 20 }, (_, index) => index + 1),
+    );
+    expect(result.meta.lastSequence).toBe(20);
+  });
 });

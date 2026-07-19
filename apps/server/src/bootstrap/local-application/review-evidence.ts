@@ -1,9 +1,13 @@
 import type { ReviewDocument, ReviewTextBlock } from '@learning-more/contracts';
 
 import type { ReviewEvidencePack } from '../../modules/review-closure/implementation/generation-review-writer.js';
+import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import type { LocalLearningRuntime } from './learning-runtime.js';
 
-export function createReviewEvidence(learning: Pick<LocalLearningRuntime, 'access'>): Readonly<{
+export function createReviewEvidence(
+  learning: Pick<LocalLearningRuntime, 'access'>,
+  artifactStore: Pick<ReturnType<typeof createMarkdownArtifactStore>, 'read' | 'readDraft'>,
+): Readonly<{
   build(
     kind: 'stage' | 'final',
     sessionId: string,
@@ -64,7 +68,21 @@ export function createReviewEvidence(learning: Pick<LocalLearningRuntime, 'acces
         courseId: ledger.courseId,
         lessonId: ledger.lessonId,
       });
-      const messages = await teachingContextSources.listMessages(sessionId);
+      const messages = await Promise.all(
+        (await learning.access.listMessages(sessionId)).map(async (message) => ({
+          messageId: message.id,
+          role: message.role,
+          completionStatus: message.completionStatus,
+          markdown:
+            (await artifactStore.read(message.contentArtifactRef))?.content ??
+            (await artifactStore.readDraft(message.contentArtifactRef)) ??
+            '',
+          sourceRef: `message:${message.id}`,
+          ...(message.generationTaskId === undefined
+            ? {}
+            : { generationTaskId: message.generationTaskId }),
+        })),
+      );
       const observationIds = new Set(
         checkpoint.observationRefs.map((ref) => ref.replace(/^observation:/u, '')),
       );

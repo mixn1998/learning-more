@@ -56,6 +56,7 @@ async function fixture(
     startGenerationFailsOnce?: boolean;
     advanceVersionDuringSubmit?: boolean;
     frameEnsureFailsOnce?: boolean;
+    frameDeltaFailsOnce?: boolean;
     agentDirective?: TeachingDirective;
     legacyRecoveredTaskSourceId?: string;
   } = {},
@@ -280,6 +281,7 @@ async function fixture(
   const capturedInteractionObservations: TeachingObservation[] = [];
   const frames: GenerationStreamEvent[] = [];
   let frameEnsureShouldFail = options.frameEnsureFailsOnce ?? false;
+  let frameDeltaShouldFail = options.frameDeltaFailsOnce ?? false;
   const observer: TeachingObserver = {
     async observe(input): Promise<TeachingObservation> {
       if (observerShouldFail) {
@@ -404,6 +406,10 @@ async function fixture(
         }
       },
       async append(taskId, type, data) {
+        if (type === 'message.delta' && frameDeltaShouldFail) {
+          frameDeltaShouldFail = false;
+          throw new Error('simulated_frame_delta_failure');
+        }
         const frame = GenerationStreamEventSchema.parse({
           taskId,
           sequence: frames.length + 1,
@@ -471,7 +477,7 @@ describe('InteractiveTeaching deep module', () => {
     expect(cancelledTaskIds).toEqual(['task_1']);
   });
 
-  it('clears the session binding when frame journal creation fails after binding', async () => {
+  it('keeps the authoritative generation running when frame journal creation fails', async () => {
     const { module, sessionModule, cancelledTaskIds } = await fixture({
       frameEnsureFailsOnce: true,
     });
@@ -487,19 +493,19 @@ describe('InteractiveTeaching deep module', () => {
         },
         commandContext,
       ),
-    ).rejects.toThrow('simulated_frame_journal_failure');
+    ).resolves.toEqual({ taskId: 'task_1', resourceVersion: 3 });
 
     const view = await sessionModule.query(
       { type: 'GetLessonLearning', lessonId: 'lesson_1' },
       {
-        correlationId: 'query_compensated_binding',
+        correlationId: 'query_preserved_binding',
         actor: 'local-user',
         requestedAt: commandContext.requestedAt,
         receivedAt: commandContext.receivedAt,
       },
     );
-    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
-    expect(cancelledTaskIds).toEqual(['task_1']);
+    expect(view.learning.session?.activeGenerationTaskId).toBe('task_1');
+    expect(cancelledTaskIds).toEqual([]);
   });
 
   it('re-reads the session version before binding a submitted task', async () => {
@@ -576,6 +582,35 @@ describe('InteractiveTeaching deep module', () => {
       'artifact.ready',
       'task.completed',
     ]);
+  });
+
+  it('commits the authoritative reply when incremental frame projection fails', async () => {
+    const { module, drainObservations, frames, messageLog } = await fixture({
+      streamReply: true,
+      frameDeltaFailsOnce: true,
+    });
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+      expect.objectContaining({
+        id: 'message_ai_1',
+        role: 'assistant',
+        completionStatus: 'complete',
+      }),
+    ]);
+    expect(frames.some((frame) => frame.type === 'task.failed')).toBe(false);
   });
 
   it('commits an opening that finishes after the learning session pauses', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import {
@@ -25,17 +25,32 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
   const [searchParams] = useSearchParams();
   const [record, setRecord] = useState<LessonRecord>();
   const [failed, setFailed] = useState(false);
+  const [reviewRetryBusy, setReviewRetryBusy] = useState(false);
+  const [reviewRetryError, setReviewRetryError] = useState<string>();
   const [activeSupplementary, setActiveSupplementary] = useState<{
     id: string;
     resourceVersion: number;
   }>();
   const api = props.api ?? lessonRecordClient;
 
+  const refreshRecord = useCallback(async () => {
+    if (lessonId === undefined) return;
+    setRecord(await api.getLessonRecord(lessonId));
+  }, [api, lessonId]);
+
   useEffect(() => {
     if (lessonId === undefined) return;
     setFailed(false);
-    void api.getLessonRecord(lessonId).then(setRecord, () => setFailed(true));
-  }, [api, lessonId]);
+    void refreshRecord().catch(() => setFailed(true));
+  }, [lessonId, refreshRecord]);
+
+  useEffect(() => {
+    if (record?.reviewStatus !== 'generating') return;
+    const timer = window.setInterval(() => {
+      void refreshRecord().catch(() => undefined);
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [record?.reviewStatus, refreshRecord]);
 
   if (lessonId === undefined) return <p>课节不存在</p>;
   if (failed) return <p role="alert">课节档案加载失败</p>;
@@ -52,7 +67,11 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
         : { finalReviewMarkdown: record.finalReviewMarkdown })}
       {...(record.reviewDocument === undefined ? {} : { reviewDocument: record.reviewDocument })}
       progress={record.progress}
+      reviewKind={record.reviewKind}
       reviewStatus={record.reviewStatus}
+      {...(record.reviewErrorCode === undefined ? {} : { reviewErrorCode: record.reviewErrorCode })}
+      reviewRetryBusy={reviewRetryBusy}
+      {...(reviewRetryError === undefined ? {} : { reviewRetryError })}
       initialTab={searchParams.get('tab') === 'review' ? 'review' : 'conversation'}
       title={record.title}
       courseTitle={record.courseTitle}
@@ -60,6 +79,25 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
       actualSeconds={record.actualSeconds}
       onBackHome={() => navigate('/')}
       onBackToOutline={() => navigate(`/courses/${record.courseId}`)}
+      onRetryReview={
+        record.reviewRetry === undefined || api.retryReview === undefined
+          ? undefined
+          : async () => {
+              setReviewRetryBusy(true);
+              setReviewRetryError(undefined);
+              try {
+                await api.retryReview!(
+                  record.reviewRetry!.transactionId,
+                  record.reviewRetry!.resourceVersion,
+                );
+                await refreshRecord();
+              } catch {
+                setReviewRetryError('重试请求失败，请稍后再试。');
+              } finally {
+                setReviewRetryBusy(false);
+              }
+            }
+      }
       onStartSupplementary={
         record.progress !== 'completed' ||
         record.reviewStatus !== 'ready' ||

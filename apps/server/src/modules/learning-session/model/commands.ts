@@ -23,7 +23,7 @@ export type LearningSessionCommand =
       taskId: string;
       mode: 'new-turn' | 'retry' | 'recovery';
     }>
-  | Readonly<{ type: 'stopGeneration' }>
+  | Readonly<{ type: 'stopGeneration'; taskId: string }>
   | Readonly<{ type: 'abandon' }>
   | Readonly<{ type: 'restore' }>
   | Readonly<{ type: 'commitStageReview'; reviewId: string }>

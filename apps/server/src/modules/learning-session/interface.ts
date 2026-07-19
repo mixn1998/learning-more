@@ -43,7 +43,7 @@ export type LearningSessionCommand =
         taskId: string;
         mode: 'new-turn' | 'retry' | 'recovery';
       }>)
-  | (LessonCommand & Readonly<{ type: 'StopSessionGeneration' }>)
+  | (LessonCommand & Readonly<{ type: 'StopSessionGeneration'; taskId: string }>)
   | (LessonCommand & Readonly<{ type: 'AbandonLesson' }>)
   | (LessonCommand & Readonly<{ type: 'RestoreLesson' }>)
   | (LessonCommand & Readonly<{ type: 'CommitStageReview'; reviewId: string }>)

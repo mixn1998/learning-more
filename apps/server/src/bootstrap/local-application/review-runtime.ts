@@ -67,7 +67,7 @@ export function createLocalReviewRuntime(
     execution: input.generation.execution,
     providerId: 'current',
   });
-  const reviewEvidence = createReviewEvidence(input.learning);
+  const reviewEvidence = createReviewEvidence(input.learning, input.artifactStore);
 
   const stageReviews = createStageReviewWorkflow({
     repository: reviewClosureRepositories.stageReviews,

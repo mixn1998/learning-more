@@ -118,6 +118,31 @@ export function createInteractiveTeaching(options: {
     }>
   >();
 
+  async function tryEnsureFrameTask(
+    taskId: string,
+    state: Parameters<GenerationFrameLog['ensureTask']>[1],
+  ): Promise<void> {
+    try {
+      await options.frameLog?.ensureTask(taskId, state);
+    } catch {
+      // The session/message aggregate remains authoritative when stream projection is unavailable.
+    }
+  }
+
+  async function tryAppendFrame(
+    taskId: string,
+    type: Parameters<GenerationFrameLog['append']>[1],
+    data: Parameters<GenerationFrameLog['append']>[2],
+  ): Promise<boolean> {
+    if (options.frameLog === undefined) return true;
+    try {
+      await options.frameLog.append(taskId, type, data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function scheduleGeneration(input: {
     courseId: string;
     lessonId: string;
@@ -171,7 +196,7 @@ export function createInteractiveTeaching(options: {
         );
         startedResourceVersion = started.value.resourceVersion;
       }
-      await options.frameLog?.ensureTask(accepted.taskId, 'running');
+      await tryEnsureFrameTask(accepted.taskId, 'running');
     } catch (error) {
       try {
         await options.agent.cancel(accepted.taskId);
@@ -190,20 +215,20 @@ export function createInteractiveTeaching(options: {
         );
         if (latest.learning.session?.activeGenerationTaskId === accepted.taskId) {
           await options.sessionModule.execute(
-            { type: 'StopSessionGeneration', lessonId: input.lessonId },
+            {
+              type: 'StopSessionGeneration',
+              lessonId: input.lessonId,
+              taskId: accepted.taskId,
+            },
             backgroundContext(input.context, `${input.context.commandId}:compensate-binding`),
           );
         }
       } catch {
         // Startup reconciliation also clears a terminal binding after a process failure.
       }
-      try {
-        await options.frameLog?.append(accepted.taskId, 'task.cancelled', {
-          reason: 'session_binding_failed',
-        });
-      } catch {
-        // A missing journal is repaired by generation reconciliation.
-      }
+      await tryAppendFrame(accepted.taskId, 'task.cancelled', {
+        reason: 'session_binding_failed',
+      });
       throw error;
     }
     taskContext.set(accepted.taskId, {
@@ -217,9 +242,10 @@ export function createInteractiveTeaching(options: {
       const assistantMessageId = options.nextAssistantMessageId();
       const artifactRef = `assistant-message:${assistantMessageId}`;
       let streamedMarkdown = '';
+      let streamProjectionAvailable = true;
       let directiveValidated = false;
       try {
-        await options.frameLog?.append(accepted.taskId, 'message.started', {
+        streamProjectionAvailable = await tryAppendFrame(accepted.taskId, 'message.started', {
           messageId: assistantMessageId,
         });
         const result = await options.agent.complete(accepted.taskId, {
@@ -229,17 +255,22 @@ export function createInteractiveTeaching(options: {
               lessonId: input.lessonId,
               sessionId: input.sessionId,
               directive,
+              baseState: input.assembled.teachingState,
               ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
             });
             directiveValidated = true;
           },
           async onReplyDelta(markdown) {
-            if (markdown.length === 0) return;
-            streamedMarkdown += markdown;
-            await options.frameLog?.append(accepted.taskId, 'message.delta', {
+            if (markdown.length === 0 || !streamProjectionAvailable) return;
+            const appended = await tryAppendFrame(accepted.taskId, 'message.delta', {
               messageId: assistantMessageId,
               markdown,
             });
+            if (!appended) {
+              streamProjectionAvailable = false;
+              return;
+            }
+            streamedMarkdown += markdown;
           },
         });
         if (!directiveValidated) {
@@ -248,6 +279,7 @@ export function createInteractiveTeaching(options: {
             lessonId: input.lessonId,
             sessionId: input.sessionId,
             directive: result.directive,
+            baseState: input.assembled.teachingState,
             ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
           });
         }
@@ -255,12 +287,13 @@ export function createInteractiveTeaching(options: {
           throw new Error('teaching_stream_reply_mismatch');
         }
         const remainingMarkdown = result.markdown.slice(streamedMarkdown.length);
-        if (remainingMarkdown.length > 0) {
-          await options.frameLog?.append(accepted.taskId, 'message.delta', {
+        if (remainingMarkdown.length > 0 && streamProjectionAvailable) {
+          const appended = await tryAppendFrame(accepted.taskId, 'message.delta', {
             messageId: assistantMessageId,
             markdown: remainingMarkdown,
           });
-          streamedMarkdown += remainingMarkdown;
+          if (appended) streamedMarkdown += remainingMarkdown;
+          else streamProjectionAvailable = false;
         }
         await options.assistantArtifacts.save({
           artifactRef,
@@ -288,16 +321,16 @@ export function createInteractiveTeaching(options: {
           ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
         });
         taskContext.delete(accepted.taskId);
-        await options.frameLog?.append(accepted.taskId, 'message.completed', {
+        await tryAppendFrame(accepted.taskId, 'message.completed', {
           messageId: assistantMessageId,
           contentSha256: sha256(result.markdown),
         });
-        await options.frameLog?.append(accepted.taskId, 'artifact.ready', {
+        await tryAppendFrame(accepted.taskId, 'artifact.ready', {
           artifactId: artifactRef,
           kind: 'assistant-message',
           contentSha256: sha256(result.markdown),
         });
-        await options.frameLog?.append(accepted.taskId, 'task.completed', {
+        await tryAppendFrame(accepted.taskId, 'task.completed', {
           resultRef: artifactRef,
         });
         if (input.observe) {
@@ -322,13 +355,17 @@ export function createInteractiveTeaching(options: {
         }
         try {
           await options.sessionModule.execute(
-            { type: 'StopSessionGeneration', lessonId: input.lessonId },
+            {
+              type: 'StopSessionGeneration',
+              lessonId: input.lessonId,
+              taskId: accepted.taskId,
+            },
             backgroundContext(input.context, `${input.context.commandId}:assistant-failed`),
           );
         } catch {
           // The terminal stream event must still be emitted if session cleanup needs recovery.
         }
-        await options.frameLog?.append(accepted.taskId, 'task.failed', {
+        await tryAppendFrame(accepted.taskId, 'task.failed', {
           problem: failureProblem(accepted.taskId),
         });
         throw error;
@@ -411,10 +448,12 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     directive?: TeachingDirective | undefined;
+    baseState?: TeachingCheckpointSnapshot['teachingState'];
     currentUserMessageId?: string;
   }): Promise<void> {
     if (input.directive === undefined) return;
-    const base = await initialState(input.courseId, input.lessonId, input.sessionId);
+    const base =
+      input.baseState ?? (await initialState(input.courseId, input.lessonId, input.sessionId));
     applyTeachingDirective(
       base,
       input.directive,
@@ -460,8 +499,8 @@ export function createInteractiveTeaching(options: {
     for (const taskId of plan.cancelTaskIds) {
       try {
         await options.agent.cancel(taskId);
-        await options.frameLog?.ensureTask(taskId, 'cancelled');
-        await options.frameLog?.append(taskId, 'task.cancelled', {
+        await tryEnsureFrameTask(taskId, 'cancelled');
+        await tryAppendFrame(taskId, 'task.cancelled', {
           reason: 'superseded_or_stale_teaching_generation',
         });
       } catch {
@@ -471,7 +510,11 @@ export function createInteractiveTeaching(options: {
 
     if (plan.clearActiveTask && learning.learning.session.activeGenerationTaskId !== undefined) {
       await options.sessionModule.execute(
-        { type: 'StopSessionGeneration', lessonId: input.lessonId },
+        {
+          type: 'StopSessionGeneration',
+          lessonId: input.lessonId,
+          taskId: learning.learning.session.activeGenerationTaskId,
+        },
         backgroundContext(
           input.context,
           `reconcile-clear:${learning.learning.session.activeGenerationTaskId}`,
@@ -507,17 +550,17 @@ export function createInteractiveTeaching(options: {
       }
     }
 
-    await options.frameLog?.ensureTask(recoveringTaskId, 'running');
+    await tryEnsureFrameTask(recoveringTaskId, 'running');
     const recovered = await options.agent.recover(recoveringTaskId);
     if (recovered.completionStatus === 'failed') {
       learning = await queryLearning();
       if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
         await options.sessionModule.execute(
-          { type: 'StopSessionGeneration', lessonId: input.lessonId },
+          { type: 'StopSessionGeneration', lessonId: input.lessonId, taskId: recoveringTaskId },
           backgroundContext(input.context, `recover-failed:${recoveringTaskId}`),
         );
       }
-      await options.frameLog?.append(recoveringTaskId, 'task.failed', {
+      await tryAppendFrame(recoveringTaskId, 'task.failed', {
         problem: failureProblem(recoveringTaskId),
       });
       return options.contextSources.listMessages(input.sessionId);
@@ -541,7 +584,7 @@ export function createInteractiveTeaching(options: {
       learning = await queryLearning();
       if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
         await options.sessionModule.execute(
-          { type: 'StopSessionGeneration', lessonId: input.lessonId },
+          { type: 'StopSessionGeneration', lessonId: input.lessonId, taskId: recoveringTaskId },
           backgroundContext(input.context, `recover-clear-committed:${recoveringTaskId}`),
         );
       }
@@ -565,7 +608,7 @@ export function createInteractiveTeaching(options: {
     ) {
       if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
         await options.sessionModule.execute(
-          { type: 'StopSessionGeneration', lessonId: input.lessonId },
+          { type: 'StopSessionGeneration', lessonId: input.lessonId, taskId: recoveringTaskId },
           backgroundContext(input.context, `recover-source-changed:${recoveringTaskId}`),
         );
       }
@@ -584,11 +627,11 @@ export function createInteractiveTeaching(options: {
     });
     const assistantMessageId = options.nextAssistantMessageId();
     const artifactRef = `assistant-message:${assistantMessageId}`;
-    await options.frameLog?.append(recoveringTaskId, 'message.started', {
+    await tryAppendFrame(recoveringTaskId, 'message.started', {
       messageId: assistantMessageId,
     });
     if (recovered.markdown.length > 0) {
-      await options.frameLog?.append(recoveringTaskId, 'message.delta', {
+      await tryAppendFrame(recoveringTaskId, 'message.delta', {
         messageId: assistantMessageId,
         markdown: recovered.markdown,
       });
@@ -617,16 +660,16 @@ export function createInteractiveTeaching(options: {
       directive: recovered.directive,
       ...(sourceMessageId === undefined ? {} : { currentUserMessageId: sourceMessageId }),
     });
-    await options.frameLog?.append(recoveringTaskId, 'message.completed', {
+    await tryAppendFrame(recoveringTaskId, 'message.completed', {
       messageId: assistantMessageId,
       contentSha256: sha256(recovered.markdown),
     });
-    await options.frameLog?.append(recoveringTaskId, 'artifact.ready', {
+    await tryAppendFrame(recoveringTaskId, 'artifact.ready', {
       artifactId: artifactRef,
       kind: 'assistant-message',
       contentSha256: sha256(recovered.markdown),
     });
-    await options.frameLog?.append(
+    await tryAppendFrame(
       recoveringTaskId,
       recovered.completionStatus === 'complete' ? 'task.completed' : 'task.cancelled',
       recovered.completionStatus === 'complete'
@@ -1052,7 +1095,7 @@ export function createInteractiveTeaching(options: {
         },
         backgroundContext(context, `${context.commandId}:assistant-interrupted`),
       );
-      await options.frameLog?.append(input.taskId, 'task.cancelled', {
+      await tryAppendFrame(input.taskId, 'task.cancelled', {
         reason: 'user_requested',
       });
       return {

@@ -68,7 +68,9 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
   if (command.type === 'StartSessionGeneration') {
     return { type: 'startGeneration', taskId: command.taskId, mode: command.mode };
   }
-  if (command.type === 'StopSessionGeneration') return { type: 'stopGeneration' };
+  if (command.type === 'StopSessionGeneration') {
+    return { type: 'stopGeneration', taskId: command.taskId };
+  }
   if (command.type === 'AbandonLesson') return { type: 'abandon' };
   if (command.type === 'RestoreLesson') return { type: 'restore' };
   if (command.type === 'CommitStageReview') {
@@ -104,9 +106,17 @@ export function createSessionModule(options: {
       const now = options.now();
       const pageInstanceId = context.pageInstanceId;
       if (pageInstanceId === undefined) throw new LearningSessionError('session_not_writable');
+      const matchingGenerationCompletion =
+        current?.learning.session !== undefined &&
+        ((command.type === 'CommitAssistantMessage' &&
+          current.learning.session.id === command.sessionId &&
+          current.learning.session.activeGenerationTaskId === command.generationTaskId) ||
+          (command.type === 'StopSessionGeneration' &&
+            current.learning.session.activeGenerationTaskId === command.taskId));
       if (
         command.type !== 'StartLesson' &&
         command.type !== 'TransferSessionLease' &&
+        !matchingGenerationCompletion &&
         current !== undefined &&
         !ownsWriteLease(current.writeLease, pageInstanceId)
       ) {

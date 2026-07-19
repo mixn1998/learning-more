@@ -48,6 +48,23 @@ export function createGenerationFrameLog(
   dataRoot: DataRoot,
   options: { readonly maxFrames: number } = { maxFrames: 1_000 },
 ): GenerationFrameLog {
+  const appendTails = new Map<string, Promise<void>>();
+
+  async function serializeAppend<T>(taskId: string, work: () => Promise<T>): Promise<T> {
+    const previous = appendTails.get(taskId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const current = previous.catch(() => undefined).then(() => gate);
+    appendTails.set(taskId, current);
+    await previous.catch(() => undefined);
+    try {
+      return await work();
+    } finally {
+      release();
+      if (appendTails.get(taskId) === current) appendTails.delete(taskId);
+    }
+  }
+
   async function readMeta(taskId: string): Promise<GenerationFrameMeta> {
     return JSON.parse(
       await readFile(`${prefix(dataRoot, taskId)}.meta.json`, 'utf8'),
@@ -85,38 +102,40 @@ export function createGenerationFrameLog(
       }
     },
     async append(taskId, type, data) {
-      const storedMeta = await readMeta(taskId);
-      const existingFrames = await readFrames(taskId);
-      const meta = reconciledMeta(storedMeta, existingFrames);
-      const frame = GenerationStreamEventSchema.parse({
-        taskId,
-        sequence: meta.lastSequence + 1,
-        emittedAt: new Date().toISOString(),
-        type,
-        data,
+      return serializeAppend(taskId, async () => {
+        const storedMeta = await readMeta(taskId);
+        const existingFrames = await readFrames(taskId);
+        const meta = reconciledMeta(storedMeta, existingFrames);
+        const frame = GenerationStreamEventSchema.parse({
+          taskId,
+          sequence: meta.lastSequence + 1,
+          emittedAt: new Date().toISOString(),
+          type,
+          data,
+        });
+        const framesPath = `${prefix(dataRoot, taskId)}.frames.ndjson`;
+        await appendFile(framesPath, encodeJson({ frame, checksum: checksumJson(frame) }), 'utf8');
+        const frames = await readFrames(taskId);
+        if (frames.length > options.maxFrames) {
+          await writeAtomic(
+            framesPath,
+            frames
+              .slice(-options.maxFrames)
+              .map((item) => encodeJson({ frame: item, checksum: checksumJson(item) }))
+              .join(''),
+          );
+        }
+        meta.lastSequence = frame.sequence;
+        if (type === 'task.completed') meta.state = 'completed';
+        else if (type === 'task.failed') meta.state = 'failed';
+        else if (type === 'task.cancelled') meta.state = 'cancelled';
+        try {
+          await writeAtomic(`${prefix(dataRoot, taskId)}.meta.json`, encodeJson(meta));
+        } catch {
+          // Frames are append-only and authoritative; readAfter reconciles stale metadata.
+        }
+        return frame;
       });
-      const framesPath = `${prefix(dataRoot, taskId)}.frames.ndjson`;
-      await appendFile(framesPath, encodeJson({ frame, checksum: checksumJson(frame) }), 'utf8');
-      const frames = await readFrames(taskId);
-      if (frames.length > options.maxFrames) {
-        await writeAtomic(
-          framesPath,
-          frames
-            .slice(-options.maxFrames)
-            .map((item) => encodeJson({ frame: item, checksum: checksumJson(item) }))
-            .join(''),
-        );
-      }
-      meta.lastSequence = frame.sequence;
-      if (type === 'task.completed') meta.state = 'completed';
-      else if (type === 'task.failed') meta.state = 'failed';
-      else if (type === 'task.cancelled') meta.state = 'cancelled';
-      try {
-        await writeAtomic(`${prefix(dataRoot, taskId)}.meta.json`, encodeJson(meta));
-      } catch {
-        // Frames are append-only and authoritative; readAfter reconciles stale metadata.
-      }
-      return frame;
     },
     async readAfter(taskId, sequence) {
       const storedMeta = await readMeta(taskId);

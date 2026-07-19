@@ -163,6 +163,9 @@ export function decide(
     return [event(commandId, { type: 'GenerationStarted', taskId: command.taskId })];
   }
   if (command.type === 'stopGeneration') {
+    if (session.activeGenerationTaskId !== command.taskId) {
+      throw new LearningSessionError('session_conflict');
+    }
     return session.activeGenerationTaskId === undefined
       ? []
       : [event(commandId, { type: 'GenerationStopped' })];

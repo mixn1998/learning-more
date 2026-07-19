@@ -45,12 +45,35 @@ function durationLabel(seconds: number | undefined) {
   return `${Math.max(1, Math.round(seconds / 60))} 分钟`;
 }
 
+function reviewFailureReason(errorCode: string | undefined): string {
+  switch (errorCode) {
+    case 'review_evidence_pack_incomplete':
+      return 'Review 所需的学习证据不完整，生成任务未能继续。';
+    case 'review_checkpoint_incomplete':
+      return 'Review 所需的学习检查点尚未完整。';
+    case 'review_checkpoint_identity_mismatch':
+      return 'Review 检查点与当前课节不匹配。';
+    case 'final_review_transaction_missing':
+      return '没有找到本课对应的最终 Review 生成记录。';
+    case 'final_review_artifact_missing':
+      return '最终 Review 记录已完成，但生成内容缺失。';
+    case undefined:
+      return 'Review 生成任务未能完成。';
+    default:
+      return `Review 生成任务未能完成（${errorCode}）。`;
+  }
+}
+
 export function LessonRecordView(props: {
   readonly original: SessionRecord;
   readonly supplementary: readonly SessionRecord[];
   readonly finalReviewMarkdown?: string;
   readonly progress?: 'in_progress' | 'abandoned' | 'completed';
+  readonly reviewKind?: 'stage' | 'final';
   readonly reviewStatus?: 'generating' | 'failed' | 'ready';
+  readonly reviewErrorCode?: string;
+  readonly reviewRetryBusy?: boolean;
+  readonly reviewRetryError?: string;
   readonly initialTab?: 'conversation' | 'review';
   readonly title?: string;
   readonly courseTitle?: string;
@@ -60,6 +83,7 @@ export function LessonRecordView(props: {
   readonly reviewDocument?: ReviewDocument;
   readonly onBackHome?: () => void;
   readonly onBackToOutline?: () => void;
+  readonly onRetryReview?: (() => Promise<void>) | undefined;
   readonly onStartSupplementary?: (() => Promise<{ sessionId: string }>) | undefined;
   readonly onSendSupplementary?:
     ((sessionId: string, markdown: string) => Promise<void>) | undefined;
@@ -154,9 +178,29 @@ export function LessonRecordView(props: {
                 ) : props.finalReviewMarkdown !== undefined ? (
                   <AiContent className="review-content" markdown={props.finalReviewMarkdown} />
                 ) : props.reviewStatus === 'failed' ? (
-                  <p role="alert">阶段性 Review 生成失败；课节对话已经完整归档。</p>
+                  <div className="lesson-record-review-failure" role="alert">
+                    <h2>Review 生成失败</h2>
+                    <p>{reviewFailureReason(props.reviewErrorCode)}</p>
+                    {props.onRetryReview === undefined ? null : (
+                      <button
+                        className="lm-btn"
+                        disabled={props.reviewRetryBusy}
+                        type="button"
+                        onClick={() => void props.onRetryReview!()}
+                      >
+                        {props.reviewRetryBusy ? '正在重试…' : '重新生成 Review'}
+                      </button>
+                    )}
+                    {props.reviewRetryError === undefined ? null : (
+                      <p className="lm-form-error">{props.reviewRetryError}</p>
+                    )}
+                  </div>
                 ) : (
-                  <p role="status">阶段性 Review 正在生成中，可稍后返回课程页面查看。</p>
+                  <p role="status">
+                    {props.reviewKind === 'final'
+                      ? '最终课时 Review 正在生成中，可稍后返回本页查看。'
+                      : '阶段性 Review 正在生成中，可稍后返回本页查看。'}
+                  </p>
                 )}
               </article>
             </section>

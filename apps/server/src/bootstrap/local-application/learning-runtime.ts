@@ -20,6 +20,7 @@ import { createSessionModule } from '../../modules/learning-session/implementati
 import { createSupplementarySessionModule } from '../../modules/learning-session/implementation/supplementary-session-module.js';
 import { actualLearningSeconds } from '../../modules/learning-session/implementation/time-intervals.js';
 import { reviewIdForLesson } from '../../modules/review-closure/implementation/stage-review.js';
+import type { LessonClosureRecord } from '../../modules/review-closure/model/review-state.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createLocalFileLearningSessionRepositories } from '../../persistence/learning-session-repositories.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
@@ -452,6 +453,21 @@ export function createLocalLearningRuntime(
         throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
       }
       const stageReview = await reviewRepositories.stageReviews.get(reviewIdForLesson(lessonId));
+      let finalClosure: LessonClosureRecord | undefined;
+      if (record.learning.progress === 'completed') {
+        for await (const closure of reviewRepositories.lessonClosures.list()) {
+          if (
+            closure.lessonId !== lessonId ||
+            closure.sessionId !== sessionId ||
+            closure.state === 'cancelled'
+          ) {
+            continue;
+          }
+          if (finalClosure === undefined || closure.updatedAt > finalClosure.updatedAt) {
+            finalClosure = closure;
+          }
+        }
+      }
       const [lesson, messages] = await Promise.all([
         input.course.access.getLesson(lessonId),
         messageLog.list(sessionId),
@@ -490,14 +506,19 @@ export function createLocalLearningRuntime(
           messages: sessionMessages,
         });
       }
-      const reviewArtifactRef = record.finalReview?.artifactRef ?? stageReview?.artifactRef;
+      const reviewKind =
+        record.learning.progress === 'completed' ? ('final' as const) : ('stage' as const);
+      const reviewArtifactRef =
+        reviewKind === 'final' ? record.finalReview?.artifactRef : stageReview?.artifactRef;
       const finalReviewMarkdown =
         reviewArtifactRef === undefined
           ? undefined
           : (await input.artifactStore.read(reviewArtifactRef))?.content;
-      const reviewDocument = record.finalReview?.document ?? stageReview?.document;
+      const reviewDocument =
+        reviewKind === 'final' ? record.finalReview?.document : stageReview?.document;
       const endedAt =
         record.finalReview?.committedAt ??
+        finalClosure?.updatedAt ??
         stageReview?.updatedAt ??
         [...record.intervals].reverse().find((interval) => interval.endedAt !== undefined)
           ?.endedAt ??
@@ -506,9 +527,31 @@ export function createLocalLearningRuntime(
       const reviewStatus =
         finalReviewMarkdown !== undefined
           ? ('ready' as const)
-          : stageReview?.status === 'failed'
-            ? ('failed' as const)
-            : ('generating' as const);
+          : reviewKind === 'final'
+            ? finalClosure?.state === 'generating-failed' ||
+              finalClosure?.state === 'completed' ||
+              finalClosure === undefined
+              ? ('failed' as const)
+              : ('generating' as const)
+            : stageReview?.status === 'failed'
+              ? ('failed' as const)
+              : ('generating' as const);
+      const reviewErrorCode =
+        reviewStatus !== 'failed'
+          ? undefined
+          : reviewKind === 'final'
+            ? (finalClosure?.errorCode ??
+              (finalClosure?.state === 'completed'
+                ? 'final_review_artifact_missing'
+                : 'final_review_transaction_missing'))
+            : (stageReview?.errorCode ?? 'stage_review_generation_failed');
+      const reviewRetry =
+        reviewKind === 'final' && finalClosure?.state === 'generating-failed'
+          ? {
+              transactionId: finalClosure.transactionId,
+              resourceVersion: finalClosure.resourceVersion,
+            }
+          : undefined;
       return {
         lessonId,
         courseId: lesson.courseId,
@@ -517,7 +560,10 @@ export function createLocalLearningRuntime(
         completedAt: endedAt,
         actualSeconds: actualLearningSeconds(record.intervals),
         progress: record.learning.progress,
+        reviewKind,
         reviewStatus,
+        ...(reviewErrorCode === undefined ? {} : { reviewErrorCode }),
+        ...(reviewRetry === undefined ? {} : { reviewRetry }),
         original: { sessionId, label: '原始学习', messages: originalMessages },
         supplementary,
         ...(finalReviewMarkdown === undefined ? {} : { finalReviewMarkdown }),

@@ -1,6 +1,8 @@
 import {
+  LessonClosureResponseSchema,
   LessonRecordResponseSchema,
   SupplementarySessionResponseSchema,
+  type LessonClosureView,
   type LessonRecordView as LessonRecord,
 } from '@learning-more/contracts';
 
@@ -10,6 +12,7 @@ export type { LessonRecord };
 
 export interface LessonRecordClient {
   getLessonRecord(lessonId: string): Promise<LessonRecord>;
+  retryReview?(transactionId: string, resourceVersion: number): Promise<LessonClosureView>;
   startSupplementary?(lessonId: string): Promise<{ id: string; resourceVersion: number }>;
   sendSupplementary?(
     sessionId: string,
@@ -24,6 +27,20 @@ export const lessonRecordClient: LessonRecordClient = {
       await apiRequest(`/api/v1/lessons/${encodeURIComponent(lessonId)}/record`, {
         schema: LessonRecordResponseSchema,
       })
+    ).data;
+  },
+  async retryReview(transactionId, resourceVersion) {
+    return (
+      await apiRequest(
+        `/api/v1/closure-transactions/${encodeURIComponent(transactionId)}/retries`,
+        {
+          method: 'POST',
+          body: {},
+          schema: LessonClosureResponseSchema,
+          command: createCommandAttempt(),
+          resourceVersion,
+        },
+      )
     ).data;
   },
   async startSupplementary(lessonId) {

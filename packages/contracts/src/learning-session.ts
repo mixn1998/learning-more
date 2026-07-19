@@ -159,7 +159,15 @@ export const LessonRecordResponseSchema = z.strictObject({
   completedAt: z.iso.datetime({ offset: true }),
   actualSeconds: z.number().int().nonnegative(),
   progress: z.enum(['in_progress', 'abandoned', 'completed']),
+  reviewKind: z.enum(['stage', 'final']),
   reviewStatus: z.enum(['generating', 'failed', 'ready']),
+  reviewErrorCode: z.string().trim().min(1).max(200).optional(),
+  reviewRetry: z
+    .strictObject({
+      transactionId: identifier,
+      resourceVersion,
+    })
+    .optional(),
   original: z.strictObject({
     sessionId: identifier,
     label: z.string(),

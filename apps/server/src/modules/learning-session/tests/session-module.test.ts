@@ -406,7 +406,11 @@ describe('LearningSession module', () => {
       },
     );
     const stopped = await module.execute(
-      { type: 'StopSessionGeneration', lessonId: 'lesson_01' },
+      {
+        type: 'StopSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_existing_turn',
+      },
       {
         ...context('stop_existing_turn_while_paused', 'page_a'),
         expectedVersion: internallyStarted.value.resourceVersion,
@@ -513,7 +517,7 @@ describe('LearningSession module', () => {
     );
     advance(30_000);
     await module.execute(
-      { type: 'StopSessionGeneration', lessonId: 'lesson_01' },
+      { type: 'StopSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
       { ...context('stop_generation_task', 'page_a'), expectedVersion: 2 },
     );
     advance(3_000);
@@ -588,7 +592,7 @@ describe('LearningSession module', () => {
     expect(view.actualSeconds).toBe(15);
   });
 
-  it('rejects paused assistant completion from a different session, task, or lease owner', async () => {
+  it('accepts a matching background completion after lease transfer and rejects other identities', async () => {
     const { module, messageLog } = fixture();
     await module.execute(
       { type: 'StartLesson', lessonId: 'lesson_01' },
@@ -629,8 +633,14 @@ describe('LearningSession module', () => {
     );
     await expect(
       module.execute(completion('session_01', 'task_01'), context('old_lease', 'page_a')),
-    ).rejects.toMatchObject({ code: 'write_lease_lost' });
-    await expect(messageLog.list('session_01')).resolves.toEqual([]);
+    ).resolves.toMatchObject({ value: { resourceVersion: 5 } });
+    await expect(messageLog.list('session_01')).resolves.toEqual([
+      expect.objectContaining({
+        id: 'message_assistant',
+        role: 'assistant',
+        generationTaskId: 'task_01',
+      }),
+    ]);
   });
 
   it('gives a second tab a read-only view without creating another original session', async () => {

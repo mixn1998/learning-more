@@ -378,6 +378,7 @@ describe('LearningSession HTTP contract', () => {
         completedAt: '2026-07-13T00:00:00.000Z',
         actualSeconds: 120,
         progress: 'completed',
+        reviewKind: 'final',
         reviewStatus: 'ready',
         original: {
           sessionId: 'session_01',

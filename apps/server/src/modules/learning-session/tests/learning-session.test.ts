@@ -123,7 +123,7 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
         taskId: fc.uuid(),
         mode: fc.constantFrom('new-turn' as const, 'retry' as const, 'recovery' as const),
       }),
-      fc.constant<LearningSessionCommand>({ type: 'stopGeneration' }),
+      fc.constant<LearningSessionCommand>({ type: 'stopGeneration', taskId: 'task_1' }),
       fc.constant<LearningSessionCommand>({ type: 'abandon' }),
       fc.constant<LearningSessionCommand>({ type: 'restore' }),
       fc.record({ type: fc.constant('commitFinalReview' as const), reviewId: fc.uuid() }),

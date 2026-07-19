@@ -10,6 +10,7 @@ const baseRecord = {
   completedAt: '2026-07-15T00:00:00.000Z',
   actualSeconds: 60,
   progress: 'completed' as const,
+  reviewKind: 'final' as const,
   reviewStatus: 'ready' as const,
   original: {
     sessionId: 'session_01',
@@ -38,5 +39,25 @@ describe('lesson record contract', () => {
         original: { ...baseRecord.original, messages: ['你：旧格式'] },
       }),
     ).toThrow();
+  });
+
+  it('carries a failed final Review reason and retry target', () => {
+    const record = LessonRecordResponseSchema.parse({
+      ...baseRecord,
+      reviewStatus: 'failed',
+      reviewErrorCode: 'review_evidence_pack_incomplete',
+      reviewRetry: {
+        transactionId: 'closure_01',
+        resourceVersion: 2,
+      },
+      finalReviewMarkdown: undefined,
+    });
+
+    expect(record).toMatchObject({
+      reviewKind: 'final',
+      reviewStatus: 'failed',
+      reviewErrorCode: 'review_evidence_pack_incomplete',
+      reviewRetry: { transactionId: 'closure_01', resourceVersion: 2 },
+    });
   });
 });

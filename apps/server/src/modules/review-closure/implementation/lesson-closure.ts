@@ -183,6 +183,10 @@ export function createLessonClosureWorkflow(options: {
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
       if (current.state === 'completed') throw new LessonClosureError('final_review_immutable');
       if (current.state === 'cancelled') throw new LessonClosureError('lesson_not_completable');
+      if (current.state === 'generating') return current;
+      if (current.state !== 'open' && current.state !== 'generating-failed') {
+        throw new LessonClosureError('lesson_not_completable');
+      }
       const taskId = await submit(current, commandId);
       const { errorCode: _error, draftArtifactRef: _draft, ...rest } = current;
       void _error;

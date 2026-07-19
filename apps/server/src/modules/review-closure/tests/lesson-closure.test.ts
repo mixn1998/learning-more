@@ -130,6 +130,18 @@ describe('lesson closure workflow', () => {
     expect(submitReview).not.toHaveBeenCalled();
   });
 
+  it('does not submit a second Review task while the current attempt is generating', async () => {
+    const submitReview = vi.fn().mockResolvedValue({ taskId: 'task_01' });
+    const { workflow } = await fixture(false, undefined, submitReview);
+    const started = await workflow.begin(snapshot);
+
+    const generating = await workflow.retry(started.transactionId, 'initial');
+    const duplicateRetry = await workflow.retry(started.transactionId, 'duplicate');
+
+    expect(duplicateRetry).toEqual(generating);
+    expect(submitReview).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a late Review write after permanent course deletion starts', async () => {
     let deleted = false;
     const { workflow, closureRepository } = await fixture(false, async () => {
