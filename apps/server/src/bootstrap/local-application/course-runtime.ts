@@ -9,6 +9,7 @@ import { createGenerationAuthoringAgent } from '../../modules/course-authoring/i
 import { createGenerationCandidateAlignmentPlanner } from '../../modules/course-authoring/implementation/generation-candidate-alignment-planner.js';
 import { ingestSelectedMaterial } from '../../modules/course-authoring/implementation/material-ingestion.js';
 import { createOutlineRevisionCleanup } from '../../modules/planning/implementation/outline-revision-cleanup.js';
+import { createTeachingWeightService } from '../../modules/course-authoring/implementation/teaching-weight-service.js';
 import {
   createLocalFileCourseArchiveStore,
   createLocalFileOutlineSessionDraftStore,
@@ -16,6 +17,7 @@ import {
 } from '../../persistence/course-archive-store.js';
 import { createLocalFileCourseAuthoringRepositories } from '../../persistence/course-authoring-repositories.js';
 import { createLocalFileCourseCreationRepositories } from '../../persistence/course-creation-repositories.js';
+import { createLocalFileTeachingWeightRepository } from '../../persistence/teaching-weight-repository.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import {
@@ -37,6 +39,7 @@ export type CourseAccess = Readonly<{
   getLesson: CourseRepositories['lessons']['get'];
   getOutlineVersion: CourseRepositories['outlineVersions']['get'];
   getMaterial: AuthoringRepositories['materials']['get'];
+  getTeachingWeightMetadata: ReturnType<typeof createLocalFileTeachingWeightRepository>['get'];
   listCourses: CourseRepositories['courses']['list'];
   listAllLessons: CourseRepositories['lessons']['list'];
   listLessons: CourseRepositories['lessons']['listByCourse'];
@@ -53,6 +56,7 @@ export type LocalCourseRuntime = Readonly<{
   courseRepositories: CourseRepositories;
   reconcileOutlineLiveReferences(): Promise<void>;
   recoverGenerationTasks(): Promise<void>;
+  recoverTeachingWeightMetadata(): Promise<void>;
 }>;
 
 export function createLocalCourseRuntime(
@@ -70,6 +74,15 @@ export function createLocalCourseRuntime(
   const courseRepositories = createLocalFileCourseCreationRepositories(input.dataRoot);
   const scheduleRepository = createLocalFileScheduleRepository(input.dataRoot);
   const planFlowRepository = createLocalFilePlanFlowRepository(input.dataRoot);
+  const teachingWeightRepository = createLocalFileTeachingWeightRepository(input.dataRoot);
+  const teachingWeights = createTeachingWeightService({
+    courses: courseRepositories,
+    repository: teachingWeightRepository,
+    unitOfWork: input.unitOfWork,
+    execution: input.generation.execution,
+    providerId: 'current',
+    now: input.now,
+  });
   const outlineRevisionLiveCleanup = createOutlineRevisionCleanup({
     schedules: scheduleRepository,
     planFlows: planFlowRepository,
@@ -211,6 +224,9 @@ export function createLocalCourseRuntime(
     outlineRevisionLiveCleanup,
     outbox: input.events.outbox,
     profileEvidenceSink: input.profile.checkpointSink,
+    async onOutlineVersionPublished({ courseId }) {
+      await teachingWeights.ensureForCourse(courseId);
+    },
     nextId,
     now: () => new Date(),
     courseArchiveDeletion,
@@ -281,6 +297,7 @@ export function createLocalCourseRuntime(
       getOutlineVersion: (outlineVersionId) =>
         courseRepositories.outlineVersions.get(outlineVersionId),
       getMaterial: (sourceRef) => authoringRepositories.materials.get(sourceRef),
+      getTeachingWeightMetadata: (outlineVersionId) => teachingWeights.get(outlineVersionId),
       listCourses: listCoursesWithOutlineTitle,
       listAllLessons: () => courseRepositories.lessons.list(),
       listLessons: (courseId) => courseRepositories.lessons.listByCourse(courseId),
@@ -333,6 +350,13 @@ export function createLocalCourseRuntime(
         }
       }
       await input.generation.runtime.drainQueued();
+    },
+    async recoverTeachingWeightMetadata() {
+      for await (const course of courseRepositories.courses.list()) {
+        const metadata = await teachingWeightRepository.get(course.outlineVersionId);
+        if (metadata?.state === 'completed') continue;
+        await teachingWeights.ensureForCourse(course.id).catch(() => undefined);
+      }
     },
   };
 }

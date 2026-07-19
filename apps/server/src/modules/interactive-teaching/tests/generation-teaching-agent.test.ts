@@ -180,6 +180,12 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('不得输出 JavaScript');
     expect(fake.request()?.prompt).toContain('<learning-more-control>');
     expect(fake.request()?.prompt).toContain('interactionStatus');
+    expect(fake.request()?.prompt).toContain('difficultySignals');
+    expect(fake.request()?.prompt).toContain('answer_error');
+    expect(fake.request()?.prompt).toContain('延伸拓展、脑洞类或仅相邻探索的问题不得计入');
+    expect(fake.request()?.prompt).toContain(
+      '"allowedDifficultySignalSourceMessageId":"message_current"',
+    );
     expect(fake.request()?.prompt).toContain('knowledge:kp_1');
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
     expect(fake.request()?.prompt).not.toContain('off_scope');
@@ -193,7 +199,6 @@ describe('GenerationTeachingAgent', () => {
       'teachingState',
       'sourceSnapshotHash',
       'session_1',
-      'message_current',
     ]) {
       expect(fake.request()?.prompt).not.toContain(internalValue);
     }

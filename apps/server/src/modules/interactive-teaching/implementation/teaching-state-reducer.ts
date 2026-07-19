@@ -42,6 +42,8 @@ export function createTeachingState(input: {
       teachingEvidenceRefs: [],
       learnerEvidenceRefs: [],
       unresolvedEntryRefs: [],
+      difficultySignals: [],
+      adaptiveDifficulty: 'normal',
     })),
     openLoops: [],
     explorationBranches: [],

@@ -81,6 +81,7 @@ export const LessonTeachingProgressSchema = z.strictObject({
       delivery: z.enum(['not_addressed', 'explained']),
       verification: z.enum(['not_observed', 'supporting', 'limiting', 'mixed']),
       unresolvedQuestionCount: z.number().int().nonnegative(),
+      emphasis: z.enum(['normal', 'key', 'difficult', 'key_difficult']).optional(),
     }),
   ),
 });

@@ -436,15 +436,31 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
           title: point.title,
           detail: point.interactionStatus === 'skipped' ? '跳过知识点互动' : '该知识点已完成',
           state: 'done' as const,
+          emphasis: point.emphasis,
         };
       }
       if (point.progress === 'skipped') {
-        return { title: point.title, detail: '跳过知识点', state: 'done' as const };
+        return {
+          title: point.title,
+          detail: '跳过知识点',
+          state: 'done' as const,
+          emphasis: point.emphasis,
+        };
       }
       if (active) {
-        return { title: point.title, detail: '正在学习中', state: 'active' as const };
+        return {
+          title: point.title,
+          detail: '正在学习中',
+          state: 'active' as const,
+          emphasis: point.emphasis,
+        };
       }
-      return { title: point.title, detail: '待讲解', state: 'pending' as const };
+      return {
+        title: point.title,
+        detail: '待讲解',
+        state: 'pending' as const,
+        emphasis: point.emphasis,
+      };
     }),
     {
       title: '综合检测',

@@ -116,6 +116,20 @@ export const TeachingKnowledgePointStateSchema = z.strictObject({
   teachingEvidenceRefs: z.array(SourceRefSchema),
   learnerEvidenceRefs: z.array(SourceRefSchema),
   unresolvedEntryRefs: z.array(IdentifierSchema),
+  difficultySignals: z
+    .array(
+      z.strictObject({
+        sourceMessageId: IdentifierSchema,
+        kind: z.enum([
+          'answer_error',
+          'misunderstanding',
+          'not_understood',
+          'request_deeper_explanation',
+        ]),
+      }),
+    )
+    .optional(),
+  adaptiveDifficulty: z.enum(['normal', 'difficult']).optional(),
 });
 
 export const TeachingOpenLoopSchema = z.strictObject({

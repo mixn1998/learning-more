@@ -108,7 +108,9 @@ export function createHomeRouteOptions(
             status: course.status,
             courseMode: course.courseMode,
             outlineVersionId: course.outlineVersionId,
-            disciplineTag: confirmedOutline?.disciplineTag,
+            ...(confirmedOutline?.disciplineTag === undefined
+              ? {}
+              : { disciplineTag: confirmedOutline.disciplineTag }),
             topicTags: [...(confirmedOutline?.topicTags ?? [])],
             resourceVersion: course.resourceVersion,
           },

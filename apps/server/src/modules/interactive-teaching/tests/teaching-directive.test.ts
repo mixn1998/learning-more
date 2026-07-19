@@ -182,4 +182,170 @@ describe('teaching directive', () => {
       }),
     ).toThrowError('teaching_directive_closure_state_mismatch');
   });
+
+  it('marks a knowledge point difficult after two distinct signal kinds in one answer', () => {
+    const directive = {
+      schemaVersion: 1 as const,
+      lessonPhase: 'knowledge_point' as const,
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [
+        {
+          ref: 'knowledge:kp_1',
+          status: 'learning' as const,
+          interactionStatus: 'pending' as const,
+        },
+        {
+          ref: 'knowledge:kp_2',
+          status: 'pending' as const,
+          interactionStatus: 'pending' as const,
+        },
+      ],
+      difficultySignals: [
+        {
+          knowledgePointRef: 'knowledge:kp_1',
+          sourceMessageId: 'message_1',
+          kind: 'answer_error' as const,
+        },
+        {
+          knowledgePointRef: 'knowledge:kp_1',
+          sourceMessageId: 'message_1',
+          kind: 'not_understood' as const,
+        },
+      ],
+      comprehensiveCheck: 'pending' as const,
+      closureInquiry: 'pending' as const,
+      summaryStatus: 'pending' as const,
+    };
+
+    const next = applyTeachingDirective(initial(), directive, {
+      currentUserMessageId: 'message_1',
+    });
+
+    expect(next.knowledgePoints[0]).toMatchObject({
+      adaptiveDifficulty: 'difficult',
+      difficultySignals: [
+        { sourceMessageId: 'message_1', kind: 'answer_error' },
+        { sourceMessageId: 'message_1', kind: 'not_understood' },
+      ],
+    });
+
+    const replayed = applyTeachingDirective(next, directive, {
+      currentUserMessageId: 'message_1',
+    });
+    expect(replayed.knowledgePoints[0]?.difficultySignals).toHaveLength(2);
+  });
+
+  it('accumulates different difficulty signals across user messages', () => {
+    const first = applyTeachingDirective(
+      initial(),
+      {
+        schemaVersion: 1,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        knowledgePoints: [
+          { ref: 'knowledge:kp_1', status: 'learning', interactionStatus: 'pending' },
+          { ref: 'knowledge:kp_2', status: 'pending', interactionStatus: 'pending' },
+        ],
+        difficultySignals: [
+          {
+            knowledgePointRef: 'knowledge:kp_1',
+            sourceMessageId: 'message_1',
+            kind: 'misunderstanding',
+          },
+        ],
+        comprehensiveCheck: 'pending',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+      },
+      { currentUserMessageId: 'message_1' },
+    );
+    const second = applyTeachingDirective(
+      first,
+      {
+        schemaVersion: 1,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        knowledgePoints: [
+          { ref: 'knowledge:kp_1', status: 'learning', interactionStatus: 'pending' },
+          { ref: 'knowledge:kp_2', status: 'pending', interactionStatus: 'pending' },
+        ],
+        difficultySignals: [
+          {
+            knowledgePointRef: 'knowledge:kp_1',
+            sourceMessageId: 'message_2',
+            kind: 'request_deeper_explanation',
+          },
+        ],
+        comprehensiveCheck: 'pending',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+      },
+      { currentUserMessageId: 'message_2' },
+    );
+
+    expect(second.knowledgePoints[0]).toMatchObject({ adaptiveDifficulty: 'difficult' });
+    expect(second.knowledgePoints[0]?.difficultySignals).toHaveLength(2);
+  });
+
+  it('rejects duplicate signal tuples and signals attributed to another user message', () => {
+    const base = {
+      schemaVersion: 1 as const,
+      lessonPhase: 'knowledge_point' as const,
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [
+        {
+          ref: 'knowledge:kp_1',
+          status: 'learning' as const,
+          interactionStatus: 'pending' as const,
+        },
+        {
+          ref: 'knowledge:kp_2',
+          status: 'pending' as const,
+          interactionStatus: 'pending' as const,
+        },
+      ],
+      comprehensiveCheck: 'pending' as const,
+      closureInquiry: 'pending' as const,
+      summaryStatus: 'pending' as const,
+    };
+
+    expect(() =>
+      applyTeachingDirective(
+        initial(),
+        {
+          ...base,
+          difficultySignals: [
+            {
+              knowledgePointRef: 'knowledge:kp_1',
+              sourceMessageId: 'message_1',
+              kind: 'misunderstanding' as const,
+            },
+            {
+              knowledgePointRef: 'knowledge:kp_1',
+              sourceMessageId: 'message_1',
+              kind: 'misunderstanding' as const,
+            },
+          ],
+        },
+        { currentUserMessageId: 'message_1' },
+      ),
+    ).toThrowError('teaching_directive_difficulty_signal_duplicate');
+
+    expect(() =>
+      applyTeachingDirective(
+        initial(),
+        {
+          ...base,
+          difficultySignals: [
+            {
+              knowledgePointRef: 'knowledge:kp_1',
+              sourceMessageId: 'message_other',
+              kind: 'misunderstanding' as const,
+            },
+          ],
+        },
+        { currentUserMessageId: 'message_1' },
+      ),
+    ).toThrowError('teaching_directive_difficulty_signal_source_mismatch');
+  });
 });

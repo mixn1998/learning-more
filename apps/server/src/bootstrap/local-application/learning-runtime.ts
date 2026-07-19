@@ -10,6 +10,7 @@ import type { LearningSessionRouteOptions } from '../../http/routes/learning-ses
 import { createTeachingContextAssembler } from '../../modules/interactive-teaching/implementation/context-assembler.js';
 import { createGenerationTeachingAgent } from '../../modules/interactive-teaching/implementation/generation-teaching-agent.js';
 import { createGenerationTeachingObserver } from '../../modules/interactive-teaching/implementation/generation-teaching-observer.js';
+import { emphasisFor } from '../../modules/interactive-teaching/implementation/teaching-depth-policy.js';
 import { createInteractiveTeaching } from '../../modules/interactive-teaching/implementation/interactive-teaching.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
 import { createLocalFileMessageLog } from '../../modules/learning-session/implementation/message-log.js';
@@ -372,6 +373,10 @@ export function createLocalLearningRuntime(
             delivery: point?.delivery ?? ('not_addressed' as const),
             verification: point?.verification ?? ('not_observed' as const),
             unresolvedQuestionCount: point?.unresolvedEntryRefs.length ?? 0,
+            emphasis: emphasisFor({
+              fixedImportance: knowledgePoint.fixedImportance ?? 'normal',
+              adaptiveDifficulty: point?.adaptiveDifficulty ?? 'normal',
+            }),
           };
         }),
       };

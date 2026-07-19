@@ -28,6 +28,20 @@ export const TeachingDirectiveSchema = z.strictObject({
   ]),
   activeKnowledgePointRef: z.string().trim().min(1).max(2_000).optional(),
   knowledgePoints: z.array(KnowledgePointDirectiveSchema),
+  difficultySignals: z
+    .array(
+      z.strictObject({
+        knowledgePointRef: z.string().trim().min(1).max(2_000),
+        sourceMessageId: z.string().trim().min(1).max(500),
+        kind: z.enum([
+          'answer_error',
+          'misunderstanding',
+          'not_understood',
+          'request_deeper_explanation',
+        ]),
+      }),
+    )
+    .optional(),
   comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),
   summaryStatus: z.enum(['pending', 'delivered']),
@@ -61,6 +75,11 @@ export function normalizeTeachingControlState(state: TeachingStateSnapshot): Tea
       interactionStatus:
         point.interactionStatus ??
         (normalizedProgress(point.progress) === 'skipped' ? 'skipped' : 'pending'),
+      difficultySignals: point.difficultySignals ?? [],
+      adaptiveDifficulty:
+        point.adaptiveDifficulty === 'difficult' || (point.difficultySignals?.length ?? 0) >= 2
+          ? 'difficult'
+          : 'normal',
     })),
   };
 }
@@ -75,7 +94,17 @@ export function teachingDirectiveMatchesState(
     status: normalizedProgress(point.progress),
     interactionStatus: point.interactionStatus ?? 'pending',
   }));
+  const unappliedDifficultySignal = (directive.difficultySignals ?? []).some((signal) => {
+    const point = state.knowledgePoints.find(
+      (candidate) => candidate.ref === signal.knowledgePointRef,
+    );
+    return !(point?.difficultySignals ?? []).some(
+      (existing) =>
+        existing.sourceMessageId === signal.sourceMessageId && existing.kind === signal.kind,
+    );
+  });
   return (
+    !unappliedDifficultySignal &&
     (state.lessonPhase ?? 'warmup') === directive.lessonPhase &&
     state.activeKnowledgePointRef === directive.activeKnowledgePointRef &&
     normalizedComprehensive(state.comprehensiveCheck) === directive.comprehensiveCheck &&
@@ -110,6 +139,7 @@ function closureStateMatchesPhase(directive: TeachingDirective): boolean {
 export function applyTeachingDirective(
   currentInput: TeachingStateSnapshot,
   directiveInput: unknown,
+  validation?: Readonly<{ currentUserMessageId?: string }>,
 ): TeachingStateSnapshot {
   const current = normalizeTeachingControlState(currentInput);
   const directive = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
@@ -121,6 +151,27 @@ export function applyTeachingDirective(
     expectedRefs.some((ref) => !incomingRefs.includes(ref))
   ) {
     invalid('teaching_directive_knowledge_points_mismatch');
+  }
+
+  const incomingDifficultySignals = directive.difficultySignals ?? [];
+  if (
+    validation !== undefined &&
+    incomingDifficultySignals.some(
+      (signal) => signal.sourceMessageId !== validation.currentUserMessageId,
+    )
+  ) {
+    invalid('teaching_directive_difficulty_signal_source_mismatch');
+  }
+  if (
+    incomingDifficultySignals.some((signal) => !incomingRefs.includes(signal.knowledgePointRef))
+  ) {
+    invalid('teaching_directive_difficulty_signal_point_unknown');
+  }
+  const incomingSignalKeys = incomingDifficultySignals.map(
+    (signal) => `${signal.knowledgePointRef}\u0000${signal.sourceMessageId}\u0000${signal.kind}`,
+  );
+  if (new Set(incomingSignalKeys).size !== incomingSignalKeys.length) {
+    invalid('teaching_directive_difficulty_signal_duplicate');
   }
 
   const currentByRef = new Map(current.knowledgePoints.map((point) => [point.ref, point]));
@@ -234,10 +285,26 @@ export function applyTeachingDirective(
     summaryStatus: directive.summaryStatus,
     knowledgePoints: current.knowledgePoints.map((point) => {
       const incoming = incomingByRef.get(point.ref)!;
+      const difficultySignals = [...(point.difficultySignals ?? [])];
+      for (const signal of incomingDifficultySignals.filter(
+        (candidate) => candidate.knowledgePointRef === point.ref,
+      )) {
+        if (
+          difficultySignals.some(
+            (existing) =>
+              existing.sourceMessageId === signal.sourceMessageId && existing.kind === signal.kind,
+          )
+        ) {
+          continue;
+        }
+        difficultySignals.push({ sourceMessageId: signal.sourceMessageId, kind: signal.kind });
+      }
       return {
         ...point,
         progress: incoming.status,
         interactionStatus: incoming.interactionStatus,
+        difficultySignals,
+        adaptiveDifficulty: difficultySignals.length >= 2 ? 'difficult' : 'normal',
       };
     }),
   };

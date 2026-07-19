@@ -59,6 +59,51 @@ afterEach(() => {
 });
 
 describe('learning SessionPage', () => {
+  it('renders fixed and session-adaptive teaching emphasis beside knowledge points', async () => {
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 4,
+      learning: { progress: 'in_progress', session: { id: 'session_01', state: 'active' } },
+      teachingProgress: {
+        ledgerVersion: 3,
+        observationStatus: 'current',
+        lessonPhase: 'knowledge_point',
+        comprehensiveCheck: 'pending',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: 'Fixed key point',
+            progress: 'completed',
+            interactionStatus: 'completed',
+            emphasis: 'key',
+          },
+          {
+            ref: 'knowledge:kp_2',
+            title: 'Adaptive difficult point',
+            progress: 'learning',
+            interactionStatus: 'pending',
+            emphasis: 'difficult',
+          },
+          {
+            ref: 'knowledge:kp_3',
+            title: 'Combined point',
+            progress: 'pending',
+            interactionStatus: 'pending',
+            emphasis: 'key_difficult',
+          },
+        ],
+      },
+    });
+
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
+
+    expect(await screen.findByText('Fixed key point')).toBeInTheDocument();
+    expect(screen.getByText('重点')).toBeInTheDocument();
+    expect(screen.getByText('难点')).toBeInTheDocument();
+    expect(screen.getByText('重难点')).toBeInTheDocument();
+  });
+
   it('automatically starts an AI-led opening without a user message', async () => {
     const openLesson = vi.fn().mockResolvedValue({ taskId: 'task_opening_01', resourceVersion: 2 });
     const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {

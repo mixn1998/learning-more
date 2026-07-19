@@ -75,6 +75,10 @@ export function createCourseAuthoringFacade(options: {
   readonly profileEvidenceSink?: Readonly<{
     capture(checkpoint: CourseAuthoringEvidenceCheckpoint): void;
   }>;
+  readonly onOutlineVersionPublished?: (input: {
+    courseId: string;
+    outlineVersionId: string;
+  }) => Promise<void>;
   readonly nextId: (
     kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment' | 'message',
   ) => string;
@@ -711,6 +715,12 @@ export function createCourseAuthoringFacade(options: {
           confirmedCandidate,
           confirmation.courseId,
         );
+        void options
+          .onOutlineVersionPublished?.({
+            courseId: confirmation.courseId,
+            outlineVersionId: course.outlineVersionId,
+          })
+          .catch(() => undefined);
         return result(
           context,
           {
@@ -753,6 +763,9 @@ export function createCourseAuthoringFacade(options: {
             now: options.now,
           },
         );
+        void options
+          .onOutlineVersionPublished?.({ courseId: command.courseId, outlineVersionId })
+          .catch(() => undefined);
         return result(
           context,
           { kind: 'revision', courseId: command.courseId, outlineVersionId },

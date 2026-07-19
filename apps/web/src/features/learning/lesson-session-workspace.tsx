@@ -19,7 +19,15 @@ export type LessonPathPoint = Readonly<{
   title: string;
   detail: string;
   state: 'done' | 'active' | 'pending';
+  emphasis?: 'normal' | 'key' | 'difficult' | 'key_difficult';
 }>;
+
+function emphasisLabel(value: LessonPathPoint['emphasis']): string | undefined {
+  if (value === 'key') return '重点';
+  if (value === 'difficult') return '难点';
+  if (value === 'key_difficult') return '重难点';
+  return undefined;
+}
 
 function formatTimer(totalSeconds: number) {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -261,7 +269,14 @@ export function LessonSessionWorkspace(props: {
                   <li className={point.state} key={`${point.title}:${point.detail}`}>
                     <span className="node" />
                     <div>
-                      <b>{point.title}</b>
+                      <b>
+                        {point.title}
+                        {emphasisLabel(point.emphasis) === undefined ? null : (
+                          <span className="learning-path-emphasis">
+                            {emphasisLabel(point.emphasis)}
+                          </span>
+                        )}
+                      </b>
                       <small>{point.detail}</small>
                     </div>
                   </li>

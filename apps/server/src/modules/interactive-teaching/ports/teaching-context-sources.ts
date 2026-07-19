@@ -35,7 +35,11 @@ export type CourseLessonTeachingContext = Readonly<{
     outlineVersionId: string;
     title: string;
     objective: string;
-    coreKnowledgePoints: readonly Readonly<{ ref: string; text: string }>[];
+    coreKnowledgePoints: readonly Readonly<{
+      ref: string;
+      text: string;
+      fixedImportance?: 'normal' | 'key';
+    }>[];
   }>;
 }>;
 

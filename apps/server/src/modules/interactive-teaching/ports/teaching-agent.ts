@@ -15,6 +15,11 @@ export type TeachingDirective = Readonly<{
     status: 'pending' | 'learning' | 'completed' | 'skipped';
     interactionStatus: 'pending' | 'completed' | 'skipped';
   }>[];
+  difficultySignals?: readonly Readonly<{
+    knowledgePointRef: string;
+    sourceMessageId: string;
+    kind: 'answer_error' | 'misunderstanding' | 'not_understood' | 'request_deeper_explanation';
+  }>[];
   comprehensiveCheck: 'pending' | 'learning' | 'completed' | 'skipped';
   closureInquiry: 'pending' | 'awaiting_confirmation' | 'confirmed_no_questions';
   summaryStatus: 'pending' | 'delivered';

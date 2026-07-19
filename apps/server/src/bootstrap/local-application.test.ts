@@ -598,7 +598,7 @@ describe('local CourseAuthoring application', () => {
       course!.outlineVersionId,
     );
     const homeView = HomeDashboardResponseSchema.parse(
-      await local.serverDependencies.home!.getHome(),
+      (await local.serverDependencies.home!.getHome()).value,
     );
     expect(
       homeView.courses.find((item) => item.courseId === confirmation.courseId)?.topicTags,

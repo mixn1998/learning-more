@@ -196,6 +196,21 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   font-size: 12px;
   line-height: 1.35;
 }
+
+.lesson-session-workspace .learning-path-emphasis {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: 999px;
+  color: var(--accent-dark);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+}
 .lesson-session-workspace .learning-path small {
   display: block;
   margin-top: 2px;

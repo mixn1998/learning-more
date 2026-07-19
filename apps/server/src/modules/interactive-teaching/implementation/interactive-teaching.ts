@@ -126,6 +126,12 @@ export function createInteractiveTeaching(options: {
     expectedVersion: number;
     observe: boolean;
   }): Promise<TeachingTurnAccepted> {
+    const currentUserMessageId =
+      input.assembled.turnKind === 'opening'
+        ? undefined
+        : input.assembled.recentMessages.findLast(
+            (message) => message.role === 'user' && message.completionStatus === 'complete',
+          )?.messageId;
     const accepted = await options.agent.submit(input.assembled);
     const started = await options.sessionModule.execute(
       { type: 'StartSessionGeneration', lessonId: input.lessonId, taskId: accepted.taskId },
@@ -152,6 +158,7 @@ export function createInteractiveTeaching(options: {
           lessonId: input.lessonId,
           sessionId: input.sessionId,
           directive: result.directive,
+          ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
         });
         const assistantMessageId = options.nextAssistantMessageId();
         const artifactRef = `assistant-message:${assistantMessageId}`;
@@ -187,6 +194,7 @@ export function createInteractiveTeaching(options: {
           lessonId: input.lessonId,
           sessionId: input.sessionId,
           directive: result.directive,
+          ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
         });
         taskContext.delete(accepted.taskId);
         await options.frameLog?.append(accepted.taskId, 'message.completed', {
@@ -277,12 +285,19 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     directive?: TeachingDirective | undefined;
+    currentUserMessageId?: string;
   }): Promise<void> {
     if (input.directive === undefined) return;
     const current = await options.ledgerRepository.get(input.sessionId);
     const base = await initialState(input.courseId, input.lessonId, input.sessionId);
     if (teachingDirectiveMatchesState(base, input.directive)) return;
-    const nextState = applyTeachingDirective(base, input.directive);
+    const nextState = applyTeachingDirective(
+      base,
+      input.directive,
+      input.currentUserMessageId === undefined
+        ? undefined
+        : { currentUserMessageId: input.currentUserMessageId },
+    );
     await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
       options.ledgerRepository.save(
         tx,
@@ -305,10 +320,17 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     directive?: TeachingDirective | undefined;
+    currentUserMessageId?: string;
   }): Promise<void> {
     if (input.directive === undefined) return;
     const base = await initialState(input.courseId, input.lessonId, input.sessionId);
-    applyTeachingDirective(base, input.directive);
+    applyTeachingDirective(
+      base,
+      input.directive,
+      input.currentUserMessageId === undefined
+        ? undefined
+        : { currentUserMessageId: input.currentUserMessageId },
+    );
   }
 
   async function observeCompletedTurn(input: {

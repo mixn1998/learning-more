@@ -42,6 +42,14 @@ export function createLearningTeachingContext(input: {
         });
       }
       const playIntent = teachingPlayIntent(course.courseMode);
+      const teachingWeight = await input.course.getTeachingWeightMetadata(course.outlineVersionId);
+      const keyIndexes = new Set(
+        teachingWeight?.state === 'completed'
+          ? teachingWeight.keyKnowledgePoints
+              .filter((point) => point.lessonId === lesson.id)
+              .map((point) => point.knowledgePointIndex)
+          : [],
+      );
       return {
         course: {
           courseId: course.id,
@@ -57,9 +65,10 @@ export function createLearningTeachingContext(input: {
           outlineVersionId: lesson.outlineVersionId,
           title: lesson.title,
           objective: lesson.objective,
-          coreKnowledgePoints: lesson.coreKnowledgePoints.map((text) => ({
+          coreKnowledgePoints: lesson.coreKnowledgePoints.map((text, index) => ({
             ref: `knowledge:${lesson.id}:${createHash('sha256').update(text).digest('hex').slice(0, 16)}`,
             text,
+            fixedImportance: keyIndexes.has(index) ? ('key' as const) : ('normal' as const),
           })),
         },
       };
