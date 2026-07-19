@@ -11,6 +11,7 @@ import type { OutlineSessionDraftStore } from '../modules/course-authoring/ports
 import { assertSafePathSegment, DataRoot } from './data-root.js';
 import { checksumJson, StorageDocumentError } from './json-codec.js';
 import { createStorePaths } from './paths.js';
+import { lessonClosureIndexRelativePath } from './review-closure-repositories.js';
 import type { TransactionContext } from './unit-of-work.js';
 
 type JsonObject = Record<string, unknown>;
@@ -427,8 +428,16 @@ export function createLocalFileCourseArchiveStore(dataRoot: DataRoot): CourseArc
       const closures = (byType.get('lesson-closures') ?? []).filter((item) =>
         lessonIds.has(String(item.data.lessonId)),
       );
+      const closureIndexPaths = new Set<string>();
       for (const item of closures) {
-        if (typeof item.data.sessionId === 'string') sessionIds.add(item.data.sessionId);
+        if (typeof item.data.sessionId === 'string') {
+          sessionIds.add(item.data.sessionId);
+          if (typeof item.data.lessonId === 'string') {
+            closureIndexPaths.add(
+              lessonClosureIndexRelativePath(item.data.lessonId, item.data.sessionId),
+            );
+          }
+        }
         if (typeof item.data.generationTaskId === 'string') taskIds.add(item.data.generationTaskId);
         if (typeof item.data.draftArtifactRef === 'string')
           artifactIds.add(item.data.draftArtifactRef);
@@ -597,6 +606,8 @@ export function createLocalFileCourseArchiveStore(dataRoot: DataRoot): CourseArc
       add(supplementary, 'supplementarySessions');
       add(stageReviews, 'reviews');
       add(closures, 'lessonClosures');
+      for (const relativePath of closureIndexPaths) deletions.add(relativePath);
+      count(counts, 'lessonClosureIndexes', closureIndexPaths.size);
       add(courseReviews, 'courseReviews');
       add(schedules, 'schedules');
       add(deletedPlanFlows, 'planFlows');

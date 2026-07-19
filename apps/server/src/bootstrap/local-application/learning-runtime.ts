@@ -74,7 +74,10 @@ export function createLocalLearningRuntime(
   }>,
 ): LocalLearningRuntime {
   const learningRepositories = createLocalFileLearningSessionRepositories(input.dataRoot);
-  const reviewRepositories = createLocalFileReviewClosureRepositories(input.dataRoot);
+  const reviewRepositories = createLocalFileReviewClosureRepositories(
+    input.dataRoot,
+    input.unitOfWork,
+  );
   const messageLog = createLocalFileMessageLog(input.dataRoot);
   const supplementaryRepository = createLocalFileSupplementarySessionRepository(input.dataRoot);
   const teachingLedgerRepository = createLocalFileTeachingLedgerRepository(input.dataRoot);
@@ -455,18 +458,7 @@ export function createLocalLearningRuntime(
       const stageReview = await reviewRepositories.stageReviews.get(reviewIdForLesson(lessonId));
       let finalClosure: LessonClosureRecord | undefined;
       if (record.learning.progress === 'completed') {
-        for await (const closure of reviewRepositories.lessonClosures.list()) {
-          if (
-            closure.lessonId !== lessonId ||
-            closure.sessionId !== sessionId ||
-            closure.state === 'cancelled'
-          ) {
-            continue;
-          }
-          if (finalClosure === undefined || closure.updatedAt > finalClosure.updatedAt) {
-            finalClosure = closure;
-          }
-        }
+        finalClosure = await reviewRepositories.lessonClosures.findLatest(lessonId, sessionId);
       }
       const [lesson, messages] = await Promise.all([
         input.course.access.getLesson(lessonId),

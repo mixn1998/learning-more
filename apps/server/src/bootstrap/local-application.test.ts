@@ -156,7 +156,7 @@ describe('local CourseAuthoring application', () => {
     const dataRoot = DataRoot.create(directory);
     const unitOfWork = createUnitOfWork({ dataRoot });
     const learning = createLocalFileLearningSessionRepositories(dataRoot);
-    const reviews = createLocalFileReviewClosureRepositories(dataRoot);
+    const reviews = createLocalFileReviewClosureRepositories(dataRoot, unitOfWork);
     const reviewId = reviewIdForLesson('lesson_abandoned_record');
     await unitOfWork.execute({ transactionId: 'tx_seed_abandoned_record' }, async (tx) => {
       await local.courseRepositories.courses.save(
@@ -823,7 +823,8 @@ describe('local CourseAuthoring application', () => {
     const sessionId = learning.learning.session?.id;
     if (sessionId === undefined) throw new Error('RECOVERY_SESSION_REQUIRED');
 
-    const repositories = createLocalFileReviewClosureRepositories(dataRoot);
+    const repositories = createLocalFileReviewClosureRepositories(dataRoot, unitOfWork);
+    await repositories.lessonClosures.initialize();
     await unitOfWork.execute({ transactionId: 'tx_pending_closure' }, (tx) =>
       repositories.lessonClosures.save(
         tx,

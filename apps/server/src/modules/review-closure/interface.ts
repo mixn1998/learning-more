@@ -33,7 +33,14 @@ export interface StageReviewWorkflow {
 }
 
 export interface LessonClosureRepository {
+  initialize(): Promise<void>;
   get(transactionId: string): Promise<LessonClosureRecord | undefined>;
+  findLatest(lessonId: string, sessionId: string): Promise<LessonClosureRecord | undefined>;
+  findBySnapshot(
+    lessonId: string,
+    sessionId: string,
+    messageRangeChecksum: string,
+  ): Promise<LessonClosureRecord | undefined>;
   save(
     tx: TransactionContext,
     closure: LessonClosureRecord,

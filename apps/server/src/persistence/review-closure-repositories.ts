@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -19,7 +20,7 @@ import { DataRoot } from './data-root.js';
 import { checksumJson, decodeAggregateDocument } from './json-codec.js';
 import { createStorePaths } from './paths.js';
 import { ImmutableResourceError, RepositoryVersionConflictError } from './repository-errors.js';
-import type { TransactionContext } from './unit-of-work.js';
+import type { TransactionContext, UnitOfWork } from './unit-of-work.js';
 
 const identifier = z.string().min(1);
 const checksum = z.string().regex(/^[a-f0-9]{64}$/);
@@ -79,6 +80,35 @@ const LessonClosureSchema = z.strictObject({
   updatedAt: timestamp,
   resourceVersion: version,
 });
+
+const LessonClosureIndexEntrySchema = z.strictObject({
+  transactionId: identifier,
+  messageRangeChecksum: checksum,
+  state: LessonClosureSchema.shape.state,
+  updatedAt: timestamp,
+});
+
+const LessonClosureIndexSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  lessonId: identifier,
+  sessionId: identifier,
+  entries: z.array(LessonClosureIndexEntrySchema),
+  updatedAt: timestamp,
+});
+
+const LessonClosureIndexMigrationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  completedAt: timestamp,
+});
+
+type LessonClosureIndex = z.infer<typeof LessonClosureIndexSchema>;
+
+const lessonClosureIndexMigrationPath = 'indexes/lesson-closures/_complete.json';
+
+export function lessonClosureIndexRelativePath(lessonId: string, sessionId: string): string {
+  const key = createHash('sha256').update(`${lessonId}\u0000${sessionId}`, 'utf8').digest('hex');
+  return `indexes/lesson-closures/${key}.json`;
+}
 
 const CourseReviewInputManifestSchema = z.strictObject({
   outlineVersionId: identifier,
@@ -184,6 +214,7 @@ export type LocalFileReviewClosureRepositories = Readonly<{
 
 export function createLocalFileReviewClosureRepositories(
   dataRoot: DataRoot,
+  unitOfWork: UnitOfWork,
 ): LocalFileReviewClosureRepositories {
   const stageReviews: ReviewStateRepository = {
     get: async (reviewId) =>
@@ -214,7 +245,169 @@ export function createLocalFileReviewClosureRepositories(
     },
   };
 
+  async function readIndexJson(relative: string): Promise<unknown | undefined> {
+    try {
+      return JSON.parse(
+        await readFile(path.join(dataRoot.absolutePath, ...relative.split('/')), 'utf8'),
+      ) as unknown;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
+  }
+
+  function indexFromClosures(
+    lessonId: string,
+    sessionId: string,
+    closures: readonly LessonClosureRecord[],
+  ): LessonClosureIndex {
+    const entries = closures
+      .filter((closure) => closure.lessonId === lessonId && closure.sessionId === sessionId)
+      .map((closure) => ({
+        transactionId: closure.transactionId,
+        messageRangeChecksum: closure.messageRangeChecksum,
+        state: closure.state,
+        updatedAt: closure.updatedAt,
+      }))
+      .sort((left, right) => left.transactionId.localeCompare(right.transactionId));
+    return {
+      schemaVersion: 1,
+      lessonId,
+      sessionId,
+      entries,
+      updatedAt:
+        entries.reduce(
+          (latest, entry) => (entry.updatedAt > latest ? entry.updatedAt : latest),
+          '',
+        ) || new Date().toISOString(),
+    };
+  }
+
+  async function allLessonClosures(): Promise<LessonClosureRecord[]> {
+    const closures: LessonClosureRecord[] = [];
+    for (const id of await listIds(dataRoot, 'lesson-closures')) {
+      const closure = (await readRecord({
+        dataRoot,
+        entityType: 'lesson-closures',
+        entityId: id,
+        schema: LessonClosureSchema,
+      })) as LessonClosureRecord | undefined;
+      if (closure !== undefined) closures.push(closure);
+    }
+    return closures;
+  }
+
+  async function migrateLessonClosureIndexes(): Promise<void> {
+    const marker = await readIndexJson(lessonClosureIndexMigrationPath).catch(() => undefined);
+    if (LessonClosureIndexMigrationSchema.safeParse(marker).success) return;
+    const closures = await allLessonClosures();
+    const groups = new Map<string, LessonClosureRecord[]>();
+    for (const closure of closures) {
+      const key = `${closure.lessonId}\u0000${closure.sessionId}`;
+      const group = groups.get(key) ?? [];
+      group.push(closure);
+      groups.set(key, group);
+    }
+    const completedAt = new Date().toISOString();
+    await unitOfWork.execute(
+      {
+        transactionId: `tx_migrate_lesson_closure_indexes_${createHash('sha256').update(completedAt).digest('hex').slice(0, 16)}`,
+      },
+      async (tx) => {
+        for (const group of groups.values()) {
+          const first = group[0];
+          if (first === undefined) continue;
+          const index = indexFromClosures(first.lessonId, first.sessionId, group);
+          await tx.stageJson(
+            lessonClosureIndexRelativePath(first.lessonId, first.sessionId),
+            index,
+          );
+        }
+        await tx.stageJson(lessonClosureIndexMigrationPath, { schemaVersion: 1, completedAt });
+      },
+    );
+  }
+
+  let migration: Promise<void> | undefined;
+  let indexesReady = false;
+  async function ensureIndexesReady(): Promise<void> {
+    migration ??= migrateLessonClosureIndexes().catch((error: unknown) => {
+      migration = undefined;
+      throw error;
+    });
+    await migration;
+    indexesReady = true;
+  }
+
+  async function rebuildPairIndex(
+    lessonId: string,
+    sessionId: string,
+  ): Promise<LessonClosureIndex> {
+    return indexFromClosures(lessonId, sessionId, await allLessonClosures());
+  }
+
+  async function readPairIndex(
+    lessonId: string,
+    sessionId: string,
+    repair = true,
+  ): Promise<LessonClosureIndex | undefined> {
+    const raw = await readIndexJson(lessonClosureIndexRelativePath(lessonId, sessionId));
+    if (raw === undefined) return undefined;
+    const parsed = LessonClosureIndexSchema.safeParse(raw);
+    if (
+      !parsed.success ||
+      parsed.data.lessonId !== lessonId ||
+      parsed.data.sessionId !== sessionId
+    ) {
+      const repaired = await rebuildPairIndex(lessonId, sessionId);
+      if (repair) {
+        await unitOfWork.execute(
+          {
+            transactionId: `tx_repair_lesson_closure_index_${createHash('sha256').update(`${lessonId}\u0000${sessionId}`).digest('hex').slice(0, 16)}`,
+          },
+          (tx) => tx.stageJson(lessonClosureIndexRelativePath(lessonId, sessionId), repaired),
+        );
+      }
+      return repaired;
+    }
+    return parsed.data;
+  }
+
+  async function indexedClosures(
+    lessonId: string,
+    sessionId: string,
+  ): Promise<LessonClosureRecord[]> {
+    await ensureIndexesReady();
+    const index = await readPairIndex(lessonId, sessionId);
+    if (index === undefined) return [];
+    const closures = await Promise.all(
+      index.entries.map(
+        (entry) =>
+          readRecord({
+            dataRoot,
+            entityType: 'lesson-closures',
+            entityId: entry.transactionId,
+            schema: LessonClosureSchema,
+          }) as Promise<LessonClosureRecord | undefined>,
+      ),
+    );
+    return closures
+      .filter(
+        (closure): closure is LessonClosureRecord =>
+          closure !== undefined &&
+          closure.lessonId === lessonId &&
+          closure.sessionId === sessionId &&
+          closure.state !== 'cancelled',
+      )
+      .sort((left, right) =>
+        left.updatedAt === right.updatedAt
+          ? right.transactionId.localeCompare(left.transactionId)
+          : right.updatedAt.localeCompare(left.updatedAt),
+      );
+  }
+
   const lessonClosures: LessonClosureRepository = {
+    initialize: ensureIndexesReady,
     get: async (transactionId) =>
       (await readRecord({
         dataRoot,
@@ -222,7 +415,16 @@ export function createLocalFileReviewClosureRepositories(
         entityId: transactionId,
         schema: LessonClosureSchema,
       })) as LessonClosureRecord | undefined,
+    async findLatest(lessonId, sessionId) {
+      return (await indexedClosures(lessonId, sessionId))[0];
+    },
+    async findBySnapshot(lessonId, sessionId, messageRangeChecksum) {
+      return (await indexedClosures(lessonId, sessionId)).find(
+        (closure) => closure.messageRangeChecksum === messageRangeChecksum,
+      );
+    },
     async save(tx, closure, expectedVersion) {
+      if (!indexesReady) throw new Error('lesson_closure_repository_not_initialized');
       await saveRecord({
         tx,
         dataRoot,
@@ -234,6 +436,32 @@ export function createLocalFileReviewClosureRepositories(
         current: await lessonClosures.get(closure.transactionId),
         updatedAt: closure.updatedAt,
       });
+      let index: LessonClosureIndex;
+      try {
+        index =
+          (await readPairIndex(closure.lessonId, closure.sessionId, false)) ??
+          indexFromClosures(closure.lessonId, closure.sessionId, []);
+      } catch {
+        index = await rebuildPairIndex(closure.lessonId, closure.sessionId);
+      }
+      const entries = index.entries.filter(
+        (entry) => entry.transactionId !== closure.transactionId,
+      );
+      entries.push({
+        transactionId: closure.transactionId,
+        messageRangeChecksum: closure.messageRangeChecksum,
+        state: closure.state,
+        updatedAt: closure.updatedAt,
+      });
+      await tx.stageJson(lessonClosureIndexRelativePath(closure.lessonId, closure.sessionId), {
+        schemaVersion: 1,
+        lessonId: closure.lessonId,
+        sessionId: closure.sessionId,
+        entries: entries.sort((left, right) =>
+          left.transactionId.localeCompare(right.transactionId),
+        ),
+        updatedAt: closure.updatedAt,
+      } satisfies LessonClosureIndex);
     },
     async *list() {
       for (const id of await listIds(dataRoot, 'lesson-closures')) {

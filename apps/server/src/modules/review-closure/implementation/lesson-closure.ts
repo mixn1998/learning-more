@@ -20,8 +20,30 @@ class LessonClosureError extends Error {
 
 export function createInMemoryLessonClosureRepository(): LessonClosureRepository {
   const closures = new Map<string, LessonClosureRecord>();
+  const pairKey = (lessonId: string, sessionId: string) => `${lessonId}\u0000${sessionId}`;
+  const closureIdsByPair = new Map<string, Set<string>>();
+  const matching = (lessonId: string, sessionId: string) =>
+    [...(closureIdsByPair.get(pairKey(lessonId, sessionId)) ?? [])]
+      .map((id) => closures.get(id))
+      .filter(
+        (closure): closure is LessonClosureRecord =>
+          closure !== undefined && closure.state !== 'cancelled',
+      )
+      .sort((left, right) =>
+        left.updatedAt === right.updatedAt
+          ? right.transactionId.localeCompare(left.transactionId)
+          : right.updatedAt.localeCompare(left.updatedAt),
+      );
   return {
+    initialize: async () => undefined,
     get: async (id) => structuredClone(closures.get(id)),
+    findLatest: async (lessonId, sessionId) => structuredClone(matching(lessonId, sessionId)[0]),
+    findBySnapshot: async (lessonId, sessionId, messageRangeChecksum) =>
+      structuredClone(
+        matching(lessonId, sessionId).find(
+          (closure) => closure.messageRangeChecksum === messageRangeChecksum,
+        ),
+      ),
     async save(_tx, closure, expectedVersion) {
       const current = closures.get(closure.transactionId)?.resourceVersion ?? 0;
       if (current !== expectedVersion || closure.resourceVersion !== expectedVersion) {
@@ -31,6 +53,10 @@ export function createInMemoryLessonClosureRepository(): LessonClosureRepository
         closure.transactionId,
         structuredClone({ ...closure, resourceVersion: expectedVersion + 1 }),
       );
+      const key = pairKey(closure.lessonId, closure.sessionId);
+      const ids = closureIdsByPair.get(key) ?? new Set<string>();
+      ids.add(closure.transactionId);
+      closureIdsByPair.set(key, ids);
     },
     async *list() {
       for (const id of [...closures.keys()].sort()) yield structuredClone(closures.get(id)!);
@@ -146,16 +172,12 @@ export function createLessonClosureWorkflow(options: {
       if (input.sourceMessageIds.length === 0) {
         throw new LessonClosureError('lesson_not_completable');
       }
-      for await (const existing of options.repository.list()) {
-        if (
-          existing.lessonId === input.lessonId &&
-          existing.sessionId === input.sessionId &&
-          existing.messageRangeChecksum === input.messageRangeChecksum &&
-          existing.state !== 'cancelled'
-        ) {
-          return existing;
-        }
-      }
+      const existing = await options.repository.findBySnapshot(
+        input.lessonId,
+        input.sessionId,
+        input.messageRangeChecksum,
+      );
+      if (existing !== undefined) return existing;
       const transactionId = options.nextTransactionId();
       const draft: LessonClosureRecord = {
         transactionId,

@@ -150,7 +150,8 @@ async function leaveLessonReadyToCommitAfterRestart(page: Page, lessonId: string
   };
   const root = DataRoot.create(dataRoot);
   const unitOfWork = createUnitOfWork({ dataRoot: root });
-  const repositories = createLocalFileReviewClosureRepositories(root);
+  const repositories = createLocalFileReviewClosureRepositories(root, unitOfWork);
+  await repositories.lessonClosures.initialize();
   const artifactStore = createMarkdownArtifactStore(root, unitOfWork);
   const transactionId = `closure_restart_${Date.now()}`;
   const finalReviewId = `review_final_restart_${Date.now()}`;

@@ -47,7 +47,10 @@ export function createLocalReviewRuntime(
     profile: LocalProfileRuntime;
   }>,
 ): LocalReviewRuntime {
-  const reviewClosureRepositories = createLocalFileReviewClosureRepositories(input.dataRoot);
+  const reviewClosureRepositories = createLocalFileReviewClosureRepositories(
+    input.dataRoot,
+    input.unitOfWork,
+  );
   const sessionModule = input.learning.access.sessionModule;
   const teachingRuntime = input.learning.access.teachingRuntime;
   const refreshNextLessonRecommendation = createNextLessonRefresh({
@@ -512,6 +515,7 @@ export function createLocalReviewRuntime(
       }
     },
     async recoverCommittingClosures() {
+      await lessonClosureRepository.initialize();
       for await (const review of reviewClosureRepositories.stageReviews.list()) {
         if (review.status !== 'generating') continue;
         scheduleStageReviewFinalization({
