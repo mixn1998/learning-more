@@ -21,7 +21,7 @@ function dateRange(start: string, end: string): readonly string[] {
   const cursor = new Date(`${start}T00:00:00.000Z`);
   const boundary = new Date(`${end}T00:00:00.000Z`);
   const result: string[] = [];
-  while (cursor <= boundary && result.length < 7) {
+  while (cursor < boundary && result.length < 7) {
     result.push(cursor.toISOString().slice(0, 10));
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
@@ -49,7 +49,6 @@ export function WeeklyReportWorkspace(props: {
   readonly evidenceSourceCount?: number;
   readonly exclusionCount?: number;
   readonly summaryMarkdown?: string;
-  readonly suggestionMarkdown?: string;
   readonly defaultExpanded?: boolean;
   readonly onBack: () => void;
   readonly onOpenRecord: (record: WeeklyReportRecord) => void;
@@ -140,14 +139,7 @@ export function WeeklyReportWorkspace(props: {
               {props.reportState === 'finalized' ? (
                 <div className="weekly-report-insights">
                   <section>
-                    <h3>AI 总结</h3>
-                    <AiContent markdown={props.summaryMarkdown ?? '本周报告未生成总结。'} />
-                  </section>
-                  <section>
-                    <h3>下周建议</h3>
-                    <AiContent
-                      markdown={props.suggestionMarkdown ?? '本周报告未单独生成下周建议。'}
-                    />
+                    <AiContent markdown={props.summaryMarkdown ?? '上周没有可概括的已完成课节。'} />
                   </section>
                 </div>
               ) : (
@@ -156,10 +148,10 @@ export function WeeklyReportWorkspace(props: {
                   role={props.reportState === 'failed' ? 'alert' : 'status'}
                 >
                   {props.reportState === 'generating'
-                    ? '本周快照生成中。完成后将冻结展示至下周日。'
+                    ? '上周学习成果正在汇总。'
                     : props.reportState === 'failed'
                       ? '周报生成失败；完成课节事实不受影响，系统将自动重新汇总。'
-                      : '本周快照生成中。'}
+                      : '上周学习成果正在汇总。'}
                 </div>
               )}
             </div>

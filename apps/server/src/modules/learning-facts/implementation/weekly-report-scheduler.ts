@@ -8,7 +8,7 @@ export type GenerateWeeklyReportCommand = Readonly<{
 
 export function createWeeklyReportScheduler(options: {
   timeZone: string;
-  hasReport(localWeekKey: string): Promise<boolean>;
+  hasReport(command: GenerateWeeklyReportCommand): Promise<boolean>;
   enqueue(command: GenerateWeeklyReportCommand): Promise<void>;
   now?: () => Date;
 }) {
@@ -19,7 +19,7 @@ export function createWeeklyReportScheduler(options: {
 
   const tick = async (instant: Date) => {
     const command = completedWeeklyReportWindow(instant, options.timeZone);
-    if (await options.hasReport(command.localWeekKey)) return undefined;
+    if (await options.hasReport(command)) return undefined;
     await options.enqueue(command);
     return command;
   };

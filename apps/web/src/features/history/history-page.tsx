@@ -56,26 +56,11 @@ function localDate(value: string): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-function weeklyReportSections(markdown: string | undefined): Readonly<{
-  summary?: string;
-  suggestion?: string;
-}> {
+function weeklyReportSummary(markdown: string | undefined): string | undefined {
   const content = markdown?.trim();
-  if (content === undefined || content === '') return {};
-  const lines = content.split('\n');
-  const suggestionIndex = lines.findIndex((line) => /^#{1,6}\s*.*(?:下周|建议)/u.test(line));
-  const clean = (value: readonly string[]) =>
-    value
-      .join('\n')
-      .replace(/^#{1,6}\s*(?:AI\s*)?(?:总结|回顾)\s*\n?/iu, '')
-      .trim();
-  if (suggestionIndex < 0) return { summary: clean(lines) };
-  const summary = clean(lines.slice(0, suggestionIndex));
-  const suggestion = clean(lines.slice(suggestionIndex + 1));
-  return {
-    ...(summary === '' ? {} : { summary }),
-    ...(suggestion === '' ? {} : { suggestion }),
-  };
+  if (content === undefined || content === '') return undefined;
+  const summary = content.replace(/^#{1,6}\s*[^\n]+\n?/u, '').trim();
+  return summary === '' ? undefined : summary;
 }
 
 function errorMessage(error: unknown): string {
@@ -367,7 +352,7 @@ export function HistoryPage(props: {
     weeklyReport === undefined
       ? { start: reportWindow.startLocalDate, end: reportWindow.endLocalDate }
       : { start: weeklyReport.startLocalDate, end: weeklyReport.endLocalDate };
-  const weeklySections = weeklyReportSections(weeklyReport?.markdown);
+  const weeklySummary = weeklyReportSummary(weeklyReport?.markdown);
   const getStatisticsSnapshot = useCallback(
     (range: HistoryStatisticsRange, custom: Readonly<{ start: string; end: string }>) => {
       if (statistics === undefined) {
@@ -445,12 +430,7 @@ export function HistoryPage(props: {
         records={weeklyRecords}
         reportState={weeklyReport?.state ?? 'generating'}
         startLocalDate={weeklyBounds.start}
-        {...(weeklySections.summary === undefined
-          ? {}
-          : { summaryMarkdown: weeklySections.summary })}
-        {...(weeklySections.suggestion === undefined
-          ? {}
-          : { suggestionMarkdown: weeklySections.suggestion })}
+        {...(weeklySummary === undefined ? {} : { summaryMarkdown: weeklySummary })}
       />
     );
   }

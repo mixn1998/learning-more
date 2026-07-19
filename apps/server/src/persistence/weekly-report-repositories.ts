@@ -60,6 +60,25 @@ const WeeklyReportSchema = z.strictObject({
 
 export function createLocalFileWeeklyReportRepository(dataRoot: DataRoot): WeeklyReportRepository {
   const paths = createStorePaths(dataRoot);
+  async function stageRecord(
+    tx: Parameters<WeeklyReportRepository['save']>[0],
+    record: WeeklyReportRecord,
+    expectedVersion: number,
+  ): Promise<void> {
+    const data = { ...record, resourceVersion: expectedVersion + 1 };
+    const absolute = paths.aggregate('weekly-reports', record.localWeekKey);
+    await tx.stageJson(path.relative(dataRoot.absolutePath, absolute).replaceAll('\\', '/'), {
+      schema: 'learning-more/weekly-report',
+      schemaVersion: 1,
+      entityType: 'weekly-reports',
+      entityId: record.localWeekKey,
+      resourceVersion: expectedVersion + 1,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      contentSha256: checksumJson(data),
+      data,
+    });
+  }
   const repository: WeeklyReportRepository = {
     async get(localWeekKey) {
       try {
@@ -83,19 +102,24 @@ export function createLocalFileWeeklyReportRepository(dataRoot: DataRoot): Weekl
       if (currentVersion !== expectedVersion || record.resourceVersion !== expectedVersion) {
         throw new RepositoryVersionConflictError(currentVersion);
       }
-      const data = { ...record, resourceVersion: expectedVersion + 1 };
-      const absolute = paths.aggregate('weekly-reports', record.localWeekKey);
-      await tx.stageJson(path.relative(dataRoot.absolutePath, absolute).replaceAll('\\', '/'), {
-        schema: 'learning-more/weekly-report',
-        schemaVersion: 1,
-        entityType: 'weekly-reports',
-        entityId: record.localWeekKey,
-        resourceVersion: expectedVersion + 1,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        contentSha256: checksumJson(data),
-        data,
-      });
+      await stageRecord(tx, record, expectedVersion);
+    },
+    async replaceInvalidWindow(tx, record, expectedVersion) {
+      const current = await repository.get(record.localWeekKey);
+      if (current === undefined) throw new Error('weekly_report_not_found');
+      if (
+        current.startLocalDate === record.startLocalDate &&
+        current.endLocalDate === record.endLocalDate
+      ) {
+        throw new Error('weekly_report_window_unchanged');
+      }
+      if (
+        current.resourceVersion !== expectedVersion ||
+        record.resourceVersion !== expectedVersion
+      ) {
+        throw new RepositoryVersionConflictError(current.resourceVersion);
+      }
+      await stageRecord(tx, record, expectedVersion);
     },
     async *list() {
       const root = path.join(dataRoot.absolutePath, 'entities', 'weekly-reports');

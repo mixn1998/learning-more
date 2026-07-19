@@ -35,35 +35,35 @@ function completedFact(id: string, occurredAt: string): LearningFact {
 }
 
 describe('WeeklyReportScheduler', () => {
-  it('fires once at Sunday 00:00 and compensates after downtime across an ISO year boundary', async () => {
+  it('fires once at Monday 00:00 and compensates after downtime across an ISO year boundary', async () => {
     const existing = new Set<string>();
     const commands: Array<{ localWeekKey: string; startLocalDate: string; endLocalDate: string }> =
       [];
     const scheduler = createWeeklyReportScheduler({
       timeZone: 'Asia/Shanghai',
-      hasReport: async (weekKey) => existing.has(weekKey),
+      hasReport: async (command) => existing.has(command.localWeekKey),
       enqueue: async (command) => {
         commands.push(command);
         existing.add(command.localWeekKey);
       },
     });
-    await scheduler.tick(new Date('2026-07-11T16:00:00.000Z'));
-    await scheduler.tick(new Date('2026-07-11T16:00:10.000Z'));
+    await scheduler.tick(new Date('2026-07-12T16:00:00.000Z'));
+    await scheduler.tick(new Date('2026-07-12T16:00:10.000Z'));
     expect(commands).toEqual([
-      { localWeekKey: '2026-W28', startLocalDate: '2026-07-05', endLocalDate: '2026-07-12' },
+      { localWeekKey: '2026-W28', startLocalDate: '2026-07-06', endLocalDate: '2026-07-13' },
     ]);
 
     existing.clear();
     commands.length = 0;
-    await scheduler.tick(new Date('2027-01-03T18:00:00.000Z'));
+    await scheduler.tick(new Date('2027-01-04T18:00:00.000Z'));
     expect(commands).toEqual([
-      { localWeekKey: '2026-W53', startLocalDate: '2026-12-27', endLocalDate: '2027-01-03' },
+      { localWeekKey: '2026-W53', startLocalDate: '2026-12-28', endLocalDate: '2027-01-04' },
     ]);
   });
 
-  it('stays armed and creates the next snapshot at Sunday midnight', async () => {
+  it('stays armed and creates the next snapshot at Monday midnight', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-11T15:59:30.000Z'));
+    vi.setSystemTime(new Date('2026-07-12T15:59:30.000Z'));
     try {
       const existing = new Set<string>();
       const commands: Array<{
@@ -73,7 +73,7 @@ describe('WeeklyReportScheduler', () => {
       }> = [];
       const scheduler = createWeeklyReportScheduler({
         timeZone: 'Asia/Shanghai',
-        hasReport: async (weekKey) => existing.has(weekKey),
+        hasReport: async (command) => existing.has(command.localWeekKey),
         enqueue: async (command) => {
           commands.push(command);
           existing.add(command.localWeekKey);
@@ -82,14 +82,14 @@ describe('WeeklyReportScheduler', () => {
 
       await scheduler.start();
       expect(commands).toEqual([
-        { localWeekKey: '2026-W27', startLocalDate: '2026-06-28', endLocalDate: '2026-07-05' },
+        { localWeekKey: '2026-W27', startLocalDate: '2026-06-29', endLocalDate: '2026-07-06' },
       ]);
 
       await vi.advanceTimersByTimeAsync(30_000);
       expect(commands.at(-1)).toEqual({
         localWeekKey: '2026-W28',
-        startLocalDate: '2026-07-05',
-        endLocalDate: '2026-07-12',
+        startLocalDate: '2026-07-06',
+        endLocalDate: '2026-07-13',
       });
       scheduler.stop();
     } finally {
@@ -102,12 +102,14 @@ describe('WeeklyReportService', () => {
   it('freezes compact completion summaries, rebuilds failed snapshots, and finalizes immutably', async () => {
     const facts = createInMemoryFactRepository();
     await facts.append(tx, completedFact('inside', '2026-07-08T12:00:00.000Z'));
+    await facts.append(tx, completedFact('sunday', '2026-07-12T12:00:00.000Z'));
     await facts.append(tx, completedFact('outside', '2026-07-12T16:30:00.000Z'));
     const reports = createInMemoryWeeklyReportRepository();
     const submit = vi
       .fn()
       .mockResolvedValueOnce({ taskId: 'task_week_1' })
-      .mockResolvedValueOnce({ taskId: 'task_week_2' });
+      .mockResolvedValueOnce({ taskId: 'task_week_2' })
+      .mockResolvedValueOnce({ taskId: 'task_week_3' });
     const finalizeArtifact = vi.fn().mockResolvedValue(undefined);
     const recordFinalized = vi.fn().mockResolvedValue(undefined);
     const prepareSnapshot = vi
@@ -157,7 +159,7 @@ describe('WeeklyReportService', () => {
       ],
       generationTaskId: 'task_week_1',
       resourceVersion: 1,
-      metricDefinitionVersion: 2,
+      metricDefinitionVersion: 3,
     });
     expect(submit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -220,27 +222,46 @@ describe('WeeklyReportService', () => {
     expect(Array.from(fallbackMarkdown.replace(/<!--[^]*?-->/gu, '')).length).toBeLessThanOrEqual(
       300,
     );
-    expect(fallbackMarkdown).toContain('上周完成2节课');
+    expect(fallbackMarkdown).toContain('上周完成 2 节课');
     const finalized = await service.finalize('2026-W28', 'task_week_2', fallbackMarkdown);
     expect(finalized).toMatchObject({
       state: 'finalized',
-      artifactRef: 'weekly_report_2026-W28',
+      artifactRef: expect.stringMatching(/^weekly_report_2026-W28_/u),
       sourceRefs: ['fact:inside', 'fact:late'],
     });
     expect(finalizeArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({ artifactId: 'weekly_report_2026-W28', immutable: true }),
+      expect.objectContaining({
+        artifactId: expect.stringMatching(/^weekly_report_2026-W28_/u),
+        immutable: true,
+      }),
       expect.any(Object),
     );
     expect(recordFinalized).toHaveBeenCalledWith(
       {
         type: 'WeeklyReportFinalized',
         localWeekKey: '2026-W28',
-        artifactRef: 'weekly_report_2026-W28',
+        artifactRef: expect.stringMatching(/^weekly_report_2026-W28_/u),
       },
       expect.any(Object),
     );
     await expect(service.retry('2026-W28', 'late_retry')).rejects.toMatchObject({
       code: 'weekly_report_immutable',
     });
+
+    const repaired = await service.generate({
+      localWeekKey: '2026-W28',
+      startLocalDate: '2026-07-06',
+      endLocalDate: '2026-07-13',
+      commandId: 'repair_window_01',
+    });
+    expect(repaired).toMatchObject({
+      state: 'generating',
+      startLocalDate: '2026-07-06',
+      endLocalDate: '2026-07-13',
+      generationTaskId: 'task_week_3',
+      metricDefinitionVersion: 3,
+    });
+    expect(repaired.factSnapshot.map((fact) => fact.factId)).toEqual(['inside', 'late', 'sunday']);
+    expect(repaired.artifactRef).toBeUndefined();
   });
 });

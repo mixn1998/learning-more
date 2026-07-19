@@ -46,6 +46,11 @@ export type WeeklyReportRecord = Readonly<{
 export interface WeeklyReportRepository {
   get(localWeekKey: string): Promise<WeeklyReportRecord | undefined>;
   save(tx: TransactionContext, record: WeeklyReportRecord, expectedVersion: number): Promise<void>;
+  replaceInvalidWindow(
+    tx: TransactionContext,
+    record: WeeklyReportRecord,
+    expectedVersion: number,
+  ): Promise<void>;
   list(): AsyncIterable<WeeklyReportRecord>;
 }
 
@@ -60,6 +65,24 @@ export function createInMemoryWeeklyReportRepository(): WeeklyReportRepository {
         throw Object.assign(new Error('weekly_report_immutable'), {
           code: 'weekly_report_immutable',
         });
+      if (currentVersion !== expectedVersion || record.resourceVersion !== expectedVersion) {
+        throw new RepositoryVersionConflictError(currentVersion);
+      }
+      records.set(
+        record.localWeekKey,
+        structuredClone({ ...record, resourceVersion: expectedVersion + 1 }),
+      );
+    },
+    async replaceInvalidWindow(_tx, record, expectedVersion) {
+      const current = records.get(record.localWeekKey);
+      const currentVersion = current?.resourceVersion ?? 0;
+      if (current === undefined) throw new Error('weekly_report_not_found');
+      if (
+        current.startLocalDate === record.startLocalDate &&
+        current.endLocalDate === record.endLocalDate
+      ) {
+        throw new Error('weekly_report_window_unchanged');
+      }
       if (currentVersion !== expectedVersion || record.resourceVersion !== expectedVersion) {
         throw new RepositoryVersionConflictError(currentVersion);
       }

@@ -296,7 +296,6 @@ export function WeeklyReportFixture() {
         reportState="finalized"
         startLocalDate="2026-06-29"
         summaryMarkdown="你开始从“内容是否足够”转向“反馈是否改变下一步行动”，并能把同一判断迁移到游戏设计与数据结构学习中。"
-        suggestionMarkdown="继续围绕可观察行为建立判断标准，同时保留对结构约束的解释习惯。"
       />
     </AppShellView>
   );

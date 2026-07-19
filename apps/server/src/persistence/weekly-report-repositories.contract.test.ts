@@ -70,6 +70,32 @@ async function contract(repository: WeeklyReportRepository, unitOfWork: UnitOfWo
       repository.save(context, finalized, finalized.resourceVersion),
     ),
   ).rejects.toMatchObject({ code: 'weekly_report_immutable' });
+
+  await unitOfWork.execute({ transactionId: 'tx_week_repair_window' }, (context) =>
+    repository.replaceInvalidWindow(
+      context,
+      {
+        ...finalized,
+        startLocalDate: '2026-07-06',
+        endLocalDate: '2026-07-13',
+        state: 'generating',
+        generationTaskId: 'task_02',
+      },
+      finalized.resourceVersion,
+    ),
+  );
+  const repaired = (await repository.get(record.localWeekKey))!;
+  expect(repaired).toMatchObject({
+    startLocalDate: '2026-07-06',
+    endLocalDate: '2026-07-13',
+    state: 'generating',
+    resourceVersion: 3,
+  });
+  await expect(
+    unitOfWork.execute({ transactionId: 'tx_week_repair_same_window' }, (context) =>
+      repository.replaceInvalidWindow(context, repaired, repaired.resourceVersion),
+    ),
+  ).rejects.toThrow('weekly_report_window_unchanged');
 }
 
 describe('WeeklyReportRepository contracts', () => {

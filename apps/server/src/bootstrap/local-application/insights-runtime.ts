@@ -101,7 +101,7 @@ export function createLocalInsightsRuntime(
             localWeekKey: event.localWeekKey,
             artifactRef: event.artifactRef,
           },
-          idempotency_key: `weekly-report-finalized:${event.localWeekKey}`,
+          idempotency_key: `weekly-report-finalized:${event.localWeekKey}:${event.artifactRef}`,
           correlation_id: eventId,
         },
       ]);
@@ -112,14 +112,17 @@ export function createLocalInsightsRuntime(
   });
   const scheduler = createWeeklyReportScheduler({
     timeZone: 'Asia/Shanghai',
-    hasReport: async (localWeekKey) => {
-      const state = (await repository.get(localWeekKey))?.state;
-      return state === 'finalized';
+    hasReport: async (command) => {
+      const report = await repository.get(command.localWeekKey);
+      return (
+        report?.state === 'finalized' &&
+        report.startLocalDate === command.startLocalDate &&
+        report.endLocalDate === command.endLocalDate
+      );
     },
     now: input.now,
     async enqueue(command) {
-      let report = await repository.get(command.localWeekKey);
-      report ??= await weeklyReports.generate({
+      let report = await weeklyReports.generate({
         ...command,
         commandId: `generate_weekly_${command.localWeekKey}`,
       });

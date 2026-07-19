@@ -88,7 +88,8 @@ export function nextLocalWeekdayBoundary(now: Date, timeZone: string, targetWeek
 
 export function completedWeeklyReportWindow(now: Date, timeZone: string): WeeklyReportWindow {
   const today = localDate(now, timeZone);
-  const endLocalDate = addDays(today, -weekday(today));
+  const daysSinceMonday = (weekday(today) + 6) % 7;
+  const endLocalDate = addDays(today, -daysSinceMonday);
   const startLocalDate = addDays(endLocalDate, -7);
   return {
     localWeekKey: isoWeek(addDays(endLocalDate, -1)),
@@ -98,5 +99,5 @@ export function completedWeeklyReportWindow(now: Date, timeZone: string): Weekly
 }
 
 export function nextWeeklyReportBoundary(now: Date, timeZone: string): Date {
-  return nextLocalWeekdayBoundary(now, timeZone, 0);
+  return nextLocalWeekdayBoundary(now, timeZone, 1);
 }

@@ -85,7 +85,7 @@ export function deterministicWeeklyReportMarkdown(
   record: Pick<WeeklyReportRecord, 'factSnapshot'>,
 ): string {
   if (record.factSnapshot.length === 0) {
-    return '# 上周学习回顾\n\n暂无证据表明上周有已完成课节，暂不生成学习内容概括。';
+    return '# 上周学习成果概括\n\n上周没有已完成课节。';
   }
   const disciplineCounts = new Map<string, number>();
   for (const entry of record.factSnapshot) {
@@ -96,23 +96,28 @@ export function deterministicWeeklyReportMarkdown(
     .sort(([left], [right]) => left.localeCompare(right, 'zh-CN'))
     .map(([discipline, count]) => `${discipline}${count}节`)
     .join('、');
-  let body = `上周完成${record.factSnapshot.length}节课，领域分布：${distribution}。主要内容：`;
+  const overview = `上周完成 ${record.factSnapshot.length} 节课，领域分布：${distribution}。`;
+  const sourceRefs = record.factSnapshot.map((entry) => entry.sourceRef ?? `fact:${entry.factId}`);
+  const availableForLessons = Math.max(80, 270 - Array.from(overview).length);
+  const perLesson = Math.max(
+    18,
+    Math.floor(availableForLessons / Math.min(record.factSnapshot.length, 5)) - 8,
+  );
+  const lines: string[] = [];
   let included = 0;
   for (const entry of record.factSnapshot) {
     const details = lessonDetails(entry);
-    const segment = `${details.title}：${truncateText(details.summary, 48)}`;
-    const candidate = `${body}${included === 0 ? '' : '；'}${segment}`;
-    if (Array.from(candidate).length > 278) break;
-    body = candidate;
+    const line = `- **${details.title}**：${truncateText(details.summary, perLesson)}`;
+    const candidate = `${overview}\n${[...lines, line].join('\n')}`;
+    if (Array.from(candidate).length > 285) break;
+    lines.push(line);
     included += 1;
   }
   if (included < record.factSnapshot.length) {
-    const remainder = `；另有${record.factSnapshot.length - included}节课已完成`;
-    if (Array.from(`${body}${remainder}`).length <= 290) body += remainder;
+    lines.push(`- 另有 ${record.factSnapshot.length - included} 节课已完成。`);
   }
-  body += '。';
-  const sourceRefs = record.factSnapshot.map((entry) => entry.sourceRef ?? `fact:${entry.factId}`);
-  return `# 上周学习回顾\n\n${body}<!-- sources:${sourceRefs.join(',')} -->`;
+  const citation = `<!-- sources:${sourceRefs.join(',')} -->`;
+  return `# 上周学习成果概括\n\n${overview}${citation}\n\n${lines.join('\n')}\n${citation}`;
 }
 
 export function createWeeklyReportService(options: {
@@ -155,6 +160,14 @@ export function createWeeklyReportService(options: {
     return (await options.repository.get(record.localWeekKey))!;
   }
 
+  async function replaceInvalidWindow(record: WeeklyReportRecord): Promise<WeeklyReportRecord> {
+    await options.unitOfWork.execute(
+      { transactionId: `tx_repair_weekly_report_${randomUUID()}` },
+      (tx) => options.repository.replaceInvalidWindow(tx, record, record.resourceVersion),
+    );
+    return (await options.repository.get(record.localWeekKey))!;
+  }
+
   async function submit(
     record: Pick<
       WeeklyReportRecord,
@@ -179,6 +192,8 @@ export function createWeeklyReportService(options: {
       prompt: [
         '【输出语言】所有面向学习者的标题、正文和建议必须使用简体中文；必要的专有名词可以保留原文，但不得输出整段英文。',
         '根据下面的确定性周汇总生成简洁、自然的 Markdown 学习成果概括。可见正文不超过 300 个可见字符。',
+        '先归并相近课节，提炼为 1 至 3 个学习成果主题，说明学习者本周理解了什么、建立了什么联系；不要逐节机械复述标题和摘要，不要连续使用省略号。',
+        '只输出一个“上周学习成果概括”标题和成果正文，不要输出“AI 总结”“下周建议”或下一步行动。',
         '只可概括完成课节数、领域分布、课节标题及一句话摘要；不得增加排期、时长、暂停、互动、教学观察、推理行为、画像或其他数据。',
         '每个包含具体判断的段落或列表块后，追加不可见溯源注释：<!-- sources:来源标记,来源标记 -->。只能使用背景中明确给出的来源标记。',
         '',
@@ -241,7 +256,13 @@ export function createWeeklyReportService(options: {
       commandId: string;
     }) {
       const existing = await options.repository.get(command.localWeekKey);
-      if (existing !== undefined) return existing;
+      if (
+        existing !== undefined &&
+        existing.startLocalDate === command.startLocalDate &&
+        existing.endLocalDate === command.endLocalDate
+      ) {
+        return existing;
+      }
       void command.commandId;
       const snapshot = await buildSnapshot({
         startLocalDate: command.startLocalDate,
@@ -257,7 +278,7 @@ export function createWeeklyReportService(options: {
         snapshotExclusions: snapshot.snapshotExclusions,
       });
       const timestamp = options.now().toISOString();
-      return save({
+      const next: WeeklyReportRecord = {
         localWeekKey: command.localWeekKey,
         timezone: options.timeZone,
         startLocalDate: command.startLocalDate,
@@ -269,12 +290,13 @@ export function createWeeklyReportService(options: {
           ? {}
           : { projectionCursor: snapshot.projectionCursor }),
         snapshotExclusions: snapshot.snapshotExclusions,
-        metricDefinitionVersion: 2,
+        metricDefinitionVersion: 3,
         generationTaskId: task.taskId,
-        createdAt: timestamp,
+        createdAt: existing?.createdAt ?? timestamp,
         updatedAt: timestamp,
-        resourceVersion: 0,
-      });
+        resourceVersion: existing?.resourceVersion ?? 0,
+      };
+      return existing === undefined ? save(next) : replaceInvalidWindow(next);
     },
 
     async fail(localWeekKey: string, errorCode: string, draftArtifactRef: string) {
@@ -339,7 +361,7 @@ export function createWeeklyReportService(options: {
         markdown,
         new Set(current.factSnapshot.map((entry) => entry.sourceRef ?? `fact:${entry.factId}`)),
       );
-      const artifactRef = `weekly_report_${localWeekKey}`;
+      const artifactRef = `weekly_report_${localWeekKey}_${current.factSnapshotHash.slice(0, 12)}`;
       const contentSha256 = sha256(markdown);
       const { errorCode: _error, draftArtifactRef: _draft, ...withoutFailure } = current;
       void _error;
