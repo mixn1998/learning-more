@@ -32,6 +32,7 @@ type State = Readonly<{
   editingMessageId?: string | undefined;
   editingTargetMessageId?: string | undefined;
   editingDraft: string;
+  editingCancellationPending: boolean;
   sendError?: string | undefined;
   taskId?: string | undefined;
   draftArtifactRef?: string | undefined;
@@ -89,6 +90,14 @@ type Action =
       targetMessageId: string;
       markdown: string;
       resourceVersion: number;
+      cancellationPending: boolean;
+    }>
+  | Readonly<{
+      type: 'edit-generation-synchronized';
+      localMessageId: string;
+      userMessageId?: string | undefined;
+      resourceVersion: number;
+      requestAccepted: boolean;
     }>
   | Readonly<{ type: 'edit-input'; value: string }>
   | Readonly<{ type: 'edit-cancelled' }>
@@ -138,6 +147,7 @@ const initial: State = {
   writable: false,
   input: '',
   editingDraft: '',
+  editingCancellationPending: false,
   assistantMarkdown: '',
   assistantPending: false,
   opening: false,
@@ -149,6 +159,15 @@ const initial: State = {
   reviewDismissed: false,
   messages: [],
 };
+
+function hasAssistantResponse(messages: readonly SessionMessageView[] | undefined): boolean {
+  if (messages === undefined) return false;
+  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user');
+  if (latestUserIndex < 0) return false;
+  return messages
+    .slice(latestUserIndex + 1)
+    .some((message) => message.role === 'assistant' && message.markdown.trim() !== '');
+}
 
 function reducer(state: State, action: Action): State {
   if (action.type === 'started') {
@@ -229,6 +248,7 @@ function reducer(state: State, action: Action): State {
       editingMessageId: undefined,
       editingTargetMessageId: undefined,
       editingDraft: '',
+      editingCancellationPending: false,
       sendError:
         state.pendingUserMessage?.status === 'failed' ? undefined : 'AI 回复生成中断，请重试。',
     };
@@ -291,6 +311,7 @@ function reducer(state: State, action: Action): State {
       editingMessageId: action.messageId,
       editingTargetMessageId: action.targetMessageId,
       editingDraft: action.markdown,
+      editingCancellationPending: action.cancellationPending,
       resourceVersion: action.resourceVersion,
       phase: 'ready',
       assistantMarkdown: '',
@@ -298,6 +319,30 @@ function reducer(state: State, action: Action): State {
       taskId: undefined,
       draftArtifactRef: undefined,
       sendError: undefined,
+    };
+  }
+  if (action.type === 'edit-generation-synchronized') {
+    const synchronizedMessageId = action.userMessageId ?? action.localMessageId;
+    return {
+      ...state,
+      resourceVersion: action.resourceVersion,
+      editingCancellationPending: false,
+      editingMessageId:
+        state.editingMessageId === action.localMessageId
+          ? synchronizedMessageId
+          : state.editingMessageId,
+      editingTargetMessageId:
+        state.editingTargetMessageId === action.localMessageId
+          ? synchronizedMessageId
+          : state.editingTargetMessageId,
+      pendingUserMessage:
+        state.pendingUserMessage?.id === action.localMessageId
+          ? {
+              ...state.pendingUserMessage,
+              id: synchronizedMessageId,
+              status: action.requestAccepted ? 'complete' : 'failed',
+            }
+          : state.pendingUserMessage,
     };
   }
   if (action.type === 'send-failed') {
@@ -324,7 +369,9 @@ function reducer(state: State, action: Action): State {
       opening: state.opening,
       taskId: action.taskId,
       resourceVersion: action.resourceVersion,
-      assistantPending: state.assistantMarkdown === '',
+      assistantPending:
+        state.assistantMarkdown === '' &&
+        (state.pendingUserMessage !== undefined || state.messages.at(-1)?.role !== 'assistant'),
       pendingUserMessage:
         state.pendingUserMessage === undefined
           ? undefined
@@ -603,14 +650,29 @@ export function SessionPage(props: {
           taskId: activeTaskId,
           resourceVersion: snapshot.resourceVersion,
         });
+        let terminalFailure = false;
+        let receivedAssistantContent = false;
         await api.stream(activeTaskId, (event) => {
           if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+            if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
             dispatch({ type: 'delta', markdown: event.data.markdown });
+          }
+          if (event.type === 'task.failed' || event.type === 'task.cancelled') {
+            terminalFailure = true;
           }
         });
         const refreshed = await api.getSession(started.sessionId);
         hydrateAndRefreshTeachingProgress(started.sessionId, refreshed);
-        dispatch({ type: 'completed' });
+        if (
+          terminalFailure ||
+          (!receivedAssistantContent && !hasAssistantResponse(refreshed.messages))
+        ) {
+          const content =
+            refreshed.messages?.findLast((message) => message.role === 'user')?.markdown ?? '';
+          dispatch({ type: 'send-failed', content, requestAccepted: true });
+        } else {
+          dispatch({ type: 'completed' });
+        }
       } else if (
         props.autoOpen === true &&
         snapshot.learning.progress === 'in_progress' &&
@@ -730,9 +792,10 @@ export function SessionPage(props: {
       resourceVersion: number,
       refreshed?: Awaited<ReturnType<LearningClient['getSession']>>,
     ) => Promise<T>,
+    initialResourceVersion = state.resourceVersion,
   ): Promise<T> => {
     try {
-      return await work(state.resourceVersion);
+      return await work(initialResourceVersion);
     } catch (error) {
       if (
         state.sessionId === undefined ||
@@ -753,18 +816,57 @@ export function SessionPage(props: {
     task: Awaited<ReturnType<LearningClient['sendMessage']>>,
     content: string,
     attempt: number,
+    localMessageId: string,
   ) => {
+    if (generationAttempt.current !== attempt) {
+      try {
+        const stopped = await withLatestSessionVersion(
+          (resourceVersion) =>
+            api.stop({
+              sessionId: state.sessionId!,
+              taskId: task.taskId,
+              resourceVersion,
+            }),
+          task.resourceVersion,
+        );
+        dispatch({
+          type: 'edit-generation-synchronized',
+          localMessageId,
+          ...(task.userMessageId === undefined ? {} : { userMessageId: task.userMessageId }),
+          resourceVersion: stopped.resourceVersion,
+          requestAccepted: true,
+        });
+      } catch {
+        setNavigationError('无法取消当前生成，请取消编辑后重试。');
+      }
+      return;
+    }
     dispatch({
       type: 'generating',
       taskId: task.taskId,
       resourceVersion: task.resourceVersion,
       ...(task.userMessageId === undefined ? {} : { userMessageId: task.userMessageId }),
     });
+    let terminalFailure = false;
+    let receivedAssistantContent = false;
     try {
       await api.stream(task.taskId, (event) => {
         if (generationAttempt.current !== attempt) return;
         if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+          if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
           dispatch({ type: 'delta', markdown: event.data.markdown });
+        }
+        if (event.type === 'task.failed' || event.type === 'task.cancelled') {
+          terminalFailure = true;
+        }
+        if (
+          event.type === 'task.snapshot' &&
+          typeof event.data.state === 'string' &&
+          event.data.state !== 'running' &&
+          event.data.state !== 'queued' &&
+          event.data.state !== 'completed'
+        ) {
+          terminalFailure = true;
         }
       });
     } catch {
@@ -773,8 +875,16 @@ export function SessionPage(props: {
       return;
     }
     if (generationAttempt.current !== attempt) return;
+    if (terminalFailure) {
+      dispatch({ type: 'send-failed', content, requestAccepted: true });
+      return;
+    }
     const refreshed = await api.getSession(state.sessionId!);
     hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
+    if (!receivedAssistantContent && !hasAssistantResponse(refreshed.messages)) {
+      dispatch({ type: 'send-failed', content, requestAccepted: true });
+      return;
+    }
     dispatch({ type: 'completed' });
   };
 
@@ -782,12 +892,13 @@ export function SessionPage(props: {
     once('send', async () => {
       if (state.sessionId === undefined || state.input.trim() === '') return;
       const content = state.input.trim();
+      const localMessageId = `local-session-${Date.now()}`;
       const attempt = generationAttempt.current + 1;
       generationAttempt.current = attempt;
       dispatch({
         type: 'send-started',
         content,
-        messageId: `local-session-${Date.now()}`,
+        messageId: localMessageId,
       });
       let task: Awaited<ReturnType<LearningClient['sendMessage']>>;
       try {
@@ -799,40 +910,55 @@ export function SessionPage(props: {
           }),
         );
       } catch {
+        if (generationAttempt.current !== attempt) {
+          dispatch({
+            type: 'edit-generation-synchronized',
+            localMessageId,
+            resourceVersion: state.resourceVersion,
+            requestAccepted: false,
+          });
+          return;
+        }
         dispatch({ type: 'send-failed', content, requestAccepted: false });
         return;
       }
-      await finishMessageTask(task, content, attempt);
+      await finishMessageTask(task, content, attempt, localMessageId);
     });
 
   const editMessage = (messageId: string, markdown: string) =>
     once('edit-message', async () => {
       if (state.sessionId === undefined) return;
       setNavigationError(undefined);
+      const taskId = state.taskId;
+      const cancellationPending = state.phase === 'generating';
+      generationAttempt.current += 1;
+      inFlight.current.delete('send');
+      inFlight.current.delete('retry-generation');
+      dispatch({
+        type: 'edit-started',
+        messageId,
+        targetMessageId: state.revisingMessageId ?? messageId,
+        markdown,
+        resourceVersion: state.resourceVersion,
+        cancellationPending,
+      });
+      if (taskId === undefined) return;
       try {
-        let resourceVersion = state.resourceVersion;
-        if (state.taskId !== undefined) {
-          const stopped = await withLatestSessionVersion((latestVersion) =>
-            api.stop({
-              sessionId: state.sessionId!,
-              taskId: state.taskId!,
-              resourceVersion: latestVersion,
-            }),
-          );
-          resourceVersion = stopped.resourceVersion;
-        }
-        generationAttempt.current += 1;
-        inFlight.current.delete('send');
-        inFlight.current.delete('retry-generation');
+        const stopped = await withLatestSessionVersion((latestVersion) =>
+          api.stop({
+            sessionId: state.sessionId!,
+            taskId,
+            resourceVersion: latestVersion,
+          }),
+        );
         dispatch({
-          type: 'edit-started',
-          messageId,
-          targetMessageId: state.revisingMessageId ?? messageId,
-          markdown,
-          resourceVersion,
+          type: 'edit-generation-synchronized',
+          localMessageId: messageId,
+          resourceVersion: stopped.resourceVersion,
+          requestAccepted: true,
         });
       } catch {
-        setNavigationError('无法取消当前生成，请重试后再编辑。');
+        setNavigationError('无法取消当前生成，请取消编辑后重试。');
       }
     });
 
@@ -842,6 +968,7 @@ export function SessionPage(props: {
         state.sessionId === undefined ||
         state.editingMessageId === undefined ||
         state.editingTargetMessageId === undefined ||
+        state.editingCancellationPending ||
         state.editingDraft.trim() === ''
       ) {
         return;
@@ -853,11 +980,14 @@ export function SessionPage(props: {
         state.pendingUserMessage.status === 'failed' &&
         state.revisingMessageId === undefined;
       const attempt = generationAttempt.current + 1;
+      const localMessageId = isUnacceptedLocalMessage
+        ? targetMessageId
+        : `local-revision-${Date.now()}`;
       generationAttempt.current = attempt;
       dispatch({
         type: 'send-started',
         content,
-        messageId: isUnacceptedLocalMessage ? targetMessageId : `local-revision-${Date.now()}`,
+        messageId: localMessageId,
         ...(isUnacceptedLocalMessage ? {} : { revisingMessageId: targetMessageId }),
       });
       let task: Awaited<ReturnType<LearningClient['sendMessage']>>;
@@ -877,10 +1007,19 @@ export function SessionPage(props: {
               }),
         );
       } catch {
+        if (generationAttempt.current !== attempt) {
+          dispatch({
+            type: 'edit-generation-synchronized',
+            localMessageId,
+            resourceVersion: state.resourceVersion,
+            requestAccepted: false,
+          });
+          return;
+        }
         dispatch({ type: 'send-failed', content, requestAccepted: false });
         return;
       }
-      await finishMessageTask(task, content, attempt);
+      await finishMessageTask(task, content, attempt, localMessageId);
     });
 
   const retryFailedMessage = () =>
@@ -919,10 +1058,19 @@ export function SessionPage(props: {
               }),
         );
       } catch {
+        if (generationAttempt.current !== attempt) {
+          dispatch({
+            type: 'edit-generation-synchronized',
+            localMessageId: state.pendingUserMessage.id,
+            resourceVersion: state.resourceVersion,
+            requestAccepted: false,
+          });
+          return;
+        }
         dispatch({ type: 'send-failed', content, requestAccepted: false });
         return;
       }
-      await finishMessageTask(task, content, attempt);
+      await finishMessageTask(task, content, attempt, state.pendingUserMessage.id);
     });
 
   const retryGeneration = () =>
@@ -932,6 +1080,10 @@ export function SessionPage(props: {
         state.pendingUserMessage?.markdown ??
         state.messages.findLast((message) => message.role === 'user')?.markdown ??
         '';
+      const localMessageId =
+        state.pendingUserMessage?.id ??
+        state.messages.findLast((message) => message.role === 'user')?.id ??
+        `local-retry-${Date.now()}`;
       const attempt = generationAttempt.current + 1;
       generationAttempt.current = attempt;
       dispatch({ type: 'retry-started' });
@@ -939,23 +1091,17 @@ export function SessionPage(props: {
         const task = await withLatestSessionVersion((resourceVersion) =>
           api.retryGeneration(state.sessionId!, resourceVersion),
         );
-        dispatch({
-          type: 'generating',
-          taskId: task.taskId,
-          resourceVersion: task.resourceVersion,
-        });
-        await api.stream(task.taskId, (event) => {
-          if (generationAttempt.current !== attempt) return;
-          if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-            dispatch({ type: 'delta', markdown: event.data.markdown });
-          }
-        });
-        if (generationAttempt.current !== attempt) return;
-        const refreshed = await api.getSession(state.sessionId!);
-        hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
-        dispatch({ type: 'completed' });
+        await finishMessageTask(task, content, attempt, localMessageId);
       } catch {
-        if (generationAttempt.current !== attempt) return;
+        if (generationAttempt.current !== attempt) {
+          dispatch({
+            type: 'edit-generation-synchronized',
+            localMessageId,
+            resourceVersion: state.resourceVersion,
+            requestAccepted: true,
+          });
+          return;
+        }
         dispatch({ type: 'send-failed', content, requestAccepted: true });
       }
     });
@@ -1133,20 +1279,29 @@ export function SessionPage(props: {
       : state.messages.findIndex((message) => message.id === state.revisingMessageId);
   const visibleStoredMessages =
     revisionIndex < 0 ? state.messages : state.messages.slice(0, revisionIndex);
+  const pendingUserMessage = state.pendingUserMessage;
+  const pendingUserAlreadyRendered =
+    pendingUserMessage !== undefined &&
+    state.messages.some(
+      (message) =>
+        message.role === 'user' &&
+        (message.id === pendingUserMessage.id ||
+          message.markdown.trim() === pendingUserMessage.markdown.trim()),
+    );
   const messages = [
     ...visibleStoredMessages.map((message) => ({
       id: message.id,
       role: message.role,
       markdown: message.markdown,
     })),
-    ...(state.pendingUserMessage === undefined
+    ...(pendingUserMessage === undefined || pendingUserAlreadyRendered
       ? []
       : [
           {
-            id: state.pendingUserMessage.id,
+            id: pendingUserMessage.id,
             role: 'user' as const,
-            markdown: state.pendingUserMessage.markdown,
-            status: state.pendingUserMessage.status,
+            markdown: pendingUserMessage.markdown,
+            status: pendingUserMessage.status,
           },
         ]),
     ...(state.assistantMarkdown === ''
@@ -1189,6 +1344,7 @@ export function SessionPage(props: {
         editableMessageId={editAvailable ? latestUserMessage.id : undefined}
         editingDraft={state.editingDraft}
         editingMessageId={state.editingMessageId}
+        editingSubmitDisabled={state.editingCancellationPending}
         generating={state.phase === 'generating'}
         opening={state.opening}
         openingError={state.openingError}

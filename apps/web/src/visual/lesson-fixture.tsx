@@ -88,6 +88,7 @@ export function LessonSessionFixture() {
       canStop
       courseTitle="从反馈到核心循环"
       elapsedSeconds={18 * 60 + 42}
+      editingSubmitDisabled={false}
       generating
       input=""
       messages={[

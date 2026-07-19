@@ -41,6 +41,7 @@ export type UserMessageRowProps = Readonly<{
   onEditChange?: ((value: string) => void) | undefined;
   onEditSubmit?: (() => void) | undefined;
   onEditCancel?: (() => void) | undefined;
+  editSubmitDisabled?: boolean | undefined;
 }>;
 
 export function UserMessageRow(props: UserMessageRowProps) {
@@ -82,7 +83,9 @@ export function UserMessageRow(props: UserMessageRowProps) {
             <button
               aria-label="保存修改"
               className="chat-user-action primary"
-              disabled={(props.editValue ?? props.text).trim() === ''}
+              disabled={
+                props.editSubmitDisabled === true || (props.editValue ?? props.text).trim() === ''
+              }
               title="保存修改"
               type="button"
               onClick={props.onEditSubmit}

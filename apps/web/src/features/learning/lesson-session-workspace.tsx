@@ -68,6 +68,7 @@ export function LessonSessionWorkspace(props: {
   readonly retryLabel?: string | undefined;
   readonly editingMessageId?: string | undefined;
   readonly editingDraft: string;
+  readonly editingSubmitDisabled: boolean;
   readonly onInput: (value: string) => void;
   readonly onSend: () => void;
   readonly onEditMessage: (messageId: string, markdown: string) => void;
@@ -131,7 +132,9 @@ export function LessonSessionWorkspace(props: {
             {props.paused
               ? '学习已暂停'
               : props.generating
-                ? 'AI 思考中 · 计时已暂停'
+                ? props.assistantPending
+                  ? 'AI 思考中 · 计时已暂停'
+                  : '正在同步教学进度 · 计时已暂停'
                 : `正在计时 ${timer.clock}`}
           </span>
         </div>
@@ -157,7 +160,9 @@ export function LessonSessionWorkspace(props: {
                   {props.generating
                     ? props.opening
                       ? 'AI 正在导入本课'
-                      : '正在生成 Markdown'
+                      : props.assistantPending
+                        ? '正在生成 Markdown'
+                        : '正在同步教学进度'
                     : props.openingError
                       ? '开场未完成'
                       : props.stopped
@@ -230,6 +235,7 @@ export function LessonSessionWorkspace(props: {
                       onEditCancel={props.onCancelEdit}
                       onEditChange={props.onEditDraft}
                       onEditSubmit={props.onSubmitEdit}
+                      editSubmitDisabled={props.editingSubmitDisabled}
                       retryLabel={props.retryLabel}
                       status={message.status}
                       text={messageText(message)}
@@ -296,7 +302,9 @@ export function LessonSessionWorkspace(props: {
                     : props.paused
                       ? '已暂停'
                       : props.generating
-                        ? 'AI 思考中'
+                        ? props.assistantPending
+                          ? 'AI 思考中'
+                          : '同步中'
                         : '计时中'}
                 </span>
               </div>

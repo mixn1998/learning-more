@@ -259,6 +259,58 @@ describe('learning SessionPage', () => {
     );
   });
 
+  it('enters and keeps edit mode while active generation cancellation is still pending', async () => {
+    let resolveSend:
+      | ((value: { taskId: string; resourceVersion: number; userMessageId: string }) => void)
+      | undefined;
+    const sendMessage = vi.fn(
+      () =>
+        new Promise<{
+          taskId: string;
+          resourceVersion: number;
+          userMessageId: string;
+        }>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    const stop = vi.fn().mockResolvedValue({
+      taskId: 'task_01',
+      draftArtifactRef: 'draft_task_01',
+      resourceVersion: 4,
+    });
+    const stream = vi.fn(() => new Promise<void>(() => undefined));
+    const api = client({
+      sendMessage,
+      stream,
+      stop,
+    });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: '原始问题' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    fireEvent.click(await screen.findByRole('button', { name: '重新编辑' }));
+
+    expect(screen.getByRole('textbox', { name: '编辑消息' })).toHaveValue('原始问题');
+
+    await act(async () => {
+      resolveSend?.({
+        taskId: 'task_01',
+        resourceVersion: 3,
+        userMessageId: 'message_user_01',
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(stop).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: 'session_01', taskId: 'task_01' }),
+      ),
+    );
+    expect(stream).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox', { name: '编辑消息' })).toHaveValue('原始问题');
+  });
+
   it('retries a failed AI response without appending the user message again', async () => {
     const retryGeneration = vi
       .fn()
@@ -285,6 +337,70 @@ describe('learning SessionPage', () => {
 
     await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 3));
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the regenerate icon when the generation task reports a failed terminal event', async () => {
+    const retryGeneration = vi
+      .fn()
+      .mockResolvedValue({ taskId: 'task_retry_01', resourceVersion: 5 });
+    const stream = vi
+      .fn()
+      .mockImplementationOnce(async (_taskId, onEvent) => {
+        onEvent({ type: 'task.failed', data: { code: 'provider_failed' } });
+      })
+      .mockImplementationOnce(async (_taskId, onEvent) => {
+        onEvent({ type: 'message.delta', data: { markdown: '重新生成后的回答' } });
+        onEvent({ type: 'task.completed', data: { resultRef: 'draft_retry_01' } });
+      });
+    const api = client({ retryGeneration, stream });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: '请解释函数变换' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    const regenerate = await screen.findByRole('button', { name: '重新生成' });
+    expect(regenerate).toHaveTextContent('↻');
+    expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
+
+    fireEvent.click(regenerate);
+    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 3));
+    expect(api.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the regenerate icon when a completed task contains no AI response', async () => {
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 1,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        resourceVersion: 4,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [{ id: 'message_user_01', role: 'user', markdown: '请解释函数变换' }],
+      });
+    const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
+      onEvent({ type: 'task.completed', data: { resultRef: 'draft_empty_01' } });
+    });
+    const api = client({
+      getSession,
+      sendMessage: vi.fn().mockResolvedValue({
+        taskId: 'task_01',
+        resourceVersion: 3,
+        userMessageId: 'message_user_01',
+      }),
+      stream,
+    });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: '请解释函数变换' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByRole('button', { name: '重新生成' })).toHaveTextContent('↻');
+    expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
   });
 
   it('streams one response for a duplicate send and keeps completed Markdown', async () => {
@@ -939,6 +1055,26 @@ describe('learning SessionPage', () => {
     expect(await screen.findByRole('status', { name: 'AI 回复状态' })).toHaveTextContent(
       '正在思考中',
     );
+    expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
+  });
+
+  it('does not show thinking after a complete assistant message has already been restored', async () => {
+    const stream = vi.fn(() => new Promise<never>(() => undefined));
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 4,
+      learning: {
+        progress: 'in_progress',
+        session: { state: 'active', activeGenerationTaskId: 'task_running_01' },
+      },
+      messages: [
+        { id: 'message_user_01', role: 'user', markdown: '请继续讲解。' },
+        { id: 'message_assistant_01', role: 'assistant', markdown: '这是已经完成的回答。' },
+      ],
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />);
+
+    expect(await screen.findByText('这是已经完成的回答。')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
   });
 });
