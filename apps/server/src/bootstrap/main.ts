@@ -147,6 +147,7 @@ export async function startServer(
           },
           checksumReport: { status: 'available', checkedFiles: 0 },
         }),
+      logProjectionEvent: (input) => logger!.log('projection', input),
       runtimeIdentity: {
         instanceId: manifest.instanceId,
         generation: manifest.generation,

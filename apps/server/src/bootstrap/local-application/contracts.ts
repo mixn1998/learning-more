@@ -8,6 +8,7 @@ import {
   type ProviderConfigRepository,
 } from '../../runtime/provider-config-service.js';
 import type { SecretStore } from '../../runtime/secret-store.js';
+import type { StructuredLogInput } from '../../runtime/logger.js';
 import type { ServerDependencies } from '../app.js';
 
 export type LocalApplicationOptions = Readonly<{
@@ -32,6 +33,7 @@ export type LocalApplicationOptions = Readonly<{
   secretStore?: SecretStore;
   providerConfigRepository?: ProviderConfigRepository;
   createDiagnostics?: () => Promise<Readonly<{ artifactRef: string }>>;
+  logProjectionEvent?: (input: StructuredLogInput) => Promise<void>;
 }>;
 
 export type LocalApplication = Readonly<{

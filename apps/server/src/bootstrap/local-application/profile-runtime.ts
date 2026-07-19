@@ -24,6 +24,7 @@ import { createLocalFilePortraitRepository } from '../../persistence/portrait-re
 import { createLocalFileEvidenceRepositories } from '../../persistence/profile-evidence-repositories.js';
 import { createLocalFileReasoningBehaviorRepository } from '../../persistence/reasoning-behavior-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
+import type { StructuredLogInput } from '../../runtime/logger.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import {
   createProfileEvidenceCheckpointRecovery,
@@ -57,6 +58,7 @@ export function createLocalProfileRuntime(
     now: () => Date;
     generation: LocalGenerationRuntime;
     events: LocalEventFactsRuntime;
+    logProjectionEvent?: (input: StructuredLogInput) => Promise<void>;
   }>,
 ): LocalProfileRuntime {
   const evidenceRepositories = createLocalFileEvidenceRepositories(input.dataRoot);
@@ -259,8 +261,17 @@ export function createLocalProfileRuntime(
       });
       const analysis = await refreshAndProjectReasoningAnalysis();
       if (analysis !== undefined) projectionStatus = 'ready';
-    } catch {
+    } catch (error) {
       projectionStatus = 'degraded';
+      await input
+        .logProjectionEvent?.({
+          level: 'error',
+          component: 'ProfileProjectionRecovery',
+          correlationId: 'recover_reasoning_analysis',
+          eventCode: 'profile_projection_recovery_failed',
+          fields: { error },
+        })
+        .catch(() => undefined);
     }
   }
 

@@ -37,6 +37,9 @@ export async function assembleLocalApplication(
     now: runtimeNow,
     generation,
     events,
+    ...(options.logProjectionEvent === undefined
+      ? {}
+      : { logProjectionEvent: options.logProjectionEvent }),
   });
   const course = createLocalCourseRuntime({
     dataRoot,
@@ -59,6 +62,9 @@ export async function assembleLocalApplication(
     generation,
     events,
     profile,
+    ...(options.logProjectionEvent === undefined
+      ? {}
+      : { logProjectionEvent: options.logProjectionEvent }),
   });
   const planningRuntime = createLocalPlanningRuntime({
     dataRoot,

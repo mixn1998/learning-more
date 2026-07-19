@@ -27,6 +27,7 @@ import { createLocalFileReviewClosureRepositories } from '../../persistence/revi
 import { createLocalFileSupplementarySessionRepository } from '../../persistence/supplementary-session-repository.js';
 import { createLocalFileTeachingLedgerRepository } from '../../persistence/teaching-ledger-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
+import type { StructuredLogInput } from '../../runtime/logger.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalGenerationRuntime } from './generation-runtime.js';
@@ -68,6 +69,7 @@ export function createLocalLearningRuntime(
     generation: LocalGenerationRuntime;
     events: LocalEventFactsRuntime;
     profile: LocalProfileRuntime;
+    logProjectionEvent?: (input: StructuredLogInput) => Promise<void>;
   }>,
 ): LocalLearningRuntime {
   const learningRepositories = createLocalFileLearningSessionRepositories(input.dataRoot);
@@ -576,8 +578,17 @@ export function createLocalLearningRuntime(
                 : { pageInstanceId: record.writeLease.pageInstanceId }),
             },
           })
-          .catch(() => {
+          .catch(async (error: unknown) => {
             projectionStatus = 'degraded';
+            await input
+              .logProjectionEvent?.({
+                level: 'error',
+                component: 'TeachingSessionRecovery',
+                correlationId: `recover_teaching_${sessionId}`,
+                eventCode: 'teaching_session_recovery_failed',
+                fields: { lessonId: record.lessonId, sessionId, error },
+              })
+              .catch(() => undefined);
           })
           .finally(() => {
             teachingRecoveryBySession.delete(sessionId);
