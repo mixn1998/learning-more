@@ -782,6 +782,65 @@ describe('learning SessionPage', () => {
     expect(screen.getByText('玩家幻想').closest('li')).toHaveClass('done');
   });
 
+  it('refreshes preset emphasis when background teaching weights become ready', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const baseProgress = {
+      ledgerVersion: 1,
+      observationStatus: 'current' as const,
+      lessonPhase: 'knowledge_point' as const,
+      activeKnowledgePointRef: 'knowledge:composition',
+      comprehensiveCheck: 'pending' as const,
+      closureInquiry: 'pending' as const,
+      summaryStatus: 'pending' as const,
+    };
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 2,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        teachingProgress: {
+          ...baseProgress,
+          teachingWeightStatus: 'pending',
+          knowledgePoints: [
+            {
+              ref: 'knowledge:composition',
+              title: '复合函数',
+              progress: 'learning',
+              interactionStatus: 'pending',
+              emphasis: 'normal',
+            },
+          ],
+        },
+      })
+      .mockResolvedValue({
+        resourceVersion: 2,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        teachingProgress: {
+          ...baseProgress,
+          teachingWeightStatus: 'completed',
+          knowledgePoints: [
+            {
+              ref: 'knowledge:composition',
+              title: '复合函数',
+              progress: 'learning',
+              interactionStatus: 'pending',
+              emphasis: 'key',
+            },
+          ],
+        },
+      });
+
+    render(<SessionPage client={client({ getSession })} lessonId="lesson_01" />);
+    await waitFor(() => expect(getSession).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(await screen.findByText('重点')).toBeInTheDocument();
+    expect(getSession).toHaveBeenCalledTimes(2);
+  });
+
   it('[EQ-GEN-03] restores a running generation task from the server after page refresh', async () => {
     const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
       onEvent({ type: 'message.delta', data: { markdown: '恢复后的流式内容' } });

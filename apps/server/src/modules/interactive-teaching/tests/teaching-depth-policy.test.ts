@@ -7,6 +7,7 @@ import type { TeachingContextPackage } from '../ports/teaching-context-sources.j
 function context(input: {
   fixedImportance?: 'normal' | 'key';
   adaptiveDifficulty?: 'normal' | 'difficult';
+  depthPreference?: 'default' | 'condensed';
 }): TeachingContextPackage {
   const teachingState = createTeachingState({
     lessonId: 'lesson_1',
@@ -57,6 +58,7 @@ function context(input: {
       knowledgePoints: teachingState.knowledgePoints.map((point) => ({
         ...point,
         adaptiveDifficulty: input.adaptiveDifficulty ?? 'normal',
+        depthPreference: input.depthPreference ?? 'default',
       })),
     },
     recentMessages: [],
@@ -89,5 +91,13 @@ describe('teaching depth policy', () => {
     expect(rendered).toContain('边界和适用条件');
     expect(rendered).toContain('学习者已经出现的错误、误解、不解或深入讲解需求');
     expect(rendered).toContain('更换例子、类比、反例、图形或推理路径');
+  });
+
+  it('downgrades a fixed key point for the current session when the learner requests brevity', () => {
+    const rendered = renderTeachingDepthPolicy(
+      context({ fixedImportance: 'key', depthPreference: 'condensed' }),
+    );
+    expect(rendered).toContain('【教学深模块｜普通知识点】');
+    expect(rendered).not.toContain('典型误区');
   });
 });

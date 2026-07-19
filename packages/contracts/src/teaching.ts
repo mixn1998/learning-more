@@ -130,6 +130,7 @@ export const TeachingKnowledgePointStateSchema = z.strictObject({
     )
     .optional(),
   adaptiveDifficulty: z.enum(['normal', 'difficult']).optional(),
+  depthPreference: z.enum(['default', 'condensed']).optional(),
 });
 
 export const TeachingOpenLoopSchema = z.strictObject({

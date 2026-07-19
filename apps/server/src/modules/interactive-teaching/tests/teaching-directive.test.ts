@@ -12,6 +12,31 @@ function initial() {
 }
 
 describe('teaching directive', () => {
+  it('stores the learner-requested condensed depth as a session-only ledger override', () => {
+    const next = applyTeachingDirective(initial(), {
+      schemaVersion: 1,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [
+        {
+          ref: 'knowledge:kp_1',
+          status: 'learning',
+          interactionStatus: 'pending',
+          depthPreference: 'condensed',
+        },
+        { ref: 'knowledge:kp_2', status: 'pending', interactionStatus: 'pending' },
+      ],
+      comprehensiveCheck: 'pending',
+      closureInquiry: 'pending',
+      summaryStatus: 'pending',
+    });
+
+    expect(next.knowledgePoints).toMatchObject([
+      { ref: 'knowledge:kp_1', depthPreference: 'condensed' },
+      { ref: 'knowledge:kp_2', depthPreference: 'default' },
+    ]);
+  });
+
   it('lets the teaching agent advance knowledge-point completion independently of observation', () => {
     const learning = applyTeachingDirective(initial(), {
       schemaVersion: 1,

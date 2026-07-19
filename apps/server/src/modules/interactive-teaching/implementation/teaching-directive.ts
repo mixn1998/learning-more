@@ -9,11 +9,13 @@ const KnowledgePointDirectiveSchema = z
     title: z.string().trim().min(1).max(2_000).optional(),
     status: z.enum(['pending', 'learning', 'completed', 'skipped']),
     interactionStatus: z.enum(['pending', 'completed', 'skipped']),
+    depthPreference: z.enum(['default', 'condensed']).optional(),
   })
   .transform((point) => ({
     ref: point.ref,
     status: point.status,
     interactionStatus: point.interactionStatus,
+    ...(point.depthPreference === undefined ? {} : { depthPreference: point.depthPreference }),
   }));
 
 export const TeachingDirectiveSchema = z.strictObject({
@@ -80,6 +82,7 @@ export function normalizeTeachingControlState(state: TeachingStateSnapshot): Tea
         point.adaptiveDifficulty === 'difficult' || (point.difficultySignals?.length ?? 0) >= 2
           ? 'difficult'
           : 'normal',
+      depthPreference: point.depthPreference ?? 'default',
     })),
   };
 }
@@ -93,6 +96,11 @@ export function teachingDirectiveMatchesState(
     ref: point.ref,
     status: normalizedProgress(point.progress),
     interactionStatus: point.interactionStatus ?? 'pending',
+    depthPreference: point.depthPreference ?? 'default',
+  }));
+  const directivePoints = directive.knowledgePoints.map((point) => ({
+    ...point,
+    depthPreference: point.depthPreference ?? 'default',
   }));
   const unappliedDifficultySignal = (directive.difficultySignals ?? []).some((signal) => {
     const point = state.knowledgePoints.find(
@@ -110,7 +118,7 @@ export function teachingDirectiveMatchesState(
     normalizedComprehensive(state.comprehensiveCheck) === directive.comprehensiveCheck &&
     (state.closureInquiry ?? 'pending') === directive.closureInquiry &&
     (state.summaryStatus ?? 'pending') === directive.summaryStatus &&
-    JSON.stringify(statePoints) === JSON.stringify(directive.knowledgePoints)
+    JSON.stringify(statePoints) === JSON.stringify(directivePoints)
   );
 }
 
@@ -305,6 +313,7 @@ export function applyTeachingDirective(
         interactionStatus: incoming.interactionStatus,
         difficultySignals,
         adaptiveDifficulty: difficultySignals.length >= 2 ? 'difficult' : 'normal',
+        depthPreference: incoming.depthPreference ?? point.depthPreference ?? 'default',
       };
     }),
   };

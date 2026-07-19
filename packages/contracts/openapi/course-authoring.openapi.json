@@ -1785,6 +1785,24 @@
               "minLength": 1
             }
           },
+          "knowledgePointWeights": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "normal",
+                "key"
+              ]
+            }
+          },
+          "teachingWeightStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ]
+          },
           "estimatedMinutes": {
             "type": "integer",
             "exclusiveMinimum": 0,

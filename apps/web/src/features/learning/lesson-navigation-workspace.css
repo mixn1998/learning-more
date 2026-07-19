@@ -67,7 +67,7 @@ body:has(.lesson-navigation-workspace) .runtime-write-boundary {
 .lesson-navigation-workspace .nav-point {
   display: grid;
   align-items: center;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   gap: 11px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -87,6 +87,15 @@ body:has(.lesson-navigation-workspace) .runtime-write-boundary {
 .lesson-navigation-workspace .nav-point strong {
   font-size: 13px;
   line-height: 1.4;
+}
+.lesson-navigation-workspace .nav-point-emphasis {
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line));
+  border-radius: 999px;
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 .lesson-navigation-workspace .nav-inherit {
   margin-top: 13px;

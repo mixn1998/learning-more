@@ -313,6 +313,8 @@ export const LessonPreviewResponseSchema = z.strictObject({
   title: z.string(),
   objective: z.string(),
   coreKnowledgePoints: z.array(z.string().min(1)),
+  knowledgePointWeights: z.array(z.enum(['normal', 'key'])).optional(),
+  teachingWeightStatus: z.enum(['pending', 'completed', 'failed']).optional(),
   estimatedMinutes: z.number().int().positive(),
 });
 

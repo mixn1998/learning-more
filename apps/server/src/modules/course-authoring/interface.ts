@@ -182,6 +182,8 @@ export type LessonPreviewView = Readonly<{
   title: string;
   objective: string;
   coreKnowledgePoints: readonly string[];
+  knowledgePointWeights?: readonly ('normal' | 'key')[];
+  teachingWeightStatus?: 'pending' | 'completed' | 'failed';
   estimatedMinutes: number;
 }>;
 

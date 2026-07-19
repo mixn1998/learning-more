@@ -5,8 +5,9 @@ export type TeachingEmphasis = 'normal' | 'key' | 'difficult' | 'key_difficult';
 export function emphasisFor(input: {
   fixedImportance?: 'normal' | 'key';
   adaptiveDifficulty?: 'normal' | 'difficult';
+  depthPreference?: 'default' | 'condensed';
 }): TeachingEmphasis {
-  const key = input.fixedImportance === 'key';
+  const key = input.fixedImportance === 'key' && input.depthPreference !== 'condensed';
   const difficult = input.adaptiveDifficulty === 'difficult';
   if (key && difficult) return 'key_difficult';
   if (key) return 'key';
@@ -24,6 +25,7 @@ export function renderTeachingDepthPolicy(context: TeachingContextPackage): stri
   const emphasis = emphasisFor({
     fixedImportance: active.fixedImportance ?? 'normal',
     adaptiveDifficulty: state?.adaptiveDifficulty ?? 'normal',
+    depthPreference: state?.depthPreference ?? 'default',
   });
   const heading =
     emphasis === 'key_difficult'

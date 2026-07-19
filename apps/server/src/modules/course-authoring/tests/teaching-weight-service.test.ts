@@ -42,7 +42,7 @@ async function seedCourse() {
       semanticKey: 'lesson:one',
       title: 'Lesson',
       objective: 'Understand boundaries',
-      coreKnowledgePoints: ['Definition', 'Boundary conditions'],
+      coreKnowledgePoints: ['Definition', 'Boundary conditions', 'Counterexamples'],
       prerequisiteLessonIds: [],
       estimatedMinutes: 30,
       sourceRefs: [],
@@ -67,7 +67,17 @@ async function seedCourse() {
   return courses;
 }
 
-function execution(results: readonly (GenerationTask['status'] | 'invalid')[]) {
+function execution(
+  results: readonly (GenerationTask['status'] | 'invalid')[],
+  completedOutput: unknown = {
+    lessons: [
+      {
+        lessonId: 'lesson_1',
+        keyKnowledgePoints: [{ index: 1, rationale: 'Key boundary conditions' }],
+      },
+    ],
+  },
+) {
   const requests: GenerationRequest[] = [];
   const tasks = new Map<string, GenerationTask>();
   let cursor = 0;
@@ -96,14 +106,7 @@ function execution(results: readonly (GenerationTask['status'] | 'invalid')[]) {
       return {
         ...task,
         status: 'completed',
-        draftMarkdown: JSON.stringify({
-          lessons: [
-            {
-              lessonId: 'lesson_1',
-              keyKnowledgePoints: [{ index: 1, rationale: 'Key boundary conditions' }],
-            },
-          ],
-        }),
+        draftMarkdown: JSON.stringify(completedOutput),
       };
     },
     async stream() {
@@ -186,5 +189,35 @@ describe('teaching weight service', () => {
 
     expect(fake.requests).toHaveLength(2);
     expect(fake.requests[1]?.taskKey).toContain('attempt:2');
+  });
+
+  it('keeps fixed emphasis scarce by accepting at most two ordered points per lesson', async () => {
+    const courses = await seedCourse();
+    const repository = createInMemoryTeachingWeightRepository();
+    const fake = execution(['completed'], {
+      lessons: [
+        {
+          lessonId: 'lesson_1',
+          keyKnowledgePoints: [
+            { index: 2, rationale: 'Most important' },
+            { index: 1, rationale: 'Second most important' },
+            { index: 0, rationale: 'General foundation' },
+          ],
+        },
+      ],
+    });
+    const service = createTeachingWeightService({
+      courses,
+      repository,
+      unitOfWork,
+      execution: fake.value,
+      providerId: 'mock',
+      now: () => new Date(timestamp),
+    });
+
+    const result = await service.ensureForCourse('course_1');
+
+    expect(result?.keyKnowledgePoints.map((point) => point.knowledgePointIndex)).toEqual([2, 1]);
+    expect(fake.requests[0]?.prompt).toContain('1 至 2 个固定重点');
   });
 });

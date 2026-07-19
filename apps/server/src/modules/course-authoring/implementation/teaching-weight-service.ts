@@ -10,7 +10,17 @@ import type {
   TeachingWeightRepository,
 } from '../ports/teaching-weight-repository.js';
 
-export const TEACHING_WEIGHT_ANALYZER_VERSION = 'teaching-weight-analyzer-v1';
+export const TEACHING_WEIGHT_ANALYZER_VERSION = 'teaching-weight-analyzer-v2';
+export const MAX_KEY_KNOWLEDGE_POINTS_PER_LESSON = 2;
+
+export function teachingWeightStatus(
+  record: TeachingWeightMetadataRecord | undefined,
+): 'pending' | 'completed' | 'failed' {
+  if (record === undefined || record.analyzerVersion !== TEACHING_WEIGHT_ANALYZER_VERSION) {
+    return 'pending';
+  }
+  return record.state === 'generating' ? 'pending' : record.state;
+}
 
 const WeightOutputSchema = z.strictObject({
   lessons: z.array(
@@ -70,12 +80,20 @@ export function createTeachingWeightService(options: {
     };
     const sourceSnapshotHash = sha256(JSON.stringify(snapshot));
     const current = await options.repository.get(outline.id);
-    if (current?.state === 'completed') return current;
+    if (
+      current?.state === 'completed' &&
+      current.analyzerVersion === TEACHING_WEIGHT_ANALYZER_VERSION &&
+      current.sourceSnapshotHash === sourceSnapshotHash
+    ) {
+      return current;
+    }
     const attempt = (current?.attempt ?? 0) + 1;
     const prompt = [
       '你是课程知识点教学权重分析器。大纲已经正式生成，不得改写标题、目标、顺序或知识点文本。',
       '只判断哪些知识点是本课程版本中的固定重点。重点应具备至少一种特征：课程目标核心、复杂依赖中心、关键前置、易错易漏、边界条件重要、容易与相邻概念混淆，或对后续迁移有显著支撑。',
-      '不要为了均匀分布而强行选择重点；简单知识点可以不标记。',
+      '每个非空课节必须选择 1 至 2 个固定重点，不得超过 2 个。重点必须保持稀缺，不能把一般教学内容泛化为重点。',
+      '同一课节的 keyKnowledgePoints 必须按课程设计重要性从高到低排列。',
+      '每个输入课节都必须在 lessons 中出现；只有 coreKnowledgePoints 为空时才返回空数组。',
       '只返回 JSON。每个 lessonId 必须来自输入；index 是该课节 coreKnowledgePoints 的零基索引；rationale 简洁说明课程设计层面的原因。',
       JSON.stringify({
         lessons: [
@@ -135,23 +153,36 @@ export function createTeachingWeightService(options: {
     try {
       const output = parseOutput(terminal.draftMarkdown);
       const lessonById = new Map(lessons.map((lesson) => [lesson.id, lesson]));
-      const seen = new Set<string>();
-      const keyKnowledgePoints = output.lessons.flatMap((result) => {
-        const lesson = lessonById.get(result.lessonId);
-        if (lesson === undefined) throw new Error('teaching_weight_unknown_lesson');
-        return result.keyKnowledgePoints.map((point) => {
+      const resultByLessonId = new Map<string, (typeof output.lessons)[number]>();
+      for (const result of output.lessons) {
+        if (!lessonById.has(result.lessonId)) throw new Error('teaching_weight_unknown_lesson');
+        if (resultByLessonId.has(result.lessonId)) {
+          throw new Error('teaching_weight_duplicate_lesson');
+        }
+        resultByLessonId.set(result.lessonId, result);
+      }
+      const keyKnowledgePoints = lessons.flatMap((lesson) => {
+        const result = resultByLessonId.get(lesson.id);
+        if (result === undefined) throw new Error('teaching_weight_missing_lesson');
+        if (lesson.coreKnowledgePoints.length > 0 && result.keyKnowledgePoints.length === 0) {
+          throw new Error('teaching_weight_missing_key_knowledge_point');
+        }
+        const seenIndexes = new Set<number>();
+        const validated = result.keyKnowledgePoints.map((point) => {
           if (point.index >= lesson.coreKnowledgePoints.length) {
             throw new Error('teaching_weight_unknown_knowledge_point');
           }
-          const key = `${lesson.id}:${point.index}`;
-          if (seen.has(key)) throw new Error('teaching_weight_duplicate_knowledge_point');
-          seen.add(key);
+          if (seenIndexes.has(point.index)) {
+            throw new Error('teaching_weight_duplicate_knowledge_point');
+          }
+          seenIndexes.add(point.index);
           return {
             lessonId: lesson.id,
             knowledgePointIndex: point.index,
             rationale: point.rationale,
           };
         });
+        return validated.slice(0, MAX_KEY_KNOWLEDGE_POINTS_PER_LESSON);
       });
       const completed: TeachingWeightMetadataRecord = {
         ...storedGenerating,

@@ -4,7 +4,6 @@ import type { CommandContext } from '@learning-more/contracts';
 
 import type { ReviewClosureRouteOptions } from '../../http/routes/review-closure.js';
 import { closeCourse as closeCourseAggregate } from '../../modules/course-authoring/implementation/close-course.js';
-import { abandonLesson } from '../../modules/learning-session/implementation/abandon-lesson.js';
 import { createGenerationReviewWriter } from '../../modules/review-closure/implementation/generation-review-writer.js';
 import { createLessonClosureWorkflow } from '../../modules/review-closure/implementation/lesson-closure.js';
 import type { LessonClosureRecord } from '../../modules/review-closure/model/review-state.js';
@@ -117,6 +116,7 @@ export function createLocalReviewRuntime(
     },
   });
   const activeStageReviewFinalizations = new Map<string, Promise<void>>();
+  const activeAbandonmentReviewPreparations = new Map<string, Promise<void>>();
 
   function scheduleStageReviewFinalization(review: {
     readonly lessonId: string;
@@ -184,6 +184,39 @@ export function createLocalReviewRuntime(
       .catch(() => undefined)
       .finally(() => activeStageReviewFinalizations.delete(review.taskId));
     activeStageReviewFinalizations.set(review.taskId, finalization);
+  }
+
+  function scheduleAbandonmentReviewPreparation(request: {
+    readonly lessonId: string;
+    readonly sessionId: string;
+    readonly commandId: string;
+  }): void {
+    if (activeAbandonmentReviewPreparations.has(request.sessionId)) return;
+    const preparation = (async () => {
+      const messages = await input.learning.access.listMessages(request.sessionId);
+      if (messages.length === 0) return;
+      await teachingRuntime.drainObservations(request.sessionId);
+      const state = await teachingRuntime.module.getTeachingState(request.sessionId);
+      const checkpoint = await teachingRuntime.module.freezeCheckpoint({
+        sessionId: request.sessionId,
+        reason: state.evidenceCheckpoint ? 'evidenced_abandon' : 'manual_pause',
+      });
+      await input.learning.access.captureTeachingProfileCheckpoint(checkpoint);
+      const stageReview = await stageReviews.request({
+        lessonId: request.lessonId,
+        sourceSessionId: request.sessionId,
+        sourceSnapshotHash: checkpoint.sourceSnapshotHash,
+        commandId: request.commandId,
+      });
+      scheduleStageReviewFinalization({
+        lessonId: request.lessonId,
+        reviewId: stageReview.reviewId,
+        taskId: stageReview.taskId,
+      });
+    })()
+      .catch(() => undefined)
+      .finally(() => activeAbandonmentReviewPreparations.delete(request.sessionId));
+    activeAbandonmentReviewPreparations.set(request.sessionId, preparation);
   }
   const lessonClosureRepository = reviewClosureRepositories.lessonClosures;
   const lessonClosures = createLessonClosureWorkflow({
@@ -302,34 +335,16 @@ export function createLocalReviewRuntime(
   const routes: ReviewClosureRouteOptions = {
     services: {
       async abandonLesson(lessonId, _sourceSnapshotHash, context) {
-        const before = await input.learning.access.getRecord(lessonId);
-        const sessionId = before?.learning.session?.id;
-        let checkpointSourceHash = '0'.repeat(64);
-        if (
-          sessionId !== undefined &&
-          (await input.learning.access.listMessages(sessionId)).length > 0
-        ) {
-          await teachingRuntime.drainObservations(sessionId);
-          const state = await teachingRuntime.module.getTeachingState(sessionId);
-          const checkpoint = await teachingRuntime.module.freezeCheckpoint({
-            sessionId,
-            reason: state.evidenceCheckpoint ? 'evidenced_abandon' : 'manual_pause',
-          });
-          await input.learning.access.captureTeachingProfileCheckpoint(checkpoint);
-          checkpointSourceHash = checkpoint.sourceSnapshotHash;
+        const abandoned = await sessionModule.execute({ type: 'AbandonLesson', lessonId }, context);
+        if (abandoned.value.progress !== 'abandoned' || abandoned.value.sessionId === undefined) {
+          return abandoned.value;
         }
-        const result = await abandonLesson(
-          { lessonId, sourceSnapshotHash: checkpointSourceHash },
-          context,
-          { sessionModule, stageReviews },
-        );
-        if (result.stageReview === undefined) return result;
-        scheduleStageReviewFinalization({
+        scheduleAbandonmentReviewPreparation({
           lessonId,
-          reviewId: result.stageReview.reviewId,
-          taskId: result.stageReview.taskId,
+          sessionId: abandoned.value.sessionId,
+          commandId: context.commandId,
         });
-        return { ...result, reviewStatus: 'generating' as const };
+        return { ...abandoned.value, reviewStatus: 'generating' as const };
       },
       restoreLesson: (lessonId, context) =>
         sessionModule

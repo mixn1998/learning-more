@@ -9,7 +9,10 @@ import { createGenerationAuthoringAgent } from '../../modules/course-authoring/i
 import { createGenerationCandidateAlignmentPlanner } from '../../modules/course-authoring/implementation/generation-candidate-alignment-planner.js';
 import { ingestSelectedMaterial } from '../../modules/course-authoring/implementation/material-ingestion.js';
 import { createOutlineRevisionCleanup } from '../../modules/planning/implementation/outline-revision-cleanup.js';
-import { createTeachingWeightService } from '../../modules/course-authoring/implementation/teaching-weight-service.js';
+import {
+  createTeachingWeightService,
+  teachingWeightStatus,
+} from '../../modules/course-authoring/implementation/teaching-weight-service.js';
 import {
   createLocalFileCourseArchiveStore,
   createLocalFileOutlineSessionDraftStore,
@@ -233,8 +236,33 @@ export function createLocalCourseRuntime(
     outlineSessionDraftStore: createLocalFileOutlineSessionDraftStore(input.dataRoot),
   });
 
+  const getLessonPreview = courseAuthoring.getLesson;
+  if (getLessonPreview === undefined) throw new Error('lesson_query_not_configured');
+  const courseAuthoringWithTeachingWeights = {
+    ...courseAuthoring,
+    async getLesson(lessonId: string, context: Parameters<typeof getLessonPreview>[1]) {
+      const preview = await getLessonPreview(lessonId, context);
+      const metadata = await teachingWeights.get(preview.outlineVersionId);
+      const status = teachingWeightStatus(metadata);
+      const keyIndexes = new Set(
+        status === 'completed'
+          ? metadata?.keyKnowledgePoints
+              .filter((point) => point.lessonId === preview.lessonId)
+              .map((point) => point.knowledgePointIndex)
+          : [],
+      );
+      return {
+        ...preview,
+        teachingWeightStatus: status,
+        knowledgePointWeights: preview.coreKnowledgePoints.map((_, index) =>
+          keyIndexes.has(index) ? ('key' as const) : ('normal' as const),
+        ),
+      };
+    },
+  };
+
   const routes: CourseAuthoringRouteOptions = {
-    module: courseAuthoring,
+    module: courseAuthoringWithTeachingWeights,
     async ingestMaterial(outlineSessionId, materialInput, context) {
       const session = await authoringRepositories.outlineSessions.get(outlineSessionId);
       if (session === undefined) {
@@ -354,7 +382,7 @@ export function createLocalCourseRuntime(
     async recoverTeachingWeightMetadata() {
       for await (const course of courseRepositories.courses.list()) {
         const metadata = await teachingWeightRepository.get(course.outlineVersionId);
-        if (metadata?.state === 'completed') continue;
+        if (teachingWeightStatus(metadata) === 'completed') continue;
         await teachingWeights.ensureForCourse(course.id).catch(() => undefined);
       }
     },

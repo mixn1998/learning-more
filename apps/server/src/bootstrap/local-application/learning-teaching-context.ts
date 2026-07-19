@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { teachingPlayIntent } from '../../modules/interactive-teaching/implementation/teaching-play-intent.js';
+import { teachingWeightStatus } from '../../modules/course-authoring/implementation/teaching-weight-service.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
 import { createLocalFileMessageLog } from '../../modules/learning-session/implementation/message-log.js';
 import { createLocalFileLearningSessionRepositories } from '../../persistence/learning-session-repositories.js';
@@ -44,7 +45,7 @@ export function createLearningTeachingContext(input: {
       const playIntent = teachingPlayIntent(course.courseMode);
       const teachingWeight = await input.course.getTeachingWeightMetadata(course.outlineVersionId);
       const keyIndexes = new Set(
-        teachingWeight?.state === 'completed'
+        teachingWeight !== undefined && teachingWeightStatus(teachingWeight) === 'completed'
           ? teachingWeight.keyKnowledgePoints
               .filter((point) => point.lessonId === lesson.id)
               .map((point) => point.knowledgePointIndex)

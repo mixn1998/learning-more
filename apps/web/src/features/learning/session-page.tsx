@@ -565,10 +565,10 @@ export function SessionPage(props: {
     initialSnapshot: Awaited<ReturnType<LearningClient['getSession']>>,
   ) => {
     hydrate(initialSnapshot);
-    if (
-      initialSnapshot.teachingProgress?.observationStatus === 'pending' &&
-      !teachingRefreshes.current.has(sessionId)
-    ) {
+    const needsTeachingRefresh = (snapshot: Awaited<ReturnType<LearningClient['getSession']>>) =>
+      snapshot.teachingProgress?.observationStatus === 'pending' ||
+      snapshot.teachingProgress?.teachingWeightStatus === 'pending';
+    if (needsTeachingRefresh(initialSnapshot) && !teachingRefreshes.current.has(sessionId)) {
       teachingRefreshes.current.add(sessionId);
       void (async () => {
         try {
@@ -576,7 +576,7 @@ export function SessionPage(props: {
             await new Promise((resolve) => window.setTimeout(resolve, 1_000));
             const refreshed = await api.getSession(sessionId);
             hydrate(refreshed);
-            if (refreshed.teachingProgress?.observationStatus !== 'pending') break;
+            if (!needsTeachingRefresh(refreshed)) break;
           }
         } finally {
           teachingRefreshes.current.delete(sessionId);

@@ -3,6 +3,7 @@ import './lesson-navigation-workspace.css';
 export type LessonNavigationPoint = Readonly<{
   marker: string;
   title: string;
+  emphasis?: 'key';
   /** Legacy fixture/input compatibility; navigation intentionally does not render descriptions. */
   description?: string;
 }>;
@@ -80,6 +81,9 @@ export function LessonNavigationWorkspace(props: {
                 <div className="nav-point" key={`${point.marker}:${point.title}:${index}`}>
                   <b>{point.marker}</b>
                   <strong>{point.title}</strong>
+                  {point.emphasis === 'key' ? (
+                    <span className="nav-point-emphasis">重点</span>
+                  ) : null}
                 </div>
               ))}
             </div>

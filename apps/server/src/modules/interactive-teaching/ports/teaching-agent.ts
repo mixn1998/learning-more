@@ -14,6 +14,7 @@ export type TeachingDirective = Readonly<{
     ref: string;
     status: 'pending' | 'learning' | 'completed' | 'skipped';
     interactionStatus: 'pending' | 'completed' | 'skipped';
+    depthPreference?: 'default' | 'condensed';
   }>[];
   difficultySignals?: readonly Readonly<{
     knowledgePointRef: string;

@@ -32,6 +32,8 @@ export interface LearningClient {
     title: string;
     objective: string;
     coreKnowledgePoints: readonly string[];
+    knowledgePointWeights?: readonly ('normal' | 'key')[] | undefined;
+    teachingWeightStatus?: 'pending' | 'completed' | 'failed' | undefined;
     estimatedMinutes: number;
   }>;
   getLessonState(lessonId: string): Promise<{

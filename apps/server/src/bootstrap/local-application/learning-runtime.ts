@@ -7,6 +7,7 @@ import {
 } from '@learning-more/contracts';
 
 import type { LearningSessionRouteOptions } from '../../http/routes/learning-sessions.js';
+import { teachingWeightStatus } from '../../modules/course-authoring/implementation/teaching-weight-service.js';
 import { createTeachingContextAssembler } from '../../modules/interactive-teaching/implementation/context-assembler.js';
 import { createGenerationTeachingAgent } from '../../modules/interactive-teaching/implementation/generation-teaching-agent.js';
 import { createGenerationTeachingObserver } from '../../modules/interactive-teaching/implementation/generation-teaching-observer.js';
@@ -330,6 +331,9 @@ export function createLocalLearningRuntime(
         courseId: reference.courseId,
         lessonId: reference.lessonId,
       });
+      const weightMetadata = await input.course.access.getTeachingWeightMetadata(
+        facts.course.outlineVersionId,
+      );
       let state: TeachingStateSnapshot | undefined;
       try {
         state = await interactiveTeachingRuntime.module.getTeachingState(sessionId);
@@ -340,6 +344,7 @@ export function createLocalLearningRuntime(
       return {
         ledgerVersion: state?.ledgerVersion ?? 0,
         observationStatus: state?.observationStatus ?? 'current',
+        teachingWeightStatus: teachingWeightStatus(weightMetadata),
         lessonPhase: state?.lessonPhase ?? 'warmup',
         ...(state?.activeKnowledgePointRef === undefined
           ? facts.lesson.coreKnowledgePoints[0] === undefined
@@ -376,6 +381,7 @@ export function createLocalLearningRuntime(
             emphasis: emphasisFor({
               fixedImportance: knowledgePoint.fixedImportance ?? 'normal',
               adaptiveDifficulty: point?.adaptiveDifficulty ?? 'normal',
+              depthPreference: point?.depthPreference ?? 'default',
             }),
           };
         }),

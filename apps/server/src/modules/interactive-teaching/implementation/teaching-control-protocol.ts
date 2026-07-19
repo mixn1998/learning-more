@@ -25,6 +25,7 @@ function machineControlContext(context: TeachingContextPackage): string {
         title: point.text,
         status: existing?.progress ?? 'pending',
         interactionStatus: existing?.interactionStatus ?? 'pending',
+        depthPreference: existing?.depthPreference ?? 'default',
       };
     }),
     difficultySignals: [],
@@ -44,7 +45,8 @@ export function renderTeachingControlProtocol(context: TeachingContextPackage): 
     `${CONTROL_START}{完整 JSON 教学状态快照}${CONTROL_END}`,
     `${REPLY_START}{仅供学习者阅读的 Markdown}${REPLY_END}`,
     '控制 JSON 必须包含 schemaVersion=1、lessonPhase、knowledgePoints、difficultySignals、comprehensiveCheck、closureInquiry、summaryStatus；只在 warmup 或 knowledge_point 阶段按需包含 activeKnowledgePointRef。',
-    'knowledgePoints 必须完整返回给定的全部 ref；可原样保留用于辨认知识点的 title。每项 status 只能是 pending|learning|completed|skipped，interactionStatus 只能是 pending|completed|skipped。',
+    'knowledgePoints 必须完整返回给定的全部 ref；可原样保留用于辨认知识点的 title。每项 status 只能是 pending|learning|completed|skipped，interactionStatus 只能是 pending|completed|skipped，depthPreference 只能是 default|condensed。',
+    '只有用户当前原话经语义判断明确表示“不用深入展开、简要带过”或同义意图时，才把对应知识点 depthPreference 设为 condensed；否则保持既有值。若用户之后明确要求深入讲解，可恢复为 default。该字段只调整本次会话教学深度，不改写课程预设重点。',
     'status=completed 表示你已完成该知识点教学，并基于教学互动自主判断可以进入下一阶段；此时 interactionStatus 必须是 completed 或 skipped。',
     'difficultySignals 只上报当前用户原话中与本课具体知识点直接相关的新信号；每项包含 knowledgePointRef、sourceMessageId、kind。kind 只能是 answer_error、misunderstanding、not_understood、request_deeper_explanation。',
     '回答错误、概念误解、明确不理解、直接要求深入讲解分别独立计数；同一条消息可以同时上报不同 kind，但同一 kind 不得重复。延伸拓展、脑洞类或仅相邻探索的问题不得计入。没有新信号时返回空数组。',

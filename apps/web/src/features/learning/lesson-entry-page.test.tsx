@@ -27,6 +27,8 @@ describe('LessonEntryPage', () => {
         title: 'Probability spaces',
         objective: 'Understand probability spaces',
         coreKnowledgePoints: ['sample space', 'event algebra'],
+        knowledgePointWeights: ['normal', 'key'],
+        teachingWeightStatus: 'completed',
         estimatedMinutes: 30,
       }),
       getLessonState: vi.fn().mockResolvedValue({
@@ -46,6 +48,7 @@ describe('LessonEntryPage', () => {
     expect(await screen.findByRole('heading', { name: 'Probability spaces' })).toBeInTheDocument();
     expect(screen.getAllByText('sample space')).toHaveLength(1);
     expect(screen.getAllByText('event algebra')).toHaveLength(1);
+    expect(screen.getByText('重点')).toBeInTheDocument();
     expect(start).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '返回主页' }));

@@ -40,6 +40,31 @@ export function LessonEntryPage(props: {
     );
   }, [api, props.lessonId]);
 
+  useEffect(() => {
+    if (preview?.teachingWeightStatus !== 'pending') return undefined;
+    let cancelled = false;
+    let timer: number | undefined;
+    const refresh = () => {
+      timer = window.setTimeout(() => {
+        void api.getLessonPreview(props.lessonId).then(
+          (nextPreview) => {
+            if (cancelled) return;
+            setPreview(nextPreview);
+            if (nextPreview.teachingWeightStatus === 'pending') refresh();
+          },
+          () => {
+            if (!cancelled) refresh();
+          },
+        );
+      }, 1_000);
+    };
+    refresh();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [api, preview?.teachingWeightStatus, props.lessonId]);
+
   if (started && preview !== undefined) {
     return (
       <SessionPage
@@ -100,6 +125,7 @@ export function LessonEntryPage(props: {
         return {
           marker: String(index + 1).padStart(2, '0'),
           title: presentation.title,
+          ...(preview.knowledgePointWeights?.[index] === 'key' ? { emphasis: 'key' as const } : {}),
         };
       })}
       primaryLabel={

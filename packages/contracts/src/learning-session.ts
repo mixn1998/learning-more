@@ -60,6 +60,7 @@ export const LearningSessionCommandResponseSchema = z.looseObject({
 export const LessonTeachingProgressSchema = z.strictObject({
   ledgerVersion: z.number().int().nonnegative(),
   observationStatus: z.enum(['current', 'pending', 'failed']),
+  teachingWeightStatus: z.enum(['pending', 'completed', 'failed']).optional(),
   lessonPhase: z.enum([
     'warmup',
     'knowledge_point',
