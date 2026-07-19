@@ -125,6 +125,7 @@ export function createInteractiveTeaching(options: {
     assembled: Awaited<ReturnType<TeachingContextAssembler['assemble']>>;
     expectedVersion: number;
     observe: boolean;
+    mode: 'new-turn' | 'retry';
   }): Promise<TeachingTurnAccepted> {
     const currentUserMessageId =
       input.assembled.turnKind === 'opening'
@@ -134,7 +135,12 @@ export function createInteractiveTeaching(options: {
           )?.messageId;
     const accepted = await options.agent.submit(input.assembled);
     const started = await options.sessionModule.execute(
-      { type: 'StartSessionGeneration', lessonId: input.lessonId, taskId: accepted.taskId },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: input.lessonId,
+        taskId: accepted.taskId,
+        mode: input.mode,
+      },
       {
         ...input.context,
         commandId: `${input.context.commandId}:start-generation`,
@@ -577,6 +583,7 @@ export function createInteractiveTeaching(options: {
         assembled,
         expectedVersion: appended.value.resourceVersion,
         observe: true,
+        mode: 'new-turn',
       });
     },
     async reviseTurn(input, context) {
@@ -651,6 +658,7 @@ export function createInteractiveTeaching(options: {
         assembled,
         expectedVersion: replaced.value.resourceVersion,
         observe: true,
+        mode: 'new-turn',
       });
     },
     async retryTurn(input, context) {
@@ -697,6 +705,7 @@ export function createInteractiveTeaching(options: {
         assembled,
         expectedVersion: learning.resourceVersion,
         observe: true,
+        mode: 'retry',
       });
     },
     async openLesson(input, context) {
@@ -730,6 +739,7 @@ export function createInteractiveTeaching(options: {
         assembled,
         expectedVersion: learning.resourceVersion,
         observe: false,
+        mode: 'new-turn',
       });
     },
     async stopTurn(input, context): Promise<TeachingTurnStopped> {

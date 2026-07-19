@@ -118,7 +118,11 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
         messageId: fc.uuid(),
       }),
       fc.constant<LearningSessionCommand>({ type: 'establishEvidenceCheckpoint' }),
-      fc.record({ type: fc.constant('startGeneration' as const), taskId: fc.uuid() }),
+      fc.record({
+        type: fc.constant('startGeneration' as const),
+        taskId: fc.uuid(),
+        mode: fc.constantFrom('new-turn' as const, 'retry' as const),
+      }),
       fc.constant<LearningSessionCommand>({ type: 'stopGeneration' }),
       fc.constant<LearningSessionCommand>({ type: 'abandon' }),
       fc.constant<LearningSessionCommand>({ type: 'restore' }),

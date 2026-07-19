@@ -37,7 +37,12 @@ export type LearningSessionCommand =
         completionStatus?: 'complete' | 'interrupted';
       }>)
   | (LessonCommand & Readonly<{ type: 'EstablishEvidenceCheckpoint' }>)
-  | (LessonCommand & Readonly<{ type: 'StartSessionGeneration'; taskId: string }>)
+  | (LessonCommand &
+      Readonly<{
+        type: 'StartSessionGeneration';
+        taskId: string;
+        mode: 'new-turn' | 'retry';
+      }>)
   | (LessonCommand & Readonly<{ type: 'StopSessionGeneration' }>)
   | (LessonCommand & Readonly<{ type: 'AbandonLesson' }>)
   | (LessonCommand & Readonly<{ type: 'RestoreLesson' }>)

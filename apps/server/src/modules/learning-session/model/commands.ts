@@ -18,7 +18,11 @@ export type LearningSessionCommand =
       messageId: string;
     }>
   | Readonly<{ type: 'establishEvidenceCheckpoint' }>
-  | Readonly<{ type: 'startGeneration'; taskId: string }>
+  | Readonly<{
+      type: 'startGeneration';
+      taskId: string;
+      mode: 'new-turn' | 'retry';
+    }>
   | Readonly<{ type: 'stopGeneration' }>
   | Readonly<{ type: 'abandon' }>
   | Readonly<{ type: 'restore' }>

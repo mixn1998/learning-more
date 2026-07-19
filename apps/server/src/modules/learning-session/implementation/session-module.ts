@@ -66,7 +66,7 @@ function domainCommand(command: LearningSessionCommand, sessionId?: string): Dom
     return { type: 'establishEvidenceCheckpoint' };
   }
   if (command.type === 'StartSessionGeneration') {
-    return { type: 'startGeneration', taskId: command.taskId };
+    return { type: 'startGeneration', taskId: command.taskId, mode: command.mode };
   }
   if (command.type === 'StopSessionGeneration') return { type: 'stopGeneration' };
   if (command.type === 'AbandonLesson') return { type: 'abandon' };

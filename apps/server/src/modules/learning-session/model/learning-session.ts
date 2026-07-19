@@ -153,7 +153,9 @@ export function decide(
       : [event(commandId, { type: 'EvidenceCheckpointEstablished' })];
   }
   if (command.type === 'startGeneration') {
-    if (session.state !== 'active') throw new LearningSessionError('session_not_writable');
+    if (session.state !== 'active' && !(session.state === 'paused' && command.mode === 'retry')) {
+      throw new LearningSessionError('session_not_writable');
+    }
     if (session.activeGenerationTaskId !== undefined) {
       throw new LearningSessionError('generation_in_progress');
     }

@@ -819,7 +819,12 @@ describe('InteractiveTeaching deep module', () => {
       { ...commandContext, commandId: 'recover_user', expectedVersion: 1 },
     );
     await sessionModule.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_1', taskId: 'task_recovered' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_1',
+        taskId: 'task_recovered',
+        mode: 'new-turn',
+      },
       { ...commandContext, commandId: 'recover_generation', expectedVersion: 2 },
     );
 

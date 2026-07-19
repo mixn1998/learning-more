@@ -84,7 +84,12 @@ describe('LearningSession module', () => {
       { ...context('append_original', 'page_a'), expectedVersion: 1 },
     );
     await module.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_revision', taskId: 'task_original' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_revision',
+        taskId: 'task_original',
+        mode: 'new-turn',
+      },
       { ...context('start_generation', 'page_a'), expectedVersion: 2 },
     );
     await module.execute(
@@ -278,7 +283,12 @@ describe('LearningSession module', () => {
     await module.execute(user, context('user', 'page_a'));
     await module.execute(user, context('user', 'page_a'));
     await module.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_01',
+        mode: 'new-turn',
+      },
       context('start_generation', 'page_a'),
     );
 
@@ -309,7 +319,12 @@ describe('LearningSession module', () => {
     );
     advance(10_000);
     await module.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_01',
+        mode: 'new-turn',
+      },
       { ...context('generate_before_pause', 'page_a'), expectedVersion: 1 },
     );
     await module.execute(
@@ -351,6 +366,67 @@ describe('LearningSession module', () => {
     expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
   });
 
+  it('binds a retry while paused without resuming time and still rejects a new turn', async () => {
+    const { module, repositories, advance } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_paused_retry', 'page_a'),
+    );
+    advance(8_000);
+    const paused = await module.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_01' },
+      { ...context('pause_before_retry', 'page_a'), expectedVersion: 1 },
+    );
+
+    await expect(
+      module.execute(
+        {
+          type: 'StartSessionGeneration',
+          lessonId: 'lesson_01',
+          taskId: 'task_new_turn',
+          mode: 'new-turn',
+        },
+        {
+          ...context('new_turn_while_paused', 'page_a'),
+          expectedVersion: paused.value.resourceVersion,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'session_not_writable' });
+
+    const retried = await module.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_retry',
+        mode: 'retry',
+      },
+      {
+        ...context('retry_while_paused', 'page_a'),
+        expectedVersion: paused.value.resourceVersion,
+      },
+    );
+    advance(20_000);
+
+    const view = await module.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_01' },
+      {
+        correlationId: 'query_paused_retry',
+        actor: 'local-user',
+        requestedAt: nowIso(),
+        receivedAt: nowIso(),
+      },
+    );
+    expect(retried.value.resourceVersion).toBe(paused.value.resourceVersion + 1);
+    expect(view.actualSeconds).toBe(8);
+    expect(view.learning.session).toMatchObject({
+      state: 'paused',
+      activeGenerationTaskId: 'task_retry',
+    });
+    await expect(repositories.get('lesson_01')).resolves.toMatchObject({
+      intervals: [{ endReason: 'paused' }],
+    });
+  });
+
   it('excludes AI generation wait time and resumes timing after an active reply completes', async () => {
     const { module, repositories, advance } = fixture();
     await module.execute(
@@ -359,7 +435,12 @@ describe('LearningSession module', () => {
     );
     advance(10_000);
     await module.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_01',
+        mode: 'new-turn',
+      },
       { ...context('start_generation_hold_task', 'page_a'), expectedVersion: 1 },
     );
     advance(20_000);
@@ -403,7 +484,12 @@ describe('LearningSession module', () => {
     );
     advance(7_000);
     await module.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_01',
+        mode: 'new-turn',
+      },
       { ...context('start_stopped_generation_task', 'page_a'), expectedVersion: 1 },
     );
     advance(30_000);
@@ -437,7 +523,12 @@ describe('LearningSession module', () => {
     );
     advance(10_000);
     await module.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_01',
+        mode: 'new-turn',
+      },
       { ...context('start_resumed_generation_task', 'page_a'), expectedVersion: 1 },
     );
     await module.execute(
@@ -485,7 +576,12 @@ describe('LearningSession module', () => {
       context('start_guarded_completion', 'page_a'),
     );
     await module.execute(
-      { type: 'StartSessionGeneration', lessonId: 'lesson_01', taskId: 'task_01' },
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_01',
+        mode: 'new-turn',
+      },
       { ...context('generate_guarded_completion', 'page_a'), expectedVersion: 1 },
     );
     await module.execute(
