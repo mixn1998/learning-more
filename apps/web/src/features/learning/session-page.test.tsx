@@ -187,6 +187,86 @@ describe('learning SessionPage', () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('does not fail a newly sent turn when its first stream frame is delayed', async () => {
+    vi.useFakeTimers();
+    const stream = vi.fn(() => new Promise<never>(() => undefined));
+    let generationStarted = false;
+    let generationCompleted = false;
+    const sendMessage = vi.fn().mockImplementation(async () => {
+      generationStarted = true;
+      return {
+        taskId: 'task_delayed_01',
+        resourceVersion: 2,
+        userMessageId: 'message_user_01',
+      };
+    });
+    const getSession = vi.fn().mockImplementation(async () => {
+      if (!generationStarted) {
+        return {
+          resourceVersion: 1,
+          actualSeconds: 21,
+          learning: { progress: 'in_progress', session: { state: 'active' } },
+          messages: [],
+        };
+      }
+      if (!generationCompleted) {
+        return {
+          resourceVersion: 2,
+          actualSeconds: 21,
+          learning: {
+            progress: 'in_progress',
+            session: { state: 'active', activeGenerationTaskId: 'task_delayed_01' },
+          },
+          messages: [{ id: 'message_user_01', role: 'user', markdown: 'Explain this slowly.' }],
+        };
+      }
+      return {
+        resourceVersion: 3,
+        actualSeconds: 21,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [
+          { id: 'message_user_01', role: 'user', markdown: 'Explain this slowly.' },
+          { id: 'message_assistant_01', role: 'assistant', markdown: 'Here is the explanation.' },
+        ],
+      };
+    });
+    render(
+      <SessionPage lessonId="lesson_01" client={client({ getSession, sendMessage, stream })} />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const input = screen.getByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: 'Explain this slowly.' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(stream).toHaveBeenCalledWith('task_delayed_01', expect.any(Function));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('status', { name: 'AI 回复状态' })).toHaveTextContent('正在思考中');
+    expect(screen.queryByRole('button', { name: '重新生成' })).not.toBeInTheDocument();
+
+    generationCompleted = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Here is the explanation.')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
+  });
+
   it('retries an unaccepted message in place without restoring or duplicating it', async () => {
     const sendMessage = vi
       .fn()
@@ -1024,6 +1104,10 @@ describe('learning SessionPage', () => {
       .mockResolvedValue({
         resourceVersion: 5,
         learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [
+          { id: 'message_user_01', role: 'user', markdown: '请继续。' },
+          { id: 'message_assistant_01', role: 'assistant', markdown: '恢复后的流式内容' },
+        ],
       });
     render(<SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />);
 
@@ -1109,17 +1193,31 @@ describe('learning SessionPage', () => {
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
   });
 
-  it('exits thinking and offers paused retry when a restored task never exposes a first frame', async () => {
+  it('keeps a paused restored task generating after the first-frame timeout and projects its reply', async () => {
     vi.useFakeTimers();
     const stream = vi.fn(() => new Promise<never>(() => undefined));
-    const getSession = vi.fn().mockResolvedValue({
-      resourceVersion: 4,
-      learning: {
-        progress: 'in_progress',
-        session: { state: 'paused', activeGenerationTaskId: 'task_running_01' },
-      },
-      messages: [{ id: 'message_user_01', role: 'user', markdown: 'Please continue.' }],
-    });
+    let completed = false;
+    const getSession = vi.fn().mockImplementation(async () =>
+      completed
+        ? {
+            resourceVersion: 5,
+            actualSeconds: 12,
+            learning: { progress: 'in_progress', session: { state: 'paused' } },
+            messages: [
+              { id: 'message_user_01', role: 'user', markdown: 'Please continue.' },
+              { id: 'message_assistant_01', role: 'assistant', markdown: 'Paused reply.' },
+            ],
+          }
+        : {
+            resourceVersion: 4,
+            actualSeconds: 12,
+            learning: {
+              progress: 'in_progress',
+              session: { state: 'paused', activeGenerationTaskId: 'task_running_01' },
+            },
+            messages: [{ id: 'message_user_01', role: 'user', markdown: 'Please continue.' }],
+          },
+    );
     render(<SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />);
 
     await act(async () => {
@@ -1134,7 +1232,17 @@ describe('learning SessionPage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole('button', { name: '重新生成' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新生成' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('学习输入')).toBeDisabled();
+    expect(screen.getByRole('status', { name: 'AI 回复状态' })).toHaveTextContent('正在思考中');
+
+    completed = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Paused reply.')).toBeInTheDocument();
     expect(screen.getByLabelText('学习输入')).toBeDisabled();
     expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
   });

@@ -175,7 +175,8 @@ function hasUnansweredUserMessage(messages: readonly SessionMessageView[] | unde
   return latestUserMessage !== undefined && !hasAssistantResponse(messages);
 }
 
-const GENERATION_START_ACK_TIMEOUT_MS = 8_000;
+const GENERATION_RECONCILIATION_DELAY_MS = 8_000;
+const GENERATION_PROJECTION_POLL_MS = 1_000;
 
 async function consumeGenerationStream(
   api: LearningClient,
@@ -183,21 +184,14 @@ async function consumeGenerationStream(
   onEvent: Parameters<LearningClient['stream']>[1],
   timeoutIds: Set<number>,
 ): Promise<'terminal' | 'stalled'> {
-  let acknowledgeStart: (() => void) | undefined;
-  const started = new Promise<void>((resolve) => {
-    acknowledgeStart = resolve;
-  });
   const stream = api.stream(taskId, (event) => {
-    acknowledgeStart?.();
-    acknowledgeStart = undefined;
     onEvent(event);
   });
   let timeoutId: number | undefined;
   const firstOutcome = await Promise.race([
-    started.then(() => 'started' as const),
     stream.then(() => 'terminal' as const),
     new Promise<'stalled'>((resolve) => {
-      timeoutId = window.setTimeout(() => resolve('stalled'), GENERATION_START_ACK_TIMEOUT_MS);
+      timeoutId = window.setTimeout(() => resolve('stalled'), GENERATION_RECONCILIATION_DELAY_MS);
       timeoutIds.add(timeoutId);
     }),
   ]).finally(() => {
@@ -210,7 +204,6 @@ async function consumeGenerationStream(
     void stream.catch(() => undefined);
     return 'stalled';
   }
-  if (firstOutcome === 'started') await stream;
   return 'terminal';
 }
 
@@ -688,6 +681,49 @@ export function SessionPage(props: {
     return initialSnapshot;
   };
 
+  const convergeGenerationProjection = async (input: {
+    sessionId: string;
+    taskId: string;
+    attempt: number;
+    responseKind: 'opening' | 'turn';
+  }): Promise<
+    | {
+        status: 'completed' | 'failed';
+        snapshot: Awaited<ReturnType<LearningClient['getSession']>>;
+      }
+    | { status: 'cancelled' }
+  > => {
+    while (generationAttempt.current === input.attempt) {
+      let snapshot: Awaited<ReturnType<LearningClient['getSession']>>;
+      try {
+        snapshot = await api.getSession(input.sessionId);
+      } catch {
+        await new Promise((resolve) => window.setTimeout(resolve, GENERATION_PROJECTION_POLL_MS));
+        continue;
+      }
+
+      const responsePersisted =
+        input.responseKind === 'opening'
+          ? snapshot.messages?.some(
+              (message) => message.role === 'assistant' && message.markdown.trim() !== '',
+            ) === true
+          : hasAssistantResponse(snapshot.messages);
+      const activeTaskId = snapshot.learning.session?.activeGenerationTaskId;
+      if (activeTaskId === undefined) {
+        hydrateAndRefreshTeachingProgress(input.sessionId, snapshot);
+        return { status: responsePersisted ? 'completed' : 'failed', snapshot };
+      }
+
+      if (activeTaskId !== input.taskId) {
+        // Recovery may replace a legacy binding before the same logical turn is committed.
+        await new Promise((resolve) => window.setTimeout(resolve, GENERATION_PROJECTION_POLL_MS));
+        continue;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, GENERATION_PROJECTION_POLL_MS));
+    }
+    return { status: 'cancelled' };
+  };
+
   useEffect(() => {
     void api.start(props.lessonId).then(async (started) => {
       dispatch({
@@ -700,44 +736,38 @@ export function SessionPage(props: {
       const snapshot = hydrateAndRefreshTeachingProgress(started.sessionId, initialSnapshot);
       const activeTaskId = snapshot.learning.session?.activeGenerationTaskId;
       if (activeTaskId !== undefined) {
+        const attempt = generationAttempt.current;
         dispatch({
           type: 'generating',
           taskId: activeTaskId,
           resourceVersion: snapshot.resourceVersion,
         });
-        let terminalFailure = false;
-        let receivedAssistantContent = false;
-        let streamStalled = false;
         try {
-          streamStalled =
-            (await consumeGenerationStream(
-              api,
-              activeTaskId,
-              (event) => {
-                if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-                  if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
-                  dispatch({ type: 'delta', markdown: event.data.markdown });
-                }
-                if (event.type === 'task.failed' || event.type === 'task.cancelled') {
-                  terminalFailure = true;
-                }
-              },
-              generationStartTimeouts.current,
-            )) === 'stalled';
+          await consumeGenerationStream(
+            api,
+            activeTaskId,
+            (event) => {
+              if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+                dispatch({ type: 'delta', markdown: event.data.markdown });
+              }
+            },
+            generationStartTimeouts.current,
+          );
         } catch {
-          terminalFailure = true;
+          // Stream transport is advisory; the persisted task binding remains authoritative.
         }
-        const refreshed = await api.getSession(started.sessionId);
-        hydrateAndRefreshTeachingProgress(started.sessionId, refreshed);
-        const persistedAssistantResponse = hasAssistantResponse(refreshed.messages);
-        if (
-          !persistedAssistantResponse &&
-          (terminalFailure || streamStalled || !receivedAssistantContent)
-        ) {
+        const outcome = await convergeGenerationProjection({
+          sessionId: started.sessionId,
+          taskId: activeTaskId,
+          attempt,
+          responseKind: hasUnansweredUserMessage(snapshot.messages) ? 'turn' : 'opening',
+        });
+        if (outcome.status === 'failed') {
           const content =
-            refreshed.messages?.findLast((message) => message.role === 'user')?.markdown ?? '';
+            outcome.snapshot.messages?.findLast((message) => message.role === 'user')?.markdown ??
+            '';
           dispatch({ type: 'send-failed', content, requestAccepted: true });
-        } else {
+        } else if (outcome.status === 'completed') {
           dispatch({ type: 'completed' });
         }
       } else if (
@@ -823,33 +853,36 @@ export function SessionPage(props: {
       dispatch({ type: 'opening-started' });
       try {
         const opening = await api.openLesson(sessionId, resourceVersion);
-        let terminalFailure = false;
+        const attempt = generationAttempt.current;
         dispatch({
           type: 'generating',
           taskId: opening.taskId,
           resourceVersion: opening.resourceVersion,
         });
-        const streamOutcome = await consumeGenerationStream(
-          api,
-          opening.taskId,
-          (event) => {
-            if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-              dispatch({ type: 'delta', markdown: event.data.markdown });
-            }
-            if (event.type === 'task.failed' || event.type === 'task.cancelled') {
-              terminalFailure = true;
-            }
-          },
-          generationStartTimeouts.current,
-        );
-        if (terminalFailure || streamOutcome === 'stalled') {
-          throw new Error('lesson_opening_generation_failed');
+        try {
+          await consumeGenerationStream(
+            api,
+            opening.taskId,
+            (event) => {
+              if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+                dispatch({ type: 'delta', markdown: event.data.markdown });
+              }
+            },
+            generationStartTimeouts.current,
+          );
+        } catch {
+          // Stream transport is advisory; the persisted task binding remains authoritative.
         }
-        const refreshed = await api.getSession(sessionId);
-        if (!refreshed.messages?.some((message) => message.role === 'assistant')) {
+        const outcome = await convergeGenerationProjection({
+          sessionId,
+          taskId: opening.taskId,
+          attempt,
+          responseKind: 'opening',
+        });
+        if (outcome.status === 'cancelled') return;
+        if (outcome.status === 'failed') {
           throw new Error('lesson_opening_content_missing');
         }
-        hydrateAndRefreshTeachingProgress(sessionId, refreshed);
         dispatch({ type: 'completed' });
       } catch {
         try {
@@ -926,68 +959,33 @@ export function SessionPage(props: {
       resourceVersion: task.resourceVersion,
       ...(task.userMessageId === undefined ? {} : { userMessageId: task.userMessageId }),
     });
-    let terminalFailure = false;
-    let streamStalled = false;
-    let receivedAssistantContent = false;
     try {
-      const streamOutcome = await consumeGenerationStream(
+      await consumeGenerationStream(
         api,
         task.taskId,
         (event) => {
           if (generationAttempt.current !== attempt) return;
           if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-            if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
             dispatch({ type: 'delta', markdown: event.data.markdown });
-          }
-          if (event.type === 'task.failed' || event.type === 'task.cancelled') {
-            terminalFailure = true;
-          }
-          if (
-            event.type === 'task.snapshot' &&
-            typeof event.data.state === 'string' &&
-            event.data.state !== 'running' &&
-            event.data.state !== 'queued' &&
-            event.data.state !== 'completed'
-          ) {
-            terminalFailure = true;
           }
         },
         generationStartTimeouts.current,
       );
-      streamStalled = streamOutcome === 'stalled';
     } catch {
-      if (generationAttempt.current !== attempt) return;
-      try {
-        const refreshed = await api.getSession(state.sessionId!);
-        hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
-        if (hasAssistantResponse(refreshed.messages)) {
-          dispatch({ type: 'completed' });
-          return;
-        }
-      } catch {
-        // A retry remains available when authoritative reconciliation is temporarily unavailable.
-      }
-      dispatch({ type: 'send-failed', content, requestAccepted: true });
-      return;
+      // Stream transport is advisory; the persisted task binding remains authoritative.
     }
     if (generationAttempt.current !== attempt) return;
-    let refreshed: Awaited<ReturnType<LearningClient['getSession']>>;
-    try {
-      refreshed = await api.getSession(state.sessionId!);
-    } catch {
+    const outcome = await convergeGenerationProjection({
+      sessionId: state.sessionId!,
+      taskId: task.taskId,
+      attempt,
+      responseKind: 'turn',
+    });
+    if (outcome.status === 'failed') {
       dispatch({ type: 'send-failed', content, requestAccepted: true });
       return;
     }
-    hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
-    const persistedAssistantResponse = hasAssistantResponse(refreshed.messages);
-    if (
-      !persistedAssistantResponse &&
-      (terminalFailure || streamStalled || !receivedAssistantContent)
-    ) {
-      dispatch({ type: 'send-failed', content, requestAccepted: true });
-      return;
-    }
-    dispatch({ type: 'completed' });
+    if (outcome.status === 'completed') dispatch({ type: 'completed' });
   };
 
   const send = () =>
