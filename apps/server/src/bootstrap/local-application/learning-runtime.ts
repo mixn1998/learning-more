@@ -32,6 +32,7 @@ import type { LocalGenerationRuntime } from './generation-runtime.js';
 import { createLearningInteractionFactSink } from './learning-interaction-facts.js';
 import { createLearningTeachingContext } from './learning-teaching-context.js';
 import type { LocalProfileRuntime } from './profile-runtime.js';
+import { isTeachingSessionRecoveryEligible } from './teaching-session-recovery-policy.js';
 
 type LearningRepositories = ReturnType<typeof createLocalFileLearningSessionRepositories>;
 type MessageLog = ReturnType<typeof createLocalFileMessageLog>;
@@ -548,6 +549,7 @@ export function createLocalLearningRuntime(
     },
     async recoverTeachingSessions() {
       for await (const record of learningRepositories.list()) {
+        if (!isTeachingSessionRecoveryEligible(record.learning)) continue;
         const sessionId = record.learning.session?.id;
         if (sessionId === undefined) continue;
         if (teachingRecoveryBySession.has(sessionId)) continue;
