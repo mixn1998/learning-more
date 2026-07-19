@@ -169,6 +169,12 @@ function hasAssistantResponse(messages: readonly SessionMessageView[] | undefine
     .some((message) => message.role === 'assistant' && message.markdown.trim() !== '');
 }
 
+function hasUnansweredUserMessage(messages: readonly SessionMessageView[] | undefined): boolean {
+  if (messages === undefined) return false;
+  const latestUserMessage = messages.findLast((message) => message.role === 'user');
+  return latestUserMessage !== undefined && !hasAssistantResponse(messages);
+}
+
 function reducer(state: State, action: Action): State {
   if (action.type === 'started') {
     return {
@@ -673,6 +679,13 @@ export function SessionPage(props: {
         } else {
           dispatch({ type: 'completed' });
         }
+      } else if (
+        snapshot.learning.progress === 'in_progress' &&
+        hasUnansweredUserMessage(snapshot.messages)
+      ) {
+        const content =
+          snapshot.messages?.findLast((message) => message.role === 'user')?.markdown ?? '';
+        dispatch({ type: 'send-failed', content, requestAccepted: true });
       } else if (
         props.autoOpen === true &&
         snapshot.learning.progress === 'in_progress' &&

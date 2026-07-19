@@ -995,6 +995,21 @@ describe('learning SessionPage', () => {
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
   });
 
+  it('restores the regenerate action when the persisted conversation ends with an unanswered user message', async () => {
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 6,
+      learning: { progress: 'in_progress', session: { state: 'active' } },
+      messages: [
+        { id: 'message_assistant_01', role: 'assistant', markdown: '上一轮完整回答。' },
+        { id: 'message_user_02', role: 'user', markdown: '这一轮没有得到 AI 回答。' },
+      ],
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
+
+    expect(await screen.findByText('这一轮没有得到 AI 回答。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新生成' })).toHaveTextContent('↻');
+  });
+
   it('holds the visible learning timer during AI generation and resumes it after completion', async () => {
     let releaseStream!: () => void;
     const stream = vi.fn(
