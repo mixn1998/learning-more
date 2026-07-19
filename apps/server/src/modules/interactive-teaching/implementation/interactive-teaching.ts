@@ -151,25 +151,53 @@ export function createInteractiveTeaching(options: {
     });
     const completion = (async () => {
       let replyCommitted = false;
+      const assistantMessageId = options.nextAssistantMessageId();
+      const artifactRef = `assistant-message:${assistantMessageId}`;
+      let streamedMarkdown = '';
+      let directiveValidated = false;
       try {
-        const result = await options.agent.complete(accepted.taskId);
-        await validateDirective({
-          courseId: input.courseId,
-          lessonId: input.lessonId,
-          sessionId: input.sessionId,
-          directive: result.directive,
-          ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
-        });
-        const assistantMessageId = options.nextAssistantMessageId();
-        const artifactRef = `assistant-message:${assistantMessageId}`;
         await options.frameLog?.append(accepted.taskId, 'message.started', {
           messageId: assistantMessageId,
         });
-        if (result.markdown.length > 0) {
+        const result = await options.agent.complete(accepted.taskId, {
+          async onDirective(directive) {
+            await validateDirective({
+              courseId: input.courseId,
+              lessonId: input.lessonId,
+              sessionId: input.sessionId,
+              directive,
+              ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+            });
+            directiveValidated = true;
+          },
+          async onReplyDelta(markdown) {
+            if (markdown.length === 0) return;
+            streamedMarkdown += markdown;
+            await options.frameLog?.append(accepted.taskId, 'message.delta', {
+              messageId: assistantMessageId,
+              markdown,
+            });
+          },
+        });
+        if (!directiveValidated) {
+          await validateDirective({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
+            directive: result.directive,
+            ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+          });
+        }
+        if (!result.markdown.startsWith(streamedMarkdown)) {
+          throw new Error('teaching_stream_reply_mismatch');
+        }
+        const remainingMarkdown = result.markdown.slice(streamedMarkdown.length);
+        if (remainingMarkdown.length > 0) {
           await options.frameLog?.append(accepted.taskId, 'message.delta', {
             messageId: assistantMessageId,
-            markdown: result.markdown,
+            markdown: remainingMarkdown,
           });
+          streamedMarkdown += remainingMarkdown;
         }
         await options.assistantArtifacts.save({
           artifactRef,

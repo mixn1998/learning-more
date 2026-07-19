@@ -62,7 +62,12 @@ function context(): TeachingContextPackage {
   };
 }
 
-function runtime(options: { includeKnowledgePointTitles?: boolean } = {}) {
+function runtime(
+  options: {
+    includeKnowledgePointTitles?: boolean;
+    streamChunks?: readonly string[];
+  } = {},
+) {
   const directive = {
     schemaVersion: 1,
     lessonPhase: 'warmup',
@@ -97,10 +102,18 @@ function runtime(options: { includeKnowledgePointTitles?: boolean } = {}) {
             })),
           }
         : directive;
+      const completeMarkdown = `<learning-more-control>${JSON.stringify(emittedDirective)}</learning-more-control><learning-more-reply>A free-form explanation. A second sentence.</learning-more-reply>`;
+      if (options.streamChunks !== undefined) {
+        task = { ...task, status: 'running', draftMarkdown: '' };
+        for (const chunk of options.streamChunks) {
+          await new Promise((resolve) => setTimeout(resolve, 70));
+          task = { ...task, draftMarkdown: `${task.draftMarkdown ?? ''}${chunk}` };
+        }
+      }
       task = {
         ...task,
         status: 'completed',
-        draftMarkdown: `<learning-more-control>${JSON.stringify(emittedDirective)}</learning-more-control><learning-more-reply>A free-form explanation.</learning-more-reply>`,
+        draftMarkdown: options.streamChunks === undefined ? completeMarkdown : task.draftMarkdown,
       };
       return task.id;
     },
@@ -203,7 +216,7 @@ describe('GenerationTeachingAgent', () => {
       expect(fake.request()?.prompt).not.toContain(internalValue);
     }
     await expect(agent.complete('task_1')).resolves.toEqual({
-      markdown: 'A free-form explanation.',
+      markdown: 'A free-form explanation. A second sentence.',
       directive: fake.directive,
     });
   });
@@ -215,7 +228,7 @@ describe('GenerationTeachingAgent', () => {
     await agent.submit(context());
 
     await expect(agent.complete('task_1')).resolves.toEqual({
-      markdown: 'A free-form explanation.',
+      markdown: 'A free-form explanation. A second sentence.',
       directive: fake.directive,
     });
   });
@@ -253,6 +266,35 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('才输出结构完整、简洁连贯的最终课程总结');
   });
 
+  it('publishes validated reply sentences while provider output is still arriving', async () => {
+    const control = `<learning-more-control>${JSON.stringify(runtime().directive)}</learning-more-control>`;
+    const chunks = [
+      control.slice(0, 60),
+      `${control.slice(60)}<learning-more-reply>A free-form explanation.`,
+      ' ',
+      'A second sentence.</learning-more-reply>',
+    ];
+    const fake = runtime({ streamChunks: chunks });
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+    await agent.submit(context());
+    const observed: string[] = [];
+
+    await expect(
+      agent.complete('task_1', {
+        onDirective() {
+          observed.push('directive');
+        },
+        onReplyDelta(markdown) {
+          observed.push(markdown);
+        },
+      }),
+    ).resolves.toEqual({
+      markdown: 'A free-form explanation. A second sentence.',
+      directive: fake.directive,
+    });
+    expect(observed).toEqual(['directive', 'A free-form explanation.', ' A second sentence.']);
+  });
+
   it('preserves interrupted Markdown without treating it as a complete reply', async () => {
     const fake = runtime();
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
@@ -271,12 +313,12 @@ describe('GenerationTeachingAgent', () => {
     await fake.value.runNext();
 
     await expect(agent.recover('task_1')).resolves.toEqual({
-      markdown: 'A free-form explanation.',
+      markdown: 'A free-form explanation. A second sentence.',
       directive: fake.directive,
       completionStatus: 'complete',
     });
     await expect(agent.read('task_1')).resolves.toEqual({
-      markdown: 'A free-form explanation.',
+      markdown: 'A free-form explanation. A second sentence.',
       directive: fake.directive,
     });
 

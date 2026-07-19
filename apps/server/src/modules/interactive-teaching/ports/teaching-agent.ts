@@ -31,9 +31,18 @@ export type TeachingAgentResult = Readonly<{
   directive?: TeachingDirective | undefined;
 }>;
 
+export type TeachingAgentCompletionObserver = Readonly<{
+  onDirective?(directive: TeachingDirective): void | Promise<void>;
+  onReplyDelta?(markdown: string): void | Promise<void>;
+}>;
+
 export interface TeachingAgent {
   submit(context: TeachingContextPackage): Promise<{ taskId: string }>;
-  complete(taskId: string, signal?: AbortSignal): Promise<TeachingAgentResult>;
+  complete(
+    taskId: string,
+    observer?: TeachingAgentCompletionObserver,
+    signal?: AbortSignal,
+  ): Promise<TeachingAgentResult>;
   read(taskId: string): Promise<TeachingAgentResult | undefined>;
   recover(
     taskId: string,

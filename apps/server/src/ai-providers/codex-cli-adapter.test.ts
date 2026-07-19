@@ -164,6 +164,105 @@ describe('CodexCliAdapter', () => {
     ]);
   });
 
+  it('uses the app-server agent-message stream by default', async () => {
+    const calls: unknown[] = [];
+    const streamGenerate = async function* (
+      executable: string,
+      request: Readonly<{
+        prompt: string;
+        model: string;
+        reasoningEffort: string;
+        workingDirectory?: string;
+      }>,
+      signal: AbortSignal,
+    ) {
+      calls.push({ executable, request, signal });
+      yield { type: 'text' as const, text: '第一句。' };
+      yield { type: 'text' as const, text: '第二句。' };
+    };
+    const adapter = createCodexCliAdapter({ executable: 'codex.exe', streamGenerate });
+    const signal = new AbortController().signal;
+    const output: string[] = [];
+
+    for await (const delta of adapter.generate(
+      {
+        prompt: '课程提示词',
+        model: 'gpt-5.6-sol',
+        reasoningEffort: 'high',
+        workingDirectory: 'D:/workspace/course',
+      },
+      signal,
+    )) {
+      output.push(delta.text);
+    }
+
+    expect(output).toEqual(['第一句。', '第二句。']);
+    expect(calls).toEqual([
+      {
+        executable: 'codex.exe',
+        request: {
+          prompt: '课程提示词',
+          model: 'gpt-5.6-sol',
+          reasoningEffort: 'high',
+          workingDirectory: 'D:/workspace/course',
+        },
+        signal,
+      },
+    ]);
+  });
+
+  it('falls back to codex exec only when app-server fails before its first delta', async () => {
+    const streamGenerate = async function* () {
+      throw new Error('app-server unavailable');
+      yield { type: 'text' as const, text: 'unreachable' };
+    };
+    const fallbackGenerate = vi.fn(async function* () {
+      yield { type: 'text' as const, text: 'fallback reply' };
+    });
+    const adapter = createCodexCliAdapter({
+      executable: 'codex.exe',
+      streamGenerate,
+      fallbackGenerate,
+    });
+    const output: string[] = [];
+
+    for await (const delta of adapter.generate(
+      { prompt: 'prompt', model: 'model', reasoningEffort: 'high' },
+      new AbortController().signal,
+    )) {
+      output.push(delta.text);
+    }
+
+    expect(output).toEqual(['fallback reply']);
+    expect(fallbackGenerate).toHaveBeenCalledOnce();
+  });
+
+  it('does not start a duplicate fallback reply after app-server emitted content', async () => {
+    const streamGenerate = async function* () {
+      yield { type: 'text' as const, text: 'partial' };
+      throw new Error('stream interrupted');
+    };
+    const fallbackGenerate = vi.fn(async function* () {
+      yield { type: 'text' as const, text: 'duplicate' };
+    });
+    const adapter = createCodexCliAdapter({
+      executable: 'codex.exe',
+      streamGenerate,
+      fallbackGenerate,
+    });
+    const consume = async () => {
+      for await (const _delta of adapter.generate(
+        { prompt: 'prompt', model: 'model', reasoningEffort: 'high' },
+        new AbortController().signal,
+      )) {
+        expect(_delta.text).toBe('partial');
+      }
+    };
+
+    await expect(consume()).rejects.toThrow('stream interrupted');
+    expect(fallbackGenerate).not.toHaveBeenCalled();
+  });
+
   it('rejects a model or reasoning effort that is absent from the current catalog', async () => {
     const run = vi.fn(async (_executable: string, arguments_: readonly string[]) => {
       if (arguments_[0] === '--version') {

@@ -4,7 +4,14 @@ import path from 'node:path';
 
 import type { ProviderModelOption } from '@learning-more/contracts';
 
+import {
+  runCodexAppServerGeneration,
+  type CodexCliAppServerGenerationRunner,
+  type CodexCliGenerationRequest,
+} from './codex-app-server-generation.js';
 import { ProviderExecutionError, type ProviderDelta, type ProviderValidation } from './provider.js';
+
+export type { CodexCliGenerationRequest } from './codex-app-server-generation.js';
 
 export type CodexCliCommandResult = Readonly<{
   exitCode: number;
@@ -16,13 +23,6 @@ export type CodexCliCommandRunner = (
   executable: string,
   arguments_: readonly string[],
 ) => Promise<CodexCliCommandResult>;
-
-export type CodexCliGenerationRequest = Readonly<{
-  prompt: string;
-  model: string;
-  reasoningEffort: string;
-  workingDirectory?: string;
-}>;
 
 export type CodexCliGenerationRunner = (
   executable: string,
@@ -264,6 +264,8 @@ export function createCodexCliAdapter(
     run?: CodexCliCommandRunner;
     startLogin?: (executable: string) => Promise<void>;
     generate?: CodexCliGenerationRunner;
+    streamGenerate?: CodexCliAppServerGenerationRunner;
+    fallbackGenerate?: CodexCliGenerationRunner;
     now?: () => number;
     catalogTtlMs?: number;
   }>,
@@ -271,6 +273,8 @@ export function createCodexCliAdapter(
   const run = options.run ?? runCommand;
   const startLoginProcess = options.startLogin ?? startInteractiveLogin;
   const generate = options.generate ?? runGeneration;
+  const streamGenerate = options.streamGenerate ?? runCodexAppServerGeneration;
+  const fallbackGenerate = options.fallbackGenerate ?? runGeneration;
   const now = options.now ?? Date.now;
   const catalogTtlMs = options.catalogTtlMs ?? 60_000;
   let cached: Readonly<{ expiresAt: number; probe: CodexCliProbe }> | undefined;
@@ -353,6 +357,42 @@ export function createCodexCliAdapter(
       return 'started';
     },
     generate(request, signal) {
+      if (options.generate === undefined) {
+        return (async function* () {
+          let emitted = false;
+          try {
+            for await (const delta of streamGenerate(options.executable, request, signal)) {
+              emitted = true;
+              yield delta;
+            }
+            if (emitted || signal.aborted) return;
+            throw new Error('codex_app_server_empty');
+          } catch (error) {
+            if (emitted || signal.aborted) throw error;
+            yield* fallbackGenerate(
+              options.executable,
+              [
+                'exec',
+                '--ephemeral',
+                '--skip-git-repo-check',
+                '--sandbox',
+                'read-only',
+                '--model',
+                request.model,
+                '-c',
+                `model_reasoning_effort=${JSON.stringify(request.reasoningEffort)}`,
+                '-',
+              ],
+              {
+                shell: false,
+                cwd: request.workingDirectory ?? process.cwd(),
+                signal,
+                stdin: request.prompt,
+              },
+            );
+          }
+        })();
+      }
       return generate(
         options.executable,
         [

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import type { GenerationExecution } from '../../generation-runtime/interface.js';
-import type { TeachingAgent } from '../ports/teaching-agent.js';
+import type { TeachingAgent, TeachingAgentCompletionObserver } from '../ports/teaching-agent.js';
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
 import { renderMathPlotCapability } from './math-plot-capability.js';
 import { renderTeachingBoundaryPolicy } from './teaching-boundary-policy.js';
@@ -16,8 +16,13 @@ import { renderTeachingCorePolicy } from './teaching-core-policy.js';
 import { renderTeachingDepthPolicy } from './teaching-depth-policy.js';
 import { renderTeachingFactContext } from './teaching-fact-context.js';
 import { renderTeachingFlowPolicy } from './teaching-flow-policy.js';
+import {
+  createTeachingResponseStream,
+  type TeachingResponseStreamEvent,
+} from './teaching-response-stream.js';
 
 const STRUCTURED_TASK_PREFIX = 'interactive-teaching-control-v1:';
+const STREAM_POLL_INTERVAL_MS = 20;
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -50,6 +55,16 @@ export function createGenerationTeachingAgent(options: {
   execution?: GenerationExecution;
   providerId: string;
 }): TeachingAgent {
+  async function publish(
+    events: readonly TeachingResponseStreamEvent[],
+    observer: TeachingAgentCompletionObserver | undefined,
+  ): Promise<void> {
+    for (const event of events) {
+      if (event.type === 'directive.ready') await observer?.onDirective?.(event.directive);
+      else await observer?.onReplyDelta?.(event.markdown);
+    }
+  }
+
   async function awaitTerminal(
     taskId: string,
     recover: boolean,
@@ -87,13 +102,51 @@ export function createGenerationTeachingAgent(options: {
         prompt: expressionContext,
       });
     },
-    async complete(taskId) {
-      const task = await awaitTerminal(taskId, false);
-      if (task.status !== 'completed') throw new Error('teaching_generation_incomplete');
-      return parseTeachingAgentResult(
-        task.draftMarkdown ?? '',
-        task.taskKey.startsWith(STRUCTURED_TASK_PREFIX),
+    async complete(taskId, observer, signal) {
+      const response = createTeachingResponseStream();
+      let observedLength = 0;
+      let terminalSettled = false;
+      const terminalPromise = awaitTerminal(taskId, false);
+      void terminalPromise.then(
+        () => {
+          terminalSettled = true;
+        },
+        () => {
+          terminalSettled = true;
+        },
       );
+      const consume = async (draftMarkdown: string | undefined) => {
+        const current = draftMarkdown ?? '';
+        if (current.length < observedLength) throw new Error('teaching_generation_draft_rewound');
+        if (current.length === observedLength) return;
+        const events = response.push(current.slice(observedLength));
+        observedLength = current.length;
+        await publish(events, observer);
+      };
+      while (!terminalSettled) {
+        if (signal?.aborted === true) {
+          await (options.execution ?? options.runtime).cancel(taskId);
+          throw new Error('teaching_generation_cancelled');
+        }
+        await consume((await options.runtime.get(taskId)).draftMarkdown);
+        if (terminalSettled) break;
+        await Promise.race([
+          new Promise((resolve) => setTimeout(resolve, STREAM_POLL_INTERVAL_MS)),
+          terminalPromise.then(
+            () => undefined,
+            () => undefined,
+          ),
+        ]);
+      }
+      const task = await terminalPromise;
+      await consume(task.draftMarkdown);
+      if (task.status !== 'completed') throw new Error('teaching_generation_incomplete');
+      if (!task.taskKey.startsWith(STRUCTURED_TASK_PREFIX)) {
+        return parseTeachingAgentResult(task.draftMarkdown ?? '', false);
+      }
+      const completed = response.finish();
+      await publish(completed.events, observer);
+      return completed.result;
     },
     async read(taskId) {
       const task = await options.runtime.get(taskId);

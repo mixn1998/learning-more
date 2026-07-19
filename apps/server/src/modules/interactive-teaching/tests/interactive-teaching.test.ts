@@ -48,6 +48,7 @@ async function fixture(
     evidenceEffectFailsOnce?: boolean;
     reasoningSinkFailsOnce?: boolean;
     artifactSaveFails?: boolean;
+    streamReply?: boolean;
     deferredCompletion?: boolean;
     agentDirective?: TeachingDirective;
   } = {},
@@ -175,12 +176,18 @@ async function fixture(
       submittedTaskCount += 1;
       return { taskId: `task_${submittedTaskCount}` };
     },
-    async complete() {
+    async complete(_taskId, observer) {
       if (deferredCompletion !== undefined) return deferredCompletion;
+      const markdown = options.adjacent
+        ? 'That is a useful adjacent direction. Let us explore it briefly, then return to the denominator change.'
+        : 'Conditioning narrows the reference population, so the denominator changes with the sample space.';
+      if (options.streamReply === true) {
+        const split = markdown.indexOf(',') + 1;
+        await observer?.onReplyDelta?.(markdown.slice(0, split));
+        await observer?.onReplyDelta?.(markdown.slice(split));
+      }
       return {
-        markdown: options.adjacent
-          ? 'That is a useful adjacent direction. Let us explore it briefly, then return to the denominator change.'
-          : 'Conditioning narrows the reference population, so the denominator changes with the sample space.',
+        markdown,
         ...(options.agentDirective === undefined ? {} : { directive: options.agentDirective }),
       };
     },
@@ -392,6 +399,36 @@ describe('InteractiveTeaching deep module', () => {
       }),
     ]);
     expect(capturedReasoningObservations).toEqual([]);
+  });
+
+  it('forwards safe assistant reply deltas without replaying the full reply at completion', async () => {
+    const { module, drainObservations, frames } = await fixture({ streamReply: true });
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    const deltas = frames.filter((frame) => frame.type === 'message.delta');
+    expect(deltas).toHaveLength(2);
+    expect(deltas.map((frame) => frame.data.markdown).join('')).toBe(
+      'Conditioning narrows the reference population, so the denominator changes with the sample space.',
+    );
+    expect(frames.map((frame) => frame.type)).toEqual([
+      'message.started',
+      'message.delta',
+      'message.delta',
+      'message.completed',
+      'artifact.ready',
+      'task.completed',
+    ]);
   });
 
   it('commits an opening that finishes after the learning session pauses', async () => {
