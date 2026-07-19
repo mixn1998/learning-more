@@ -156,6 +156,7 @@ export function decide(
     if (session.state !== 'active' && session.state !== 'paused') {
       throw new LearningSessionError('session_not_writable');
     }
+    if (session.activeGenerationTaskId === command.taskId) return [];
     if (session.activeGenerationTaskId !== undefined) {
       throw new LearningSessionError('generation_in_progress');
     }

@@ -11,6 +11,7 @@ import { createInMemoryTeachingLedgerRepository } from '../../../persistence/tea
 import { createInMemoryMessageLog } from '../../learning-session/implementation/message-log.js';
 import { createSessionModule } from '../../learning-session/implementation/session-module.js';
 import type { LearningSessionModule } from '../../learning-session/interface.js';
+import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 import { createTeachingContextAssembler } from '../implementation/context-assembler.js';
 import { createInteractiveTeaching } from '../implementation/interactive-teaching.js';
 import { createTeachingState } from '../implementation/teaching-state-reducer.js';
@@ -50,6 +51,8 @@ async function fixture(
     artifactSaveFails?: boolean;
     streamReply?: boolean;
     deferredCompletion?: boolean;
+    startGenerationFailsOnce?: boolean;
+    advanceVersionDuringSubmit?: boolean;
     agentDirective?: TeachingDirective;
   } = {},
 ) {
@@ -78,9 +81,14 @@ async function fixture(
     { ...commandContext, commandId: 'start', expectedVersion: undefined },
   );
   let evidenceEffectShouldFail = options.evidenceEffectFailsOnce ?? false;
+  let startGenerationShouldFail = options.startGenerationFailsOnce ?? false;
   const sessionModule: LearningSessionModule = {
     query: (query, context) => storedSessionModule.query(query, context),
     async execute(command, context) {
+      if (command.type === 'StartSessionGeneration' && startGenerationShouldFail) {
+        startGenerationShouldFail = false;
+        throw new Error('simulated_generation_binding_failure');
+      }
       if (command.type === 'EstablishEvidenceCheckpoint' && evidenceEffectShouldFail) {
         evidenceEffectShouldFail = false;
         throw new Error('simulated_projection_failure');
@@ -161,8 +169,11 @@ async function fixture(
     },
   };
   let submittedContext: unknown;
+  let submittedRequestRef: string | undefined;
   let submittedTaskCount = 0;
   let assistantMessageCount = 0;
+  const cancelledTaskIds: string[] = [];
+  const generationTasks = new Map<string, GenerationTask>();
   const observedMessageBatches: string[][] = [];
   let resolveAgentCompletion: ((value: Readonly<{ markdown: string }>) => void) | undefined;
   const deferredCompletion = options.deferredCompletion
@@ -171,10 +182,57 @@ async function fixture(
       })
     : undefined;
   const agent: TeachingAgent = {
-    async submit(context) {
+    async submit(context, requestRef) {
       submittedContext = context;
+      submittedRequestRef = requestRef;
       submittedTaskCount += 1;
-      return { taskId: `task_${submittedTaskCount}` };
+      if (options.advanceVersionDuringSubmit === true) {
+        await storedSessionModule.execute(
+          { type: 'EstablishEvidenceCheckpoint', lessonId: 'lesson_1' },
+          {
+            ...commandContext,
+            commandId: `advance_version_during_submit_${submittedTaskCount}`,
+            idempotencyKey: `advance_version_during_submit_${submittedTaskCount}`,
+            expectedVersion: undefined,
+          },
+        );
+      }
+      const taskId = `task_${submittedTaskCount}`;
+      generationTasks.set(taskId, {
+        id: taskId,
+        taskKey: `teaching:${taskId}`,
+        status: 'queued',
+        createdAt: '2026-07-14T00:00:00.000Z',
+        updatedAt: '2026-07-14T00:00:00.000Z',
+        resourceVersion: 0,
+        taskKind: 'interactive-teaching',
+        taskGroup: 'interactive',
+        ownerRef: 'session_1',
+        requestRef,
+      });
+      return { taskId };
+    },
+    async listTasks() {
+      return [
+        ...generationTasks.values(),
+        {
+          id: 'task_recovered',
+          taskKey: 'teaching:task_recovered',
+          status: 'completed' as const,
+          createdAt: '2026-07-14T00:00:00.000Z',
+          updatedAt: '2026-07-14T00:01:00.000Z',
+          resourceVersion: 1,
+          taskKind: 'interactive-teaching',
+          taskGroup: 'interactive' as const,
+          ownerRef: 'session_1',
+          requestRef: 'message_user_1',
+        },
+      ];
+    },
+    async cancel(taskId) {
+      cancelledTaskIds.push(taskId);
+      const current = generationTasks.get(taskId);
+      if (current !== undefined) generationTasks.set(taskId, { ...current, status: 'cancelled' });
     },
     async complete(_taskId, observer) {
       if (deferredCompletion !== undefined) return deferredCompletion;
@@ -186,6 +244,8 @@ async function fixture(
         await observer?.onReplyDelta?.(markdown.slice(0, split));
         await observer?.onReplyDelta?.(markdown.slice(split));
       }
+      const current = generationTasks.get(_taskId);
+      if (current !== undefined) generationTasks.set(_taskId, { ...current, status: 'completed' });
       return {
         markdown,
         ...(options.agentDirective === undefined ? {} : { directive: options.agentDirective }),
@@ -360,6 +420,8 @@ async function fixture(
     sessionModule: storedSessionModule,
     messageLog,
     submittedContext: () => submittedContext,
+    submittedRequestRef: () => submittedRequestRef,
+    cancelledTaskIds,
     capturedReasoningObservations,
     capturedInteractionObservations,
     observedMessageBatches,
@@ -373,6 +435,46 @@ async function fixture(
 }
 
 describe('InteractiveTeaching deep module', () => {
+  it('cancels a submitted task when session binding fails', async () => {
+    const { module, cancelledTaskIds, submittedRequestRef } = await fixture({
+      startGenerationFailsOnce: true,
+    });
+
+    await expect(
+      module.advanceTurn(
+        {
+          courseId: 'course_1',
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          userMessageId: 'message_user_1',
+          userContentArtifactRef: 'artifact:user:1',
+        },
+        commandContext,
+      ),
+    ).rejects.toThrow('simulated_generation_binding_failure');
+
+    expect(submittedRequestRef()).toBe('message_user_1');
+    expect(cancelledTaskIds).toEqual(['task_1']);
+  });
+
+  it('re-reads the session version before binding a submitted task', async () => {
+    const { module, drainObservations } = await fixture({ advanceVersionDuringSubmit: true });
+
+    const accepted = await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+
+    expect(accepted.taskId).toBe('task_1');
+    await drainObservations('session_1');
+  });
+
   it('opens a lesson with an assistant message without creating learner evidence', async () => {
     const {
       module,
@@ -848,6 +950,54 @@ describe('InteractiveTeaching deep module', () => {
     await expect(messageLog.list('session_1')).resolves.toEqual([
       expect.objectContaining({ id: 'message_user_1', completionStatus: 'complete' }),
       expect.objectContaining({ generationTaskId: 'task_recovered', completionStatus: 'complete' }),
+    ]);
+  });
+
+  it('rebinds and commits an orphaned completed reply while the session remains paused', async () => {
+    const { recoverSession, sessionModule, messageLog } = await fixture();
+    const appended = await sessionModule.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_1',
+        messageId: 'message_user_1',
+        contentArtifactRef: 'artifact:user:1',
+      },
+      { ...commandContext, commandId: 'orphan_user', expectedVersion: 1 },
+    );
+    await sessionModule.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_1' },
+      {
+        ...commandContext,
+        commandId: 'pause_before_orphan_recovery',
+        expectedVersion: appended.value.resourceVersion,
+      },
+    );
+
+    await recoverSession({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: commandContext,
+    });
+
+    const recoveredView = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_orphan_recovery',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(recoveredView.learning.session).toMatchObject({ state: 'paused' });
+    expect(recoveredView.learning.session?.activeGenerationTaskId).toBeUndefined();
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+      expect.objectContaining({
+        role: 'assistant',
+        generationTaskId: 'task_recovered',
+        completionStatus: 'complete',
+      }),
     ]);
   });
 

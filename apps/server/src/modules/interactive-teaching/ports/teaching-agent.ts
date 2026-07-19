@@ -1,4 +1,5 @@
 import type { TeachingContextPackage } from './teaching-context-sources.js';
+import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 
 export type TeachingDirective = Readonly<{
   schemaVersion: 1;
@@ -37,7 +38,9 @@ export type TeachingAgentCompletionObserver = Readonly<{
 }>;
 
 export interface TeachingAgent {
-  submit(context: TeachingContextPackage): Promise<{ taskId: string }>;
+  submit(context: TeachingContextPackage, requestRef: string): Promise<{ taskId: string }>;
+  listTasks(sessionId: string): Promise<readonly GenerationTask[]>;
+  cancel(taskId: string): Promise<void>;
   complete(
     taskId: string,
     observer?: TeachingAgentCompletionObserver,

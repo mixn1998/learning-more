@@ -549,7 +549,7 @@ export function createLocalLearningRuntime(
     async recoverTeachingSessions() {
       for await (const record of learningRepositories.list()) {
         const sessionId = record.learning.session?.id;
-        if (sessionId === undefined || (await messageLog.list(sessionId)).length === 0) continue;
+        if (sessionId === undefined) continue;
         if (teachingRecoveryBySession.has(sessionId)) continue;
         const lesson = await input.course.access.getLesson(record.lessonId);
         if (lesson === undefined) continue;

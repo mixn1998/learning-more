@@ -89,7 +89,7 @@ export function createGenerationTeachingAgent(options: {
   }
 
   return {
-    async submit(context) {
+    async submit(context, requestRef) {
       const expressionContext = renderTeachingConversationInput(context);
       return (options.execution ?? options.runtime).submit({
         taskKey: `${STRUCTURED_TASK_PREFIX}${context.teachingState.sessionId}:${sha256(expressionContext)}`,
@@ -97,10 +97,17 @@ export function createGenerationTeachingAgent(options: {
         taskKind: 'interactive-teaching',
         taskGroup: 'interactive',
         ownerRef: context.teachingState.sessionId,
+        requestRef,
         providerId: options.providerId,
         priority: 100,
         prompt: expressionContext,
       });
+    },
+    listTasks(sessionId) {
+      return options.runtime.listByOwner(sessionId, 'interactive-teaching');
+    },
+    async cancel(taskId) {
+      await (options.execution ?? options.runtime).cancel(taskId);
     },
     async complete(taskId, observer, signal) {
       const response = createTeachingResponseStream();

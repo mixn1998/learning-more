@@ -148,7 +148,7 @@ describe('GenerationTeachingAgent', () => {
     const opening = { ...context(), turnKind: 'opening' as const, recentMessages: [] };
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
 
-    await agent.submit(opening);
+    await agent.submit(opening, 'opening:session_1');
 
     expect(fake.request()?.prompt).toContain('主动导入语境');
     expect(fake.request()?.prompt).toContain('当前阶段是课前热身');
@@ -164,10 +164,11 @@ describe('GenerationTeachingAgent', () => {
       providerId: 'mock',
     });
 
-    const accepted = await agent.submit(context());
+    const accepted = await agent.submit(context(), 'message_user_1');
 
     expect(accepted.taskId).toBe('task_1');
     expect(fake.request()?.taskKind).toBe('interactive-teaching');
+    expect(fake.request()?.requestRef).toBe('message_user_1');
     expect(fake.request()?.prompt).toContain('Explain this systematically.');
     expect(fake.request()?.prompt).not.toContain('lesson-response@v1');
     expect(fake.request()?.prompt).not.toContain('templateRef');
@@ -228,7 +229,7 @@ describe('GenerationTeachingAgent', () => {
     const fake = runtime({ includeKnowledgePointTitles: true });
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
 
-    await agent.submit(context());
+    await agent.submit(context(), 'message_user_1');
 
     await expect(agent.complete('task_1')).resolves.toEqual({
       markdown: 'A free-form explanation. A second sentence.',
@@ -259,7 +260,7 @@ describe('GenerationTeachingAgent', () => {
     };
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
 
-    await agent.submit(summaryContext);
+    await agent.submit(summaryContext, 'message_user_1');
 
     expect(fake.request()?.prompt).toContain('当前处于讨论答疑阶段');
     expect(fake.request()?.prompt).toContain('如果学习者提出疑问，完整回应');
@@ -279,7 +280,7 @@ describe('GenerationTeachingAgent', () => {
     ];
     const fake = runtime({ streamChunks: chunks });
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
-    await agent.submit(context());
+    await agent.submit(context(), 'message_user_1');
     const observed: string[] = [];
 
     await expect(
@@ -301,7 +302,7 @@ describe('GenerationTeachingAgent', () => {
   it('preserves interrupted Markdown without treating it as a complete reply', async () => {
     const fake = runtime();
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
-    await agent.submit(context());
+    await agent.submit(context(), 'message_user_1');
 
     await expect(agent.stop('task_1')).resolves.toEqual({
       markdown: 'A partial explanation.',
@@ -312,7 +313,7 @@ describe('GenerationTeachingAgent', () => {
   it('recovers persisted completed, interrupted, and failed generation outcomes', async () => {
     const fake = runtime();
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
-    await agent.submit(context());
+    await agent.submit(context(), 'message_user_1');
     await fake.value.runNext();
 
     await expect(agent.recover('task_1')).resolves.toEqual({

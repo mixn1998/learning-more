@@ -41,6 +41,7 @@ import {
   normalizeTeachingControlState,
   teachingDirectiveMatchesState,
 } from './teaching-directive.js';
+import { planTeachingGenerationReconciliation } from './teaching-generation-reconciler.js';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -133,22 +134,59 @@ export function createInteractiveTeaching(options: {
         : input.assembled.recentMessages.findLast(
             (message) => message.role === 'user' && message.completionStatus === 'complete',
           )?.messageId;
-    const accepted = await options.agent.submit(input.assembled);
-    const started = await options.sessionModule.execute(
-      {
-        type: 'StartSessionGeneration',
-        lessonId: input.lessonId,
-        taskId: accepted.taskId,
-        mode: input.mode,
-      },
-      {
-        ...input.context,
-        commandId: `${input.context.commandId}:start-generation`,
-        idempotencyKey: `${input.context.idempotencyKey}:start-generation`,
-        expectedVersion: input.expectedVersion,
-      },
-    );
-    await options.frameLog?.ensureTask(accepted.taskId, 'running');
+    const requestRef = currentUserMessageId ?? `opening:${input.sessionId}`;
+    const accepted = await options.agent.submit(input.assembled, requestRef);
+    let startedResourceVersion: number;
+    try {
+      const latest = await options.sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: input.lessonId },
+        {
+          correlationId: input.context.correlationId,
+          actor: input.context.actor,
+          requestedAt: input.context.requestedAt,
+          receivedAt: input.context.receivedAt,
+        },
+      );
+      if (latest.learning.session?.id !== input.sessionId) {
+        throw Object.assign(new Error('teaching_session_identity_mismatch'), {
+          code: 'session_conflict',
+        });
+      }
+      if (latest.learning.session.activeGenerationTaskId === accepted.taskId) {
+        startedResourceVersion = latest.resourceVersion;
+      } else {
+        const started = await options.sessionModule.execute(
+          {
+            type: 'StartSessionGeneration',
+            lessonId: input.lessonId,
+            taskId: accepted.taskId,
+            mode: input.mode,
+          },
+          {
+            ...input.context,
+            commandId: `${input.context.commandId}:start-generation`,
+            idempotencyKey: `${input.context.idempotencyKey}:start-generation`,
+            expectedVersion: latest.resourceVersion,
+          },
+        );
+        startedResourceVersion = started.value.resourceVersion;
+      }
+      await options.frameLog?.ensureTask(accepted.taskId, 'running');
+    } catch (error) {
+      try {
+        await options.agent.cancel(accepted.taskId);
+      } catch {
+        // Startup reconciliation retries compensation for any task that could not be cancelled.
+      }
+      try {
+        await options.frameLog?.append(accepted.taskId, 'task.cancelled', {
+          reason: 'session_binding_failed',
+        });
+      } catch {
+        // A missing journal is repaired by generation reconciliation.
+      }
+      throw error;
+    }
     taskContext.set(accepted.taskId, {
       courseId: input.courseId,
       lessonId: input.lessonId,
@@ -278,7 +316,7 @@ export function createInteractiveTeaching(options: {
       }
     })();
     track(input.sessionId, completion);
-    return { taskId: accepted.taskId, resourceVersion: started.value.resourceVersion };
+    return { taskId: accepted.taskId, resourceVersion: startedResourceVersion };
   }
 
   function track(sessionId: string, promise: Promise<unknown>): void {
@@ -365,6 +403,222 @@ export function createInteractiveTeaching(options: {
         ? undefined
         : { currentUserMessageId: input.currentUserMessageId },
     );
+  }
+
+  async function reconcileGeneration(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    context: CommandContext;
+  }): Promise<Awaited<ReturnType<TeachingContextSources['listMessages']>>> {
+    const queryLearning = () =>
+      options.sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: input.lessonId },
+        {
+          correlationId: input.context.correlationId,
+          actor: input.context.actor,
+          requestedAt: input.context.requestedAt,
+          receivedAt: input.context.receivedAt,
+        },
+      );
+    let learning = await queryLearning();
+    if (learning.learning.session?.id !== input.sessionId) {
+      throw Object.assign(new Error('teaching_session_identity_mismatch'), {
+        code: 'session_conflict',
+      });
+    }
+    let messages = await options.contextSources.listMessages(input.sessionId);
+    let tasks = await options.agent.listTasks(input.sessionId);
+    let plan = planTeachingGenerationReconciliation({
+      sessionId: input.sessionId,
+      ...(learning.learning.session.activeGenerationTaskId === undefined
+        ? {}
+        : { activeTaskId: learning.learning.session.activeGenerationTaskId }),
+      tasks,
+      messages,
+    });
+
+    for (const taskId of plan.cancelTaskIds) {
+      try {
+        await options.agent.cancel(taskId);
+        await options.frameLog?.ensureTask(taskId, 'cancelled');
+        await options.frameLog?.append(taskId, 'task.cancelled', {
+          reason: 'superseded_or_stale_teaching_generation',
+        });
+      } catch {
+        // A later reconciliation attempt repeats cancellation from durable task state.
+      }
+    }
+
+    if (
+      plan.clearActiveTask &&
+      learning.learning.session.activeGenerationTaskId !== undefined
+    ) {
+      await options.sessionModule.execute(
+        { type: 'StopSessionGeneration', lessonId: input.lessonId },
+        backgroundContext(
+          input.context,
+          `reconcile-clear:${learning.learning.session.activeGenerationTaskId}`,
+        ),
+      );
+      learning = await queryLearning();
+    }
+
+    if (plan.taskId === undefined || taskContext.has(plan.taskId)) return messages;
+    const recoveringTaskId = plan.taskId;
+    if (plan.bindTask) {
+      if (learning.learning.session?.activeGenerationTaskId !== undefined) return messages;
+      const bound = await options.sessionModule.execute(
+        {
+          type: 'StartSessionGeneration',
+          lessonId: input.lessonId,
+          taskId: recoveringTaskId,
+          mode: 'recovery',
+        },
+        {
+          ...backgroundContext(input.context, `reconcile-bind:${recoveringTaskId}`),
+          expectedVersion: learning.resourceVersion,
+        },
+      );
+      learning = await queryLearning();
+      if (
+        bound.value.sessionId !== input.sessionId ||
+        learning.learning.session?.activeGenerationTaskId !== recoveringTaskId
+      ) {
+        throw Object.assign(new Error('teaching_recovery_binding_failed'), {
+          code: 'session_conflict',
+        });
+      }
+    }
+
+    await options.frameLog?.ensureTask(recoveringTaskId, 'running');
+    const recovered = await options.agent.recover(recoveringTaskId);
+    if (recovered.completionStatus === 'failed') {
+      learning = await queryLearning();
+      if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
+        await options.sessionModule.execute(
+          { type: 'StopSessionGeneration', lessonId: input.lessonId },
+          backgroundContext(input.context, `recover-failed:${recoveringTaskId}`),
+        );
+      }
+      await options.frameLog?.append(recoveringTaskId, 'task.failed', {
+        problem: failureProblem(recoveringTaskId),
+      });
+      return options.contextSources.listMessages(input.sessionId);
+    }
+
+    messages = await options.contextSources.listMessages(input.sessionId);
+    const alreadyCommitted = messages.find(
+      (message) =>
+        message.role === 'assistant' && message.generationTaskId === recoveringTaskId,
+    );
+    const currentUserMessageId = plan.sourceMessageId?.startsWith('opening:')
+      ? undefined
+      : plan.sourceMessageId;
+    if (alreadyCommitted !== undefined) {
+      await applyCommittedDirective({
+        courseId: input.courseId,
+        lessonId: input.lessonId,
+        sessionId: input.sessionId,
+        directive: recovered.directive,
+        ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+      });
+      learning = await queryLearning();
+      if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
+        await options.sessionModule.execute(
+          { type: 'StopSessionGeneration', lessonId: input.lessonId },
+          backgroundContext(input.context, `recover-clear-committed:${recoveringTaskId}`),
+        );
+      }
+      return messages;
+    }
+
+    tasks = await options.agent.listTasks(input.sessionId);
+    learning = await queryLearning();
+    messages = await options.contextSources.listMessages(input.sessionId);
+    plan = planTeachingGenerationReconciliation({
+      sessionId: input.sessionId,
+      ...(learning.learning.session?.activeGenerationTaskId === undefined
+        ? {}
+        : { activeTaskId: learning.learning.session.activeGenerationTaskId }),
+      tasks,
+      messages,
+    });
+    if (
+      plan.taskId !== recoveringTaskId ||
+      learning.learning.session?.activeGenerationTaskId !== recoveringTaskId
+    ) {
+      if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
+        await options.sessionModule.execute(
+          { type: 'StopSessionGeneration', lessonId: input.lessonId },
+          backgroundContext(input.context, `recover-source-changed:${recoveringTaskId}`),
+        );
+      }
+      return messages;
+    }
+
+    const sourceMessageId = plan.sourceMessageId?.startsWith('opening:')
+      ? undefined
+      : plan.sourceMessageId;
+    await validateDirective({
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+      sessionId: input.sessionId,
+      directive: recovered.directive,
+      ...(sourceMessageId === undefined ? {} : { currentUserMessageId: sourceMessageId }),
+    });
+    const assistantMessageId = options.nextAssistantMessageId();
+    const artifactRef = `assistant-message:${assistantMessageId}`;
+    await options.frameLog?.append(recoveringTaskId, 'message.started', {
+      messageId: assistantMessageId,
+    });
+    if (recovered.markdown.length > 0) {
+      await options.frameLog?.append(recoveringTaskId, 'message.delta', {
+        messageId: assistantMessageId,
+        markdown: recovered.markdown,
+      });
+    }
+    await options.assistantArtifacts.save({
+      artifactRef,
+      markdown: recovered.markdown,
+      completionStatus: recovered.completionStatus,
+    });
+    await options.sessionModule.execute(
+      {
+        type: 'CommitAssistantMessage',
+        lessonId: input.lessonId,
+        sessionId: input.sessionId,
+        messageId: assistantMessageId,
+        contentArtifactRef: artifactRef,
+        generationTaskId: recoveringTaskId,
+        completionStatus: recovered.completionStatus,
+      },
+      backgroundContext(input.context, `recover-assistant:${recoveringTaskId}`),
+    );
+    await applyCommittedDirective({
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+      sessionId: input.sessionId,
+      directive: recovered.directive,
+      ...(sourceMessageId === undefined ? {} : { currentUserMessageId: sourceMessageId }),
+    });
+    await options.frameLog?.append(recoveringTaskId, 'message.completed', {
+      messageId: assistantMessageId,
+      contentSha256: sha256(recovered.markdown),
+    });
+    await options.frameLog?.append(recoveringTaskId, 'artifact.ready', {
+      artifactId: artifactRef,
+      kind: 'assistant-message',
+      contentSha256: sha256(recovered.markdown),
+    });
+    await options.frameLog?.append(
+      recoveringTaskId,
+      recovered.completionStatus === 'complete' ? 'task.completed' : 'task.cancelled',
+      recovered.completionStatus === 'complete'
+        ? { resultRef: artifactRef }
+        : { reason: 'recovered_interrupted_generation' },
+    );
+    return options.contextSources.listMessages(input.sessionId);
   }
 
   async function observeCompletedTurn(input: {
@@ -662,6 +916,7 @@ export function createInteractiveTeaching(options: {
       });
     },
     async retryTurn(input, context) {
+      const reconciledMessages = await reconcileGeneration({ ...input, context });
       const learning = await options.sessionModule.query(
         { type: 'GetLessonLearning', lessonId: input.lessonId },
         {
@@ -675,9 +930,23 @@ export function createInteractiveTeaching(options: {
       if (activeTaskId !== undefined) {
         return { taskId: activeTaskId, resourceVersion: learning.resourceVersion };
       }
-      const messages = await options.contextSources.listMessages(input.sessionId);
+      const messages = reconciledMessages;
       const lastUser = messages.findLast((message) => message.role === 'user');
       const lastUserIndex = lastUser === undefined ? -1 : messages.indexOf(lastUser);
+      const recoveredAssistant = messages
+        .slice(lastUserIndex + 1)
+        .findLast(
+          (message) =>
+            message.role === 'assistant' &&
+            message.completionStatus === 'complete' &&
+            message.generationTaskId !== undefined,
+        );
+      if (lastUser !== undefined && recoveredAssistant?.generationTaskId !== undefined) {
+        return {
+          taskId: recoveredAssistant.generationTaskId,
+          resourceVersion: learning.resourceVersion,
+        };
+      }
       if (
         lastUser === undefined ||
         messages
@@ -848,90 +1117,7 @@ export function createInteractiveTeaching(options: {
       await observationQueue.drain(sessionId);
     },
     async recoverSession(input) {
-      const learning = await options.sessionModule.query(
-        { type: 'GetLessonLearning', lessonId: input.lessonId },
-        {
-          correlationId: input.context.correlationId,
-          actor: input.context.actor,
-          requestedAt: input.context.requestedAt,
-          receivedAt: input.context.receivedAt,
-        },
-      );
-      const activeTaskId = learning.learning.session?.activeGenerationTaskId;
-      if (activeTaskId !== undefined) {
-        const recovered = await options.agent.recover(activeTaskId);
-        if (recovered.completionStatus === 'failed') {
-          await options.sessionModule.execute(
-            { type: 'StopSessionGeneration', lessonId: input.lessonId },
-            backgroundContext(input.context, `recover-failed:${activeTaskId}`),
-          );
-          await options.frameLog?.append(activeTaskId, 'task.failed', {
-            problem: failureProblem(activeTaskId),
-          });
-        } else {
-          await validateDirective({
-            courseId: input.courseId,
-            lessonId: input.lessonId,
-            sessionId: input.sessionId,
-            directive: recovered.directive,
-          });
-          const assistantMessageId = options.nextAssistantMessageId();
-          const artifactRef = `assistant-message:${assistantMessageId}`;
-          await options.frameLog?.ensureTask(activeTaskId, 'running');
-          await options.frameLog?.append(activeTaskId, 'message.started', {
-            messageId: assistantMessageId,
-          });
-          if (recovered.markdown.length > 0) {
-            await options.frameLog?.append(activeTaskId, 'message.delta', {
-              messageId: assistantMessageId,
-              markdown: recovered.markdown,
-            });
-          }
-          await options.assistantArtifacts.save({
-            artifactRef,
-            markdown: recovered.markdown,
-            completionStatus: recovered.completionStatus,
-          });
-          await options.sessionModule.execute(
-            {
-              type: 'CommitAssistantMessage',
-              lessonId: input.lessonId,
-              sessionId: input.sessionId,
-              messageId: assistantMessageId,
-              contentArtifactRef: artifactRef,
-              generationTaskId: activeTaskId,
-              completionStatus: recovered.completionStatus,
-            },
-            backgroundContext(input.context, `recover-assistant:${activeTaskId}`),
-          );
-          await applyCommittedDirective({
-            courseId: input.courseId,
-            lessonId: input.lessonId,
-            sessionId: input.sessionId,
-            directive: recovered.directive,
-          });
-          await options.frameLog?.append(activeTaskId, 'message.completed', {
-            messageId: assistantMessageId,
-            contentSha256: sha256(recovered.markdown),
-          });
-          await options.frameLog?.append(activeTaskId, 'artifact.ready', {
-            artifactId: artifactRef,
-            kind: 'assistant-message',
-            contentSha256: sha256(recovered.markdown),
-          });
-          if (recovered.completionStatus === 'complete') {
-            await options.frameLog?.append(activeTaskId, 'task.completed', {
-              resultRef: artifactRef,
-            });
-          } else {
-            await options.frameLog?.append(activeTaskId, 'task.cancelled', {
-              reason: 'recovered_interrupted_generation',
-            });
-          }
-        }
-      }
-
-      const messages = await options.contextSources.listMessages(input.sessionId);
+      const messages = await reconcileGeneration(input);
       for (let index = messages.length - 1; index >= 0; index -= 1) {
         const message = messages[index]!;
         if (
