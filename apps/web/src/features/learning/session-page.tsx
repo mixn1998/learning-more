@@ -175,6 +175,45 @@ function hasUnansweredUserMessage(messages: readonly SessionMessageView[] | unde
   return latestUserMessage !== undefined && !hasAssistantResponse(messages);
 }
 
+const GENERATION_START_ACK_TIMEOUT_MS = 8_000;
+
+async function consumeGenerationStream(
+  api: LearningClient,
+  taskId: string,
+  onEvent: Parameters<LearningClient['stream']>[1],
+  timeoutIds: Set<number>,
+): Promise<'terminal' | 'stalled'> {
+  let acknowledgeStart: (() => void) | undefined;
+  const started = new Promise<void>((resolve) => {
+    acknowledgeStart = resolve;
+  });
+  const stream = api.stream(taskId, (event) => {
+    acknowledgeStart?.();
+    acknowledgeStart = undefined;
+    onEvent(event);
+  });
+  let timeoutId: number | undefined;
+  const firstOutcome = await Promise.race([
+    started.then(() => 'started' as const),
+    stream.then(() => 'terminal' as const),
+    new Promise<'stalled'>((resolve) => {
+      timeoutId = window.setTimeout(() => resolve('stalled'), GENERATION_START_ACK_TIMEOUT_MS);
+      timeoutIds.add(timeoutId);
+    }),
+  ]).finally(() => {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+      timeoutIds.delete(timeoutId);
+    }
+  });
+  if (firstOutcome === 'stalled') {
+    void stream.catch(() => undefined);
+    return 'stalled';
+  }
+  if (firstOutcome === 'started') await stream;
+  return 'terminal';
+}
+
 function reducer(state: State, action: Action): State {
   if (action.type === 'started') {
     return {
@@ -583,8 +622,18 @@ export function SessionPage(props: {
   const [state, dispatch] = useReducer(reducer, initial);
   const inFlight = useRef(new Set<string>());
   const generationAttempt = useRef(0);
+  const generationStartTimeouts = useRef(new Set<number>());
   const teachingRefreshes = useRef(new Set<string>());
   const [navigationError, setNavigationError] = useState<string>();
+
+  useEffect(
+    () => () => {
+      generationAttempt.current += 1;
+      for (const timeoutId of generationStartTimeouts.current) window.clearTimeout(timeoutId);
+      generationStartTimeouts.current.clear();
+    },
+    [],
+  );
 
   const hydrate = (snapshot: Awaited<ReturnType<LearningClient['getSession']>>) => {
     dispatch({
@@ -658,20 +707,27 @@ export function SessionPage(props: {
         });
         let terminalFailure = false;
         let receivedAssistantContent = false;
-        await api.stream(activeTaskId, (event) => {
-          if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-            if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
-            dispatch({ type: 'delta', markdown: event.data.markdown });
-          }
-          if (event.type === 'task.failed' || event.type === 'task.cancelled') {
-            terminalFailure = true;
-          }
-        });
+        let streamStalled = false;
+        try {
+          streamStalled =
+            (await consumeGenerationStream(api, activeTaskId, (event) => {
+              if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+                if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
+                dispatch({ type: 'delta', markdown: event.data.markdown });
+              }
+              if (event.type === 'task.failed' || event.type === 'task.cancelled') {
+                terminalFailure = true;
+              }
+            }, generationStartTimeouts.current)) === 'stalled';
+        } catch {
+          terminalFailure = true;
+        }
         const refreshed = await api.getSession(started.sessionId);
         hydrateAndRefreshTeachingProgress(started.sessionId, refreshed);
+        const persistedAssistantResponse = hasAssistantResponse(refreshed.messages);
         if (
-          terminalFailure ||
-          (!receivedAssistantContent && !hasAssistantResponse(refreshed.messages))
+          !persistedAssistantResponse &&
+          (terminalFailure || streamStalled || !receivedAssistantContent)
         ) {
           const content =
             refreshed.messages?.findLast((message) => message.role === 'user')?.markdown ?? '';
@@ -768,15 +824,15 @@ export function SessionPage(props: {
           taskId: opening.taskId,
           resourceVersion: opening.resourceVersion,
         });
-        await api.stream(opening.taskId, (event) => {
+        const streamOutcome = await consumeGenerationStream(api, opening.taskId, (event) => {
           if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
             dispatch({ type: 'delta', markdown: event.data.markdown });
           }
           if (event.type === 'task.failed' || event.type === 'task.cancelled') {
             terminalFailure = true;
           }
-        });
-        if (terminalFailure) {
+        }, generationStartTimeouts.current);
+        if (terminalFailure || streamOutcome === 'stalled') {
           throw new Error('lesson_opening_generation_failed');
         }
         const refreshed = await api.getSession(sessionId);
@@ -861,9 +917,10 @@ export function SessionPage(props: {
       ...(task.userMessageId === undefined ? {} : { userMessageId: task.userMessageId }),
     });
     let terminalFailure = false;
+    let streamStalled = false;
     let receivedAssistantContent = false;
     try {
-      await api.stream(task.taskId, (event) => {
+      const streamOutcome = await consumeGenerationStream(api, task.taskId, (event) => {
         if (generationAttempt.current !== attempt) return;
         if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
           if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
@@ -881,20 +938,37 @@ export function SessionPage(props: {
         ) {
           terminalFailure = true;
         }
-      });
+      }, generationStartTimeouts.current);
+      streamStalled = streamOutcome === 'stalled';
     } catch {
       if (generationAttempt.current !== attempt) return;
+      try {
+        const refreshed = await api.getSession(state.sessionId!);
+        hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
+        if (hasAssistantResponse(refreshed.messages)) {
+          dispatch({ type: 'completed' });
+          return;
+        }
+      } catch {
+        // A retry remains available when authoritative reconciliation is temporarily unavailable.
+      }
       dispatch({ type: 'send-failed', content, requestAccepted: true });
       return;
     }
     if (generationAttempt.current !== attempt) return;
-    if (terminalFailure) {
+    let refreshed: Awaited<ReturnType<LearningClient['getSession']>>;
+    try {
+      refreshed = await api.getSession(state.sessionId!);
+    } catch {
       dispatch({ type: 'send-failed', content, requestAccepted: true });
       return;
     }
-    const refreshed = await api.getSession(state.sessionId!);
     hydrateAndRefreshTeachingProgress(state.sessionId!, refreshed);
-    if (!receivedAssistantContent && !hasAssistantResponse(refreshed.messages)) {
+    const persistedAssistantResponse = hasAssistantResponse(refreshed.messages);
+    if (
+      !persistedAssistantResponse &&
+      (terminalFailure || streamStalled || !receivedAssistantContent)
+    ) {
       dispatch({ type: 'send-failed', content, requestAccepted: true });
       return;
     }

@@ -53,6 +53,7 @@ async function fixture(
     deferredCompletion?: boolean;
     startGenerationFailsOnce?: boolean;
     advanceVersionDuringSubmit?: boolean;
+    frameEnsureFailsOnce?: boolean;
     agentDirective?: TeachingDirective;
   } = {},
 ) {
@@ -271,6 +272,7 @@ async function fixture(
   const capturedReasoningObservations: string[] = [];
   const capturedInteractionObservations: TeachingObservation[] = [];
   const frames: GenerationStreamEvent[] = [];
+  let frameEnsureShouldFail = options.frameEnsureFailsOnce ?? false;
   const observer: TeachingObserver = {
     async observe(input): Promise<TeachingObservation> {
       if (observerShouldFail) {
@@ -388,7 +390,12 @@ async function fixture(
     ledgerRepository,
     unitOfWork,
     frameLog: {
-      async ensureTask() {},
+      async ensureTask() {
+        if (frameEnsureShouldFail) {
+          frameEnsureShouldFail = false;
+          throw new Error('simulated_frame_journal_failure');
+        }
+      },
       async append(taskId, type, data) {
         const frame = GenerationStreamEventSchema.parse({
           taskId,
@@ -454,6 +461,37 @@ describe('InteractiveTeaching deep module', () => {
     ).rejects.toThrow('simulated_generation_binding_failure');
 
     expect(submittedRequestRef()).toBe('message_user_1');
+    expect(cancelledTaskIds).toEqual(['task_1']);
+  });
+
+  it('clears the session binding when frame journal creation fails after binding', async () => {
+    const { module, sessionModule, cancelledTaskIds } = await fixture({
+      frameEnsureFailsOnce: true,
+    });
+
+    await expect(
+      module.advanceTurn(
+        {
+          courseId: 'course_1',
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          userMessageId: 'message_user_1',
+          userContentArtifactRef: 'artifact:user:1',
+        },
+        commandContext,
+      ),
+    ).rejects.toThrow('simulated_frame_journal_failure');
+
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_compensated_binding',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
     expect(cancelledTaskIds).toEqual(['task_1']);
   });
 

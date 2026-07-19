@@ -335,8 +335,44 @@ describe('learning SessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
     fireEvent.click(await screen.findByRole('button', { name: '重新生成' }));
 
-    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 3));
+    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 1));
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates a committed reply instead of showing retry after the stream disconnects', async () => {
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 1,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        resourceVersion: 4,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [
+          { id: 'message_user_01', role: 'user', markdown: 'Explain the boundary.' },
+          { id: 'message_ai_01', role: 'assistant', markdown: 'The reply was committed.' },
+        ],
+      });
+    const api = client({
+      getSession,
+      sendMessage: vi.fn().mockResolvedValue({
+        taskId: 'task_01',
+        resourceVersion: 3,
+        userMessageId: 'message_user_01',
+      }),
+      stream: vi.fn().mockRejectedValue(new Error('stream disconnected')),
+    });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: 'Explain the boundary.' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByText('The reply was committed.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新生成' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
   });
 
   it('shows the regenerate icon when the generation task reports a failed terminal event', async () => {
@@ -364,7 +400,7 @@ describe('learning SessionPage', () => {
     expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
 
     fireEvent.click(regenerate);
-    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 3));
+    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 1));
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -1071,6 +1107,36 @@ describe('learning SessionPage', () => {
       '正在思考中',
     );
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
+  });
+
+  it('exits thinking and offers paused retry when a restored task never exposes a first frame', async () => {
+    vi.useFakeTimers();
+    const stream = vi.fn(() => new Promise<never>(() => undefined));
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 4,
+      learning: {
+        progress: 'in_progress',
+        session: { state: 'paused', activeGenerationTaskId: 'task_running_01' },
+      },
+      messages: [{ id: 'message_user_01', role: 'user', markdown: 'Please continue.' }],
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('status', { name: 'AI 回复状态' })).toHaveTextContent('正在思考中');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('button', { name: '重新生成' })).toBeInTheDocument();
+    expect(screen.getByLabelText('学习输入')).toBeDisabled();
+    expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
   });
 
   it('does not show thinking after a complete assistant message has already been restored', async () => {

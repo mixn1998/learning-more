@@ -179,6 +179,25 @@ export function createInteractiveTeaching(options: {
         // Startup reconciliation retries compensation for any task that could not be cancelled.
       }
       try {
+        const latest = await options.sessionModule.query(
+          { type: 'GetLessonLearning', lessonId: input.lessonId },
+          {
+            correlationId: input.context.correlationId,
+            actor: input.context.actor,
+            requestedAt: input.context.requestedAt,
+            receivedAt: input.context.receivedAt,
+          },
+        );
+        if (latest.learning.session?.activeGenerationTaskId === accepted.taskId) {
+          await options.sessionModule.execute(
+            { type: 'StopSessionGeneration', lessonId: input.lessonId },
+            backgroundContext(input.context, `${input.context.commandId}:compensate-binding`),
+          );
+        }
+      } catch {
+        // Startup reconciliation also clears a terminal binding after a process failure.
+      }
+      try {
         await options.frameLog?.append(accepted.taskId, 'task.cancelled', {
           reason: 'session_binding_failed',
         });
