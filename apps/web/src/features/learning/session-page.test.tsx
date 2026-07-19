@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { LearningClient } from '../../client/learning-client.js';
@@ -408,6 +408,20 @@ describe('learning SessionPage', () => {
     expect(
       await screen.findByText('本课已结束，阶段性 Review 正在生成中，可稍后返回课程页面查看。'),
     ).toBeInTheDocument();
+  });
+
+  it('keeps unfinished lesson nodes in a dedicated scroll region outside the actions', async () => {
+    render(<SessionPage lessonId="lesson_01" client={client()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
+
+    const dialog = screen.getByRole('dialog', { name: '现在结束将放弃本课' });
+    const pendingList = within(dialog).getByRole('region', { name: '未完成学习路径' });
+    const continueButton = within(dialog).getByRole('button', { name: '继续学习' });
+
+    expect(pendingList).toHaveClass('lesson-end-pending-list');
+    expect(pendingList).toHaveTextContent('当前知识点');
+    expect(pendingList).not.toContainElement(continueButton);
   });
 
   it('presents a completed closure after the final summary instead of an abandonment warning', async () => {

@@ -352,15 +352,17 @@ export function LessonSessionWorkspace(props: {
                 ? '本课最终总结已经完成，可以结束学习并生成完整课时 Review。'
                 : '原始会话将冻结并生成阶段 Review；之后仍可恢复同一会话。'}
             </p>
-            {!props.canComplete
-              ? unfinishedPath.map((point) => (
+            {!props.canComplete ? (
+              <div aria-label="未完成学习路径" className="lesson-end-pending-list" role="region">
+                {unfinishedPath.map((point) => (
                   <div className="lesson-end-pending" key={`${point.title}:${point.detail}`}>
                     <b>{point.title}</b>
                     <br />
                     <small>{point.detail}</small>
                   </div>
-                ))
-              : null}
+                ))}
+              </div>
+            ) : null}
             <div className="lm-actions lesson-end-actions">
               <button className="lm-btn" type="button" onClick={() => setEndOpen(false)}>
                 继续学习
