@@ -1,5 +1,9 @@
+import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import type { TeachingContextPackage } from './teaching-context-sources.js';
-import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
+
+type TeachingGenerationTask = Awaited<
+  ReturnType<Pick<GenerationRuntime, 'listByOwner'>['listByOwner']>
+>[number];
 
 export type TeachingDirective = Readonly<{
   schemaVersion: 1;
@@ -39,7 +43,7 @@ export type TeachingAgentCompletionObserver = Readonly<{
 
 export interface TeachingAgent {
   submit(context: TeachingContextPackage, requestRef: string): Promise<{ taskId: string }>;
-  listTasks(sessionId: string): Promise<readonly GenerationTask[]>;
+  listTasks(sessionId: string): Promise<readonly TeachingGenerationTask[]>;
   cancel(taskId: string): Promise<void>;
   complete(
     taskId: string,

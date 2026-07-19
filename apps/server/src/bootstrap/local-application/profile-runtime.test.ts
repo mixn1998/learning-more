@@ -207,9 +207,7 @@ describe('local profile runtime', () => {
     expect(
       visibleEvidence.find((candidate) => candidate.evidenceId === projected!.evidenceId),
     ).toMatchObject({
-      summary: expect.stringContaining(
-        'The learner compares changing conditions before revising a judgment',
-      ),
+      summary: '全局抽象维度：所有独立会话过去都显示同一句定义。',
     });
   });
 

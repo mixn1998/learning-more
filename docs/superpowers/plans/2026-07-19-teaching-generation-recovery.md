@@ -109,8 +109,8 @@ git commit -m "feat(ai): persist generation request identity"
 - Test: `apps/server/src/modules/learning-session/tests/session-module.test.ts`
 
 **Interfaces:**
-- Consumes: `StartSessionGeneration` command and the existing session state machine.
-- Produces: explicit `mode: 'new-turn' | 'retry' | 'recovery'`; retry/recovery can bind while paused and leave timing intervals closed.
+- Consumes: `StartSessionGeneration`, `AppendUserMessage`, and the existing session state machine.
+- Produces: explicit `mode: 'new-turn' | 'retry' | 'recovery'`; internal generation binding can run while paused and leaves timing intervals closed, while `AppendUserMessage` remains the user-input gate.
 
 - [ ] **Step 1: Write failing paused-retry tests**
 
@@ -128,7 +128,7 @@ await module.execute(
 );
 ```
 
-Assert session state remains `paused`, `activeGenerationTaskId === 'task_retry'`, and no learning interval opens. Add a sibling assertion that `mode: 'new-turn'` remains rejected while paused.
+Assert session state remains `paused`, `activeGenerationTaskId === 'task_retry'`, and no learning interval opens. Add sibling assertions that internal `mode: 'new-turn'` binding is also accepted while paused, while `AppendUserMessage` remains rejected.
 
 - [ ] **Step 2: Run focused test and verify RED**
 
@@ -150,7 +150,7 @@ Change the command to:
   }>)
 ```
 
-Carry `mode` into the domain command. Permit paused state only for `retry` and `recovery`; do not emit resume events and do not open a timing interval. Keep new-turn behavior unchanged.
+Carry `mode` into the domain command. Permit `StartSessionGeneration` in both active and paused states for every mode; do not emit resume events and do not open a timing interval. Keep the new-user-turn restriction exclusively in `AppendUserMessage`.
 
 - [ ] **Step 4: Update all callers with an explicit mode and run tests**
 

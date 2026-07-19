@@ -469,10 +469,7 @@ export function createInteractiveTeaching(options: {
       }
     }
 
-    if (
-      plan.clearActiveTask &&
-      learning.learning.session.activeGenerationTaskId !== undefined
-    ) {
+    if (plan.clearActiveTask && learning.learning.session.activeGenerationTaskId !== undefined) {
       await options.sessionModule.execute(
         { type: 'StopSessionGeneration', lessonId: input.lessonId },
         backgroundContext(
@@ -528,8 +525,7 @@ export function createInteractiveTeaching(options: {
 
     messages = await options.contextSources.listMessages(input.sessionId);
     const alreadyCommitted = messages.find(
-      (message) =>
-        message.role === 'assistant' && message.generationTaskId === recoveringTaskId,
+      (message) => message.role === 'assistant' && message.generationTaskId === recoveringTaskId,
     );
     const currentUserMessageId = plan.sourceMessageId?.startsWith('opening:')
       ? undefined

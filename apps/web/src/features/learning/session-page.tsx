@@ -710,15 +710,20 @@ export function SessionPage(props: {
         let streamStalled = false;
         try {
           streamStalled =
-            (await consumeGenerationStream(api, activeTaskId, (event) => {
-              if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-                if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
-                dispatch({ type: 'delta', markdown: event.data.markdown });
-              }
-              if (event.type === 'task.failed' || event.type === 'task.cancelled') {
-                terminalFailure = true;
-              }
-            }, generationStartTimeouts.current)) === 'stalled';
+            (await consumeGenerationStream(
+              api,
+              activeTaskId,
+              (event) => {
+                if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+                  if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
+                  dispatch({ type: 'delta', markdown: event.data.markdown });
+                }
+                if (event.type === 'task.failed' || event.type === 'task.cancelled') {
+                  terminalFailure = true;
+                }
+              },
+              generationStartTimeouts.current,
+            )) === 'stalled';
         } catch {
           terminalFailure = true;
         }
@@ -824,14 +829,19 @@ export function SessionPage(props: {
           taskId: opening.taskId,
           resourceVersion: opening.resourceVersion,
         });
-        const streamOutcome = await consumeGenerationStream(api, opening.taskId, (event) => {
-          if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-            dispatch({ type: 'delta', markdown: event.data.markdown });
-          }
-          if (event.type === 'task.failed' || event.type === 'task.cancelled') {
-            terminalFailure = true;
-          }
-        }, generationStartTimeouts.current);
+        const streamOutcome = await consumeGenerationStream(
+          api,
+          opening.taskId,
+          (event) => {
+            if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+              dispatch({ type: 'delta', markdown: event.data.markdown });
+            }
+            if (event.type === 'task.failed' || event.type === 'task.cancelled') {
+              terminalFailure = true;
+            }
+          },
+          generationStartTimeouts.current,
+        );
         if (terminalFailure || streamOutcome === 'stalled') {
           throw new Error('lesson_opening_generation_failed');
         }
@@ -920,25 +930,30 @@ export function SessionPage(props: {
     let streamStalled = false;
     let receivedAssistantContent = false;
     try {
-      const streamOutcome = await consumeGenerationStream(api, task.taskId, (event) => {
-        if (generationAttempt.current !== attempt) return;
-        if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
-          if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
-          dispatch({ type: 'delta', markdown: event.data.markdown });
-        }
-        if (event.type === 'task.failed' || event.type === 'task.cancelled') {
-          terminalFailure = true;
-        }
-        if (
-          event.type === 'task.snapshot' &&
-          typeof event.data.state === 'string' &&
-          event.data.state !== 'running' &&
-          event.data.state !== 'queued' &&
-          event.data.state !== 'completed'
-        ) {
-          terminalFailure = true;
-        }
-      }, generationStartTimeouts.current);
+      const streamOutcome = await consumeGenerationStream(
+        api,
+        task.taskId,
+        (event) => {
+          if (generationAttempt.current !== attempt) return;
+          if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+            if (event.data.markdown.trim() !== '') receivedAssistantContent = true;
+            dispatch({ type: 'delta', markdown: event.data.markdown });
+          }
+          if (event.type === 'task.failed' || event.type === 'task.cancelled') {
+            terminalFailure = true;
+          }
+          if (
+            event.type === 'task.snapshot' &&
+            typeof event.data.state === 'string' &&
+            event.data.state !== 'running' &&
+            event.data.state !== 'queued' &&
+            event.data.state !== 'completed'
+          ) {
+            terminalFailure = true;
+          }
+        },
+        generationStartTimeouts.current,
+      );
       streamStalled = streamOutcome === 'stalled';
     } catch {
       if (generationAttempt.current !== attempt) return;

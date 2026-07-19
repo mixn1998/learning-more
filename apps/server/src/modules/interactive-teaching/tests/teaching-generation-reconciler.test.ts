@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
+import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import type { MaterializedTeachingMessage } from '../interface.js';
 import { planTeachingGenerationReconciliation } from '../implementation/teaching-generation-reconciler.js';
+
+type GenerationTask = Awaited<ReturnType<GenerationRuntime['get']>>;
 
 function task(
   id: string,
   status: GenerationTask['status'],
-  requestRef: string,
+  requestRef?: string,
   updatedAt = '2026-07-19T12:00:00.000Z',
 ): GenerationTask {
   return {
@@ -20,16 +22,16 @@ function task(
     taskKind: 'interactive-teaching',
     taskGroup: 'interactive',
     ownerRef: 'session_1',
-    requestRef,
+    ...(requestRef === undefined ? {} : { requestRef }),
   };
 }
 
-function user(messageId: string): MaterializedTeachingMessage {
+function user(messageId: string, markdown = 'Learner response'): MaterializedTeachingMessage {
   return {
     messageId,
     role: 'user',
     completionStatus: 'complete',
-    markdown: 'Learner response',
+    markdown,
     sourceRef: `message:${messageId}`,
   };
 }
@@ -73,6 +75,48 @@ describe('teaching generation reconciliation planning', () => {
       sessionId: 'session_1',
       tasks: [task('task_stale', 'completed', 'message_replaced')],
       messages: [user('message_current')],
+    });
+
+    expect(plan).toMatchObject({ action: 'ambiguous', bindTask: false });
+    expect(plan.taskId).toBeUndefined();
+  });
+
+  it('recovers a legacy task across consecutive identical retry messages', () => {
+    const legacyTask = {
+      ...task('task_legacy_retry', 'completed'),
+      prompt: `allowed source ${JSON.stringify('message_user_original')}`,
+    };
+
+    expect(
+      planTeachingGenerationReconciliation({
+        sessionId: 'session_1',
+        tasks: [legacyTask],
+        messages: [
+          user('message_user_original', 'The same learner answer'),
+          user('message_user_duplicate', 'The same learner answer'),
+        ],
+      }),
+    ).toMatchObject({
+      action: 'reply_recovered',
+      taskId: 'task_legacy_retry',
+      sourceMessageId: 'message_user_original',
+      bindTask: true,
+    });
+  });
+
+  it('does not merge consecutive retry messages with different content', () => {
+    const legacyTask = {
+      ...task('task_stale_legacy', 'completed'),
+      prompt: `allowed source ${JSON.stringify('message_user_original')}`,
+    };
+
+    const plan = planTeachingGenerationReconciliation({
+      sessionId: 'session_1',
+      tasks: [legacyTask],
+      messages: [
+        user('message_user_original', 'Original learner answer'),
+        user('message_user_revised', 'Revised learner answer'),
+      ],
     });
 
     expect(plan).toMatchObject({ action: 'ambiguous', bindTask: false });

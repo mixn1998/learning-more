@@ -8,10 +8,10 @@ import { describe, expect, it } from 'vitest';
 
 import { createInMemoryLearningSessionRepositories } from '../../../persistence/learning-session-repositories.js';
 import { createInMemoryTeachingLedgerRepository } from '../../../persistence/teaching-ledger-repositories.js';
+import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import { createInMemoryMessageLog } from '../../learning-session/implementation/message-log.js';
 import { createSessionModule } from '../../learning-session/implementation/session-module.js';
 import type { LearningSessionModule } from '../../learning-session/interface.js';
-import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 import { createTeachingContextAssembler } from '../implementation/context-assembler.js';
 import { createInteractiveTeaching } from '../implementation/interactive-teaching.js';
 import { createTeachingState } from '../implementation/teaching-state-reducer.js';
@@ -19,6 +19,8 @@ import type { TeachingAgent } from '../ports/teaching-agent.js';
 import type { TeachingDirective } from '../ports/teaching-agent.js';
 import type { TeachingContextSources } from '../ports/teaching-context-sources.js';
 import type { TeachingObserver } from '../ports/teaching-observer.js';
+
+type GenerationTask = Awaited<ReturnType<GenerationRuntime['get']>>;
 
 const tx = {
   stageJson: async () => undefined,
@@ -55,6 +57,7 @@ async function fixture(
     advanceVersionDuringSubmit?: boolean;
     frameEnsureFailsOnce?: boolean;
     agentDirective?: TeachingDirective;
+    legacyRecoveredTaskSourceId?: string;
   } = {},
 ) {
   const artifacts = new Map<string, string>([
@@ -226,7 +229,11 @@ async function fixture(
           taskKind: 'interactive-teaching',
           taskGroup: 'interactive' as const,
           ownerRef: 'session_1',
-          requestRef: 'message_user_1',
+          ...(options.legacyRecoveredTaskSourceId === undefined
+            ? { requestRef: 'message_user_1' }
+            : {
+                prompt: `allowed source ${JSON.stringify(options.legacyRecoveredTaskSourceId)}`,
+              }),
         },
       ];
     },
@@ -1031,6 +1038,70 @@ describe('InteractiveTeaching deep module', () => {
     expect(recoveredView.learning.session?.activeGenerationTaskId).toBeUndefined();
     await expect(messageLog.list('session_1')).resolves.toEqual([
       expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+      expect.objectContaining({
+        role: 'assistant',
+        generationTaskId: 'task_recovered',
+        completionStatus: 'complete',
+      }),
+    ]);
+  });
+
+  it('recovers a legacy completed reply after an old retry duplicated the paused user turn', async () => {
+    const { recoverSession, sessionModule, messageLog } = await fixture({
+      legacyRecoveredTaskSourceId: 'message_user_original',
+    });
+    const original = await sessionModule.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_1',
+        messageId: 'message_user_original',
+        contentArtifactRef: 'artifact:user:1',
+      },
+      { ...commandContext, commandId: 'legacy_original_user', expectedVersion: 1 },
+    );
+    const duplicated = await sessionModule.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_1',
+        messageId: 'message_user_duplicate',
+        contentArtifactRef: 'artifact:user:1',
+      },
+      {
+        ...commandContext,
+        commandId: 'legacy_duplicate_user',
+        expectedVersion: original.value.resourceVersion,
+      },
+    );
+    await sessionModule.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_1' },
+      {
+        ...commandContext,
+        commandId: 'pause_legacy_duplicate_user',
+        expectedVersion: duplicated.value.resourceVersion,
+      },
+    );
+
+    await recoverSession({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: commandContext,
+    });
+
+    const recoveredView = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_legacy_duplicate_recovery',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(recoveredView.learning.session).toMatchObject({ state: 'paused' });
+    expect(recoveredView.learning.session?.activeGenerationTaskId).toBeUndefined();
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_original', role: 'user' }),
+      expect.objectContaining({ id: 'message_user_duplicate', role: 'user' }),
       expect.objectContaining({
         role: 'assistant',
         generationTaskId: 'task_recovered',

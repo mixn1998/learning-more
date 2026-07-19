@@ -1,11 +1,9 @@
-import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 import type { MaterializedTeachingMessage } from '../interface.js';
+import type { TeachingAgent } from '../ports/teaching-agent.js';
 
-const RECOVERABLE_STATUSES = new Set<GenerationTask['status']>([
-  'queued',
-  'running',
-  'completed',
-]);
+type GenerationTask = Awaited<ReturnType<TeachingAgent['listTasks']>>[number];
+
+const RECOVERABLE_STATUSES = new Set<GenerationTask['status']>(['queued', 'running', 'completed']);
 
 export type TeachingGenerationReconciliationPlan = Readonly<{
   action:
@@ -22,17 +20,34 @@ export type TeachingGenerationReconciliationPlan = Readonly<{
   cancelTaskIds: readonly string[];
 }>;
 
-function trailingUnansweredUser(
+function trailingEquivalentUnansweredUsers(
   messages: readonly MaterializedTeachingMessage[],
-): MaterializedTeachingMessage | undefined {
+): readonly MaterializedTeachingMessage[] {
   const userIndex = messages.findLastIndex(
     (message) => message.role === 'user' && message.completionStatus === 'complete',
   );
-  if (userIndex < 0) return undefined;
+  if (userIndex < 0) return [];
   const answered = messages
     .slice(userIndex + 1)
     .some((message) => message.role === 'assistant' && message.completionStatus === 'complete');
-  return answered ? undefined : messages[userIndex];
+  if (answered) return [];
+
+  const latest = messages[userIndex];
+  if (latest === undefined) return [];
+  const equivalentUsers = [latest];
+  for (let index = userIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message === undefined ||
+      message.role !== 'user' ||
+      message.completionStatus !== 'complete' ||
+      message.markdown !== latest.markdown
+    ) {
+      break;
+    }
+    equivalentUsers.push(message);
+  }
+  return equivalentUsers;
 }
 
 function sourceForTask(input: {
@@ -40,9 +55,9 @@ function sourceForTask(input: {
   sessionId: string;
   activeTaskId?: string;
   messages: readonly MaterializedTeachingMessage[];
-  unansweredUser?: MaterializedTeachingMessage;
+  unansweredUsers: readonly MaterializedTeachingMessage[];
 }): string | undefined {
-  const { task, sessionId, activeTaskId, messages, unansweredUser } = input;
+  const { task, sessionId, activeTaskId, messages, unansweredUsers } = input;
   if (task.requestRef === `opening:${sessionId}`) {
     return messages.some(
       (message) => message.role === 'assistant' && message.completionStatus === 'complete',
@@ -51,14 +66,18 @@ function sourceForTask(input: {
       : `opening:${sessionId}`;
   }
   if (task.requestRef !== undefined) {
-    return unansweredUser?.messageId === task.requestRef ? task.requestRef : undefined;
+    return unansweredUsers.some((message) => message.messageId === task.requestRef)
+      ? task.requestRef
+      : undefined;
   }
-  if (unansweredUser === undefined) {
+  if (unansweredUsers.length === 0) {
     return task.id === activeTaskId && messages.length === 0 ? `opening:${sessionId}` : undefined;
   }
-  if (task.id === activeTaskId) return unansweredUser.messageId;
-  const encodedMessageId = JSON.stringify(unansweredUser.messageId);
-  return task.prompt?.includes(encodedMessageId) === true ? unansweredUser.messageId : undefined;
+  const promptMatchedUser = unansweredUsers.find(
+    (message) => task.prompt?.includes(JSON.stringify(message.messageId)) === true,
+  );
+  if (promptMatchedUser !== undefined) return promptMatchedUser.messageId;
+  return task.id === activeTaskId ? unansweredUsers[0]?.messageId : undefined;
 }
 
 function taskPriority(task: GenerationTask): number {
@@ -80,7 +99,7 @@ export function planTeachingGenerationReconciliation(input: {
         : [],
     ),
   );
-  const unansweredUser = trailingUnansweredUser(input.messages);
+  const unansweredUsers = trailingEquivalentUnansweredUsers(input.messages);
   const recoverable = input.tasks
     .filter((task) => RECOVERABLE_STATUSES.has(task.status) && !committedTaskIds.has(task.id))
     .map((task) => ({
@@ -90,7 +109,7 @@ export function planTeachingGenerationReconciliation(input: {
         sessionId: input.sessionId,
         ...(input.activeTaskId === undefined ? {} : { activeTaskId: input.activeTaskId }),
         messages: input.messages,
-        ...(unansweredUser === undefined ? {} : { unansweredUser }),
+        unansweredUsers,
       }),
     }));
   const valid = recoverable
@@ -130,10 +149,10 @@ export function planTeachingGenerationReconciliation(input: {
       action: clearActiveTask
         ? 'terminal_binding_cleared'
         : cancelTaskIds.length > 0
-            ? 'orphan_cancelled'
-            : ambiguous
-              ? 'ambiguous'
-              : 'none',
+          ? 'orphan_cancelled'
+          : ambiguous
+            ? 'ambiguous'
+            : 'none',
       bindTask: false,
       clearActiveTask,
       cancelTaskIds,

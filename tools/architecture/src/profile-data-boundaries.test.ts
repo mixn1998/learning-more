@@ -40,7 +40,7 @@ describe('profile data architecture boundaries', () => {
     );
   });
 
-  it('[EQ-POR-10] preserves concrete per-session summaries in portrait evidence cards and legacy reads', () => {
+  it('[EQ-POR-10] exposes re-abstracted global dimensions without template copy', () => {
     const workspaceModel = readFileSync(
       path.join(root, 'apps/web/src/features/profile/portrait-workspace-model.ts'),
       'utf8',
@@ -58,7 +58,8 @@ describe('profile data architecture boundaries', () => {
     );
     expect(workspaceModel).toContain('evidence.summary.trim()');
     expect(workspaceModel).not.toContain('在这次学习中，你也出现了与上面描述相符的做法。');
-    expect(projector).toContain('combineReasoningBehaviorSummaries');
+    expect(projector).toContain('representativeRationale');
+    expect(projector).not.toContain('combineReasoningBehaviorSummaries');
     expect(profileRuntime).toContain('reasoningEvidenceSummaryForRead');
   });
 });

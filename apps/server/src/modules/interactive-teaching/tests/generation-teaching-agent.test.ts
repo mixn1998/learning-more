@@ -1,5 +1,6 @@
 import type { GenerationRequest, GenerationRuntime } from '../../generation-runtime/interface.js';
-import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
+
+type GenerationTask = Awaited<ReturnType<GenerationRuntime['get']>>;
 import { describe, expect, it } from 'vitest';
 
 import { createGenerationTeachingAgent } from '../implementation/generation-teaching-agent.js';
