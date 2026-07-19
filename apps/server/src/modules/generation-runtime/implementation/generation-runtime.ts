@@ -161,6 +161,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           taskKind: request.taskKind,
           taskGroup: request.taskGroup,
           ownerRef: request.ownerRef,
+          ...(request.requestRef === undefined ? {} : { requestRef: request.requestRef }),
           inputSnapshotHash: request.inputSnapshotHash,
           priority: request.priority,
           providerId,
@@ -333,6 +334,12 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     submit,
     runNext,
     get,
+    async listByOwner(ownerRef, taskKind) {
+      return (await allTasks()).filter(
+        (task) =>
+          task.ownerRef === ownerRef && (taskKind === undefined || task.taskKind === taskKind),
+      );
+    },
     async cancel(taskId) {
       controllers.get(taskId)?.abort();
       const task = await get(taskId);

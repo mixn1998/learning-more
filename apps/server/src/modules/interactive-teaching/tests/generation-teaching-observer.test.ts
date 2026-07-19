@@ -70,6 +70,9 @@ describe('GenerationTeachingObserver', () => {
       async cancel() {
         return task;
       },
+      async listByOwner() {
+        return [];
+      },
       async recoverExpiredLeases() {
         return 0;
       },
@@ -192,6 +195,9 @@ describe('GenerationTeachingObserver', () => {
       async cancel() {
         return task;
       },
+      async listByOwner() {
+        return [];
+      },
       async recoverExpiredLeases() {
         return 0;
       },
@@ -263,6 +269,9 @@ describe('GenerationTeachingObserver', () => {
       async cancel() {
         return task;
       },
+      async listByOwner() {
+        return [];
+      },
       async recoverExpiredLeases() {
         return 0;
       },
@@ -324,6 +333,9 @@ describe('GenerationTeachingObserver', () => {
       },
       async cancel() {
         return task;
+      },
+      async listByOwner() {
+        return [];
       },
       async recoverExpiredLeases() {
         return 0;

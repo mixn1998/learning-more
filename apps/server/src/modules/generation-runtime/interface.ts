@@ -8,6 +8,7 @@ export interface GenerationRequest {
   readonly taskKind: string;
   readonly taskGroup: 'interactive' | 'background';
   readonly ownerRef: string;
+  readonly requestRef?: string;
   readonly providerId: string;
   readonly model?: string;
   readonly reasoningEffort?: string;
@@ -26,6 +27,7 @@ export interface GenerationRuntime {
   runNext(): Promise<string | undefined>;
   cancel(taskId: string): Promise<GenerationTask>;
   get(taskId: string): Promise<GenerationTask>;
+  listByOwner(ownerRef: string, taskKind?: string): Promise<readonly GenerationTask[]>;
   recoverExpiredLeases(): Promise<number>;
   getMetrics(): Promise<GenerationRuntimeMetrics>;
 }

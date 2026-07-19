@@ -57,6 +57,7 @@ const GenerationTaskSchema = z.strictObject({
   taskKind: z.string().optional(),
   taskGroup: z.enum(['interactive', 'background']).optional(),
   ownerRef: z.string().optional(),
+  requestRef: z.string().optional(),
   inputSnapshotHash: z.string().optional(),
   priority: z.number().optional(),
   providerId: z.string().optional(),

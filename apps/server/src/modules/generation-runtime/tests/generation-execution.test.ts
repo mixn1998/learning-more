@@ -31,6 +31,7 @@ describe('GenerationExecution', () => {
         status: ++reads >= 3 ? ('completed' as const) : ('queued' as const),
       })),
       runNext: vi.fn(async () => undefined),
+      listByOwner: vi.fn(async () => []),
       recoverExpiredLeases: vi.fn(async () => 0),
       cancel: vi.fn(),
       getMetrics: vi.fn(),
@@ -63,6 +64,7 @@ describe('GenerationExecution', () => {
         recovered = true;
         return 1;
       }),
+      listByOwner: vi.fn(async () => []),
       cancel: vi.fn(),
       getMetrics: vi.fn(),
     };

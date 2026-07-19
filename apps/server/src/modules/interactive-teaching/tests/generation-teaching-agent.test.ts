@@ -129,6 +129,9 @@ function runtime(
     async get() {
       return task;
     },
+    async listByOwner() {
+      return [];
+    },
     async recoverExpiredLeases() {
       return 0;
     },

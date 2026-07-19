@@ -49,6 +49,9 @@ describe('GenerationReviewWriter', () => {
       async cancel() {
         return task;
       },
+      async listByOwner() {
+        return [];
+      },
       async recoverExpiredLeases() {
         return 0;
       },

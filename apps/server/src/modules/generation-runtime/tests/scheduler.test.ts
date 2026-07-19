@@ -184,6 +184,61 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     });
   });
 
+  it('persists a business request reference and lists tasks by owner and kind', async () => {
+    const repositories = createInMemoryRepositories();
+    const provider = createMockProvider({ id: 'mock', script: [] });
+    let sequence = 0;
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [provider],
+      nextId: () => `task_identity_${++sequence}`,
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+
+    const teaching = await runtime.submit({
+      taskKey: 'teaching:turn:1',
+      inputSnapshotHash: 'hash-turn-1',
+      taskKind: 'interactive-teaching',
+      taskGroup: 'interactive',
+      ownerRef: 'session_01',
+      requestRef: 'message_01',
+      providerId: 'mock',
+      priority: 100,
+      prompt: 'teach',
+    });
+    await runtime.submit({
+      taskKey: 'observation:1',
+      inputSnapshotHash: 'hash-observation-1',
+      taskKind: 'teaching-observation',
+      taskGroup: 'background',
+      ownerRef: 'session_01',
+      requestRef: 'message_01',
+      providerId: 'mock',
+      priority: 10,
+      prompt: 'observe',
+    });
+    await runtime.submit({
+      taskKey: 'teaching:turn:2',
+      inputSnapshotHash: 'hash-turn-2',
+      taskKind: 'interactive-teaching',
+      taskGroup: 'interactive',
+      ownerRef: 'session_02',
+      requestRef: 'message_02',
+      providerId: 'mock',
+      priority: 100,
+      prompt: 'teach elsewhere',
+    });
+
+    await expect(runtime.get(teaching.taskId)).resolves.toMatchObject({
+      ownerRef: 'session_01',
+      requestRef: 'message_01',
+    });
+    await expect(runtime.listByOwner('session_01', 'interactive-teaching')).resolves.toEqual([
+      expect.objectContaining({ id: teaching.taskId, requestRef: 'message_01' }),
+    ]);
+  });
+
   it('persists and forwards scenario-specific reasoning effort', async () => {
     const repositories = createInMemoryRepositories();
     const provider = createMockProvider({

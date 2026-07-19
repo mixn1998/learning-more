@@ -10,6 +10,7 @@ export interface GenerationTask {
   readonly taskKind?: string | undefined;
   readonly taskGroup?: 'interactive' | 'background' | undefined;
   readonly ownerRef?: string | undefined;
+  readonly requestRef?: string | undefined;
   readonly inputSnapshotHash?: string | undefined;
   readonly priority?: number | undefined;
   readonly providerId?: string | undefined;
