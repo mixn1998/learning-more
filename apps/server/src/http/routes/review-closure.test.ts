@@ -20,9 +20,10 @@ function fixture() {
     }),
     beginLessonClosure: vi.fn().mockResolvedValue({
       transactionId: 'closure_01',
-      state: 'generating',
-      generationTaskId: 'task_final',
-      resourceVersion: 1,
+      state: 'open',
+      generationTaskId: 'pending',
+      progress: 'completed',
+      resourceVersion: 3,
     }),
     closeCourse: vi.fn().mockResolvedValue({
       courseId: 'course_01',
@@ -90,6 +91,11 @@ describe('ReviewClosure HTTP contract', () => {
     });
     expect(lessonClosure.statusCode).toBe(202);
     expect(lessonClosure.headers.location).toBe('/api/v1/closure-transactions/closure_01');
+    expect(lessonClosure.json()).toMatchObject({
+      state: 'open',
+      progress: 'completed',
+      generationTaskId: 'pending',
+    });
 
     const courseClosure = await app.inject({
       method: 'POST',

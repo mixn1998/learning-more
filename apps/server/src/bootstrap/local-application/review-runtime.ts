@@ -252,6 +252,12 @@ export function createLocalReviewRuntime(
       try {
         let current = await lessonClosureRepository.get(closure.transactionId);
         if (current === undefined) throw new Error('lesson_closure_not_found');
+        if (current.state === 'open') {
+          current = await lessonClosures.retry(
+            current.transactionId,
+            `initial_${current.transactionId}`,
+          );
+        }
         if (current.state === 'generating') {
           const generated = await reviewWriter.complete(current.generationTaskId);
           reviewEvidence.assertRefs(
@@ -305,7 +311,7 @@ export function createLocalReviewRuntime(
         courseReviewRuntime.triggerPregeneration(lesson.courseId);
       } catch (error) {
         const current = await lessonClosureRepository.get(closure.transactionId);
-        if (current?.state !== 'generating') return;
+        if (current?.state !== 'open' && current?.state !== 'generating') return;
         await lessonClosures.fail(
           current.transactionId,
           error instanceof Error && error.message.trim() !== ''
@@ -514,8 +520,33 @@ export function createLocalReviewRuntime(
           taskId: review.taskId,
         });
       }
+      const recoverableClosures: LessonClosureRecord[] = [];
       for await (const closure of lessonClosureRepository.list()) {
-        if (!['generating', 'review-ready', 'committing'].includes(closure.state)) continue;
+        if (!['open', 'generating', 'review-ready', 'committing'].includes(closure.state)) continue;
+        recoverableClosures.push(closure);
+      }
+      const recoveryRank: Readonly<Record<LessonClosureRecord['state'], number>> = {
+        open: 1,
+        generating: 2,
+        'generating-failed': 0,
+        'review-ready': 3,
+        committing: 4,
+        completed: 5,
+        cancelled: -1,
+      };
+      recoverableClosures.sort(
+        (left, right) =>
+          recoveryRank[right.state] - recoveryRank[left.state] ||
+          right.updatedAt.localeCompare(left.updatedAt),
+      );
+      const selectedClosureSnapshots = new Set<string>();
+      for (const closure of recoverableClosures) {
+        const snapshotKey = `${closure.lessonId}:${closure.sessionId}:${closure.messageRangeChecksum}`;
+        if (selectedClosureSnapshots.has(snapshotKey)) {
+          await lessonClosures.cancel(closure.transactionId);
+          continue;
+        }
+        selectedClosureSnapshots.add(snapshotKey);
         const learning = await input.learning.access.getRecord(closure.lessonId);
         const pageInstanceId = learning?.writeLease?.pageInstanceId;
         if (learning === undefined || pageInstanceId === undefined) {
@@ -532,6 +563,16 @@ export function createLocalReviewRuntime(
           expectedVersion: learning.resourceVersion,
           pageInstanceId,
         };
+        if (learning.learning.progress === 'in_progress') {
+          await sessionModule.execute(
+            { type: 'CompleteLessonPendingReview', lessonId: closure.lessonId },
+            {
+              ...recoveryContext,
+              commandId: `complete_pending_review_${closure.transactionId}`,
+              idempotencyKey: `complete_pending_review_${closure.transactionId}`,
+            },
+          );
+        }
         if (closure.state === 'committing') {
           await lessonClosures.recover(
             closure.transactionId,

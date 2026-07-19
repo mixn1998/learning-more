@@ -146,6 +146,16 @@ export function createLessonClosureWorkflow(options: {
       if (input.sourceMessageIds.length === 0) {
         throw new LessonClosureError('lesson_not_completable');
       }
+      for await (const existing of options.repository.list()) {
+        if (
+          existing.lessonId === input.lessonId &&
+          existing.sessionId === input.sessionId &&
+          existing.messageRangeChecksum === input.messageRangeChecksum &&
+          existing.state !== 'cancelled'
+        ) {
+          return existing;
+        }
+      }
       const transactionId = options.nextTransactionId();
       const draft: LessonClosureRecord = {
         transactionId,
@@ -155,9 +165,7 @@ export function createLessonClosureWorkflow(options: {
         updatedAt: options.now().toISOString(),
         resourceVersion: 0,
       };
-      const opened = await save(draft);
-      const taskId = await submit(opened, 'initial');
-      return save({ ...opened, state: 'generating', generationTaskId: taskId });
+      return save(draft);
     },
     async fail(transactionId: string, errorCode: string, draftArtifactRef: string) {
       const current = await options.repository.get(transactionId);

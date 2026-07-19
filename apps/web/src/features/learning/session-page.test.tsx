@@ -689,6 +689,52 @@ describe('learning SessionPage', () => {
     expect(screen.queryByText('现在结束将放弃本课')).not.toBeInTheDocument();
   });
 
+  it('returns to the course outline immediately after lesson closure is accepted', async () => {
+    const closeLesson = vi.fn().mockResolvedValue({
+      transactionId: 'closure_01',
+      lessonId: 'lesson_01',
+      state: 'open',
+      generationTaskId: 'pending',
+      progress: 'completed',
+      resourceVersion: 9,
+    });
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 8,
+      learning: { progress: 'in_progress', session: { id: 'session_01', state: 'active' } },
+      closurePreparation: {
+        sessionId: 'session_01',
+        sourceSessionIds: ['session_01'],
+        sourceMessageIds: ['message_ai_final'],
+        messageRangeChecksum: 'a'.repeat(64),
+        endIntent: 'complete_lesson',
+      },
+      teachingProgress: {
+        ledgerVersion: 7,
+        observationStatus: 'current',
+        lessonPhase: 'ready_to_close',
+        comprehensiveCheck: 'completed',
+        closureInquiry: 'confirmed_no_questions',
+        summaryStatus: 'delivered',
+        knowledgePoints: [],
+      },
+    });
+    const onNavigate = vi.fn();
+    render(
+      <SessionPage
+        courseId="course_01"
+        lessonId="lesson_01"
+        client={client({ getSession, closeLesson })}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
+    fireEvent.click(screen.getByRole('button', { name: '完成本课' }));
+
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('/courses/course_01'));
+    expect(closeLesson).toHaveBeenCalledTimes(1);
+  });
+
   it('immediately reports final Review generation while lesson closure continues in background', async () => {
     const closeLesson = vi.fn(() => new Promise<never>(() => undefined));
     const getSession = vi.fn().mockResolvedValue({

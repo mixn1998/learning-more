@@ -175,6 +175,17 @@ function hasUnansweredUserMessage(messages: readonly SessionMessageView[] | unde
   return latestUserMessage !== undefined && !hasAssistantResponse(messages);
 }
 
+function lessonClosureFailureMessage(error: unknown): string {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : undefined;
+  if (code === 'lesson_not_completable') return '教学尚未闭环，暂时不能完成本课。';
+  if (code === 'projection_incomplete') return '教学记录仍在同步，请稍后重试完成本课。';
+  if (code === 'source_snapshot_changed') return '会话内容已经变化，请重新确认后完成本课。';
+  return '完成本课失败，请重试。';
+}
+
 const GENERATION_RECONCILIATION_DELAY_MS = 8_000;
 const GENERATION_PROJECTION_POLL_MS = 1_000;
 
@@ -1350,8 +1361,9 @@ export function SessionPage(props: {
             resourceVersion: result.resourceVersion,
           });
         }
-      } catch {
-        dispatch({ type: 'closure-request-failed', error: '完成本课失败，请重试。' });
+        props.onNavigate?.(props.courseId === undefined ? '/' : `/courses/${props.courseId}`);
+      } catch (error) {
+        dispatch({ type: 'closure-request-failed', error: lessonClosureFailureMessage(error) });
       }
     });
 
