@@ -21,6 +21,7 @@ import {
 import type { LessonRecordView, LessonTeachingProgress } from '@learning-more/contracts';
 
 import type { LearningSessionModule } from '../../modules/learning-session/interface.js';
+import { collapseRetryDuplicateUserMessages } from '../../modules/learning-session/implementation/effective-message-projection.js';
 import type { InteractiveTeaching } from '../../modules/interactive-teaching/interface.js';
 import { buildCommandContext, buildQueryContext } from '../command-context.js';
 import { mapApplicationError } from '../error-mapper.js';
@@ -446,17 +447,19 @@ export async function registerLearningSessionRoutes(
         const messages =
           storedMessages === undefined
             ? undefined
-            : await Promise.all(
-                storedMessages.map(async (message) => ({
-                  id: message.id,
-                  role: message.role,
-                  createdAt: message.createdAt,
-                  markdown:
-                    (await options.loadArtifactMarkdown?.(message.contentArtifactRef)) ?? '',
-                  ...(message.generationTaskId === undefined
-                    ? {}
-                    : { generationTaskId: message.generationTaskId }),
-                })),
+            : collapseRetryDuplicateUserMessages(
+                await Promise.all(
+                  storedMessages.map(async (message) => ({
+                    id: message.id,
+                    role: message.role,
+                    createdAt: message.createdAt,
+                    markdown:
+                      (await options.loadArtifactMarkdown?.(message.contentArtifactRef)) ?? '',
+                    ...(message.generationTaskId === undefined
+                      ? {}
+                      : { generationTaskId: message.generationTaskId }),
+                  })),
+                ),
               );
         const sourceMessageIds = messages?.map((message) => message.id) ?? [];
         const sessionSnapshotHash =

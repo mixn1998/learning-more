@@ -301,6 +301,73 @@ describe('LearningSession HTTP contract', () => {
     expect(response.json().sessionSnapshotHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it('projects an old adjacent duplicate retry as one effective user message', async () => {
+    const module: LearningSessionModule = {
+      execute: vi.fn(),
+      query: vi.fn().mockResolvedValue({
+        learning: {
+          lessonId: 'lesson_01',
+          progress: 'in_progress',
+          processedCommandIds: [],
+          session: {
+            id: 'session_01',
+            state: 'paused',
+            messageIds: ['message_original', 'message_retry', 'message_reply'],
+            evidenceCheckpoint: true,
+          },
+        },
+        resourceVersion: 4,
+        actualSeconds: 120,
+      }),
+    };
+    const markdownByRef = new Map([
+      ['artifact_original', 'same learner answer'],
+      ['artifact_retry', 'same learner answer'],
+      ['artifact_reply', 'assistant reply'],
+    ]);
+    const { app } = fixture({
+      module,
+      listSessionMessages: vi.fn().mockResolvedValue([
+        {
+          id: 'message_original',
+          role: 'user',
+          createdAt: '2026-07-13T00:00:00.000Z',
+          contentArtifactRef: 'artifact_original',
+        },
+        {
+          id: 'message_retry',
+          role: 'user',
+          createdAt: '2026-07-13T00:01:00.000Z',
+          contentArtifactRef: 'artifact_retry',
+        },
+        {
+          id: 'message_reply',
+          role: 'assistant',
+          createdAt: '2026-07-13T00:02:00.000Z',
+          contentArtifactRef: 'artifact_reply',
+          generationTaskId: 'task_reply',
+        },
+      ]),
+      loadArtifactMarkdown: vi.fn(async (artifactRef) => markdownByRef.get(artifactRef)),
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/lesson-sessions/session_01',
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      messages: [
+        { id: 'message_retry', role: 'user', markdown: 'same learner answer' },
+        { id: 'message_reply', role: 'assistant', markdown: 'assistant reply' },
+      ],
+      closurePreparation: {
+        sourceMessageIds: ['message_retry', 'message_reply'],
+      },
+    });
+  });
+
   it('returns lesson-record messages with explicit roles instead of visible-text prefixes', async () => {
     const { app } = fixture({
       getLessonRecord: vi.fn().mockResolvedValue({

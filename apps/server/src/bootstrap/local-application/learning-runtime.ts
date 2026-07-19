@@ -14,6 +14,7 @@ import { createGenerationTeachingObserver } from '../../modules/interactive-teac
 import { emphasisFor } from '../../modules/interactive-teaching/implementation/teaching-depth-policy.js';
 import { createInteractiveTeaching } from '../../modules/interactive-teaching/implementation/interactive-teaching.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
+import { collapseRetryDuplicateUserMessages } from '../../modules/learning-session/implementation/effective-message-projection.js';
 import { createLocalFileMessageLog } from '../../modules/learning-session/implementation/message-log.js';
 import { createSessionModule } from '../../modules/learning-session/implementation/session-module.js';
 import { createSupplementarySessionModule } from '../../modules/learning-session/implementation/supplementary-session-module.js';
@@ -460,13 +461,15 @@ export function createLocalLearningRuntime(
       if (course === undefined) {
         throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
       }
-      const originalMessages = await Promise.all(
-        messages.map(async (message) => {
-          const markdown =
-            (await input.artifactStore.read(message.contentArtifactRef))?.content ??
-            (await input.artifactStore.readDraft(message.contentArtifactRef));
-          return { id: message.id, role: message.role, markdown: markdown ?? '' };
-        }),
+      const originalMessages = collapseRetryDuplicateUserMessages(
+        await Promise.all(
+          messages.map(async (message) => {
+            const markdown =
+              (await input.artifactStore.read(message.contentArtifactRef))?.content ??
+              (await input.artifactStore.readDraft(message.contentArtifactRef));
+            return { id: message.id, role: message.role, markdown: markdown ?? '' };
+          }),
+        ),
       );
       const supplementary = [];
       for await (const session of supplementarySessions.listByLesson(lessonId)) {

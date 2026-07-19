@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { teachingPlayIntent } from '../../modules/interactive-teaching/implementation/teaching-play-intent.js';
 import { teachingWeightStatus } from '../../modules/course-authoring/implementation/teaching-weight-service.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
+import { collapseRetryDuplicateUserMessages } from '../../modules/learning-session/implementation/effective-message-projection.js';
 import { createLocalFileMessageLog } from '../../modules/learning-session/implementation/message-log.js';
 import { createLocalFileLearningSessionRepositories } from '../../persistence/learning-session-repositories.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
@@ -76,7 +77,7 @@ export function createLearningTeachingContext(input: {
     },
     async listMessages(sessionId) {
       const messages = await input.listMessages(sessionId);
-      return Promise.all(
+      const materialized = await Promise.all(
         messages.map(async (message) => ({
           messageId: message.id,
           role: message.role,
@@ -91,6 +92,7 @@ export function createLearningTeachingContext(input: {
             : { generationTaskId: message.generationTaskId }),
         })),
       );
+      return collapseRetryDuplicateUserMessages(materialized);
     },
     async listRelevantFinalReviews(courseId, lessonId) {
       const reviews = [];
