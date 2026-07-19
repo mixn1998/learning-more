@@ -21,7 +21,7 @@ export type LearningSessionCommand =
   | Readonly<{
       type: 'startGeneration';
       taskId: string;
-      mode: 'new-turn' | 'retry';
+      mode: 'new-turn' | 'retry' | 'recovery';
     }>
   | Readonly<{ type: 'stopGeneration' }>
   | Readonly<{ type: 'abandon' }>

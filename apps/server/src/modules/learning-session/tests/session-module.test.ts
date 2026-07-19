@@ -366,7 +366,7 @@ describe('LearningSession module', () => {
     expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
   });
 
-  it('binds a retry while paused without resuming time and still rejects a new turn', async () => {
+  it('keeps user input blocked while allowing internal generation binding during pause', async () => {
     const { module, repositories, advance } = fixture();
     await module.execute(
       { type: 'StartLesson', lessonId: 'lesson_01' },
@@ -381,10 +381,10 @@ describe('LearningSession module', () => {
     await expect(
       module.execute(
         {
-          type: 'StartSessionGeneration',
+          type: 'AppendUserMessage',
           lessonId: 'lesson_01',
-          taskId: 'task_new_turn',
-          mode: 'new-turn',
+          messageId: 'message_blocked',
+          contentArtifactRef: 'artifact:message_blocked',
         },
         {
           ...context('new_turn_while_paused', 'page_a'),
@@ -393,6 +393,25 @@ describe('LearningSession module', () => {
       ),
     ).rejects.toMatchObject({ code: 'session_not_writable' });
 
+    const internallyStarted = await module.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_01',
+        taskId: 'task_existing_turn',
+        mode: 'new-turn',
+      },
+      {
+        ...context('bind_existing_turn_while_paused', 'page_a'),
+        expectedVersion: paused.value.resourceVersion,
+      },
+    );
+    const stopped = await module.execute(
+      { type: 'StopSessionGeneration', lessonId: 'lesson_01' },
+      {
+        ...context('stop_existing_turn_while_paused', 'page_a'),
+        expectedVersion: internallyStarted.value.resourceVersion,
+      },
+    );
     const retried = await module.execute(
       {
         type: 'StartSessionGeneration',
@@ -402,7 +421,7 @@ describe('LearningSession module', () => {
       },
       {
         ...context('retry_while_paused', 'page_a'),
-        expectedVersion: paused.value.resourceVersion,
+        expectedVersion: stopped.value.resourceVersion,
       },
     );
     advance(20_000);
@@ -416,7 +435,7 @@ describe('LearningSession module', () => {
         receivedAt: nowIso(),
       },
     );
-    expect(retried.value.resourceVersion).toBe(paused.value.resourceVersion + 1);
+    expect(retried.value.resourceVersion).toBe(paused.value.resourceVersion + 3);
     expect(view.actualSeconds).toBe(8);
     expect(view.learning.session).toMatchObject({
       state: 'paused',
