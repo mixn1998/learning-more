@@ -34,7 +34,9 @@ describe('shared chat components', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: '重新发送' })).toHaveTextContent('↻');
+    expect(
+      screen.getByRole('button', { name: '重新发送' }).querySelector('svg.chat-retry-icon'),
+    ).not.toBeNull();
     expect(screen.getByRole('button', { name: '重新编辑' })).toHaveTextContent('✎');
 
     rerender(

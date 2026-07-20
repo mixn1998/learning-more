@@ -3,7 +3,12 @@ import { useEffect, useState } from 'react';
 import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface } from '@learning-more/ui';
 
-import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+import {
+  ChatComposer,
+  ConversationStream,
+  RetryIcon,
+  UserMessageRow,
+} from '../../components/chat/chat.js';
 import { BrandIdentity } from '../../components/brand/brand-identity.js';
 
 import './lesson-session-workspace.css';
@@ -226,7 +231,7 @@ export function LessonSessionWorkspace(props: {
                             type="button"
                             onClick={props.onRetryMessage}
                           >
-                            <span aria-hidden="true">↻</span>
+                            <RetryIcon />
                           </button>
                         </footer>
                       ) : null}

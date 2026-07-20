@@ -14,6 +14,15 @@ import './chat.css';
 
 export type MessageDeliveryStatus = 'submitting' | 'complete' | 'failed';
 
+export function RetryIcon() {
+  return (
+    <svg aria-hidden="true" className="chat-retry-icon" focusable="false" viewBox="0 0 24 24">
+      <path d="M4 4v5h5" />
+      <path d="M4.6 8.7A8.5 8.5 0 1 1 3.5 15" />
+    </svg>
+  );
+}
+
 export type UserMessageBubbleProps = Readonly<{
   text: string;
   tone?: 'normal' | 'danger' | undefined;
@@ -114,7 +123,7 @@ export function UserMessageRow(props: UserMessageRowProps) {
               type="button"
               onClick={props.onRetry}
             >
-              <span aria-hidden="true">↻</span>
+              <RetryIcon />
             </button>
           )}
           {props.onEdit === undefined ? null : (

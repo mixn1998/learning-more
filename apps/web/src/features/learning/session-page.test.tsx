@@ -521,7 +521,7 @@ describe('learning SessionPage', () => {
     const interruptedMessage = interruptedReply.closest('article');
     expect(interruptedMessage).not.toBeNull();
     const regenerate = within(interruptedMessage!).getByRole('button', { name: '重新生成' });
-    expect(regenerate).toHaveTextContent('↻');
+    expect(regenerate.querySelector('svg.chat-retry-icon')).not.toBeNull();
     expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
 
     fireEvent.click(regenerate);
@@ -560,7 +560,11 @@ describe('learning SessionPage', () => {
     fireEvent.change(input, { target: { value: '请解释函数变换' } });
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
 
-    expect(await screen.findByRole('button', { name: '重新生成' })).toHaveTextContent('↻');
+    expect(
+      (await screen.findByRole('button', { name: '重新生成' })).querySelector(
+        'svg.chat-retry-icon',
+      ),
+    ).not.toBeNull();
     expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
   });
 
@@ -1218,7 +1222,9 @@ describe('learning SessionPage', () => {
     render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
 
     expect(await screen.findByText('这一轮没有得到 AI 回答。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '重新生成' })).toHaveTextContent('↻');
+    expect(
+      screen.getByRole('button', { name: '重新生成' }).querySelector('svg.chat-retry-icon'),
+    ).not.toBeNull();
   });
 
   it('restores regenerate on a persisted interrupted AI fragment after refresh', async () => {
@@ -1240,9 +1246,11 @@ describe('learning SessionPage', () => {
     const fragment = await screen.findByText('接下来比较：');
     const interruptedMessage = fragment.closest('article');
     expect(interruptedMessage).not.toBeNull();
-    expect(within(interruptedMessage!).getByRole('button', { name: '重新生成' })).toHaveTextContent(
-      '↻',
-    );
+    expect(
+      within(interruptedMessage!)
+        .getByRole('button', { name: '重新生成' })
+        .querySelector('svg.chat-retry-icon'),
+    ).not.toBeNull();
   });
 
   it('holds the visible learning timer during AI generation and resumes it after completion', async () => {

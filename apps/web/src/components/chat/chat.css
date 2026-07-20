@@ -66,6 +66,39 @@
   font-size: 15px;
   cursor: pointer;
   place-items: center;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.chat-retry-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.chat-user-action:hover:not(:disabled) {
+  border-color: color-mix(
+    in srgb,
+    var(--lm-accent-dark, var(--accent-dark)) 36%,
+    var(--lm-line, var(--line))
+  );
+  background: color-mix(
+    in srgb,
+    var(--lm-accent-dark, var(--accent-dark)) 8%,
+    var(--lm-paper, var(--paper))
+  );
+  color: var(--lm-accent-dark, var(--accent-dark));
+}
+
+.chat-user-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--lm-accent-dark, var(--accent-dark)) 48%, transparent);
+  outline-offset: 2px;
 }
 
 .chat-user-action.primary {
