@@ -53,6 +53,39 @@ describe('UnitOfWork [EQ-DATA-02]', () => {
     });
   });
 
+  it('keeps the last committed file readable while a replacement is being committed', async () => {
+    const root = await temporaryDataRoot();
+    await mkdir(path.join(root.absolutePath, 'work'), { recursive: true });
+    const target = path.join(root.absolutePath, 'work', 'state.json');
+    await writeFile(target, '{"version":1}\n', 'utf8');
+    let releaseBackup!: () => void;
+    let markBackedUp!: () => void;
+    const backedUp = new Promise<void>((resolve) => {
+      markBackedUp = resolve;
+    });
+    const mayContinue = new Promise<void>((resolve) => {
+      releaseBackup = resolve;
+    });
+    const unitOfWork = createUnitOfWork({
+      dataRoot: root,
+      async faultInjector(point) {
+        if (point !== 'after-backup:0') return;
+        markBackedUp();
+        await mayContinue;
+      },
+    });
+
+    const committing = unitOfWork.execute({ transactionId: 'tx_readable_replace' }, async (tx) => {
+      await tx.stageJson('work/state.json', { version: 2 });
+    });
+    await backedUp;
+
+    await expect(readFile(target, 'utf8')).resolves.toBe('{"version":1}\n');
+    releaseBackup();
+    await committing;
+    await expect(readFile(target, 'utf8')).resolves.toBe('{"version":2}\n');
+  });
+
   it('does not let a second writer remove or replace an active lease', async () => {
     const root = await temporaryDataRoot();
     const first = await acquireStoreWriteLease(root, { instanceId: 'instance-a', processId: 101 });

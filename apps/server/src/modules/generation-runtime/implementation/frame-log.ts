@@ -44,6 +44,15 @@ function reconciledMeta(
   };
 }
 
+function terminalStateForType(
+  type: GenerationStreamEvent['type'],
+): GenerationFrameMeta['state'] | undefined {
+  if (type === 'task.completed') return 'completed';
+  if (type === 'task.failed') return 'failed';
+  if (type === 'task.cancelled') return 'cancelled';
+  return undefined;
+}
+
 export function createGenerationFrameLog(
   dataRoot: DataRoot,
   options: { readonly maxFrames: number } = { maxFrames: 1_000 },
@@ -106,6 +115,14 @@ export function createGenerationFrameLog(
         const storedMeta = await readMeta(taskId);
         const existingFrames = await readFrames(taskId);
         const meta = reconciledMeta(storedMeta, existingFrames);
+        if (['completed', 'failed', 'cancelled'].includes(meta.state)) {
+          throw Object.assign(new Error('generation_frame_terminal_already_recorded'), {
+            code: 'generation_frame_terminal_already_recorded',
+            taskId,
+            terminalState: meta.state,
+            attemptedState: terminalStateForType(type),
+          });
+        }
         const frame = GenerationStreamEventSchema.parse({
           taskId,
           sequence: meta.lastSequence + 1,

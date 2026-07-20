@@ -6,8 +6,9 @@ import { createInMemoryWeeklyReportRepository } from '../ports/weekly-report-rep
 import { createWeeklyReportScheduler } from '../implementation/weekly-report-scheduler.js';
 import {
   createWeeklyReportService,
-  deterministicWeeklyReportMarkdown,
+  legacyDeterministicWeeklyReportMarkdown,
 } from '../implementation/weekly-report-service.js';
+import { EMPTY_WEEKLY_REPORT_MARKDOWN } from '../implementation/weekly-report-output.js';
 
 const tx = {
   stageJson: async () => undefined,
@@ -35,25 +36,21 @@ function completedFact(id: string, occurredAt: string): LearningFact {
 }
 
 describe('WeeklyReportScheduler', () => {
-  it('fires once at Monday 00:00 and compensates after downtime across an ISO year boundary', async () => {
-    const existing = new Set<string>();
+  it('supplies the canonical completed window across an ISO year boundary', async () => {
     const commands: Array<{ localWeekKey: string; startLocalDate: string; endLocalDate: string }> =
       [];
     const scheduler = createWeeklyReportScheduler({
       timeZone: 'Asia/Shanghai',
-      hasReport: async (command) => existing.has(command.localWeekKey),
-      enqueue: async (command) => {
+      reconcile: async (command) => {
         commands.push(command);
-        existing.add(command.localWeekKey);
+        return undefined;
       },
     });
     await scheduler.tick(new Date('2026-07-12T16:00:00.000Z'));
-    await scheduler.tick(new Date('2026-07-12T16:00:10.000Z'));
     expect(commands).toEqual([
       { localWeekKey: '2026-W28', startLocalDate: '2026-07-06', endLocalDate: '2026-07-13' },
     ]);
 
-    existing.clear();
     commands.length = 0;
     await scheduler.tick(new Date('2027-01-04T18:00:00.000Z'));
     expect(commands).toEqual([
@@ -65,7 +62,6 @@ describe('WeeklyReportScheduler', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-12T15:59:30.000Z'));
     try {
-      const existing = new Set<string>();
       const commands: Array<{
         localWeekKey: string;
         startLocalDate: string;
@@ -73,14 +69,14 @@ describe('WeeklyReportScheduler', () => {
       }> = [];
       const scheduler = createWeeklyReportScheduler({
         timeZone: 'Asia/Shanghai',
-        hasReport: async (command) => existing.has(command.localWeekKey),
-        enqueue: async (command) => {
+        reconcile: async (command) => {
           commands.push(command);
-          existing.add(command.localWeekKey);
+          return undefined;
         },
       });
 
       await scheduler.start();
+      await vi.advanceTimersByTimeAsync(0);
       expect(commands).toEqual([
         { localWeekKey: '2026-W27', startLocalDate: '2026-06-29', endLocalDate: '2026-07-06' },
       ]);
@@ -96,9 +92,68 @@ describe('WeeklyReportScheduler', () => {
       vi.useRealTimers();
     }
   });
+
+  it('retries failed reconciliation at the durable due time without waiting a week', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-20T00:00:00.000Z'));
+    try {
+      let calls = 0;
+      const scheduler = createWeeklyReportScheduler({
+        timeZone: 'Asia/Shanghai',
+        now: () => new Date(),
+        reconcile: async () => {
+          calls += 1;
+          return calls === 1 ? new Date('2026-07-20T00:00:05.000Z') : undefined;
+        },
+      });
+
+      await scheduler.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toBe(1);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(calls).toBe(2);
+      scheduler.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('WeeklyReportService', () => {
+  it('finalizes an empty canonical week without submitting an AI task', async () => {
+    const reports = createInMemoryWeeklyReportRepository();
+    const submit = vi.fn();
+    const finalizeArtifact = vi.fn().mockResolvedValue(undefined);
+    const service = createWeeklyReportService({
+      repository: reports,
+      factRepository: createInMemoryFactRepository(),
+      unitOfWork,
+      generationRuntime: { submit },
+      finalizeArtifact,
+      timeZone: 'Asia/Shanghai',
+      now: () => new Date('2026-07-20T00:00:00.000Z'),
+    });
+
+    const report = await service.generate({
+      localWeekKey: '2026-W28',
+      startLocalDate: '2026-07-06',
+      endLocalDate: '2026-07-13',
+      commandId: 'empty_week',
+    });
+
+    expect(report).toMatchObject({
+      state: 'finalized',
+      factSnapshot: [],
+      sourceRefs: [],
+      generationTaskId: expect.stringMatching(/^weekly_report_empty_2026-W28_/u),
+    });
+    expect(submit).not.toHaveBeenCalled();
+    expect(finalizeArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ content: EMPTY_WEEKLY_REPORT_MARKDOWN, immutable: true }),
+      expect.any(Object),
+    );
+  });
+
   it('freezes compact completion summaries, rebuilds failed snapshots, and finalizes immutably', async () => {
     const facts = createInMemoryFactRepository();
     await facts.append(tx, completedFact('inside', '2026-07-08T12:00:00.000Z'));
@@ -159,7 +214,8 @@ describe('WeeklyReportService', () => {
       ],
       generationTaskId: 'task_week_1',
       resourceVersion: 1,
-      metricDefinitionVersion: 3,
+      metricDefinitionVersion: 4,
+      attemptCount: 1,
     });
     expect(submit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -190,6 +246,8 @@ describe('WeeklyReportService', () => {
     expect(failed).toMatchObject({
       state: 'failed',
       factSnapshotHash: generating.factSnapshotHash,
+      attemptCount: 1,
+      nextRetryAt: '2026-07-12T00:05:00.000Z',
     });
     const retrying = await service.retry('2026-W28', 'retry_01');
     expect(retrying).toMatchObject({
@@ -199,6 +257,8 @@ describe('WeeklyReportService', () => {
         expect.objectContaining({ factId: 'inside' }),
         expect.objectContaining({ factId: 'late' }),
       ],
+      attemptCount: 2,
+      metricDefinitionVersion: 4,
     });
     expect(retrying.factSnapshotHash).not.toBe(generating.factSnapshotHash);
     expect(prepareSnapshot).toHaveBeenCalledTimes(2);
@@ -218,12 +278,14 @@ describe('WeeklyReportService', () => {
       ),
     ).rejects.toThrow('weekly_report_source_unsupported:fact:invented');
 
-    const fallbackMarkdown = deterministicWeeklyReportMarkdown(retrying);
-    expect(Array.from(fallbackMarkdown.replace(/<!--[^]*?-->/gu, '')).length).toBeLessThanOrEqual(
-      300,
-    );
-    expect(fallbackMarkdown).toContain('上周完成 2 节课');
-    const finalized = await service.finalize('2026-W28', 'task_week_2', fallbackMarkdown);
+    const semanticMarkdown = [
+      '# 上周学习成果概括',
+      '',
+      '上周完成 2 节数学课程。 <!-- sources:fact:inside,fact:late -->',
+      '',
+      '- **概率与随机变量**：理解概率空间如何描述随机试验，并进一步认识随机变量如何把试验结果映射为可分析的数值。 <!-- sources:fact:inside,fact:late -->',
+    ].join('\n');
+    const finalized = await service.finalize('2026-W28', 'task_week_2', semanticMarkdown);
     expect(finalized).toMatchObject({
       state: 'finalized',
       artifactRef: expect.stringMatching(/^weekly_report_2026-W28_/u),
@@ -259,9 +321,58 @@ describe('WeeklyReportService', () => {
       startLocalDate: '2026-07-06',
       endLocalDate: '2026-07-13',
       generationTaskId: 'task_week_3',
-      metricDefinitionVersion: 3,
+      metricDefinitionVersion: 4,
     });
     expect(repaired.factSnapshot.map((fact) => fact.factId)).toEqual(['inside', 'late', 'sunday']);
     expect(repaired.artifactRef).toBeUndefined();
+  });
+
+  it('reopens only a finalized artifact that exactly matches the retired mechanical fallback', async () => {
+    const facts = createInMemoryFactRepository();
+    await facts.append(tx, completedFact('legacy', '2026-07-08T12:00:00.000Z'));
+    const reports = createInMemoryWeeklyReportRepository();
+    const submit = vi
+      .fn()
+      .mockResolvedValueOnce({ taskId: 'task_legacy_1' })
+      .mockResolvedValueOnce({ taskId: 'task_legacy_2' });
+    const service = createWeeklyReportService({
+      repository: reports,
+      factRepository: facts,
+      unitOfWork,
+      generationRuntime: { submit },
+      finalizeArtifact: vi.fn().mockResolvedValue(undefined),
+      timeZone: 'Asia/Shanghai',
+      now: () => new Date('2026-07-20T00:00:00.000Z'),
+    });
+    const generating = await service.generate({
+      localWeekKey: '2026-W28',
+      startLocalDate: '2026-07-06',
+      endLocalDate: '2026-07-13',
+      commandId: 'seed_legacy',
+    });
+    const legacy = legacyDeterministicWeeklyReportMarkdown(generating);
+    const finalized = await service.finalize('2026-W28', 'task_legacy_1', legacy);
+    expect(service.isLegacyDeterministicOutput(finalized, legacy)).toBe(true);
+    expect(service.isLegacyDeterministicOutput(finalized, `${legacy}\n`)).toBe(false);
+
+    const regenerating = await service.regenerateLegacyFallback(
+      '2026-W28',
+      { startLocalDate: '2026-07-06', endLocalDate: '2026-07-13' },
+      legacy,
+    );
+    expect(regenerating).toMatchObject({
+      state: 'generating',
+      generationTaskId: 'task_legacy_2',
+      attemptCount: 1,
+      metricDefinitionVersion: 4,
+    });
+    expect(regenerating.artifactRef).toBeUndefined();
+
+    const regenerated = await service.finalize(
+      '2026-W28',
+      'task_legacy_2',
+      '# 上周学习成果概括\n\n上周完成 1 节数学课程，并围绕随机变量建立了整体认识。 <!-- sources:fact:legacy -->',
+    );
+    expect(regenerated.artifactRef).not.toBe(finalized.artifactRef);
   });
 });

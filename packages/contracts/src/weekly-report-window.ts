@@ -39,6 +39,25 @@ function isoWeek(value: string): string {
   return `${weekYear}-W${String(week).padStart(2, '0')}`;
 }
 
+export function weeklyReportWindowForKey(localWeekKey: string): WeeklyReportWindow {
+  const match = /^(\d{4})-W(\d{2})$/u.exec(localWeekKey);
+  if (match === null) throw new Error(`weekly_report_week_key_invalid:${localWeekKey}`);
+  const weekYear = Number(match[1]);
+  const week = Number(match[2]);
+  const januaryFourth = new Date(Date.UTC(weekYear, 0, 4));
+  const daysSinceMonday = (januaryFourth.getUTCDay() + 6) % 7;
+  januaryFourth.setUTCDate(januaryFourth.getUTCDate() - daysSinceMonday + (week - 1) * 7);
+  const startLocalDate = januaryFourth.toISOString().slice(0, 10);
+  if (week < 1 || week > 53 || isoWeek(startLocalDate) !== localWeekKey) {
+    throw new Error(`weekly_report_week_key_invalid:${localWeekKey}`);
+  }
+  return {
+    localWeekKey,
+    startLocalDate,
+    endLocalDate: addDays(startLocalDate, 7),
+  };
+}
+
 function offsetMilliseconds(instant: Date, timeZone: string): number {
   const name = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -91,11 +110,12 @@ export function completedWeeklyReportWindow(now: Date, timeZone: string): Weekly
   const daysSinceMonday = (weekday(today) + 6) % 7;
   const endLocalDate = addDays(today, -daysSinceMonday);
   const startLocalDate = addDays(endLocalDate, -7);
-  return {
-    localWeekKey: isoWeek(addDays(endLocalDate, -1)),
-    startLocalDate,
-    endLocalDate,
-  };
+  const localWeekKey = isoWeek(startLocalDate);
+  const canonical = weeklyReportWindowForKey(localWeekKey);
+  if (canonical.startLocalDate !== startLocalDate || canonical.endLocalDate !== endLocalDate) {
+    throw new Error(`weekly_report_window_inconsistent:${localWeekKey}`);
+  }
+  return canonical;
 }
 
 export function nextWeeklyReportBoundary(now: Date, timeZone: string): Date {

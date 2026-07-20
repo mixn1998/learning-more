@@ -1,11 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
 import type { LearningFactsRouteOptions } from '../../http/routes/learning-facts.js';
+import { createWeeklyReportCoordinator } from '../../modules/learning-facts/implementation/weekly-report-coordinator.js';
 import { createWeeklyReportScheduler } from '../../modules/learning-facts/implementation/weekly-report-scheduler.js';
-import {
-  createWeeklyReportService,
-  deterministicWeeklyReportMarkdown,
-} from '../../modules/learning-facts/implementation/weekly-report-service.js';
+import { createWeeklyReportService } from '../../modules/learning-facts/implementation/weekly-report-service.js';
 import { weeklyReportMarkdownForRead } from '../../modules/learning-facts/implementation/weekly-report-output.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
@@ -110,57 +108,19 @@ export function createLocalInsightsRuntime(
     timeZone: 'Asia/Shanghai',
     now: input.now,
   });
+  const coordinator = createWeeklyReportCoordinator({
+    repository,
+    service: weeklyReports,
+    execution: input.generation.execution,
+    now: input.now,
+    async readArtifact(artifactRef) {
+      return (await input.artifactStore.read(artifactRef))?.content;
+    },
+  });
   const scheduler = createWeeklyReportScheduler({
     timeZone: 'Asia/Shanghai',
-    hasReport: async (command) => {
-      const report = await repository.get(command.localWeekKey);
-      return (
-        report?.state === 'finalized' &&
-        report.startLocalDate === command.startLocalDate &&
-        report.endLocalDate === command.endLocalDate
-      );
-    },
+    reconcile: coordinator.reconcile,
     now: input.now,
-    async enqueue(command) {
-      let report = await weeklyReports.generate({
-        ...command,
-        commandId: `generate_weekly_${command.localWeekKey}`,
-      });
-      if (report.state === 'failed') {
-        report = await weeklyReports.retry(
-          command.localWeekKey,
-          `retry_weekly_${command.localWeekKey}`,
-        );
-      }
-      if (report.state !== 'generating') return;
-      const task = await input.generation.execution.awaitTerminal(report.generationTaskId);
-      const markdown = task.draftMarkdown?.trim() ?? '';
-      if (task.status !== 'completed' || markdown === '') {
-        await weeklyReports.fail(
-          command.localWeekKey,
-          task.errorCode ?? 'ai_unavailable',
-          `draft_${report.generationTaskId}`,
-        );
-        return;
-      }
-      try {
-        await weeklyReports.finalize(command.localWeekKey, report.generationTaskId, markdown);
-      } catch (error) {
-        try {
-          await weeklyReports.finalize(
-            command.localWeekKey,
-            report.generationTaskId,
-            deterministicWeeklyReportMarkdown(report),
-          );
-        } catch {
-          await weeklyReports.fail(
-            command.localWeekKey,
-            error instanceof Error ? error.message : 'weekly_report_output_invalid',
-            `draft_${report.generationTaskId}`,
-          );
-        }
-      }
-    },
   });
 
   return {

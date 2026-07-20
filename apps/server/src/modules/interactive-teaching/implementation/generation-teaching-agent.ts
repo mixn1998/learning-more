@@ -23,9 +23,22 @@ import {
 
 const STRUCTURED_TASK_PREFIX = 'interactive-teaching-control-v1:';
 const STREAM_POLL_INTERVAL_MS = 20;
+const TRANSIENT_TASK_READ_RETRIES = 10;
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function isTransientTaskRead(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message === 'GENERATION_TASK_NOT_FOUND' ||
+      (error as Error & { code?: string }).code === 'GENERATION_TASK_NOT_FOUND')
+  );
+}
+
+async function waitForNextTaskProjection(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, STREAM_POLL_INTERVAL_MS));
 }
 
 export function renderTeachingConversationInput(context: TeachingContextPackage): string {
@@ -55,6 +68,17 @@ export function createGenerationTeachingAgent(options: {
   execution?: GenerationExecution;
   providerId: string;
 }): TeachingAgent {
+  async function readStreamingTask(taskId: string) {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await options.runtime.get(taskId);
+      } catch (error) {
+        if (!isTransientTaskRead(error) || attempt >= TRANSIENT_TASK_READ_RETRIES) throw error;
+        await waitForNextTaskProjection();
+      }
+    }
+  }
+
   async function publish(
     events: readonly TeachingResponseStreamEvent[],
     observer: TeachingAgentCompletionObserver | undefined,
@@ -135,10 +159,10 @@ export function createGenerationTeachingAgent(options: {
           await (options.execution ?? options.runtime).cancel(taskId);
           throw new Error('teaching_generation_cancelled');
         }
-        await consume((await options.runtime.get(taskId)).draftMarkdown);
+        await consume((await readStreamingTask(taskId)).draftMarkdown);
         if (terminalSettled) break;
         await Promise.race([
-          new Promise((resolve) => setTimeout(resolve, STREAM_POLL_INTERVAL_MS)),
+          waitForNextTaskProjection(),
           terminalPromise.then(
             () => undefined,
             () => undefined,

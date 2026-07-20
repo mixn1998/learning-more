@@ -49,6 +49,8 @@ const WeeklyReportSchema = z.strictObject({
   projectionCursor: z.string().min(1).optional(),
   metricDefinitionVersion: z.number().int().positive(),
   generationTaskId: z.string().min(1),
+  attemptCount: z.number().int().positive().optional(),
+  nextRetryAt: z.iso.datetime({ offset: true }).optional(),
   artifactRef: z.string().min(1).optional(),
   contentSha256: checksum.optional(),
   errorCode: z.string().min(1).optional(),
@@ -112,6 +114,25 @@ export function createLocalFileWeeklyReportRepository(dataRoot: DataRoot): Weekl
         current.endLocalDate === record.endLocalDate
       ) {
         throw new Error('weekly_report_window_unchanged');
+      }
+      if (
+        current.resourceVersion !== expectedVersion ||
+        record.resourceVersion !== expectedVersion
+      ) {
+        throw new RepositoryVersionConflictError(current.resourceVersion);
+      }
+      await stageRecord(tx, record, expectedVersion);
+    },
+    async replaceInvalidOutput(tx, record, expectedVersion, expectedContentSha256) {
+      const current = await repository.get(record.localWeekKey);
+      if (current === undefined) throw new Error('weekly_report_not_found');
+      if (
+        current.state !== 'finalized' ||
+        current.contentSha256 !== expectedContentSha256 ||
+        current.startLocalDate !== record.startLocalDate ||
+        current.endLocalDate !== record.endLocalDate
+      ) {
+        throw new Error('weekly_report_output_not_replaceable');
       }
       if (
         current.resourceVersion !== expectedVersion ||

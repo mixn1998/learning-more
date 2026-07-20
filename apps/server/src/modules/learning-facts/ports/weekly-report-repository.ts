@@ -34,6 +34,8 @@ export type WeeklyReportRecord = Readonly<{
   projectionCursor?: string;
   metricDefinitionVersion: number;
   generationTaskId: string;
+  attemptCount?: number;
+  nextRetryAt?: string;
   artifactRef?: string;
   contentSha256?: string;
   errorCode?: string;
@@ -50,6 +52,12 @@ export interface WeeklyReportRepository {
     tx: TransactionContext,
     record: WeeklyReportRecord,
     expectedVersion: number,
+  ): Promise<void>;
+  replaceInvalidOutput(
+    tx: TransactionContext,
+    record: WeeklyReportRecord,
+    expectedVersion: number,
+    expectedContentSha256: string,
   ): Promise<void>;
   list(): AsyncIterable<WeeklyReportRecord>;
 }
@@ -85,6 +93,28 @@ export function createInMemoryWeeklyReportRepository(): WeeklyReportRepository {
       }
       if (currentVersion !== expectedVersion || record.resourceVersion !== expectedVersion) {
         throw new RepositoryVersionConflictError(currentVersion);
+      }
+      records.set(
+        record.localWeekKey,
+        structuredClone({ ...record, resourceVersion: expectedVersion + 1 }),
+      );
+    },
+    async replaceInvalidOutput(_tx, record, expectedVersion, expectedContentSha256) {
+      const current = records.get(record.localWeekKey);
+      if (current === undefined) throw new Error('weekly_report_not_found');
+      if (
+        current.state !== 'finalized' ||
+        current.contentSha256 !== expectedContentSha256 ||
+        current.startLocalDate !== record.startLocalDate ||
+        current.endLocalDate !== record.endLocalDate
+      ) {
+        throw new Error('weekly_report_output_not_replaceable');
+      }
+      if (
+        current.resourceVersion !== expectedVersion ||
+        record.resourceVersion !== expectedVersion
+      ) {
+        throw new RepositoryVersionConflictError(current.resourceVersion);
       }
       records.set(
         record.localWeekKey,

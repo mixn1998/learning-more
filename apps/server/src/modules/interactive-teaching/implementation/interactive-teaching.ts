@@ -243,23 +243,11 @@ export function createInteractiveTeaching(options: {
       const artifactRef = `assistant-message:${assistantMessageId}`;
       let streamedMarkdown = '';
       let streamProjectionAvailable = true;
-      let directiveValidated = false;
       try {
         streamProjectionAvailable = await tryAppendFrame(accepted.taskId, 'message.started', {
           messageId: assistantMessageId,
         });
         const result = await options.agent.complete(accepted.taskId, {
-          async onDirective(directive) {
-            await validateDirective({
-              courseId: input.courseId,
-              lessonId: input.lessonId,
-              sessionId: input.sessionId,
-              directive,
-              baseState: input.assembled.teachingState,
-              ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
-            });
-            directiveValidated = true;
-          },
           async onReplyDelta(markdown) {
             if (markdown.length === 0 || !streamProjectionAvailable) return;
             const appended = await tryAppendFrame(accepted.taskId, 'message.delta', {
@@ -273,16 +261,18 @@ export function createInteractiveTeaching(options: {
             streamedMarkdown += markdown;
           },
         });
-        if (!directiveValidated) {
-          await validateDirective({
-            courseId: input.courseId,
-            lessonId: input.lessonId,
-            sessionId: input.sessionId,
-            directive: result.directive,
-            baseState: input.assembled.teachingState,
-            ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
-          });
-        }
+        // The hidden control block is parsed incrementally so the visible reply can
+        // stream, but it is business-validated only after the authoritative task
+        // reaches completion. A partial/in-flight projection must never terminate
+        // an otherwise healthy provider task.
+        await validateDirective({
+          courseId: input.courseId,
+          lessonId: input.lessonId,
+          sessionId: input.sessionId,
+          directive: result.directive,
+          baseState: input.assembled.teachingState,
+          ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+        });
         if (!result.markdown.startsWith(streamedMarkdown)) {
           throw new Error('teaching_stream_reply_mismatch');
         }

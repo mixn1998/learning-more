@@ -9,7 +9,10 @@ import type {
   WeeklyReportRepository,
 } from '../ports/weekly-report-repository.js';
 import { assembleWeeklyEvidence } from './weekly-evidence-assembler.js';
-import { validateWeeklyReportMarkdown } from './weekly-report-output.js';
+import {
+  EMPTY_WEEKLY_REPORT_MARKDOWN,
+  validateWeeklyReportMarkdown,
+} from './weekly-report-output.js';
 
 class WeeklyReportError extends Error {
   constructor(readonly code: 'weekly_report_not_found' | 'weekly_report_immutable') {
@@ -81,7 +84,7 @@ function truncateText(value: string, maximumCharacters: number): string {
     : `${characters.slice(0, Math.max(1, maximumCharacters - 1)).join('')}…`;
 }
 
-export function deterministicWeeklyReportMarkdown(
+export function legacyDeterministicWeeklyReportMarkdown(
   record: Pick<WeeklyReportRecord, 'factSnapshot'>,
 ): string {
   if (record.factSnapshot.length === 0) {
@@ -118,6 +121,21 @@ export function deterministicWeeklyReportMarkdown(
   }
   const citation = `<!-- sources:${sourceRefs.join(',')} -->`;
   return `# 上周学习成果概括\n\n${overview}${citation}\n\n${lines.join('\n')}\n${citation}`;
+}
+
+export function isLegacyDeterministicWeeklyReportOutput(
+  record: WeeklyReportRecord,
+  markdown: string,
+): boolean {
+  if (record.factSnapshot.length === 0 || record.state !== 'finalized') return false;
+  const legacy = legacyDeterministicWeeklyReportMarkdown(record);
+  return markdown === legacy && record.contentSha256 === sha256(legacy);
+}
+
+function retryDelayMilliseconds(attemptCount: number): number {
+  if (attemptCount <= 1) return 5 * 60_000;
+  if (attemptCount === 2) return 15 * 60_000;
+  return 60 * 60_000;
 }
 
 export function createWeeklyReportService(options: {
@@ -164,6 +182,23 @@ export function createWeeklyReportService(options: {
     await options.unitOfWork.execute(
       { transactionId: `tx_repair_weekly_report_${randomUUID()}` },
       (tx) => options.repository.replaceInvalidWindow(tx, record, record.resourceVersion),
+    );
+    return (await options.repository.get(record.localWeekKey))!;
+  }
+
+  async function replaceInvalidOutput(
+    record: WeeklyReportRecord,
+    expectedContentSha256: string,
+  ): Promise<WeeklyReportRecord> {
+    await options.unitOfWork.execute(
+      { transactionId: `tx_repair_weekly_report_output_${randomUUID()}` },
+      (tx) =>
+        options.repository.replaceInvalidOutput(
+          tx,
+          record,
+          record.resourceVersion,
+          expectedContentSha256,
+        ),
     );
     return (await options.repository.get(record.localWeekKey))!;
   }
@@ -248,6 +283,58 @@ export function createWeeklyReportService(options: {
     };
   }
 
+  async function finalizeRecord(localWeekKey: string, taskId: string, markdown: string) {
+    const current = await options.repository.get(localWeekKey);
+    if (current === undefined) throw new WeeklyReportError('weekly_report_not_found');
+    if (current.state === 'finalized') throw new WeeklyReportError('weekly_report_immutable');
+    if (current.generationTaskId !== taskId) throw new Error('WEEKLY_REPORT_TASK_STALE');
+    const validation = validateWeeklyReportMarkdown(
+      markdown,
+      new Set(current.factSnapshot.map((entry) => entry.sourceRef ?? `fact:${entry.factId}`)),
+    );
+    const contentSha256 = sha256(markdown);
+    const artifactRef = `weekly_report_${localWeekKey}_${current.factSnapshotHash.slice(0, 12)}_${contentSha256.slice(0, 12)}`;
+    const {
+      errorCode: _error,
+      draftArtifactRef: _draft,
+      nextRetryAt: _nextRetryAt,
+      ...withoutFailure
+    } = current;
+    void _error;
+    void _draft;
+    void _nextRetryAt;
+    await options.unitOfWork.execute(
+      { transactionId: `tx_finalize_weekly_${localWeekKey}` },
+      async (tx) => {
+        await options.finalizeArtifact(
+          { artifactId: artifactRef, kind: 'weekly-report', content: markdown, immutable: true },
+          tx,
+        );
+        await options.repository.save(
+          tx,
+          {
+            ...withoutFailure,
+            state: 'finalized',
+            artifactRef,
+            contentSha256,
+            sourceRefs: validation.sourceRefs,
+            updatedAt: options.now().toISOString(),
+          },
+          current.resourceVersion,
+        );
+        await options.recordFinalized?.(
+          { type: 'WeeklyReportFinalized', localWeekKey, artifactRef },
+          tx,
+        );
+      },
+    );
+    return (await options.repository.get(localWeekKey))!;
+  }
+
+  function taskForEmptySnapshot(localWeekKey: string, factSnapshotHash: string) {
+    return { taskId: `weekly_report_empty_${localWeekKey}_${factSnapshotHash.slice(0, 12)}` };
+  }
+
   return {
     async generate(command: {
       localWeekKey: string;
@@ -268,15 +355,18 @@ export function createWeeklyReportService(options: {
         startLocalDate: command.startLocalDate,
         endLocalDate: command.endLocalDate,
       });
-      const task = await submit({
-        localWeekKey: command.localWeekKey,
-        startLocalDate: command.startLocalDate,
-        endLocalDate: command.endLocalDate,
-        timezone: options.timeZone,
-        factSnapshot: snapshot.factSnapshot,
-        factSnapshotHash: snapshot.factSnapshotHash,
-        snapshotExclusions: snapshot.snapshotExclusions,
-      });
+      const task =
+        snapshot.factSnapshot.length === 0
+          ? taskForEmptySnapshot(command.localWeekKey, snapshot.factSnapshotHash)
+          : await submit({
+              localWeekKey: command.localWeekKey,
+              startLocalDate: command.startLocalDate,
+              endLocalDate: command.endLocalDate,
+              timezone: options.timeZone,
+              factSnapshot: snapshot.factSnapshot,
+              factSnapshotHash: snapshot.factSnapshotHash,
+              snapshotExclusions: snapshot.snapshotExclusions,
+            });
       const timestamp = options.now().toISOString();
       const next: WeeklyReportRecord = {
         localWeekKey: command.localWeekKey,
@@ -290,24 +380,40 @@ export function createWeeklyReportService(options: {
           ? {}
           : { projectionCursor: snapshot.projectionCursor }),
         snapshotExclusions: snapshot.snapshotExclusions,
-        metricDefinitionVersion: 3,
+        metricDefinitionVersion: 4,
         generationTaskId: task.taskId,
+        attemptCount: 1,
         createdAt: existing?.createdAt ?? timestamp,
         updatedAt: timestamp,
         resourceVersion: existing?.resourceVersion ?? 0,
       };
-      return existing === undefined ? save(next) : replaceInvalidWindow(next);
+      const persisted =
+        existing === undefined ? await save(next) : await replaceInvalidWindow(next);
+      return snapshot.factSnapshot.length === 0
+        ? finalizeRecord(
+            persisted.localWeekKey,
+            persisted.generationTaskId,
+            EMPTY_WEEKLY_REPORT_MARKDOWN,
+          )
+        : persisted;
     },
 
     async fail(localWeekKey: string, errorCode: string, draftArtifactRef: string) {
       const current = await options.repository.get(localWeekKey);
       if (current === undefined) throw new WeeklyReportError('weekly_report_not_found');
+      const attemptCount = current.attemptCount ?? 1;
+      const timestamp = options.now();
+      const nextRetryAt = new Date(
+        timestamp.getTime() + retryDelayMilliseconds(attemptCount),
+      ).toISOString();
       return save({
         ...current,
         state: 'failed',
         errorCode,
         draftArtifactRef,
-        updatedAt: options.now().toISOString(),
+        attemptCount,
+        nextRetryAt,
+        updatedAt: timestamp.toISOString(),
       });
     },
 
@@ -320,24 +426,29 @@ export function createWeeklyReportService(options: {
         startLocalDate: current.startLocalDate,
         endLocalDate: current.endLocalDate,
       });
-      const task = await submit({
-        ...current,
-        factSnapshot: snapshot.factSnapshot,
-        factSnapshotHash: snapshot.factSnapshotHash,
-        snapshotExclusions: snapshot.snapshotExclusions,
-      });
+      const task =
+        snapshot.factSnapshot.length === 0
+          ? taskForEmptySnapshot(current.localWeekKey, snapshot.factSnapshotHash)
+          : await submit({
+              ...current,
+              factSnapshot: snapshot.factSnapshot,
+              factSnapshotHash: snapshot.factSnapshotHash,
+              snapshotExclusions: snapshot.snapshotExclusions,
+            });
       const {
         errorCode: _error,
         draftArtifactRef: _draft,
+        nextRetryAt: _nextRetryAt,
         projectionCursor: _oldProjectionCursor,
         sourceRefs: _oldSourceRefs,
         ...withoutFailure
       } = current;
       void _error;
       void _draft;
+      void _nextRetryAt;
       void _oldProjectionCursor;
       void _oldSourceRefs;
-      return save({
+      const persisted = await save({
         ...withoutFailure,
         state: 'generating',
         factSnapshot: snapshot.factSnapshot,
@@ -346,52 +457,79 @@ export function createWeeklyReportService(options: {
         ...(snapshot.projectionCursor === undefined
           ? {}
           : { projectionCursor: snapshot.projectionCursor }),
-        metricDefinitionVersion: 2,
+        metricDefinitionVersion: 4,
         generationTaskId: task.taskId,
+        attemptCount: (current.attemptCount ?? 1) + 1,
         updatedAt: options.now().toISOString(),
       });
+      return snapshot.factSnapshot.length === 0
+        ? finalizeRecord(
+            persisted.localWeekKey,
+            persisted.generationTaskId,
+            EMPTY_WEEKLY_REPORT_MARKDOWN,
+          )
+        : persisted;
+    },
+
+    isLegacyDeterministicOutput(record: WeeklyReportRecord, markdown: string): boolean {
+      return isLegacyDeterministicWeeklyReportOutput(record, markdown);
+    },
+
+    async regenerateLegacyFallback(
+      localWeekKey: string,
+      command: { startLocalDate: string; endLocalDate: string },
+      legacyMarkdown: string,
+    ) {
+      const current = await options.repository.get(localWeekKey);
+      if (current === undefined) throw new WeeklyReportError('weekly_report_not_found');
+      if (!isLegacyDeterministicWeeklyReportOutput(current, legacyMarkdown)) {
+        throw new Error('weekly_report_output_not_replaceable');
+      }
+      const snapshot = await buildSnapshot(command);
+      const task =
+        snapshot.factSnapshot.length === 0
+          ? taskForEmptySnapshot(localWeekKey, snapshot.factSnapshotHash)
+          : await submit({
+              localWeekKey,
+              startLocalDate: command.startLocalDate,
+              endLocalDate: command.endLocalDate,
+              timezone: options.timeZone,
+              factSnapshot: snapshot.factSnapshot,
+              factSnapshotHash: snapshot.factSnapshotHash,
+              snapshotExclusions: snapshot.snapshotExclusions,
+            });
+      const timestamp = options.now().toISOString();
+      const replacement: WeeklyReportRecord = {
+        localWeekKey,
+        timezone: options.timeZone,
+        startLocalDate: command.startLocalDate,
+        endLocalDate: command.endLocalDate,
+        state: 'generating',
+        factSnapshot: snapshot.factSnapshot,
+        factSnapshotHash: snapshot.factSnapshotHash,
+        ...(snapshot.projectionCursor === undefined
+          ? {}
+          : { projectionCursor: snapshot.projectionCursor }),
+        snapshotExclusions: snapshot.snapshotExclusions,
+        metricDefinitionVersion: 4,
+        generationTaskId: task.taskId,
+        attemptCount: 1,
+        createdAt: current.createdAt,
+        updatedAt: timestamp,
+        resourceVersion: current.resourceVersion,
+      };
+      const persisted = await replaceInvalidOutput(replacement, current.contentSha256!);
+      return snapshot.factSnapshot.length === 0
+        ? finalizeRecord(
+            persisted.localWeekKey,
+            persisted.generationTaskId,
+            EMPTY_WEEKLY_REPORT_MARKDOWN,
+          )
+        : persisted;
     },
 
     async finalize(localWeekKey: string, taskId: string, markdown: string) {
-      const current = await options.repository.get(localWeekKey);
-      if (current === undefined) throw new WeeklyReportError('weekly_report_not_found');
-      if (current.state === 'finalized') throw new WeeklyReportError('weekly_report_immutable');
-      if (current.generationTaskId !== taskId) throw new Error('WEEKLY_REPORT_TASK_STALE');
-      const validation = validateWeeklyReportMarkdown(
-        markdown,
-        new Set(current.factSnapshot.map((entry) => entry.sourceRef ?? `fact:${entry.factId}`)),
-      );
-      const artifactRef = `weekly_report_${localWeekKey}_${current.factSnapshotHash.slice(0, 12)}`;
-      const contentSha256 = sha256(markdown);
-      const { errorCode: _error, draftArtifactRef: _draft, ...withoutFailure } = current;
-      void _error;
-      void _draft;
-      await options.unitOfWork.execute(
-        { transactionId: `tx_finalize_weekly_${localWeekKey}` },
-        async (tx) => {
-          await options.finalizeArtifact(
-            { artifactId: artifactRef, kind: 'weekly-report', content: markdown, immutable: true },
-            tx,
-          );
-          await options.repository.save(
-            tx,
-            {
-              ...withoutFailure,
-              state: 'finalized',
-              artifactRef,
-              contentSha256,
-              sourceRefs: validation.sourceRefs,
-              updatedAt: options.now().toISOString(),
-            },
-            current.resourceVersion,
-          );
-          await options.recordFinalized?.(
-            { type: 'WeeklyReportFinalized', localWeekKey, artifactRef },
-            tx,
-          );
-        },
-      );
-      return (await options.repository.get(localWeekKey))!;
+      return finalizeRecord(localWeekKey, taskId, markdown);
     },
   };
 }

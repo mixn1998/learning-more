@@ -7,7 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import type { HistoryClient } from '../../client/history-client.js';
 import type { ProfileClient } from '../../client/profile-client.js';
-import { HistoryPage } from './history-page.js';
+import { HistoryPage, weeklyReportRefreshDelay } from './history-page.js';
 
 afterEach(cleanup);
 
@@ -188,6 +188,13 @@ function client(): HistoryClient {
 }
 
 describe('HistoryPage', () => {
+  it('keeps polling missing, generating, and failed weekly reports until finalized', () => {
+    expect(weeklyReportRefreshDelay(undefined)).toBe(5_000);
+    expect(weeklyReportRefreshDelay({ state: 'generating' } as never)).toBe(5_000);
+    expect(weeklyReportRefreshDelay({ state: 'failed' } as never)).toBe(30_000);
+    expect(weeklyReportRefreshDelay({ state: 'finalized' } as never)).toBeUndefined();
+  });
+
   it('builds the course domain filter from confirmed discipline tags', async () => {
     renderHistory(client());
 
@@ -373,7 +380,7 @@ describe('HistoryPage', () => {
     expect(screen.queryByText('10 min')).not.toBeInTheDocument();
     expect(screen.queryByText('1667 min')).not.toBeInTheDocument();
     expect(screen.getByText('已建立可追溯的判断标准。')).toBeVisible();
-    expect(screen.getByText('继续验证反馈是否改变行动。')).toBeVisible();
+    expect(screen.queryByText('继续验证反馈是否改变行动。')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /lesson_01 商业/ })).toBeVisible();
   });
 });

@@ -56,11 +56,42 @@ function localDate(value: string): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+function stripWeeklyReportNextSteps(markdown: string): string {
+  const lines = markdown.split(/\r?\n/u);
+  const kept: string[] = [];
+  let hiddenHeadingLevel: number | undefined;
+  for (const line of lines) {
+    const forbidden = line.match(
+      /^\s{0,3}(#{1,6})\s*(?:下周建议|下周计划|下一步建议|下一步行动)\s*$/iu,
+    );
+    if (forbidden !== null) {
+      hiddenHeadingLevel = forbidden[1]!.length;
+      continue;
+    }
+    if (hiddenHeadingLevel !== undefined) {
+      const nextHeading = line.match(/^\s{0,3}(#{1,6})\s+/u);
+      if (nextHeading === null || nextHeading[1]!.length > hiddenHeadingLevel) continue;
+      hiddenHeadingLevel = undefined;
+    }
+    kept.push(line);
+  }
+  return kept.join('\n').trim();
+}
+
 function weeklyReportSummary(markdown: string | undefined): string | undefined {
   const content = markdown?.trim();
   if (content === undefined || content === '') return undefined;
-  const summary = content.replace(/^#{1,6}\s*[^\n]+\n?/u, '').trim();
+  const summary = stripWeeklyReportNextSteps(content)
+    .replace(/^#{1,6}\s*[^\n]+\n?/u, '')
+    .trim();
   return summary === '' ? undefined : summary;
+}
+
+export function weeklyReportRefreshDelay(
+  report: WeeklyReportResponse | undefined,
+): number | undefined {
+  if (report?.state === 'finalized') return undefined;
+  return report?.state === 'failed' ? 30_000 : 5_000;
 }
 
 function errorMessage(error: unknown): string {
@@ -254,8 +285,9 @@ export function HistoryPage(props: {
 
   useEffect(() => {
     if (!showingWeekly || loadState !== 'ready') return;
-    if (weeklyReport !== undefined && weeklyReport.state !== 'generating') return;
-    const timer = setTimeout(() => setLoadAttempt((value) => value + 1), 5_000);
+    const delay = weeklyReportRefreshDelay(weeklyReport);
+    if (delay === undefined) return;
+    const timer = setTimeout(() => setLoadAttempt((value) => value + 1), delay);
     return () => clearTimeout(timer);
   }, [loadState, showingWeekly, weeklyReport]);
 

@@ -67,6 +67,7 @@ function runtime(
   options: {
     includeKnowledgePointTitles?: boolean;
     streamChunks?: readonly string[];
+    transientRunningReadFailures?: number;
   } = {},
 ) {
   const directive = {
@@ -79,6 +80,7 @@ function runtime(
     summaryStatus: 'pending',
   } as const;
   let request: GenerationRequest | undefined;
+  let transientRunningReadFailures = options.transientRunningReadFailures ?? 0;
   let task: GenerationTask = {
     id: 'task_1',
     taskKey: 'pending',
@@ -128,6 +130,12 @@ function runtime(
       return task;
     },
     async get() {
+      if (task.status === 'running' && transientRunningReadFailures > 0) {
+        transientRunningReadFailures -= 1;
+        throw Object.assign(new Error('GENERATION_TASK_NOT_FOUND'), {
+          code: 'GENERATION_TASK_NOT_FOUND',
+        });
+      }
       return task;
     },
     async listByOwner() {
@@ -298,6 +306,29 @@ describe('GenerationTeachingAgent', () => {
       directive: fake.directive,
     });
     expect(observed).toEqual(['directive', 'A free-form explanation.', ' A second sentence.']);
+  });
+
+  it('treats a transient missing task projection as in-flight instead of failed', async () => {
+    const control = `<learning-more-control>${JSON.stringify(runtime().directive)}</learning-more-control>`;
+    const fake = runtime({
+      streamChunks: [
+        control,
+        '<learning-more-reply>A durable streamed reply.</learning-more-reply>',
+      ],
+      transientRunningReadFailures: 3,
+    });
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+    await agent.submit(context(), 'message_user_1');
+    const observed: string[] = [];
+
+    await expect(
+      agent.complete('task_1', {
+        onReplyDelta(markdown) {
+          observed.push(markdown);
+        },
+      }),
+    ).resolves.toMatchObject({ markdown: 'A durable streamed reply.' });
+    expect(observed.join('')).toBe('A durable streamed reply.');
   });
 
   it('preserves interrupted Markdown without treating it as a complete reply', async () => {

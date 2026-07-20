@@ -57,6 +57,23 @@ describe('validateWeeklyReportMarkdown', () => {
     ).toThrow('weekly_report_visible_text_too_long');
   });
 
+  it('rejects next-week advice and strips it from historical finalized reports', () => {
+    const source = '<!-- sources:fact:completed -->';
+    expect(() =>
+      validateWeeklyReportMarkdown(
+        `# 上周学习成果概括\n\n已完成一节课。 ${source}\n\n## 下周建议\n继续复习。 ${source}`,
+        new Set(['fact:completed']),
+      ),
+    ).toThrow('weekly_report_next_steps_forbidden');
+
+    expect(
+      weeklyReportMarkdownForRead(
+        `# 上周学习成果概括\n\n已完成一节课。 ${source}\n\n## 下周建议\n继续复习。 ${source}`,
+        1,
+      ),
+    ).toBe(`# 上周学习成果概括\n\n已完成一节课。 ${source}`);
+  });
+
   it('projects an already-finalized English empty report to the localized empty state', () => {
     expect(
       weeklyReportMarkdownForRead(
@@ -65,7 +82,7 @@ describe('validateWeeklyReportMarkdown', () => {
       ),
     ).toBe(EMPTY_WEEKLY_REPORT_MARKDOWN);
     expect(weeklyReportMarkdownForRead('# 本周学习回顾\n\n已有中文内容。', 0)).toBe(
-      '# 本周学习回顾\n\n已有中文内容。',
+      EMPTY_WEEKLY_REPORT_MARKDOWN,
     );
   });
 });

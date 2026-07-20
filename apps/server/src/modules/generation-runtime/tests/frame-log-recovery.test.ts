@@ -81,4 +81,35 @@ describe('GenerationFrameLog recovery', () => {
     );
     expect(result.meta.lastSequence).toBe(20);
   });
+
+  it('keeps the first terminal frame authoritative and rejects terminal reversal', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-frame-terminal-'));
+    roots.push(directory);
+    const dataRoot = DataRoot.create(directory);
+    await initializeStoreLayout(createStorePaths(dataRoot));
+    const log = createGenerationFrameLog(dataRoot);
+    const taskId = 'task_terminal';
+    await log.ensureTask(taskId, 'running');
+    await log.append(taskId, 'task.failed', {
+      problem: {
+        type: 'https://learning-more.local/problems/internal-error',
+        status: 500,
+        code: 'internal_error',
+        messageKey: 'errors.internalError',
+        retryable: true,
+        correlationId: taskId,
+      },
+    });
+
+    await expect(
+      log.append(taskId, 'task.completed', { resultRef: 'artifact_late' }),
+    ).rejects.toMatchObject({ code: 'generation_frame_terminal_already_recorded' });
+    await expect(
+      log.append(taskId, 'message.delta', { messageId: 'message_late', markdown: 'late' }),
+    ).rejects.toMatchObject({ code: 'generation_frame_terminal_already_recorded' });
+    await expect(log.readAfter(taskId, 0)).resolves.toMatchObject({
+      meta: { state: 'failed', lastSequence: 1 },
+      frames: [{ sequence: 1, type: 'task.failed' }],
+    });
+  });
 });

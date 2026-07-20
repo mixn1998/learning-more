@@ -152,6 +152,8 @@ export const WeeklyReportResponseSchema = z.strictObject({
   projectionCursor: z.string().min(1).optional(),
   metricDefinitionVersion: z.number().int().positive(),
   generationTaskId: z.string().min(1),
+  attemptCount: z.number().int().positive().optional(),
+  nextRetryAt: z.iso.datetime({ offset: true }).optional(),
   artifactRef: z.string().min(1).optional(),
   contentSha256: z.string().min(1).optional(),
   errorCode: z.string().min(1).optional(),

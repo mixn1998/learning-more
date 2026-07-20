@@ -71,17 +71,50 @@ async function contract(repository: WeeklyReportRepository, unitOfWork: UnitOfWo
     ),
   ).rejects.toMatchObject({ code: 'weekly_report_immutable' });
 
+  await expect(
+    unitOfWork.execute({ transactionId: 'tx_week_repair_wrong_output' }, (context) =>
+      repository.replaceInvalidOutput(
+        context,
+        { ...finalized, state: 'generating', generationTaskId: 'task_output_repair' },
+        finalized.resourceVersion,
+        'c'.repeat(64),
+      ),
+    ),
+  ).rejects.toThrow('weekly_report_output_not_replaceable');
+  await unitOfWork.execute({ transactionId: 'tx_week_repair_known_output' }, (context) =>
+    repository.replaceInvalidOutput(
+      context,
+      { ...finalized, state: 'generating', generationTaskId: 'task_output_repair' },
+      finalized.resourceVersion,
+      'b'.repeat(64),
+    ),
+  );
+  const outputRepaired = (await repository.get(record.localWeekKey))!;
+  await unitOfWork.execute({ transactionId: 'tx_week_refinalize' }, (context) =>
+    repository.save(
+      context,
+      {
+        ...outputRepaired,
+        state: 'finalized',
+        artifactRef: 'weekly_report_2026-W28_repaired',
+        contentSha256: 'd'.repeat(64),
+      },
+      outputRepaired.resourceVersion,
+    ),
+  );
+  const refinalized = (await repository.get(record.localWeekKey))!;
+
   await unitOfWork.execute({ transactionId: 'tx_week_repair_window' }, (context) =>
     repository.replaceInvalidWindow(
       context,
       {
-        ...finalized,
+        ...refinalized,
         startLocalDate: '2026-07-06',
         endLocalDate: '2026-07-13',
         state: 'generating',
         generationTaskId: 'task_02',
       },
-      finalized.resourceVersion,
+      refinalized.resourceVersion,
     ),
   );
   const repaired = (await repository.get(record.localWeekKey))!;
@@ -89,7 +122,7 @@ async function contract(repository: WeeklyReportRepository, unitOfWork: UnitOfWo
     startLocalDate: '2026-07-06',
     endLocalDate: '2026-07-13',
     state: 'generating',
-    resourceVersion: 3,
+    resourceVersion: 5,
   });
   await expect(
     unitOfWork.execute({ transactionId: 'tx_week_repair_same_window' }, (context) =>

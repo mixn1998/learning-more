@@ -1,4 +1,4 @@
-import { access, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { access, copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { z } from 'zod';
@@ -156,7 +156,11 @@ export async function applyJournalOperations(
       await injectFault?.(`before-apply:${index}`);
       if (await exists(target)) {
         await mkdir(path.dirname(rollback), { recursive: true });
-        await rename(target, rollback);
+        // Keep the last committed value readable until the staged replacement is
+        // atomically moved into place. Moving the target into rollback first
+        // creates a short ENOENT window that high-frequency generation polling
+        // can mistake for a missing task.
+        await copyFile(target, rollback);
       }
       operation.state = 'backed-up';
       await writeTransactionJournal(dataRoot, journal);
@@ -171,8 +175,8 @@ export async function applyJournalOperations(
         } else if (!(await exists(target))) {
           throw new TransactionRecoveryError('storage_corrupted');
         }
-      } else if (await exists(target)) {
-        throw new TransactionRecoveryError('storage_corrupted');
+      } else {
+        await rm(target, { force: true });
       }
       operation.state = 'applied';
       await writeTransactionJournal(dataRoot, journal);

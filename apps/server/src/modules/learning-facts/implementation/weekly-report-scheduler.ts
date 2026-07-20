@@ -8,35 +8,72 @@ export type GenerateWeeklyReportCommand = Readonly<{
 
 export function createWeeklyReportScheduler(options: {
   timeZone: string;
-  hasReport(command: GenerateWeeklyReportCommand): Promise<boolean>;
-  enqueue(command: GenerateWeeklyReportCommand): Promise<void>;
+  reconcile(command: GenerateWeeklyReportCommand): Promise<Date | undefined>;
   now?: () => Date;
+  failureRetryMilliseconds?: number;
 }) {
   const now = options.now ?? (() => new Date());
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const failureRetryMilliseconds = options.failureRetryMilliseconds ?? 5 * 60_000;
+  let boundaryTimer: ReturnType<typeof setTimeout> | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let started = false;
   let stopped = false;
+  let pendingInstant: Date | undefined;
+  let running: Promise<GenerateWeeklyReportCommand | undefined> | undefined;
 
-  const tick = async (instant: Date) => {
-    const command = completedWeeklyReportWindow(instant, options.timeZone);
-    if (await options.hasReport(command)) return undefined;
-    await options.enqueue(command);
-    return command;
+  const clearRetryTimer = () => {
+    if (retryTimer !== undefined) clearTimeout(retryTimer);
+    retryTimer = undefined;
   };
 
-  const arm = () => {
+  const scheduleRetry = (nextRetryAt: Date | undefined) => {
+    clearRetryTimer();
+    if (stopped || nextRetryAt === undefined) return;
+    const delay = Math.max(1, nextRetryAt.getTime() - now().getTime());
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      void tick(now()).catch(() => undefined);
+    }, delay);
+    retryTimer.unref?.();
+  };
+
+  const drain = async (): Promise<GenerateWeeklyReportCommand | undefined> => {
+    let last: GenerateWeeklyReportCommand | undefined;
+    while (pendingInstant !== undefined) {
+      const instant = pendingInstant;
+      pendingInstant = undefined;
+      const command = completedWeeklyReportWindow(instant, options.timeZone);
+      try {
+        scheduleRetry(await options.reconcile(command));
+      } catch (error) {
+        scheduleRetry(new Date(now().getTime() + failureRetryMilliseconds));
+        throw error;
+      }
+      last = command;
+    }
+    return last;
+  };
+
+  const tick = (instant: Date): Promise<GenerateWeeklyReportCommand | undefined> => {
+    if (pendingInstant === undefined || instant > pendingInstant) pendingInstant = instant;
+    running ??= drain().finally(() => {
+      running = undefined;
+    });
+    return running;
+  };
+
+  const armBoundary = () => {
     if (stopped) return;
     const instant = now();
     const delay = Math.max(
       1,
       nextWeeklyReportBoundary(instant, options.timeZone).getTime() - instant.getTime(),
     );
-    timer = setTimeout(() => {
-      void tick(now())
-        .catch(() => undefined)
-        .finally(arm);
+    boundaryTimer = setTimeout(() => {
+      armBoundary();
+      void tick(now()).catch(() => undefined);
     }, delay);
-    timer.unref?.();
+    boundaryTimer.unref?.();
   };
 
   return {
@@ -45,13 +82,16 @@ export function createWeeklyReportScheduler(options: {
       if (started) return;
       started = true;
       stopped = false;
-      await tick(now());
-      arm();
+      armBoundary();
+      void tick(now()).catch(() => {
+        // The durable failed state is retried by the timer scheduled in drain().
+      });
     },
     stop() {
       stopped = true;
-      if (timer !== undefined) clearTimeout(timer);
-      timer = undefined;
+      if (boundaryTimer !== undefined) clearTimeout(boundaryTimer);
+      boundaryTimer = undefined;
+      clearRetryTimer();
     },
   };
 }
