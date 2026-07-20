@@ -805,10 +805,10 @@ export function createInteractiveTeaching(options: {
       sourceSnapshotHash,
       knowledgePointRefs: facts.lesson.coreKnowledgePoints.map((point) => point.ref),
       courseRelationRefs,
-      openEntryRefs: [
-        ...previousState.openLoops.map((loop) => loop.entryId),
-        ...previousState.explorationBranches.map((branch) => branch.entryId),
-      ],
+      existingEntryRefs:
+        current?.observations
+          .filter((candidate) => candidate.status === 'active')
+          .flatMap((candidate) => candidate.entries.map((entry) => entry.entryId)) ?? [],
       messages: messages.map((message) => ({
         messageId: message.messageId,
         role: message.role,

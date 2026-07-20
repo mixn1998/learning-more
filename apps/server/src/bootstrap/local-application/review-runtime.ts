@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { CommandContext } from '@learning-more/contracts';
 
@@ -245,6 +245,42 @@ export function createLocalReviewRuntime(
   });
   const activeLessonClosureFinalizations = new Map<string, Promise<void>>();
 
+  async function prepareLessonClosureSnapshot(
+    closure: LessonClosureRecord,
+    context: CommandContext,
+  ): Promise<LessonClosureRecord> {
+    const lesson = await input.course.access.getLesson(closure.lessonId);
+    if (lesson === undefined) {
+      throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
+    }
+    await teachingRuntime.recoverSession({
+      courseId: lesson.courseId,
+      lessonId: closure.lessonId,
+      sessionId: closure.sessionId,
+      context,
+    });
+    await teachingRuntime.drainObservations(closure.sessionId);
+    const checkpoint = await teachingRuntime.module.freezeCheckpoint({
+      sessionId: closure.sessionId,
+      reason: 'lesson_closure',
+    });
+    if (
+      checkpoint.observationCompleteness !== 'complete' ||
+      !checkpoint.teachingState.evidenceCheckpoint ||
+      checkpoint.retentionDecision !== 'preserve'
+    ) {
+      throw Object.assign(new Error('projection_incomplete'), {
+        code: 'projection_incomplete',
+      });
+    }
+    await input.learning.access.captureTeachingProfileCheckpoint(checkpoint);
+    return lessonClosures.replaceSnapshot(closure.transactionId, {
+      sourceSessionIds: [closure.sessionId],
+      sourceMessageIds: [...checkpoint.sourceMessageIds],
+      messageRangeChecksum: checkpoint.sourceSnapshotHash,
+    });
+  }
+
   function scheduleLessonClosureFinalization(
     closure: LessonClosureRecord,
     context: CommandContext,
@@ -256,6 +292,7 @@ export function createLocalReviewRuntime(
         let current = await lessonClosureRepository.get(closure.transactionId);
         if (current === undefined) throw new Error('lesson_closure_not_found');
         if (current.state === 'open') {
+          current = await prepareLessonClosureSnapshot(current, context);
           current = await lessonClosures.retry(
             current.transactionId,
             `initial_${current.transactionId}`,
@@ -369,41 +406,18 @@ export function createLocalReviewRuntime(
         if (lesson === undefined) {
           throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
         }
-        await teachingRuntime.recoverSession({
-          courseId: lesson.courseId,
-          lessonId,
-          sessionId,
-          context,
-        });
-        await teachingRuntime.drainObservations(sessionId);
-        const checkpoint = await teachingRuntime.module.freezeCheckpoint({
-          sessionId,
-          reason: 'lesson_closure',
-        });
-        if (
-          checkpoint.teachingState.lessonPhase !== undefined &&
-          checkpoint.teachingState.lessonPhase !== 'ready_to_close'
-        ) {
-          throw Object.assign(new Error('lesson_not_completable'), {
-            code: 'lesson_not_completable',
-          });
-        }
-        if (
-          checkpoint.observationCompleteness !== 'complete' ||
-          !checkpoint.teachingState.evidenceCheckpoint ||
-          checkpoint.retentionDecision !== 'preserve'
-        ) {
-          throw Object.assign(new Error('projection_incomplete'), {
-            code: 'projection_incomplete',
-          });
-        }
-        await input.learning.access.captureTeachingProfileCheckpoint(checkpoint);
+        const sourceMessageIds = (await input.learning.access.listMessages(sessionId))
+          .filter((message) => message.completionStatus !== 'interrupted')
+          .map((message) => message.id);
+        const provisionalSnapshotHash = createHash('sha256')
+          .update(JSON.stringify({ sessionId, sourceMessageIds }))
+          .digest('hex');
         const closure = await lessonClosures.begin({
           lessonId,
           sessionId,
           sourceSessionIds: [sessionId],
-          sourceMessageIds: [...checkpoint.sourceMessageIds],
-          messageRangeChecksum: checkpoint.sourceSnapshotHash,
+          sourceMessageIds,
+          messageRangeChecksum: provisionalSnapshotHash,
           endIntent: body.endIntent,
           expectedSessionVersion: current.resourceVersion,
         });
@@ -477,6 +491,11 @@ export function createLocalReviewRuntime(
         return closure;
       },
       async retryClosure(transactionId, context) {
+        const reopened = await lessonClosures.resetPreparation(transactionId);
+        if (reopened.state === 'open') {
+          void scheduleLessonClosureFinalization(reopened, context);
+          return reopened;
+        }
         const retried = await lessonClosures.retry(transactionId, context.commandId);
         void scheduleLessonClosureFinalization(retried, context);
         return retried;

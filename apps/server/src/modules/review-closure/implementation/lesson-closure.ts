@@ -200,6 +200,42 @@ export function createLessonClosureWorkflow(options: {
         updatedAt: options.now().toISOString(),
       });
     },
+    async resetPreparation(transactionId: string) {
+      const current = await options.repository.get(transactionId);
+      if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
+      if (current.state === 'completed') throw new LessonClosureError('final_review_immutable');
+      if (current.state === 'cancelled') throw new LessonClosureError('lesson_not_completable');
+      if (current.state !== 'generating-failed') return current;
+      const { errorCode: _error, draftArtifactRef: _draft, ...rest } = current;
+      void _error;
+      void _draft;
+      return save({
+        ...rest,
+        state: 'open',
+        generationTaskId: 'pending',
+        updatedAt: options.now().toISOString(),
+      });
+    },
+    async replaceSnapshot(
+      transactionId: string,
+      snapshot: Readonly<{
+        sourceSessionIds: readonly string[];
+        sourceMessageIds: readonly string[];
+        messageRangeChecksum: string;
+      }>,
+    ) {
+      const current = await options.repository.get(transactionId);
+      if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
+      if (current.state !== 'open') throw new LessonClosureError('lesson_not_completable');
+      if (snapshot.sourceMessageIds.length === 0) {
+        throw new LessonClosureError('lesson_not_completable');
+      }
+      return save({
+        ...current,
+        ...snapshot,
+        updatedAt: options.now().toISOString(),
+      });
+    },
     async retry(transactionId: string, commandId: string) {
       const current = await options.repository.get(transactionId);
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');

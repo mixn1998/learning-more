@@ -49,7 +49,7 @@ const validationContext = {
   sourceSnapshotHash: 'a'.repeat(64),
   knowledgePointRefs: ['knowledge:kp_1'],
   courseRelationRefs: ['course-topic:probability'],
-  openEntryRefs: [],
+  existingEntryRefs: [],
   messages: [
     { messageId: 'message_ai_1', role: 'assistant', completionStatus: 'complete' },
     { messageId: 'message_user_1', role: 'user', completionStatus: 'complete' },
@@ -82,6 +82,27 @@ describe('teaching observation validator', () => {
     invalid.entries[0]!.sourceRefs = ['message:unknown'];
 
     expect(() => validateTeachingObservation(invalid, validationContext)).toThrow();
+  });
+
+  it('allows a new observation to resolve an existing misconception entry', () => {
+    const resolved = observation();
+    resolved.entries[0]!.resolvesEntryRefs = ['misconception_from_previous_turn'];
+
+    expect(
+      validateTeachingObservation(resolved, {
+        ...validationContext,
+        existingEntryRefs: ['misconception_from_previous_turn'],
+      }),
+    ).toEqual(resolved);
+  });
+
+  it('still rejects a resolution reference that was never observed', () => {
+    const invalid = observation();
+    invalid.entries[0]!.resolvesEntryRefs = ['invented_entry'];
+
+    expect(() => validateTeachingObservation(invalid, validationContext)).toThrowError(
+      'resolved_entry_reference_unknown',
+    );
   });
 
   it('rejects an assistant teaching prompt misclassified as an open learner question', () => {

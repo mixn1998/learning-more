@@ -6,7 +6,7 @@ export type TeachingObservationValidationContext = Readonly<{
   sourceSnapshotHash: string;
   knowledgePointRefs: readonly string[];
   courseRelationRefs: readonly string[];
-  openEntryRefs: readonly string[];
+  existingEntryRefs: readonly string[];
   messages: readonly Readonly<{
     messageId: string;
     role: 'user' | 'assistant';
@@ -38,8 +38,8 @@ export function validateTeachingObservation(
     context.messages.map((message, index) => [message.messageId, index] as const),
   );
   const knowledgePointRefs = new Set(context.knowledgePointRefs);
-  const openEntryRefs = new Set([
-    ...context.openEntryRefs,
+  const resolvableEntryRefs = new Set([
+    ...context.existingEntryRefs,
     ...observation.entries.map((entry) => entry.entryId),
   ]);
   const validRelationRefs = new Set([
@@ -102,7 +102,9 @@ export function validateTeachingObservation(
       if (!knowledgePointRefs.has(knowledgePointRef)) invalid('knowledge_point_reference_unknown');
     }
     for (const resolvedEntryRef of entry.resolvesEntryRefs) {
-      if (!openEntryRefs.has(resolvedEntryRef)) invalid('resolved_entry_reference_unknown');
+      if (!resolvableEntryRefs.has(resolvedEntryRef)) {
+        invalid('resolved_entry_reference_unknown');
+      }
     }
     for (const sourceRef of entry.sourceRefs) {
       const messageId = messageIdFromRef(sourceRef);

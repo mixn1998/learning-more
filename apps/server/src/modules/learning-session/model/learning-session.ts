@@ -186,9 +186,6 @@ export function decide(
     return [event(commandId, { type: 'FinalReviewCommitted', reviewId: command.reviewId })];
   }
   if (command.type === 'completePendingReview') {
-    if (!session.evidenceCheckpoint) {
-      throw new LearningSessionError('lesson_not_completable');
-    }
     return [event(commandId, { type: 'LessonCompletedPendingReview' })];
   }
   throw new LearningSessionError('session_not_writable');

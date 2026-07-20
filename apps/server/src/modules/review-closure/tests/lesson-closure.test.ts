@@ -142,6 +142,43 @@ describe('lesson closure workflow', () => {
     expect(submitReview).toHaveBeenCalledTimes(1);
   });
 
+  it('refreshes the evidence snapshot before Review generation starts', async () => {
+    const submitReview = vi.fn().mockResolvedValue({ taskId: 'task_01' });
+    const { workflow, closureRepository } = await fixture(false, undefined, submitReview);
+    const started = await workflow.begin(snapshot);
+
+    await workflow.replaceSnapshot(started.transactionId, {
+      sourceSessionIds: ['session_01'],
+      sourceMessageIds: ['message_01', 'message_02'],
+      messageRangeChecksum: 'c'.repeat(64),
+    });
+    await workflow.retry(started.transactionId, 'after_projection');
+
+    await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
+      state: 'generating',
+      sourceMessageIds: ['message_01', 'message_02'],
+      messageRangeChecksum: 'c'.repeat(64),
+    });
+    expect(submitReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        record: expect.objectContaining({ messageRangeChecksum: 'c'.repeat(64) }),
+      }),
+    );
+  });
+
+  it('reopens a failed background preparation without starting Review synchronously', async () => {
+    const submitReview = vi.fn().mockResolvedValue({ taskId: 'task_01' });
+    const { workflow } = await fixture(false, undefined, submitReview);
+    const started = await workflow.begin(snapshot);
+    await workflow.fail(started.transactionId, 'projection_incomplete', 'draft_pending');
+
+    await expect(workflow.resetPreparation(started.transactionId)).resolves.toMatchObject({
+      state: 'open',
+      generationTaskId: 'pending',
+    });
+    expect(submitReview).not.toHaveBeenCalled();
+  });
+
   it('rejects a late Review write after permanent course deletion starts', async () => {
     let deleted = false;
     const { workflow, closureRepository } = await fixture(false, async () => {

@@ -102,6 +102,19 @@ describe('[EQ-LESSON-01] lesson and original session lifecycle', () => {
     ).toThrow(expect.objectContaining({ code: 'final_review_immutable' }));
   });
 
+  it('does not make observation checkpoint projection a prerequisite for completion', () => {
+    let learning = createLessonLearning('lesson_01');
+    learning = apply(learning, { type: 'start', sessionId: 'session_01' }, 'c1');
+    learning = apply(learning, { type: 'appendUserMessage', messageId: 'message_01' }, 'c2');
+
+    learning = apply(learning, { type: 'completePendingReview' }, 'c3');
+
+    expect(learning).toMatchObject({
+      progress: 'completed',
+      session: { state: 'closed', evidenceCheckpoint: false },
+    });
+  });
+
   it('returns no events for an already processed command', () => {
     const initial = createLessonLearning('lesson_01');
     const started = apply(initial, { type: 'start', sessionId: 'session_01' }, 'same');
