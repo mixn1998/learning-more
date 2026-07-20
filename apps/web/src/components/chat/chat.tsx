@@ -23,6 +23,29 @@ export function RetryIcon() {
   );
 }
 
+function ChatActionIcon(props: Readonly<{ kind: 'cancel' | 'confirm' | 'edit' }>) {
+  const path =
+    props.kind === 'cancel' ? (
+      <>
+        <path d="M7 7l10 10" />
+        <path d="M17 7L7 17" />
+      </>
+    ) : props.kind === 'confirm' ? (
+      <path d="M5 12.5l4 4L19 7" />
+    ) : (
+      <>
+        <path d="M5 19l3.4-.8L18 8.6a2.1 2.1 0 0 0-3-3L5.4 15.2 5 19Z" />
+        <path d="m13.8 6.8 3.4 3.4" />
+      </>
+    );
+
+  return (
+    <svg aria-hidden="true" className="chat-action-icon" focusable="false" viewBox="0 0 24 24">
+      {path}
+    </svg>
+  );
+}
+
 export type UserMessageBubbleProps = Readonly<{
   text: string;
   tone?: 'normal' | 'danger' | undefined;
@@ -87,7 +110,7 @@ export function UserMessageRow(props: UserMessageRowProps) {
               type="button"
               onClick={props.onEditCancel}
             >
-              <span aria-hidden="true">×</span>
+              <ChatActionIcon kind="cancel" />
             </button>
             <button
               aria-label="保存修改"
@@ -99,7 +122,7 @@ export function UserMessageRow(props: UserMessageRowProps) {
               type="button"
               onClick={props.onEditSubmit}
             >
-              <span aria-hidden="true">✓</span>
+              <ChatActionIcon kind="confirm" />
             </button>
           </div>
         </div>
@@ -134,7 +157,7 @@ export function UserMessageRow(props: UserMessageRowProps) {
               type="button"
               onClick={props.onEdit}
             >
-              <span aria-hidden="true">✎</span>
+              <ChatActionIcon kind="edit" />
             </button>
           )}
         </footer>

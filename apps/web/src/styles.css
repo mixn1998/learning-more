@@ -1032,7 +1032,8 @@ button:not(
   .weekly-report-head,
   .weekly-report-day,
   .weekly-report-lesson,
-  .course-choice
+  .course-choice,
+  .chat-user-action
 ),
 .authoring-panel button,
 .home-page:not(.home-page--sample) button,
@@ -1071,7 +1072,8 @@ button:not(
     .weekly-report-head,
     .weekly-report-day,
     .weekly-report-lesson,
-    .course-choice
+    .course-choice,
+    .chat-user-action
   ):hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 7px 16px rgb(65 47 30 / 8%);

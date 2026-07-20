@@ -37,7 +37,9 @@ describe('shared chat components', () => {
     expect(
       screen.getByRole('button', { name: '重新发送' }).querySelector('svg.chat-retry-icon'),
     ).not.toBeNull();
-    expect(screen.getByRole('button', { name: '重新编辑' })).toHaveTextContent('✎');
+    expect(
+      screen.getByRole('button', { name: '重新编辑' }).querySelector('svg.chat-action-icon'),
+    ).not.toBeNull();
 
     rerender(
       <UserMessageRow
@@ -56,6 +58,9 @@ describe('shared chat components', () => {
 
     expect(onEditChange).toHaveBeenCalledWith('修改后的消息');
     expect(onEditSubmit).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: '保存修改' }).querySelector('svg.chat-action-icon'),
+    ).not.toBeNull();
   });
 
   it('disables empty submission and submits trimmed text from Enter', () => {
