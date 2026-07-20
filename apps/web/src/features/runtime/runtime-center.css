@@ -38,6 +38,9 @@ body:has(.runtime-center-workspace) .runtime-write-boundary {
   display: block;
   font-size: 16px;
 }
+.runtime-center-workspace .rc-brand {
+  --lm-brand-mark-size: 32px;
+}
 .runtime-center-workspace .rc-brand span {
   color: #8a8178;
   font-size: 12px;

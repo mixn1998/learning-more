@@ -1,3 +1,5 @@
+import { BrandIdentity } from '../../components/brand/brand-identity.js';
+
 import './lesson-navigation-workspace.css';
 
 export type LessonNavigationPoint = Readonly<{
@@ -27,8 +29,7 @@ export function LessonNavigationWorkspace(props: {
     <div className={`lesson-navigation-workspace lesson-navigation-workspace--${props.state}`}>
       <header className="lm-topbar lesson-navigation-topbar">
         <div className="lm-brand">
-          <strong>Learning MORE</strong>
-          <span>{abandoned ? '正式课程 · 恢复学习' : '正式课程 · 课节导航'}</span>
+          <BrandIdentity subtitle={abandoned ? '正式课程 · 恢复学习' : '正式课程 · 课节导航'} />
         </div>
         <div className="lm-topbar-tools">
           <div className="lm-global-runtime">

@@ -741,6 +741,43 @@
   text-decoration: none;
 }
 
+.lm-brand-identity {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+.lm-brand-mark {
+  display: block !important;
+  flex: 0 0 auto;
+  width: var(--lm-brand-mark-size, 38px);
+  height: var(--lm-brand-mark-size, 38px);
+  color: inherit !important;
+  font-size: 0 !important;
+  line-height: 0;
+}
+
+.lm-brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lm-brand-copy {
+  display: block !important;
+  min-width: 0;
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+.lm-brand-copy > strong,
+.lm-brand-copy > span {
+  display: block;
+}
+
 .lm-app-brand strong,
 .lm-app-brand span {
   display: block;

@@ -96,4 +96,31 @@ describe('App runtime readiness', () => {
     expect(screen.getByRole('button', { name: '确认课程' })).toBeEnabled();
     expect(screen.getByRole('link', { name: /本地服务/ })).toHaveTextContent('本地服务 · 准备就绪');
   });
+
+  it('renders the shared product mark in the application brand link', () => {
+    render(
+      <MemoryRouter>
+        <AppShellView
+          refresh={vi.fn()}
+          state={{
+            kind: 'loaded',
+            readiness: {
+              status: 'ready',
+              instanceId: 'instance-0001',
+              buildId: 'development',
+              protocolVersion: '1',
+              storeStatus: 'ready',
+              projectionStatus: 'ready',
+              providerStatus: 'ready',
+            },
+            version: { kind: 'compatible', writesAllowed: true },
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    const homeLink = screen.getByRole('link', { name: 'Learning MORE 主页' });
+    expect(homeLink.querySelector('img')).toHaveAttribute('src', '/brand/learning-more-mark.svg');
+    expect(homeLink).toHaveTextContent('Learning MORE');
+  });
 });

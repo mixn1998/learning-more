@@ -12,6 +12,7 @@ import {
 } from '@learning-more/ui';
 
 import { COURSE_MODE_REGISTRY, type CourseModeDefinition } from '../course-mode-registry.js';
+import { BrandIdentity } from '../components/brand/brand-identity.js';
 import { RuntimeStatusCards } from '../layouts/app-shell.js';
 
 import './design-system-fixtures.css';
@@ -22,8 +23,7 @@ function SampleHeader(props: { readonly subtitle: string }) {
   return (
     <header className="lm-topbar">
       <div className="lm-brand">
-        <strong>Learning MORE</strong>
-        <span>{props.subtitle}</span>
+        <BrandIdentity subtitle={props.subtitle} />
       </div>
       <div aria-label="运行状态" className="lm-topbar-tools">
         <RuntimeStatusCards providerLabel="Codex" providerReady status="ready" />

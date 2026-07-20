@@ -4,6 +4,7 @@ import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface } from '@learning-more/ui';
 
 import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+import { BrandIdentity } from '../../components/brand/brand-identity.js';
 
 import './lesson-session-workspace.css';
 
@@ -107,8 +108,7 @@ export function LessonSessionWorkspace(props: {
     <div className="lesson-session-workspace">
       <header className="lm-topbar lesson-session-topbar">
         <div className="lm-brand">
-          <strong>Learning MORE</strong>
-          <span>正式课程学习会话</span>
+          <BrandIdentity subtitle="正式课程学习会话" />
         </div>
         <div className="lm-topbar-tools">
           <div className="lm-global-runtime">

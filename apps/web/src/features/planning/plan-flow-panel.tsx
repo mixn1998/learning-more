@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { ApplicationProblemSchema, type HomeDashboardView } from '@learning-more/contracts';
 
 import type { PlanFlowAction, PlanFlowPreviewView } from '../../client/planning-client.js';
+import { BrandIdentity } from '../../components/brand/brand-identity.js';
 
 import './planning-workspace.css';
 
@@ -785,8 +786,7 @@ export function PlanFlowPanel(props: {
       <section className="pf-frame" aria-label="计划流四步向导">
         <div className="pf-top">
           <div className="pf-brand">
-            <strong>Learning MORE</strong>
-            <span>学习即生活｜让计划真正落地</span>
+            <BrandIdentity subtitle="学习即生活｜让计划真正落地" />
           </div>
           <div className="pf-runtime">
             <span>● 课程规划</span>

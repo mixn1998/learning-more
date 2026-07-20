@@ -24,6 +24,7 @@ import {
   createRuntimeRecoveryCoordinator,
   type RuntimeRecoverySnapshot,
 } from '../state/runtime-recovery-coordinator.js';
+import { BrandIdentity } from '../components/brand/brand-identity.js';
 
 const clientIdentity = {
   buildId: import.meta.env.VITE_BUILD_ID ?? 'development',
@@ -163,10 +164,11 @@ export function AppShellView(props: {
       <div className="lm-app-frame">
         <header className="lm-app-header lm-topbar">
           <NavLink aria-label="Learning MORE 主页" className="lm-app-brand lm-brand" to="/">
-            <strong>Learning MORE</strong>
-            <span>
-              {props.brandSubtitle ?? routeBrandSubtitle ?? '学习即生活｜用 AI 重塑学习方式'}
-            </span>
+            <BrandIdentity
+              subtitle={
+                props.brandSubtitle ?? routeBrandSubtitle ?? '学习即生活｜用 AI 重塑学习方式'
+              }
+            />
           </NavLink>
           <div aria-label="运行状态" className="lm-topbar-tools">
             <RuntimeStatusCards

@@ -5,6 +5,7 @@ import { AiContent, AiSurface, tabId, tabPanelId, Tabs } from '@learning-more/ui
 import type { ReviewDocument } from '@learning-more/contracts';
 
 import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+import { BrandIdentity } from '../../components/brand/brand-identity.js';
 import {
   LessonFinalReviewDocumentView,
   LessonStageReviewDocumentView,
@@ -104,8 +105,7 @@ export function LessonRecordView(props: {
     <div className="lesson-record-workspace">
       <header className="lm-topbar lesson-record-topbar">
         <div className="lm-brand">
-          <strong>Learning MORE</strong>
-          <span>只读课节记录</span>
+          <BrandIdentity subtitle="只读课节记录" />
         </div>
         <div className="lm-topbar-tools">
           <div className="lm-global-runtime">

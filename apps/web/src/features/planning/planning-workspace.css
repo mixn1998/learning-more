@@ -440,6 +440,9 @@
   display: block;
   font-size: 16px;
 }
+.pf-brand {
+  --lm-brand-mark-size: 30px;
+}
 .pf-brand span {
   font-size: 9px;
   color: #8a8178;

@@ -5,6 +5,7 @@ import type { ProviderCatalog, ProviderRuntimeStatus } from '@learning-more/cont
 import { Dialog, tabId, tabPanelId, Tabs } from '@learning-more/ui';
 
 import { runtimeCenterClient, type RuntimeCenterClient } from '../../client/runtime-client.js';
+import { BrandIdentity } from '../../components/brand/brand-identity.js';
 import { useCommandAttempts } from '../../state/use-command-attempt.js';
 import { useRuntimeState } from '../../state/version-guard.js';
 import './runtime-center.css';
@@ -498,8 +499,7 @@ export function RuntimeCenter({
     >
       <header className="rc-top">
         <div className="rc-brand">
-          <strong>Learning MORE</strong>
-          <span>学习即生活｜用 AI 重塑学习方式</span>
+          <BrandIdentity subtitle="学习即生活｜用 AI 重塑学习方式" />
         </div>
         <div className="rc-capsules">
           <button

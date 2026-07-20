@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Dialog } from '@learning-more/ui';
 
 import { FormalCourseView } from '../features/course/formal-course-view.js';
+import { BrandIdentity } from '../components/brand/brand-identity.js';
 import { OutlineRevisionWorkspace } from '../features/course/outline-revision-workspace.js';
 import { CourseReviewView } from '../features/review/course-review-view.js';
 import { AppShellView } from '../layouts/app-shell.js';
@@ -60,8 +61,7 @@ function DeleteCoursePreview() {
     <div className="course-delete-preview-fixture">
       <header className="lm-topbar">
         <div className="lm-brand">
-          <strong>Learning MORE</strong>
-          <span>正式课程学习档案</span>
+          <BrandIdentity subtitle="正式课程学习档案" />
         </div>
       </header>
       <main className="delete-preview-page">
