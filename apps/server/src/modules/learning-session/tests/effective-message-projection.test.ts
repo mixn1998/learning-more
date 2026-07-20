@@ -23,4 +23,24 @@ describe('effective learning-message projection', () => {
 
     expect(collapseRetryDuplicateUserMessages(messages)).toEqual(messages);
   });
+
+  it('replaces an interrupted assistant fragment with its regenerated reply', () => {
+    expect(
+      collapseRetryDuplicateUserMessages([
+        { id: 'user_1', role: 'user', markdown: 'compare the quantifiers' },
+        {
+          id: 'assistant_interrupted',
+          role: 'assistant',
+          markdown: 'Compare:',
+          completionStatus: 'interrupted',
+        },
+        {
+          id: 'assistant_retry',
+          role: 'assistant',
+          markdown: 'Complete comparison',
+          completionStatus: 'complete',
+        },
+      ]).map((message) => message.id),
+    ).toEqual(['user_1', 'assistant_retry']);
+  });
 });

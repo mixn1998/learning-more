@@ -1221,6 +1221,30 @@ describe('learning SessionPage', () => {
     expect(screen.getByRole('button', { name: '重新生成' })).toHaveTextContent('↻');
   });
 
+  it('restores regenerate on a persisted interrupted AI fragment after refresh', async () => {
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 6,
+      learning: { progress: 'in_progress', session: { state: 'active' } },
+      messages: [
+        { id: 'message_user_01', role: 'user', markdown: '请比较两个量词。' },
+        {
+          id: 'message_assistant_01',
+          role: 'assistant',
+          markdown: '接下来比较：\n\n',
+          completionStatus: 'interrupted',
+        },
+      ],
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
+
+    const fragment = await screen.findByText('接下来比较：');
+    const interruptedMessage = fragment.closest('article');
+    expect(interruptedMessage).not.toBeNull();
+    expect(within(interruptedMessage!).getByRole('button', { name: '重新生成' })).toHaveTextContent(
+      '↻',
+    );
+  });
+
   it('holds the visible learning timer during AI generation and resumes it after completion', async () => {
     let releaseStream!: () => void;
     const stream = vi.fn(

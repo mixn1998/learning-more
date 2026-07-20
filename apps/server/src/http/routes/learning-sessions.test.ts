@@ -244,6 +244,7 @@ describe('LearningSession HTTP contract', () => {
           role: 'user',
           createdAt: '2026-07-13T00:00:00.000Z',
           contentArtifactRef: 'artifact_01',
+          completionStatus: 'complete',
         },
       ]),
       loadArtifactMarkdown: vi.fn().mockResolvedValue('Why?'),
@@ -284,7 +285,7 @@ describe('LearningSession HTTP contract', () => {
 
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json()).toMatchObject({
-      messages: [{ id: 'message_01', markdown: 'Why?' }],
+      messages: [{ id: 'message_01', markdown: 'Why?', completionStatus: 'complete' }],
       closurePreparation: {
         sessionId: 'session_01',
         sourceMessageIds: ['message_01'],

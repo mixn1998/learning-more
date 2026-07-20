@@ -166,7 +166,12 @@ function hasAssistantResponse(messages: readonly SessionMessageView[] | undefine
   if (latestUserIndex < 0) return false;
   return messages
     .slice(latestUserIndex + 1)
-    .some((message) => message.role === 'assistant' && message.markdown.trim() !== '');
+    .some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.completionStatus !== 'interrupted' &&
+        message.markdown.trim() !== '',
+    );
 }
 
 function hasUnansweredUserMessage(messages: readonly SessionMessageView[] | undefined): boolean {
@@ -1439,11 +1444,15 @@ export function SessionPage(props: {
     latestUserMessage !== undefined &&
     state.editingMessageId === undefined &&
     (messageSendFailed || generationFailed);
+  const latestUserIndex = messages.findLastIndex((message) => message.role === 'user');
+  const interruptedAssistantMessage = messages
+    .slice(latestUserIndex + 1)
+    .findLast((message) => message.role === 'assistant');
   const retryableMessageId =
     !retryAvailable || latestUserMessage === undefined
       ? undefined
-      : generationFailed && state.assistantMarkdown !== ''
-        ? (messages.findLast((message) => message.role === 'assistant')?.id ?? latestUserMessage.id)
+      : generationFailed && interruptedAssistantMessage !== undefined
+        ? interruptedAssistantMessage.id
         : latestUserMessage.id;
 
   return (

@@ -1,6 +1,7 @@
 type ConversationMessage = Readonly<{
   role: 'user' | 'assistant';
   markdown: string;
+  completionStatus?: 'complete' | 'interrupted';
 }>;
 
 export function collapseRetryDuplicateUserMessages<T extends ConversationMessage>(
@@ -13,6 +14,14 @@ export function collapseRetryDuplicateUserMessages<T extends ConversationMessage
       message.role === 'user' &&
       previous?.role === 'user' &&
       message.markdown === previous.markdown
+    ) {
+      effective[effective.length - 1] = message;
+      continue;
+    }
+    if (
+      message.role === 'assistant' &&
+      previous?.role === 'assistant' &&
+      previous.completionStatus === 'interrupted'
     ) {
       effective[effective.length - 1] = message;
       continue;

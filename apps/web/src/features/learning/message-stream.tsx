@@ -7,6 +7,7 @@ export type SessionMessageView = Readonly<{
   role: 'user' | 'assistant';
   markdown: string;
   createdAt?: string | undefined;
+  completionStatus?: 'complete' | 'interrupted' | undefined;
 }>;
 
 export function MessageStream(props: {

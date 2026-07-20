@@ -118,6 +118,7 @@ export const LearningSessionViewResponseSchema = z.strictObject({
         role: z.enum(['user', 'assistant']),
         createdAt: z.iso.datetime({ offset: true }),
         markdown: z.string(),
+        completionStatus: z.enum(['complete', 'interrupted']).optional(),
         generationTaskId: identifier.optional(),
       }),
     )

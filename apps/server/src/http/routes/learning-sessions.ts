@@ -44,6 +44,7 @@ export type LearningSessionRouteOptions = Readonly<{
       role: 'user' | 'assistant';
       createdAt: string;
       contentArtifactRef: string;
+      completionStatus?: 'complete' | 'interrupted' | undefined;
       generationTaskId?: string | undefined;
     }>[]
   >;
@@ -455,13 +456,19 @@ export async function registerLearningSessionRoutes(
                     createdAt: message.createdAt,
                     markdown:
                       (await options.loadArtifactMarkdown?.(message.contentArtifactRef)) ?? '',
+                    ...(message.completionStatus === undefined
+                      ? {}
+                      : { completionStatus: message.completionStatus }),
                     ...(message.generationTaskId === undefined
                       ? {}
                       : { generationTaskId: message.generationTaskId }),
                   })),
                 ),
               );
-        const sourceMessageIds = messages?.map((message) => message.id) ?? [];
+        const sourceMessageIds =
+          messages
+            ?.filter((message) => message.completionStatus !== 'interrupted')
+            .map((message) => message.id) ?? [];
         const sessionSnapshotHash =
           view.learning.session === undefined
             ? undefined
