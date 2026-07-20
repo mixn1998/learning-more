@@ -2,6 +2,7 @@
 
 import '@testing-library/jest-dom/vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { LearningClient } from '../../client/learning-client.js';
@@ -1208,6 +1209,39 @@ describe('learning SessionPage', () => {
 
     expect(await screen.findByText('恢复后的流式内容')).toBeInTheDocument();
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
+  });
+
+  it('keeps one stream subscription for a restored task under React StrictMode', async () => {
+    const listeners: Array<(event: {
+      type: string;
+      data: { markdown?: string; resultRef?: string };
+    }) => void> = [];
+    const stream = vi.fn(
+      (_taskId: string, listener: (typeof listeners)[number]) =>
+        new Promise<never>(() => {
+          listeners.push(listener);
+        }),
+    );
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 4,
+      learning: {
+        progress: 'in_progress',
+        session: { state: 'active', activeGenerationTaskId: 'task_running_01' },
+      },
+    });
+    render(
+      <StrictMode>
+        <SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />
+      </StrictMode>,
+    );
+
+    await waitFor(() => expect(stream).toHaveBeenCalledTimes(1));
+    act(() =>
+      listeners.forEach((listener) =>
+        listener({ type: 'message.delta', data: { markdown: '第一段。' } }),
+      ),
+    );
+    expect(await screen.findByText('第一段。')).toBeInTheDocument();
   });
 
   it('restores the regenerate action when the persisted conversation ends with an unanswered user message', async () => {

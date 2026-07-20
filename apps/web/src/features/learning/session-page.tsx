@@ -741,7 +741,9 @@ export function SessionPage(props: {
   };
 
   useEffect(() => {
+    let cancelled = false;
     void api.start(props.lessonId).then(async (started) => {
+      if (cancelled) return;
       dispatch({
         type: 'started',
         sessionId: started.sessionId,
@@ -749,6 +751,7 @@ export function SessionPage(props: {
         writable: started.writable,
       });
       const initialSnapshot = await api.getSession(started.sessionId);
+      if (cancelled) return;
       const snapshot = hydrateAndRefreshTeachingProgress(started.sessionId, initialSnapshot);
       const activeTaskId = snapshot.learning.session?.activeGenerationTaskId;
       if (activeTaskId !== undefined) {
@@ -763,6 +766,7 @@ export function SessionPage(props: {
             api,
             activeTaskId,
             (event) => {
+              if (cancelled) return;
               if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
                 dispatch({ type: 'delta', markdown: event.data.markdown });
               }
@@ -772,12 +776,14 @@ export function SessionPage(props: {
         } catch {
           // Stream transport is advisory; the persisted task binding remains authoritative.
         }
+        if (cancelled) return;
         const outcome = await convergeGenerationProjection({
           sessionId: started.sessionId,
           taskId: activeTaskId,
           attempt,
           responseKind: hasUnansweredUserMessage(snapshot.messages) ? 'turn' : 'opening',
         });
+        if (cancelled) return;
         if (outcome.status === 'failed') {
           const content =
             outcome.snapshot.messages?.findLast((message) => message.role === 'user')?.markdown ??
@@ -801,6 +807,9 @@ export function SessionPage(props: {
         await openOpening(started.sessionId, snapshot.resourceVersion);
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, [api, props.autoOpen, props.lessonId]);
 
   useEffect(() => {
