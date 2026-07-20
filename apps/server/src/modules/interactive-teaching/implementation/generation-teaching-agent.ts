@@ -22,23 +22,9 @@ import {
 } from './teaching-response-stream.js';
 
 const STRUCTURED_TASK_PREFIX = 'interactive-teaching-control-v1:';
-const STREAM_POLL_INTERVAL_MS = 20;
-const TRANSIENT_TASK_READ_RETRIES = 10;
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-function isTransientTaskRead(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.message === 'GENERATION_TASK_NOT_FOUND' ||
-      (error as Error & { code?: string }).code === 'GENERATION_TASK_NOT_FOUND')
-  );
-}
-
-async function waitForNextTaskProjection(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, STREAM_POLL_INTERVAL_MS));
 }
 
 export function renderTeachingConversationInput(context: TeachingContextPackage): string {
@@ -68,17 +54,6 @@ export function createGenerationTeachingAgent(options: {
   execution?: GenerationExecution;
   providerId: string;
 }): TeachingAgent {
-  async function readStreamingTask(taskId: string) {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        return await options.runtime.get(taskId);
-      } catch (error) {
-        if (!isTransientTaskRead(error) || attempt >= TRANSIENT_TASK_READ_RETRIES) throw error;
-        await waitForNextTaskProjection();
-      }
-    }
-  }
-
   async function publish(
     events: readonly TeachingResponseStreamEvent[],
     observer: TeachingAgentCompletionObserver | undefined,
@@ -139,8 +114,32 @@ export function createGenerationTeachingAgent(options: {
       const response = createTeachingResponseStream();
       let observedLength = 0;
       let terminalSettled = false;
+      const pending: Awaited<ReturnType<GenerationRuntime['get']>>[] = [];
+      let wake: (() => void) | undefined;
+      const notify = (task: Awaited<ReturnType<GenerationRuntime['get']>>) => {
+        pending.push(task);
+        wake?.();
+        wake = undefined;
+      };
+      const subscribe = options.execution?.subscribe ?? options.runtime.subscribe;
+      const unsubscribe = subscribe?.(taskId, notify) ?? (() => {});
+      let notifyAbort: (() => void) | undefined;
+      const abortPromise =
+        signal === undefined
+          ? undefined
+          : new Promise<void>((resolve) => {
+              notifyAbort = () => resolve();
+              if (signal.aborted) resolve();
+              else signal.addEventListener('abort', notifyAbort, { once: true });
+            });
+      const waitForUpdate = () =>
+        pending.length > 0
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              wake = resolve;
+            });
       const terminalPromise = awaitTerminal(taskId, false);
-      void terminalPromise.then(
+      const terminalSettledPromise = terminalPromise.then(
         () => {
           terminalSettled = true;
         },
@@ -156,30 +155,37 @@ export function createGenerationTeachingAgent(options: {
         observedLength = current.length;
         await publish(events, observer);
       };
-      while (!terminalSettled) {
-        if (signal?.aborted === true) {
-          await (options.execution ?? options.runtime).cancel(taskId);
-          throw new Error('teaching_generation_cancelled');
+      try {
+        await consume((await options.runtime.get(taskId)).draftMarkdown);
+        while (!terminalSettled) {
+          if (signal?.aborted === true) {
+            await (options.execution ?? options.runtime).cancel(taskId);
+            throw new Error('teaching_generation_cancelled');
+          }
+          while (pending.length > 0) await consume(pending.shift()?.draftMarkdown);
+          if (terminalSettled) break;
+          await Promise.race([
+            waitForUpdate(),
+            terminalSettledPromise,
+            ...(abortPromise === undefined ? [] : [abortPromise]),
+          ]);
         }
-        await consume((await readStreamingTask(taskId)).draftMarkdown);
-        if (terminalSettled) break;
-        await Promise.race([
-          waitForNextTaskProjection(),
-          terminalPromise.then(
-            () => undefined,
-            () => undefined,
-          ),
-        ]);
+        while (pending.length > 0) await consume(pending.shift()?.draftMarkdown);
+        const task = await terminalPromise;
+        await consume(task.draftMarkdown);
+        if (task.status !== 'completed') throw new Error('teaching_generation_incomplete');
+        if (!task.taskKey.startsWith(STRUCTURED_TASK_PREFIX)) {
+          return parseTeachingAgentResult(task.draftMarkdown ?? '', false);
+        }
+        const completed = response.finish();
+        await publish(completed.events, observer);
+        return completed.result;
+      } finally {
+        if (signal !== undefined && notifyAbort !== undefined) {
+          signal.removeEventListener('abort', notifyAbort);
+        }
+        unsubscribe();
       }
-      const task = await terminalPromise;
-      await consume(task.draftMarkdown);
-      if (task.status !== 'completed') throw new Error('teaching_generation_incomplete');
-      if (!task.taskKey.startsWith(STRUCTURED_TASK_PREFIX)) {
-        return parseTeachingAgentResult(task.draftMarkdown ?? '', false);
-      }
-      const completed = response.finish();
-      await publish(completed.events, observer);
-      return completed.result;
     },
     async read(taskId) {
       const task = await options.runtime.get(taskId);

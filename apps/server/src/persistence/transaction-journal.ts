@@ -1,9 +1,11 @@
-import { access, copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, copyFile, mkdir, open, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { z } from 'zod';
 
 import { DataRoot } from './data-root.js';
+import { replaceFileAtomic, retryTransientFileOperation } from './atomic-file.js';
 import { encodeJson } from './json-codec.js';
 
 export type JournalState = 'preparing' | 'prepared' | 'committing' | 'committed' | 'cleaned';
@@ -77,6 +79,19 @@ export function transactionFilePath(
   );
 }
 
+function transactionRollbackFilePath(
+  dataRoot: DataRoot,
+  transactionId: string,
+  relativePath: string,
+): string {
+  // Mirroring a long entity path underneath the already-long transaction
+  // directory can exceed Windows' practical path limit and make copyFile
+  // report EPERM. A transaction only needs a stable, collision-resistant
+  // backup name, not the original directory shape.
+  const key = createHash('sha256').update(relativePath, 'utf8').digest('hex').slice(0, 32);
+  return path.join(transactionDirectory(dataRoot, transactionId), 'rollback', `${key}.bak`);
+}
+
 export function storeFilePath(dataRoot: DataRoot, relativePath: string): string {
   return path.join(dataRoot.absolutePath, ...relativeSegments(relativePath));
 }
@@ -97,7 +112,7 @@ async function writeDurable(filePath: string, content: string): Promise<void> {
   } finally {
     await handle.close();
   }
-  await rename(temporaryPath, filePath);
+  await replaceFileAtomic(temporaryPath, filePath);
 }
 
 export async function writeTransactionJournal(
@@ -145,10 +160,9 @@ export async function applyJournalOperations(
       'staging',
       operation.relativePath,
     );
-    const rollback = transactionFilePath(
+    const rollback = transactionRollbackFilePath(
       dataRoot,
       journal.transactionId,
-      'rollback',
       operation.relativePath,
     );
 
@@ -160,7 +174,7 @@ export async function applyJournalOperations(
         // atomically moved into place. Moving the target into rollback first
         // creates a short ENOENT window that high-frequency generation polling
         // can mistake for a missing task.
-        await copyFile(target, rollback);
+        await retryTransientFileOperation(() => copyFile(target, rollback));
       }
       operation.state = 'backed-up';
       await writeTransactionJournal(dataRoot, journal);
@@ -171,7 +185,7 @@ export async function applyJournalOperations(
       if (operation.kind === 'write') {
         if (await exists(staged)) {
           await mkdir(path.dirname(target), { recursive: true });
-          await rename(staged, target);
+          await replaceFileAtomic(staged, target);
         } else if (!(await exists(target))) {
           throw new TransactionRecoveryError('storage_corrupted');
         }

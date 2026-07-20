@@ -117,6 +117,32 @@ describe('WeeklyReportScheduler', () => {
       vi.useRealTimers();
     }
   });
+
+  it('waits for an in-flight reconciliation before shutdown completes', async () => {
+    let finish!: () => void;
+    const mayFinish = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const scheduler = createWeeklyReportScheduler({
+      timeZone: 'Asia/Shanghai',
+      reconcile: async () => {
+        await mayFinish;
+        return undefined;
+      },
+    });
+
+    await scheduler.start();
+    let stopped = false;
+    const stopping = scheduler.stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+
+    finish();
+    await stopping;
+    expect(stopped).toBe(true);
+  });
 });
 
 describe('WeeklyReportService', () => {

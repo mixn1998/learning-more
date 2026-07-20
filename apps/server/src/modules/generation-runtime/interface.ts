@@ -30,6 +30,7 @@ export interface GenerationRuntime {
   listByOwner(ownerRef: string, taskKind?: string): Promise<readonly GenerationTask[]>;
   recoverExpiredLeases(): Promise<number>;
   getMetrics(): Promise<GenerationRuntimeMetrics>;
+  subscribe?(taskId: string, observer: (task: GenerationTask) => void): () => void;
 }
 
 export type GenerationRuntimeMetrics = Readonly<{
@@ -67,4 +68,5 @@ export interface GenerationExecution {
   stream(taskId: string, afterSequence: number): ReturnType<GenerationFrameLog['readAfter']>;
   cancel(taskId: string): Promise<GenerationTask>;
   recover(taskId: string): Promise<GenerationTask>;
+  subscribe?(taskId: string, observer: (task: GenerationTask) => void): () => void;
 }

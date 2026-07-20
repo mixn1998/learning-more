@@ -27,6 +27,16 @@ export interface GenerationRuntimeOptions {
   readonly initialProviderId?: string;
   readonly defaultFallbackProviderIds?: readonly string[];
   readonly defaultMaxAttempts?: number;
+  readonly maxInteractiveContinuationAttempts?: number;
+}
+
+class GenerationPersistenceError extends Error {
+  readonly code = 'generation_storage_failed';
+
+  constructor(cause: unknown) {
+    super('generation_storage_failed', { cause });
+    this.name = 'GenerationPersistenceError';
+  }
 }
 
 export function createGenerationRuntime(options: GenerationRuntimeOptions): GenerationRuntime & {
@@ -50,9 +60,24 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   const nextId = options.nextId ?? (() => `task_${randomUUID()}`);
   const now = options.now ?? (() => new Date());
   const taskTimeoutMs = options.taskTimeoutMs ?? 20 * 60 * 1_000;
+  const maxInteractiveContinuationAttempts = Math.max(
+    0,
+    options.maxInteractiveContinuationAttempts ?? 2,
+  );
   let currentProviderId = options.initialProviderId ?? options.providers[0]?.describe().id ?? '';
   let currentModel: string | undefined;
   let claimBarrier: Promise<void> = Promise.resolve();
+  const subscribers = new Map<string, Set<(task: GenerationTask) => void>>();
+
+  function publish(task: GenerationTask): void {
+    for (const observer of subscribers.get(task.id) ?? []) {
+      try {
+        observer(task);
+      } catch {
+        // A UI subscriber must never interrupt generation or persistence.
+      }
+    }
+  }
 
   async function allTasks(): Promise<GenerationTask[]> {
     const tasks: GenerationTask[] = [];
@@ -61,12 +86,18 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   }
 
   async function persist(task: GenerationTask): Promise<GenerationTask> {
-    await options.unitOfWork.execute({ transactionId: `tx_generation_${randomUUID()}` }, (tx) =>
-      options.repository.save(tx, task, task.resourceVersion),
-    );
-    const stored = await options.repository.get(task.id);
-    if (stored === undefined) throw new Error('GENERATION_TASK_NOT_PERSISTED');
-    return stored;
+    try {
+      await options.unitOfWork.execute({ transactionId: `tx_generation_${randomUUID()}` }, (tx) =>
+        options.repository.save(tx, task, task.resourceVersion),
+      );
+      const stored = await options.repository.get(task.id);
+      if (stored === undefined) throw new Error('GENERATION_TASK_NOT_PERSISTED');
+      publish(stored);
+      return stored;
+    } catch (error) {
+      if (error instanceof GenerationPersistenceError) throw error;
+      throw new GenerationPersistenceError(error);
+    }
   }
 
   async function get(taskId: string): Promise<GenerationTask> {
@@ -186,8 +217,11 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     if (claim.kind === 'terminal') return claim.taskId;
     const { providerIds, maxAttempts } = claim;
     let current = claim.current;
-    for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-      const providerId = providerIds[attemptIndex]!;
+    let providerIndex = 0;
+    let continuationAttempts = 0;
+    let continuationFrom: string | undefined;
+    while (providerIndex < maxAttempts) {
+      const providerId = providerIds[providerIndex]!;
       const provider = providers.get(providerId);
       const startedAt = now().toISOString();
       let emittedDelta = false;
@@ -208,6 +242,15 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           ],
           updatedAt: now().toISOString(),
         });
+        providerIndex += 1;
+        if (providerIndex >= maxAttempts) {
+          current = await persist({
+            ...current,
+            status: 'failed',
+            errorCode: 'provider_unavailable',
+            updatedAt: now().toISOString(),
+          });
+        }
         continue;
       }
       current = await persist({
@@ -235,7 +278,10 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
         for await (const delta of provider.generate(
           {
             taskId: current.id,
-            prompt: current.prompt ?? '',
+            prompt:
+              continuationFrom === undefined
+                ? (current.prompt ?? '')
+                : `${current.prompt ?? ''}\n\n[Interrupted response continuation]\nThe response below was already shown to the learner before a recoverable transport interruption. Continue from the exact interrupted point without repeating or restarting it. Finish the same response and its required hidden machine state.\n\n${continuationFrom}`,
             ...(current.model === undefined ? {} : { model: current.model }),
             ...(current.reasoningEffort === undefined
               ? {}
@@ -279,8 +325,9 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       } catch (error) {
         current = await get(current.id);
         const providerError = error instanceof ProviderExecutionError ? error : undefined;
+        const persistenceError = error instanceof GenerationPersistenceError;
         const retryable =
-          !emittedDelta &&
+          !persistenceError &&
           !timedOut &&
           !controller.signal.aborted &&
           (providerError?.options.retryable ?? true);
@@ -288,7 +335,9 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           ? 'generation_timeout'
           : controller.signal.aborted
             ? 'generation_cancelled'
-            : (providerError?.options.code ?? 'provider_failed');
+            : persistenceError
+              ? 'generation_storage_failed'
+              : (providerError?.options.code ?? 'provider_failed');
         current = await persist({
           ...current,
           attempts: (current.attempts ?? []).map((attempt, index, all) =>
@@ -304,7 +353,26 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           ),
           updatedAt: now().toISOString(),
         });
-        if (retryable && attemptIndex + 1 < maxAttempts) continue;
+        const canContinueInteractiveReply =
+          retryable &&
+          current.taskKind === 'interactive-teaching' &&
+          (emittedDelta || continuationFrom !== undefined) &&
+          (current.draftMarkdown ?? '').length > 0 &&
+          continuationAttempts < maxInteractiveContinuationAttempts;
+        if (canContinueInteractiveReply) {
+          continuationAttempts += 1;
+          continuationFrom = current.draftMarkdown ?? '';
+          continue;
+        }
+        if (
+          retryable &&
+          !emittedDelta &&
+          continuationFrom === undefined &&
+          providerIndex + 1 < maxAttempts
+        ) {
+          providerIndex += 1;
+          continue;
+        }
         current = await persist({
           ...current,
           status: timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'failed',
@@ -334,6 +402,15 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     submit,
     runNext,
     get,
+    subscribe(taskId, observer) {
+      const taskSubscribers = subscribers.get(taskId) ?? new Set<(task: GenerationTask) => void>();
+      taskSubscribers.add(observer);
+      subscribers.set(taskId, taskSubscribers);
+      return () => {
+        taskSubscribers.delete(observer);
+        if (taskSubscribers.size === 0) subscribers.delete(taskId);
+      };
+    },
     async listByOwner(ownerRef, taskKind) {
       return (await allTasks()).filter(
         (task) =>
@@ -423,11 +500,14 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           [...providers.entries()].map(async ([providerId, provider]) => {
             const capabilities = provider.describe();
             try {
-              const health = await provider.healthCheck();
               const models =
                 provider.listModels === undefined
                   ? []
                   : await provider.listModels({ refresh: input?.refresh ?? false });
+              // A forced catalog refresh may discover that CLI authentication
+              // has expired. Read health after that refresh so the response
+              // cannot combine stale healthy state with an unauthenticated catalog.
+              const health = await provider.healthCheck();
               return {
                 providerId,
                 capabilities,

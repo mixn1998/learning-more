@@ -43,7 +43,7 @@ describe('GenerationExecution', () => {
       id: queuedTask.id,
       status: 'completed',
     });
-    expect(runtime.runNext).toHaveBeenCalledOnce();
+    expect(runtime.runNext).toHaveBeenCalledTimes(2);
   });
 
   it('recovers an expired lease before declaring a queued plan-flow task undispatchable', async () => {

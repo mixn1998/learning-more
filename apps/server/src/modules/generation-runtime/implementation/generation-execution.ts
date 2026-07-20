@@ -2,11 +2,11 @@ import type { GenerationExecution, GenerationFrameLog, GenerationRuntime } from 
 import type { GenerationTask } from '../ports/generation-task-repository.js';
 
 const TERMINAL = new Set<GenerationTask['status']>(['completed', 'failed', 'cancelled', 'timeout']);
-const IDLE_POLL_INTERVAL_MS = 25;
+const RECOVERY_RECHECK_INTERVAL_MS = 250;
 const MAX_TERMINAL_WAIT_MS = 20 * 60 * 1_000;
 
 function waitForScheduler(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, IDLE_POLL_INTERVAL_MS));
+  return new Promise((resolve) => setTimeout(resolve, RECOVERY_RECHECK_INTERVAL_MS));
 }
 
 export function createGenerationExecution(options: {
@@ -18,20 +18,39 @@ export function createGenerationExecution(options: {
   async function awaitTerminal(taskId: string): Promise<GenerationTask> {
     const waitDeadline = Date.now() + MAX_TERMINAL_WAIT_MS;
     let dispatches = 0;
-    while (dispatches < maxDispatches) {
-      const task = await options.runtime.get(taskId);
-      if (TERMINAL.has(task.status)) return task;
-      const ran = await options.runtime.runNext();
-      if (ran !== undefined) {
-        dispatches += 1;
-        continue;
+    let latest = await options.runtime.get(taskId);
+    let wake: (() => void) | undefined;
+    const unsubscribe = options.runtime.subscribe?.(taskId, (task) => {
+      latest = task;
+      wake?.();
+      wake = undefined;
+    });
+    const waitForUpdate = () =>
+      new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+    try {
+      while (dispatches < maxDispatches) {
+        if (TERMINAL.has(latest.status)) return latest;
+        const ran = await options.runtime.runNext();
+        if (ran !== undefined) {
+          dispatches += 1;
+          latest = await options.runtime.get(taskId);
+          continue;
+        }
+        const recovered = await options.runtime.recoverExpiredLeases();
+        if (recovered > 0) {
+          latest = await options.runtime.get(taskId);
+          continue;
+        }
+        if (TERMINAL.has(latest.status)) return latest;
+        if (Date.now() >= waitDeadline) break;
+        await Promise.race([waitForUpdate(), waitForScheduler()]);
+        if (wake !== undefined) wake = undefined;
+        latest = await options.runtime.get(taskId);
       }
-      const recovered = await options.runtime.recoverExpiredLeases();
-      if (recovered > 0) continue;
-      const current = await options.runtime.get(taskId);
-      if (TERMINAL.has(current.status)) return current;
-      if (Date.now() >= waitDeadline) break;
-      await waitForScheduler();
+    } finally {
+      unsubscribe?.();
     }
     throw Object.assign(new Error('generation_terminal_wait_exhausted'), {
       code: 'generation_terminal_wait_exhausted',
@@ -43,6 +62,7 @@ export function createGenerationExecution(options: {
     submit: (request) => options.runtime.submit(request),
     awaitTerminal,
     stream: (taskId, afterSequence) => options.frameLog.readAfter(taskId, afterSequence),
+    subscribe: (taskId, observer) => options.runtime.subscribe?.(taskId, observer) ?? (() => {}),
     cancel: (taskId) => options.runtime.cancel(taskId),
     async recover(taskId) {
       await options.runtime.recoverExpiredLeases();

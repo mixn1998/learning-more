@@ -87,11 +87,12 @@ export function createWeeklyReportScheduler(options: {
         // The durable failed state is retried by the timer scheduled in drain().
       });
     },
-    stop() {
+    async stop() {
       stopped = true;
       if (boundaryTimer !== undefined) clearTimeout(boundaryTimer);
       boundaryTimer = undefined;
       clearRetryTimer();
+      await running?.catch(() => undefined);
     },
   };
 }

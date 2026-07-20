@@ -86,6 +86,21 @@ describe('UnitOfWork [EQ-DATA-02]', () => {
     await expect(readFile(target, 'utf8')).resolves.toBe('{"version":2}\n');
   });
 
+  it('deletes a long entity path without mirroring it into the Windows rollback path', async () => {
+    const root = await temporaryDataRoot();
+    const relativePath = `entities/artifacts/72/${'course_review_'.padEnd(150, 'x')}`;
+    const target = path.join(root.absolutePath, ...relativePath.split('/'));
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, 'review', 'utf8');
+    const unitOfWork = createUnitOfWork({ dataRoot: root });
+
+    await unitOfWork.execute({ transactionId: `tx_delete_course_${'a'.repeat(64)}` }, async (tx) =>
+      tx.deleteOnCommit(relativePath),
+    );
+
+    await expect(readFile(target, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('does not let a second writer remove or replace an active lease', async () => {
     const root = await temporaryDataRoot();
     const first = await acquireStoreWriteLease(root, { instanceId: 'instance-a', processId: 101 });

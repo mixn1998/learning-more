@@ -280,6 +280,17 @@ export function createCodexCliAdapter(
   let cached: Readonly<{ expiresAt: number; probe: CodexCliProbe }> | undefined;
   let loginInFlight: Promise<void> | undefined;
 
+  async function* invalidateHealthOnFailure(
+    source: AsyncIterable<ProviderDelta>,
+  ): AsyncIterable<ProviderDelta> {
+    try {
+      yield* source;
+    } catch (error) {
+      cached = undefined;
+      throw error;
+    }
+  }
+
   async function probe(refresh = false): Promise<CodexCliProbe> {
     if (!refresh && cached !== undefined && cached.expiresAt > now()) return cached.probe;
     const versionResult = await run(options.executable, ['--version']);
@@ -358,61 +369,65 @@ export function createCodexCliAdapter(
     },
     generate(request, signal) {
       if (options.generate === undefined) {
-        return (async function* () {
-          let emitted = false;
-          try {
-            for await (const delta of streamGenerate(options.executable, request, signal)) {
-              emitted = true;
-              yield delta;
+        return invalidateHealthOnFailure(
+          (async function* () {
+            let emitted = false;
+            try {
+              for await (const delta of streamGenerate(options.executable, request, signal)) {
+                emitted = true;
+                yield delta;
+              }
+              if (emitted || signal.aborted) return;
+              throw new Error('codex_app_server_empty');
+            } catch (error) {
+              if (emitted || signal.aborted) throw error;
+              yield* fallbackGenerate(
+                options.executable,
+                [
+                  'exec',
+                  '--ephemeral',
+                  '--skip-git-repo-check',
+                  '--sandbox',
+                  'read-only',
+                  '--model',
+                  request.model,
+                  '-c',
+                  `model_reasoning_effort=${JSON.stringify(request.reasoningEffort)}`,
+                  '-',
+                ],
+                {
+                  shell: false,
+                  cwd: request.workingDirectory ?? process.cwd(),
+                  signal,
+                  stdin: request.prompt,
+                },
+              );
             }
-            if (emitted || signal.aborted) return;
-            throw new Error('codex_app_server_empty');
-          } catch (error) {
-            if (emitted || signal.aborted) throw error;
-            yield* fallbackGenerate(
-              options.executable,
-              [
-                'exec',
-                '--ephemeral',
-                '--skip-git-repo-check',
-                '--sandbox',
-                'read-only',
-                '--model',
-                request.model,
-                '-c',
-                `model_reasoning_effort=${JSON.stringify(request.reasoningEffort)}`,
-                '-',
-              ],
-              {
-                shell: false,
-                cwd: request.workingDirectory ?? process.cwd(),
-                signal,
-                stdin: request.prompt,
-              },
-            );
-          }
-        })();
+          })(),
+        );
       }
-      return generate(
-        options.executable,
-        [
-          'exec',
-          '--ephemeral',
-          '--skip-git-repo-check',
-          '--sandbox',
-          'read-only',
-          '--model',
-          request.model,
-          '-c',
-          `model_reasoning_effort=${JSON.stringify(request.reasoningEffort)}`,
-          '-',
-        ],
-        {
-          shell: false,
-          cwd: request.workingDirectory ?? process.cwd(),
-          signal,
-          stdin: request.prompt,
-        },
+      return invalidateHealthOnFailure(
+        generate(
+          options.executable,
+          [
+            'exec',
+            '--ephemeral',
+            '--skip-git-repo-check',
+            '--sandbox',
+            'read-only',
+            '--model',
+            request.model,
+            '-c',
+            `model_reasoning_effort=${JSON.stringify(request.reasoningEffort)}`,
+            '-',
+          ],
+          {
+            shell: false,
+            cwd: request.workingDirectory ?? process.cwd(),
+            signal,
+            stdin: request.prompt,
+          },
+        ),
       );
     },
   };

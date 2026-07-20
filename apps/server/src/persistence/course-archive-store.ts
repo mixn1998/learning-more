@@ -102,8 +102,10 @@ function artifactPaths(artifactId: string): readonly string[] {
     return [];
   }
   const hash = digest(artifactId);
+  const artifactRoot = `entities/artifacts/${hash.slice(0, 2)}/${artifactId}`;
   return [
-    `entities/artifacts/${hash.slice(0, 2)}/${artifactId}`,
+    `${artifactRoot}/artifact.json`,
+    `${artifactRoot}/content.md`,
     `work/artifacts/${hash}/draft.md`,
   ];
 }

@@ -103,11 +103,13 @@ export async function assembleLocalApplication(
   // Candidate tasks need the authoring coordinator after execution so their
   // Markdown is compiled and the outline session is advanced. Resume both
   // pending work and terminal tasks whose authoring projection was not saved.
-  void course.recoverGenerationTasks().catch(() => undefined);
-  void course.recoverTeachingWeightMetadata().catch(() => undefined);
+  const startupRecoveries = [
+    course.recoverGenerationTasks().catch(() => undefined),
+    course.recoverTeachingWeightMetadata().catch(() => undefined),
+  ];
   // Teaching observations are derived from durable session history. Rebuild them in the
   // background so an unrelated historical session cannot delay course authoring or startup.
-  void learning.recoverTeachingSessions().catch(() => undefined);
+  startupRecoveries.push(learning.recoverTeachingSessions().catch(() => undefined));
   profile.start();
   let backgroundRecovery: Promise<void> | undefined;
   const startBackgroundRecovery = () => {
@@ -157,6 +159,10 @@ export async function assembleLocalApplication(
   };
   return {
     close: async () => {
+      await Promise.allSettled([
+        ...startupRecoveries,
+        ...(backgroundRecovery === undefined ? [] : [backgroundRecovery]),
+      ]);
       profile.close();
       await insights.close();
     },

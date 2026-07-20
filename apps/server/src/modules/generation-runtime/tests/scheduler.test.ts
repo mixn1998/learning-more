@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createMockProvider } from '../../../ai-providers/mock-provider.js';
 import { createApiProvider } from '../../../ai-providers/api-provider.js';
+import { ProviderExecutionError, type AiProvider } from '../../../ai-providers/provider.js';
 import { createGenerationRuntime } from '../implementation/generation-runtime.js';
 import { createInMemoryRepositories } from '../../../persistence/in-memory-repositories.js';
 import { selectNextGenerationTask } from '../../../workers/generation-scheduler.js';
@@ -73,6 +74,37 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     expect(listModels).toHaveBeenCalledWith({ refresh: true });
     await expect(runtime.startProviderAuthentication('codex-cli')).resolves.toBe('started');
     expect(startAuthentication).toHaveBeenCalledOnce();
+  });
+
+  it('reports health after a forced model refresh invalidates CLI authentication', async () => {
+    const repositories = createInMemoryRepositories();
+    let authenticated = true;
+    const provider = Object.assign(createMockProvider({ id: 'codex-cli', script: [] }), {
+      async listModels(input: Readonly<{ refresh?: boolean }>) {
+        if (input.refresh) authenticated = false;
+        return [];
+      },
+      async healthCheck() {
+        return authenticated
+          ? ({ status: 'healthy' } as const)
+          : ({ status: 'unhealthy', message: 'codex_cli_not_authenticated' } as const);
+      },
+    });
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [provider],
+    });
+
+    await expect(runtime.getProviderCatalog({ refresh: true })).resolves.toMatchObject({
+      providers: [
+        {
+          providerId: 'codex-cli',
+          health: { status: 'unhealthy', message: 'codex_cli_not_authenticated' },
+          models: [],
+        },
+      ],
+    });
   });
 
   it('enforces real-provider, background, owner, and Mock concurrency ceilings', () => {
@@ -492,6 +524,112 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     await expect(secondRuntime.get('task-no-fallback')).resolves.toMatchObject({
       status: 'failed',
       draftMarkdown: 'partial',
+    });
+  });
+
+  it('continues a recoverably interrupted teaching reply with the same Provider', async () => {
+    const repositories = createInMemoryRepositories();
+    let invocation = 0;
+    const prompts: string[] = [];
+    const provider: AiProvider = {
+      describe: () => ({
+        id: 'teaching-provider',
+        kind: 'mock' as const,
+        maxConcurrency: 1,
+        supportsStreaming: true as const,
+      }),
+      validateConfig: async () => ({ valid: true as const }),
+      healthCheck: async () => ({ status: 'healthy' as const }),
+      async *generate(request) {
+        prompts.push(request.prompt);
+        invocation += 1;
+        if (invocation === 1) {
+          yield { type: 'text' as const, text: '<learning-more-reply>First sentence. ' };
+          throw new ProviderExecutionError('stream interrupted', {
+            retryable: true,
+            beforeFirstDelta: false,
+            code: 'provider_process_failed',
+          });
+        }
+        yield {
+          type: 'text' as const,
+          text: 'Second sentence.</learning-more-reply><learning-more-control>{}</learning-more-control>',
+        };
+      },
+    };
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [provider],
+      nextId: () => 'task-continuation',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    await runtime.submit({
+      taskKey: 'teaching-continuation',
+      inputSnapshotHash: 'teaching-continuation',
+      taskKind: 'interactive-teaching',
+      taskGroup: 'interactive',
+      ownerRef: 'session-continuation',
+      providerId: 'teaching-provider',
+      priority: 100,
+      prompt: 'Teach the lesson.',
+    });
+
+    await runtime.runNext();
+
+    expect(invocation).toBe(2);
+    expect(prompts[1]).toContain('First sentence.');
+    await expect(runtime.get('task-continuation')).resolves.toMatchObject({
+      status: 'completed',
+      draftMarkdown:
+        '<learning-more-reply>First sentence. Second sentence.</learning-more-reply><learning-more-control>{}</learning-more-control>',
+      attempts: [
+        expect.objectContaining({
+          status: 'failed',
+          errorCode: 'provider_process_failed',
+          emittedDelta: true,
+        }),
+        expect.objectContaining({ status: 'completed', emittedDelta: true }),
+      ],
+    });
+  });
+
+  it('reports task snapshot persistence failures separately from Provider failures', async () => {
+    const repositories = createInMemoryRepositories();
+    let transactionCount = 0;
+    const failingUnitOfWork = {
+      async execute<T>(_request: unknown, work: (context: typeof tx) => Promise<T>) {
+        transactionCount += 1;
+        if (transactionCount === 4) {
+          throw Object.assign(new Error('rename busy'), { code: 'EPERM' });
+        }
+        return work(tx);
+      },
+    };
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork: failingUnitOfWork,
+      providers: [createMockProvider({ id: 'mock', script: [{ type: 'text', text: 'partial' }] })],
+      nextId: () => 'task-storage-failure',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    await runtime.submit({
+      taskKey: 'storage-failure',
+      inputSnapshotHash: 'storage-failure',
+      taskKind: 'interactive-teaching',
+      taskGroup: 'interactive',
+      ownerRef: 'session-storage-failure',
+      providerId: 'mock',
+      priority: 100,
+      prompt: 'teach',
+    });
+
+    await runtime.runNext();
+
+    await expect(runtime.get('task-storage-failure')).resolves.toMatchObject({
+      status: 'failed',
+      errorCode: 'generation_storage_failed',
+      attempts: [expect.objectContaining({ errorCode: 'generation_storage_failed' })],
     });
   });
 

@@ -68,6 +68,7 @@ function runtime(
     includeKnowledgePointTitles?: boolean;
     streamChunks?: readonly string[];
     transientRunningReadFailures?: number;
+    waitForCancellation?: boolean;
   } = {},
 ) {
   const directive = {
@@ -81,6 +82,9 @@ function runtime(
   } as const;
   let request: GenerationRequest | undefined;
   let transientRunningReadFailures = options.transientRunningReadFailures ?? 0;
+  let getCount = 0;
+  const subscribers = new Set<(task: GenerationTask) => void>();
+  let releaseRunNext: (() => void) | undefined;
   let task: GenerationTask = {
     id: 'task_1',
     taskKey: 'pending',
@@ -96,6 +100,14 @@ function runtime(
       return { taskId: task.id };
     },
     async runNext() {
+      if (options.waitForCancellation === true) {
+        task = { ...task, status: 'running', draftMarkdown: '' };
+        for (const subscriber of subscribers) subscriber(task);
+        await new Promise<void>((resolve) => {
+          releaseRunNext = resolve;
+        });
+        return task.id;
+      }
       const emittedDirective = options.includeKnowledgePointTitles
         ? {
             ...directive,
@@ -108,9 +120,11 @@ function runtime(
       const completeMarkdown = `<learning-more-reply>A free-form explanation. A second sentence.</learning-more-reply><learning-more-control>${JSON.stringify(emittedDirective)}</learning-more-control>`;
       if (options.streamChunks !== undefined) {
         task = { ...task, status: 'running', draftMarkdown: '' };
+        for (const subscriber of subscribers) subscriber(task);
         for (const chunk of options.streamChunks) {
           await new Promise((resolve) => setTimeout(resolve, 70));
           task = { ...task, draftMarkdown: `${task.draftMarkdown ?? ''}${chunk}` };
+          for (const subscriber of subscribers) subscriber(task);
         }
       }
       task = {
@@ -118,6 +132,7 @@ function runtime(
         status: 'completed',
         draftMarkdown: options.streamChunks === undefined ? completeMarkdown : task.draftMarkdown,
       };
+      for (const subscriber of subscribers) subscriber(task);
       return task.id;
     },
     async cancel() {
@@ -126,9 +141,12 @@ function runtime(
         status: 'cancelled',
         draftMarkdown: '<learning-more-reply>A partial explanation.',
       };
+      for (const subscriber of subscribers) subscriber(task);
+      releaseRunNext?.();
       return task;
     },
     async get() {
+      getCount += 1;
       if (task.status === 'running' && transientRunningReadFailures > 0) {
         transientRunningReadFailures -= 1;
         throw Object.assign(new Error('GENERATION_TASK_NOT_FOUND'), {
@@ -146,8 +164,12 @@ function runtime(
     async getMetrics() {
       return { total: 1, byStatus: { [task.status]: 1 }, byErrorCode: {} };
     },
+    subscribe(_taskId, observer) {
+      subscribers.add(observer);
+      return () => subscribers.delete(observer);
+    },
   };
-  return { value, request: () => request, directive };
+  return { value, request: () => request, directive, getCount: () => getCount };
 }
 
 describe('GenerationTeachingAgent', () => {
@@ -312,6 +334,7 @@ describe('GenerationTeachingAgent', () => {
       'reply-completed',
       'directive',
     ]);
+    expect(fake.getCount()).toBeLessThanOrEqual(3);
   });
 
   it('treats a transient missing task projection as in-flight instead of failed', async () => {
@@ -393,5 +416,19 @@ describe('GenerationTeachingAgent', () => {
       markdown: 'A partial explanation.',
       completionStatus: 'interrupted',
     });
+  });
+
+  it('cancels a generation that is waiting without another stream update', async () => {
+    const fake = runtime({ waitForCancellation: true });
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+    const accepted = await agent.submit(context(), 'message_user_abort');
+    const controller = new AbortController();
+
+    const completing = agent.complete(accepted.taskId, undefined, controller.signal);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    controller.abort();
+
+    await expect(completing).rejects.toThrow('teaching_generation_cancelled');
+    await expect(fake.value.get(accepted.taskId)).resolves.toMatchObject({ status: 'cancelled' });
   });
 });

@@ -263,6 +263,65 @@ describe('CodexCliAdapter', () => {
     expect(fallbackGenerate).not.toHaveBeenCalled();
   });
 
+  it('invalidates cached healthy state when a live generation fails', async () => {
+    let authenticated = true;
+    const run = vi.fn(async (_executable: string, arguments_: readonly string[]) => {
+      if (arguments_[0] === '--version') {
+        return { exitCode: 0, stdout: 'codex-cli 0.144.0-alpha.4\n', stderr: '' };
+      }
+      if (arguments_[0] === 'login') {
+        return authenticated
+          ? { exitCode: 0, stdout: 'Logged in using ChatGPT\n', stderr: '' }
+          : { exitCode: 1, stdout: 'Not logged in\n', stderr: '' };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          models: [
+            {
+              slug: 'gpt-5.6-sol',
+              display_name: 'GPT-5.6-Sol',
+              default_reasoning_level: 'low',
+              supported_reasoning_levels: [{ effort: 'low' }],
+              visibility: 'list',
+            },
+          ],
+        }),
+        stderr: '',
+      };
+    });
+    const streamGenerate = async function* () {
+      authenticated = false;
+      throw new Error('stream authentication lost');
+      yield { type: 'text' as const, text: 'unreachable' };
+    };
+    const fallbackGenerate = async function* () {
+      throw new Error('fallback authentication lost');
+      yield { type: 'text' as const, text: 'unreachable' };
+    };
+    const adapter = createCodexCliAdapter({
+      executable: 'codex.exe',
+      run,
+      streamGenerate,
+      fallbackGenerate,
+    });
+    await expect(adapter.probe()).resolves.toMatchObject({ health: { status: 'healthy' } });
+    const consume = async () => {
+      for await (const _delta of adapter.generate(
+        { prompt: 'prompt', model: 'gpt-5.6-sol', reasoningEffort: 'low' },
+        new AbortController().signal,
+      )) {
+        // no-op
+      }
+    };
+
+    await expect(consume()).rejects.toThrow('fallback authentication lost');
+    await expect(adapter.probe()).resolves.toMatchObject({
+      health: { status: 'unhealthy', message: 'codex_cli_not_authenticated' },
+      models: [],
+    });
+  });
+
   it('rejects a model or reasoning effort that is absent from the current catalog', async () => {
     const run = vi.fn(async (_executable: string, arguments_: readonly string[]) => {
       if (arguments_[0] === '--version') {
