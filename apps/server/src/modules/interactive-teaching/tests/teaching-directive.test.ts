@@ -165,6 +165,39 @@ describe('teaching directive', () => {
     });
   });
 
+  it('accepts an atomic closure turn after the comprehensive check is completed', () => {
+    const comprehensiveCheck = applyTeachingDirective(initial(), {
+      schemaVersion: 1,
+      lessonPhase: 'comprehensive_check',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'skipped', interactionStatus: 'skipped' },
+      ],
+      comprehensiveCheck: 'learning',
+      closureInquiry: 'pending',
+      summaryStatus: 'pending',
+    });
+
+    const closed = applyTeachingDirective(comprehensiveCheck, {
+      schemaVersion: 1,
+      lessonPhase: 'ready_to_close',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'skipped', interactionStatus: 'skipped' },
+      ],
+      comprehensiveCheck: 'completed',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    });
+
+    expect(closed).toMatchObject({
+      lessonPhase: 'ready_to_close',
+      comprehensiveCheck: 'completed',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    });
+  });
+
   it('rejects closure-state combinations that are illegal for their phase', () => {
     const discussion = applyTeachingDirective(initial(), {
       schemaVersion: 1,

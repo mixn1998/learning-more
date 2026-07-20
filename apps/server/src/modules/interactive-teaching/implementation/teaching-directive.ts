@@ -272,6 +272,7 @@ export function applyTeachingDirective(
     directive.lessonPhase === 'ready_to_close';
   if (
     attemptsClosure &&
+    currentPhase !== 'comprehensive_check' &&
     currentPhase !== 'discussion' &&
     currentPhase !== 'summary' &&
     currentPhase !== 'ready_to_close'
