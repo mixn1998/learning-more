@@ -29,28 +29,44 @@ function visible(events: readonly Readonly<{ type: string; markdown?: string }>[
 }
 
 describe('TeachingResponseStream', () => {
-  it('validates the complete control block before publishing sentence deltas', () => {
+  it('publishes safe reply sentences before the trailing control block is available', () => {
     const stream = createTeachingResponseStream();
 
-    expect(stream.push(control.slice(0, 80))).toEqual([]);
-    const first = stream.push(
-      `${control.slice(80)}<learning-more-reply>第一句已经完整。第二句还没有`,
-    );
+    const first = stream.push('<learning-more-reply>第一句已经完整。第二句还没有');
 
-    expect(first[0]).toEqual({ type: 'directive.ready', directive });
     expect(visible(first)).toBe('第一句已经完整。');
+    expect(first.some((event) => event.type === 'directive.ready')).toBe(false);
 
-    const second = stream.push('完成。</learning-more-reply>');
+    const second = stream.push(`完成。</learning-more-reply>${control}`);
     expect(visible(second)).toBe('第二句还没有完成。');
+    expect(second.map((event) => event.type)).toEqual([
+      'reply.delta',
+      'reply.completed',
+      'directive.ready',
+    ]);
+    expect(second).toContainEqual({ type: 'directive.ready', directive });
     expect(stream.finish().result).toEqual({
       markdown: '第一句已经完整。第二句还没有完成。',
       directive,
     });
   });
 
+  it('completes the visible reply even when the trailing control block is invalid', () => {
+    const stream = createTeachingResponseStream();
+    const events = stream.push(
+      '<learning-more-reply>Visible teaching answer.</learning-more-reply><learning-more-control>{invalid}</learning-more-control>',
+    );
+
+    expect(events).toEqual([
+      { type: 'reply.delta', markdown: 'Visible teaching answer.' },
+      { type: 'reply.completed', markdown: 'Visible teaching answer.' },
+    ]);
+    expect(() => stream.finish()).toThrow();
+  });
+
   it('does not publish an inline formula until its delimiter and sentence are closed', () => {
     const stream = createTeachingResponseStream();
-    stream.push(`${control}<learning-more-reply>`);
+    stream.push('<learning-more-reply>');
 
     expect(visible(stream.push('定义为 $f(x)=x'))).toBe('');
     expect(visible(stream.push('^2$。'))).toBe('定义为 $f(x)=x^2$。');
@@ -58,7 +74,7 @@ describe('TeachingResponseStream', () => {
 
   it('publishes a valid math-plot only after the complete fenced block arrives', () => {
     const stream = createTeachingResponseStream();
-    stream.push(`${control}<learning-more-reply>`);
+    stream.push('<learning-more-reply>');
 
     const first = stream.push(
       '先观察变化。\n\n```math-plot\n{"version":1,"view":{"type":"cartesian2d"',
@@ -74,14 +90,14 @@ describe('TeachingResponseStream', () => {
 
   it('keeps image description fences atomic and rejects an invalid math-plot contract', () => {
     const imageStream = createTeachingResponseStream();
-    imageStream.push(`${control}<learning-more-reply>`);
+    imageStream.push('<learning-more-reply>');
     expect(visible(imageStream.push('```image-description\n一张函数变化示意图'))).toBe('');
     expect(visible(imageStream.push('\n```'))).toBe(
       '```image-description\n一张函数变化示意图\n```',
     );
 
     const invalidPlot = createTeachingResponseStream();
-    invalidPlot.push(`${control}<learning-more-reply>`);
+    invalidPlot.push('<learning-more-reply>');
     expect(() => invalidPlot.push('```math-plot\n{"version":1}\n```')).toThrow(
       'teaching_math_plot_invalid',
     );
@@ -89,9 +105,9 @@ describe('TeachingResponseStream', () => {
 
   it('does not mistake comparison signs or an unmatched currency marker for render units', () => {
     const stream = createTeachingResponseStream();
-    stream.push(`${control}<learning-more-reply>`);
+    stream.push('<learning-more-reply>');
 
-    expect(visible(stream.push('当 x < 3 时，成本是 $5。</learning-more-reply>'))).toBe(
+    expect(visible(stream.push(`当 x < 3 时，成本是 $5。</learning-more-reply>${control}`))).toBe(
       '当 x < 3 时，成本是 $5。',
     );
     expect(stream.finish().result.markdown).toBe('当 x < 3 时，成本是 $5。');
@@ -100,13 +116,13 @@ describe('TeachingResponseStream', () => {
   it('rejects an unfinished atomic render unit at completion', () => {
     const formula = createTeachingResponseStream();
     expect(() =>
-      formula.push(`${control}<learning-more-reply>定义为 \\(f(x)=x^2</learning-more-reply>`),
+      formula.push(`<learning-more-reply>定义为 \\(f(x)=x^2</learning-more-reply>${control}`),
     ).toThrow('teaching_reply_render_unit_incomplete');
 
     const fence = createTeachingResponseStream();
     expect(() =>
       fence.push(
-        `${control}<learning-more-reply>\`\`\`image-description\n函数图像</learning-more-reply>`,
+        `<learning-more-reply>\`\`\`image-description\n函数图像</learning-more-reply>${control}`,
       ),
     ).toThrow('teaching_reply_render_unit_incomplete');
   });

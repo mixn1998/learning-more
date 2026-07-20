@@ -34,10 +34,12 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 14px;
+  height: clamp(680px, calc(100dvh - 260px), 920px);
   margin-top: 14px;
 }
 .lesson-session-main {
-  min-height: 680px;
+  min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-rows: auto 1fr auto;
   overflow: hidden;
@@ -50,15 +52,20 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   background: var(--paper-2);
 }
 .lesson-session-stream {
+  min-height: 0;
   padding: 25px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .lesson-session-side {
   position: sticky;
   top: 86px;
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 100px);
+  height: 100%;
+  max-height: none;
   overflow-y: auto;
   align-content: start;
   align-self: start;
@@ -336,10 +343,16 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
 @media (max-width: 880px) {
   .lesson-session-layout {
     grid-template-columns: 1fr;
+    height: auto;
+  }
+  .lesson-session-main {
+    min-height: 560px;
+    height: clamp(600px, calc(100dvh - 120px), 760px);
   }
   .lesson-session-side {
     position: static;
     grid-template-columns: 1fr 1fr;
+    height: auto;
     max-height: none;
     overflow: visible;
   }

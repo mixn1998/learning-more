@@ -85,7 +85,9 @@ export function createGenerationTeachingAgent(options: {
   ): Promise<void> {
     for (const event of events) {
       if (event.type === 'directive.ready') await observer?.onDirective?.(event.directive);
-      else await observer?.onReplyDelta?.(event.markdown);
+      else if (event.type === 'reply.completed') {
+        await observer?.onReplyCompleted?.(event.markdown);
+      } else await observer?.onReplyDelta?.(event.markdown);
     }
   }
 

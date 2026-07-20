@@ -105,7 +105,7 @@ function runtime(
             })),
           }
         : directive;
-      const completeMarkdown = `<learning-more-control>${JSON.stringify(emittedDirective)}</learning-more-control><learning-more-reply>A free-form explanation. A second sentence.</learning-more-reply>`;
+      const completeMarkdown = `<learning-more-reply>A free-form explanation. A second sentence.</learning-more-reply><learning-more-control>${JSON.stringify(emittedDirective)}</learning-more-control>`;
       if (options.streamChunks !== undefined) {
         task = { ...task, status: 'running', draftMarkdown: '' };
         for (const chunk of options.streamChunks) {
@@ -124,8 +124,7 @@ function runtime(
       task = {
         ...task,
         status: 'cancelled',
-        draftMarkdown:
-          '<learning-more-control>{}</learning-more-control><learning-more-reply>A partial explanation.',
+        draftMarkdown: '<learning-more-reply>A partial explanation.',
       };
       return task;
     },
@@ -282,10 +281,9 @@ describe('GenerationTeachingAgent', () => {
   it('publishes validated reply sentences while provider output is still arriving', async () => {
     const control = `<learning-more-control>${JSON.stringify(runtime().directive)}</learning-more-control>`;
     const chunks = [
-      control.slice(0, 60),
-      `${control.slice(60)}<learning-more-reply>A free-form explanation.`,
+      '<learning-more-reply>A free-form explanation.',
       ' ',
-      'A second sentence.</learning-more-reply>',
+      `A second sentence.</learning-more-reply>${control}`,
     ];
     const fake = runtime({ streamChunks: chunks });
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
@@ -297,6 +295,9 @@ describe('GenerationTeachingAgent', () => {
         onDirective() {
           observed.push('directive');
         },
+        onReplyCompleted() {
+          observed.push('reply-completed');
+        },
         onReplyDelta(markdown) {
           observed.push(markdown);
         },
@@ -305,15 +306,20 @@ describe('GenerationTeachingAgent', () => {
       markdown: 'A free-form explanation. A second sentence.',
       directive: fake.directive,
     });
-    expect(observed).toEqual(['directive', 'A free-form explanation.', ' A second sentence.']);
+    expect(observed).toEqual([
+      'A free-form explanation.',
+      ' A second sentence.',
+      'reply-completed',
+      'directive',
+    ]);
   });
 
   it('treats a transient missing task projection as in-flight instead of failed', async () => {
     const control = `<learning-more-control>${JSON.stringify(runtime().directive)}</learning-more-control>`;
     const fake = runtime({
       streamChunks: [
-        control,
         '<learning-more-reply>A durable streamed reply.</learning-more-reply>',
+        control,
       ],
       transientRunningReadFailures: 3,
     });
@@ -329,6 +335,30 @@ describe('GenerationTeachingAgent', () => {
       }),
     ).resolves.toMatchObject({ markdown: 'A durable streamed reply.' });
     expect(observed.join('')).toBe('A durable streamed reply.');
+  });
+
+  it('reports a closed visible reply before rejecting a missing control block', async () => {
+    const fake = runtime({
+      streamChunks: ['<learning-more-reply>A complete teaching answer.</learning-more-reply>'],
+    });
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+    await agent.submit(context(), 'message_user_1');
+    const observed: string[] = [];
+
+    await expect(
+      agent.complete('task_1', {
+        onReplyDelta(markdown) {
+          observed.push(markdown);
+        },
+        onReplyCompleted(markdown) {
+          observed.push(`completed:${markdown}`);
+        },
+      }),
+    ).rejects.toThrow('teaching_control_protocol_invalid');
+    expect(observed).toEqual([
+      'A complete teaching answer.',
+      'completed:A complete teaching answer.',
+    ]);
   });
 
   it('preserves interrupted Markdown without treating it as a complete reply', async () => {

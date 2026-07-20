@@ -1451,6 +1451,7 @@ export function SessionPage(props: {
             state.teachingProgress.lessonPhase === 'ready_to_close')
         }
         canStop={state.taskId !== undefined}
+        conversationKey={state.sessionId}
         courseTitle={props.courseTitle ?? '当前课程'}
         elapsedSeconds={state.actualSeconds}
         editableMessageId={editAvailable ? latestUserMessage.id : undefined}

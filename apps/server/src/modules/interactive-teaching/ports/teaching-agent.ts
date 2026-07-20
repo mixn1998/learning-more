@@ -39,6 +39,7 @@ export type TeachingAgentResult = Readonly<{
 export type TeachingAgentCompletionObserver = Readonly<{
   onDirective?(directive: TeachingDirective): void | Promise<void>;
   onReplyDelta?(markdown: string): void | Promise<void>;
+  onReplyCompleted?(markdown: string): void | Promise<void>;
 }>;
 
 export interface TeachingAgent {

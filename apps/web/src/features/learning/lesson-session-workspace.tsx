@@ -45,6 +45,7 @@ function messageText(message: LessonSessionMessage): string {
 }
 
 export function LessonSessionWorkspace(props: {
+  readonly conversationKey?: string | undefined;
   readonly title: string;
   readonly courseTitle: string;
   readonly moduleLabel?: string;
@@ -181,7 +182,7 @@ export function LessonSessionWorkspace(props: {
             <ConversationStream
               className="lesson-session-stream"
               followKey={followKey}
-              forceFollowKey={lastUserMessage?.id}
+              forceFollowKey={`${props.conversationKey ?? 'lesson'}:${lastUserMessage?.id ?? 'opening'}`}
               generating={props.assistantPending && !props.opening}
               label="学习对话"
             >

@@ -74,6 +74,18 @@ function failureProblem(taskId: string): ApplicationProblem {
   };
 }
 
+function stateSyncFailureProblem(taskId: string): ApplicationProblem {
+  return {
+    type: 'https://learning-more.local/problems/projection-incomplete',
+    status: 503,
+    code: 'projection_incomplete',
+    messageKey: 'errors.projectionIncomplete',
+    retryable: true,
+    correlationId: taskId,
+    recovery: { action: 'refresh', resourceRef: taskId },
+  };
+}
+
 export function createInteractiveTeaching(options: {
   sessionModule: LearningSessionModule;
   contextSources: TeachingContextSources;
@@ -242,6 +254,9 @@ export function createInteractiveTeaching(options: {
       const assistantMessageId = options.nextAssistantMessageId();
       const artifactRef = `assistant-message:${assistantMessageId}`;
       let streamedMarkdown = '';
+      let completedReplyMarkdown: string | undefined;
+      let directiveValidated = false;
+      let generationTerminalPublished = false;
       let streamProjectionAvailable = true;
       try {
         streamProjectionAvailable = await tryAppendFrame(accepted.taskId, 'message.started', {
@@ -260,7 +275,11 @@ export function createInteractiveTeaching(options: {
             }
             streamedMarkdown += markdown;
           },
+          onReplyCompleted(markdown) {
+            completedReplyMarkdown = markdown;
+          },
         });
+        completedReplyMarkdown = result.markdown;
         // The hidden control block is parsed incrementally so the visible reply can
         // stream, but it is business-validated only after the authoritative task
         // reaches completion. A partial/in-flight projection must never terminate
@@ -273,6 +292,7 @@ export function createInteractiveTeaching(options: {
           baseState: input.assembled.teachingState,
           ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
         });
+        directiveValidated = true;
         if (!result.markdown.startsWith(streamedMarkdown)) {
           throw new Error('teaching_stream_reply_mismatch');
         }
@@ -323,6 +343,7 @@ export function createInteractiveTeaching(options: {
         await tryAppendFrame(accepted.taskId, 'task.completed', {
           resultRef: artifactRef,
         });
+        generationTerminalPublished = true;
         if (input.observe) {
           await observationQueue.enqueue(input.sessionId, () =>
             observeCompletedTurn({
@@ -341,22 +362,75 @@ export function createInteractiveTeaching(options: {
           } catch {
             // Preserve the original observation failure; startup recovery still detects stale state.
           }
+          if (!generationTerminalPublished) {
+            await tryAppendFrame(accepted.taskId, 'task.failed', {
+              problem: stateSyncFailureProblem(accepted.taskId),
+            });
+          }
           throw error;
         }
-        try {
-          await options.sessionModule.execute(
-            {
-              type: 'StopSessionGeneration',
-              lessonId: input.lessonId,
-              taskId: accepted.taskId,
-            },
-            backgroundContext(input.context, `${input.context.commandId}:assistant-failed`),
-          );
-        } catch {
-          // The terminal stream event must still be emitted if session cleanup needs recovery.
+        let failedReplyCommitted = false;
+        const failedReplyMarkdown = completedReplyMarkdown ?? streamedMarkdown;
+        const failedReplyStatus = completedReplyMarkdown === undefined ? 'interrupted' : 'complete';
+        if (failedReplyMarkdown.length > 0) {
+          try {
+            await options.assistantArtifacts.save({
+              artifactRef,
+              markdown: failedReplyMarkdown,
+              completionStatus: failedReplyStatus,
+            });
+            await options.sessionModule.execute(
+              {
+                type: 'CommitAssistantMessage',
+                lessonId: input.lessonId,
+                sessionId: input.sessionId,
+                messageId: assistantMessageId,
+                contentArtifactRef: artifactRef,
+                generationTaskId: accepted.taskId,
+                completionStatus: failedReplyStatus,
+              },
+              backgroundContext(input.context, `${input.context.commandId}:assistant-recovered`),
+            );
+            failedReplyCommitted = true;
+            if (failedReplyStatus === 'complete') {
+              await tryAppendFrame(accepted.taskId, 'message.completed', {
+                messageId: assistantMessageId,
+                contentSha256: sha256(failedReplyMarkdown),
+              });
+              await tryAppendFrame(accepted.taskId, 'artifact.ready', {
+                artifactId: artifactRef,
+                kind: 'assistant-message',
+                contentSha256: sha256(failedReplyMarkdown),
+              });
+            }
+            try {
+              await markObservationFailed(input.courseId, input.lessonId, input.sessionId);
+            } catch {
+              // Message persistence is independent from the failed ledger projection.
+            }
+          } catch {
+            // Fall back to clearing the active task. The original generation failure stays primary.
+          }
+        }
+        if (!failedReplyCommitted) {
+          try {
+            await options.sessionModule.execute(
+              {
+                type: 'StopSessionGeneration',
+                lessonId: input.lessonId,
+                taskId: accepted.taskId,
+              },
+              backgroundContext(input.context, `${input.context.commandId}:assistant-failed`),
+            );
+          } catch {
+            // The terminal stream event must still be emitted if session cleanup needs recovery.
+          }
         }
         await tryAppendFrame(accepted.taskId, 'task.failed', {
-          problem: failureProblem(accepted.taskId),
+          problem:
+            failedReplyStatus === 'complete' && !directiveValidated
+              ? stateSyncFailureProblem(accepted.taskId)
+              : failureProblem(accepted.taskId),
         });
         throw error;
       }

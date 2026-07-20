@@ -143,4 +143,53 @@ describe('shared chat components', () => {
     fireEvent.click(screen.getByRole('button', { name: '回到最新消息' }));
     expect(stream.scrollTop).toBe(500);
   });
+
+  it('opens a conversation at its latest message', () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollHeight',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 500,
+    });
+    try {
+      render(
+        <ConversationStream followKey="session-1:3" label="conversation">
+          <p>latest message</p>
+        </ConversationStream>,
+      );
+      expect(screen.getByRole('log', { name: 'conversation' }).scrollTop).toBe(500);
+    } finally {
+      if (originalScrollHeight === undefined) {
+        delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollHeight;
+      } else {
+        Object.defineProperty(HTMLElement.prototype, 'scrollHeight', originalScrollHeight);
+      }
+    }
+  });
+
+  it('follows the latest message when the active conversation changes', () => {
+    const { rerender } = render(
+      <ConversationStream followKey="session-1:2" forceFollowKey="session-1" label="conversation">
+        <p>older message</p>
+      </ConversationStream>,
+    );
+    const stream = screen.getByRole('log', { name: 'conversation' });
+    Object.defineProperties(stream, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 500 },
+    });
+    stream.scrollTop = 100;
+    fireEvent.scroll(stream);
+
+    rerender(
+      <ConversationStream followKey="session-2:4" forceFollowKey="session-2" label="conversation">
+        <p>latest message</p>
+      </ConversationStream>,
+    );
+
+    expect(stream.scrollTop).toBe(500);
+    expect(screen.queryByRole('button', { name: '回到最新消息' })).not.toBeInTheDocument();
+  });
 });

@@ -41,9 +41,10 @@ function machineControlContext(context: TeachingContextPackage): string {
 export function renderTeachingControlProtocol(context: TeachingContextPackage): string {
   return [
     '【机器控制协议｜不得展示给学习者】',
-    '本轮必须严格输出两个区块，控制区块在前、可见回复区块在后：',
-    `${CONTROL_START}{完整 JSON 教学状态快照}${CONTROL_END}`,
+    '本轮必须严格输出两个区块，可见回复区块在前、控制区块在后：',
     `${REPLY_START}{仅供学习者阅读的 Markdown}${REPLY_END}`,
+    `${CONTROL_START}{完整 JSON 教学状态快照}${CONTROL_END}`,
+    '必须先完整输出面向学习者的可见回复，再依据本轮实际教学内容生成控制 JSON；控制区块不得夹入可见回复，也不得省略。',
     '控制 JSON 必须包含 schemaVersion=1、lessonPhase、knowledgePoints、difficultySignals、comprehensiveCheck、closureInquiry、summaryStatus；只在 warmup 或 knowledge_point 阶段按需包含 activeKnowledgePointRef。',
     'knowledgePoints 必须完整返回给定的全部 ref；可原样保留用于辨认知识点的 title。每项 status 只能是 pending|learning|completed|skipped，interactionStatus 只能是 pending|completed|skipped，depthPreference 只能是 default|condensed。',
     '只有用户当前原话经语义判断明确表示“不用深入展开、简要带过”或同义意图时，才把对应知识点 depthPreference 设为 condensed；否则保持既有值。若用户之后明确要求深入讲解，可恢复为 default。该字段只调整本次会话教学深度，不改写课程预设重点。',

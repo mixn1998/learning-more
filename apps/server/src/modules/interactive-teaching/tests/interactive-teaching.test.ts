@@ -252,6 +252,7 @@ async function fixture(
         const split = markdown.indexOf(',') + 1;
         await observer?.onReplyDelta?.(markdown.slice(0, split));
         await observer?.onReplyDelta?.(markdown.slice(split));
+        await observer?.onReplyCompleted?.(markdown);
       }
       const current = generationTasks.get(_taskId);
       if (current !== undefined) generationTasks.set(_taskId, { ...current, status: 'completed' });
@@ -582,6 +583,66 @@ describe('InteractiveTeaching deep module', () => {
       'artifact.ready',
       'task.completed',
     ]);
+  });
+
+  it('keeps a completed streamed reply independent when the trailing teaching directive is invalid', async () => {
+    const { module, drainObservations, frames, messageLog } = await fixture({
+      streamReply: true,
+      agentDirective: {
+        schemaVersion: 1,
+        lessonPhase: 'warmup',
+        knowledgePoints: [
+          {
+            ref: 'knowledge:unknown',
+            status: 'pending',
+            interactionStatus: 'pending',
+          },
+        ],
+        comprehensiveCheck: 'pending',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+      },
+    });
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+
+    await expect(drainObservations('session_1')).rejects.toThrow(
+      'teaching_directive_knowledge_points_mismatch',
+    );
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+      expect.objectContaining({
+        id: 'message_ai_1',
+        role: 'assistant',
+        completionStatus: 'complete',
+      }),
+    ]);
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'warmup',
+      observationStatus: 'failed',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', progress: 'pending' }],
+    });
+    expect(frames.map((frame) => frame.type)).toEqual([
+      'message.started',
+      'message.delta',
+      'message.delta',
+      'message.completed',
+      'artifact.ready',
+      'task.failed',
+    ]);
+    expect(frames.at(-1)).toMatchObject({
+      type: 'task.failed',
+      data: { problem: { code: 'projection_incomplete', recovery: { action: 'refresh' } } },
+    });
   });
 
   it('commits the authoritative reply when incremental frame projection fails', async () => {

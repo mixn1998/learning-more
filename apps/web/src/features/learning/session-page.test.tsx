@@ -455,6 +455,44 @@ describe('learning SessionPage', () => {
     expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
   });
 
+  it('keeps a committed reply complete when only teaching-state synchronization fails', async () => {
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 1,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        resourceVersion: 4,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [
+          { id: 'message_user_01', role: 'user', markdown: 'Explain the boundary.' },
+          { id: 'message_ai_01', role: 'assistant', markdown: 'The teaching reply is complete.' },
+        ],
+      });
+    const api = client({
+      getSession,
+      sendMessage: vi.fn().mockResolvedValue({
+        taskId: 'task_01',
+        resourceVersion: 3,
+        userMessageId: 'message_user_01',
+      }),
+      stream: vi.fn().mockImplementation(async (_taskId, onEvent) => {
+        onEvent({ type: 'message.delta', data: { markdown: 'The teaching reply is complete.' } });
+        onEvent({ type: 'task.failed', data: { code: 'teaching_state_sync_failed' } });
+      }),
+    });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByRole('textbox');
+    fireEvent.change(input, { target: { value: 'Explain the boundary.' } });
+    fireEvent.submit(input.closest('form')!);
+
+    expect(await screen.findByText('The teaching reply is complete.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重新生成/u })).not.toBeInTheDocument();
+  });
+
   it('shows the regenerate icon when the generation task reports a failed terminal event', async () => {
     const retryGeneration = vi
       .fn()

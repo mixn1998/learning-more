@@ -259,6 +259,7 @@ export function LessonRecordView(props: {
                   <ConversationStream
                     className="lesson-record-chat"
                     followKey={`${selected.sessionId}:${selected.messages.length}`}
+                    forceFollowKey={selected.sessionId}
                     label="只读学习对话"
                   >
                     {selected.messages.map((message) => (

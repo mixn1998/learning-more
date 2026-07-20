@@ -10,7 +10,8 @@ import {
 
 export type TeachingResponseStreamEvent =
   | Readonly<{ type: 'directive.ready'; directive: TeachingDirective }>
-  | Readonly<{ type: 'reply.delta'; markdown: string }>;
+  | Readonly<{ type: 'reply.delta'; markdown: string }>
+  | Readonly<{ type: 'reply.completed'; markdown: string }>;
 
 type Fence = Readonly<{
   start: number;
@@ -246,21 +247,10 @@ export function createTeachingResponseStream(): Readonly<{
   let directive: TeachingDirective | undefined;
   let replyStart = -1;
   let emittedReplyLength = 0;
+  let replyCompleted = false;
 
   function synchronize(final: boolean): TeachingResponseStreamEvent[] {
     const events: TeachingResponseStreamEvent[] = [];
-    if (directive === undefined) {
-      const controlStart = raw.indexOf(CONTROL_START);
-      const controlEnd = raw.indexOf(CONTROL_END, controlStart + CONTROL_START.length);
-      if (controlStart < 0 || controlEnd < 0) return events;
-      const controlSource = raw.slice(controlStart + CONTROL_START.length, controlEnd).trim();
-      const parsedDirective = TeachingDirectiveSchema.parse(
-        JSON.parse(controlSource) as unknown,
-      ) as unknown as TeachingDirective;
-      directive = parsedDirective;
-      events.push({ type: 'directive.ready', directive: parsedDirective });
-      replyStart = raw.indexOf(REPLY_START, controlEnd + CONTROL_END.length);
-    }
     if (replyStart < 0) {
       replyStart = raw.indexOf(REPLY_START);
       if (replyStart < 0) return events;
@@ -275,6 +265,28 @@ export function createTeachingResponseStream(): Readonly<{
         markdown: reply.slice(emittedReplyLength, safeLength),
       });
       emittedReplyLength = safeLength;
+    }
+    if (replyEnd >= 0 && !replyCompleted) {
+      replyCompleted = true;
+      events.push({ type: 'reply.completed', markdown: reply });
+    }
+    if (directive === undefined && replyEnd >= 0) {
+      const controlStart = raw.indexOf(CONTROL_START, replyEnd + REPLY_END.length);
+      if (controlStart < 0) return events;
+      const controlEnd = raw.indexOf(CONTROL_END, controlStart + CONTROL_START.length);
+      if (controlEnd < 0) return events;
+      const controlSource = raw.slice(controlStart + CONTROL_START.length, controlEnd).trim();
+      let parsedDirective: TeachingDirective;
+      try {
+        parsedDirective = TeachingDirectiveSchema.parse(
+          JSON.parse(controlSource) as unknown,
+        ) as unknown as TeachingDirective;
+      } catch (error) {
+        if (final) throw error;
+        return events;
+      }
+      directive = parsedDirective;
+      events.push({ type: 'directive.ready', directive: parsedDirective });
     }
     return events;
   }
