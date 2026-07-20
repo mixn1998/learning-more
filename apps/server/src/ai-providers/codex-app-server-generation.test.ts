@@ -134,6 +134,76 @@ describe('Codex app-server generation', () => {
     expect(output).toEqual(['最终完整回复']);
   });
 
+  it('keeps sequential agent message items independent within one turn', async () => {
+    const fake = connection([
+      { id: 1, result: {} },
+      { id: 2, result: { thread: { id: 'thread_1' } } },
+      { id: 3, result: { turn: { id: 'turn_1' } } },
+      {
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'thread_1',
+          turnId: 'turn_1',
+          itemId: 'item_1',
+          delta: 'Compare the two quantifiers:\n\n',
+        },
+      },
+      {
+        method: 'item/completed',
+        params: {
+          threadId: 'thread_1',
+          turnId: 'turn_1',
+          item: {
+            id: 'item_1',
+            type: 'agentMessage',
+            text: 'Compare the two quantifiers:\n\n',
+            phase: 'commentary',
+          },
+        },
+      },
+      {
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'thread_1',
+          turnId: 'turn_1',
+          itemId: 'item_2',
+          delta: '\\[\\forall x\\,\\exists y\\; P(x,y)\\]',
+        },
+      },
+      {
+        method: 'item/completed',
+        params: {
+          threadId: 'thread_1',
+          turnId: 'turn_1',
+          item: {
+            id: 'item_2',
+            type: 'agentMessage',
+            text: '\\[\\forall x\\,\\exists y\\; P(x,y)\\]',
+            phase: 'final_answer',
+          },
+        },
+      },
+      {
+        method: 'turn/completed',
+        params: { threadId: 'thread_1', turn: { id: 'turn_1', status: 'completed' } },
+      },
+    ]);
+    const output: string[] = [];
+
+    for await (const delta of runCodexAppServerGeneration(
+      'codex.exe',
+      { prompt: 'prompt', model: 'model', reasoningEffort: 'high' },
+      new AbortController().signal,
+      () => fake.value,
+    )) {
+      output.push(delta.text);
+    }
+
+    expect(output.join('')).toBe(
+      'Compare the two quantifiers:\n\n\\[\\forall x\\,\\exists y\\; P(x,y)\\]',
+    );
+  });
+
   it('rejects a completed item that contradicts already emitted deltas', async () => {
     const fake = connection([
       { id: 1, result: {} },

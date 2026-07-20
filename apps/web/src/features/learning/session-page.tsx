@@ -1439,6 +1439,12 @@ export function SessionPage(props: {
     latestUserMessage !== undefined &&
     state.editingMessageId === undefined &&
     (messageSendFailed || generationFailed);
+  const retryableMessageId =
+    !retryAvailable || latestUserMessage === undefined
+      ? undefined
+      : generationFailed && state.assistantMarkdown !== ''
+        ? (messages.findLast((message) => message.role === 'assistant')?.id ?? latestUserMessage.id)
+        : latestUserMessage.id;
 
   return (
     <>
@@ -1467,7 +1473,7 @@ export function SessionPage(props: {
         outlineVersionLabel={props.outlineVersionLabel ?? '大纲 v1'}
         path={lessonPath}
         paused={state.activity === 'paused'}
-        retryableMessageId={retryAvailable ? latestUserMessage.id : undefined}
+        retryableMessageId={retryableMessageId}
         retryLabel={messageSendFailed ? '重新发送' : '重新生成'}
         sendError={navigationError}
         stopped={state.draftArtifactRef !== undefined}

@@ -263,6 +263,11 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   font-size: inherit;
   line-height: inherit;
 }
+.lesson-session-workspace .learn-ai-meta {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 8px;
+}
 .lesson-session-workspace .learn-ai h2 {
   font-size: 18px;
 }

@@ -217,6 +217,19 @@ export function LessonSessionWorkspace(props: {
                       ) : message.content === undefined ? null : (
                         <AiSurface>{message.content}</AiSurface>
                       )}
+                      {props.retryableMessageId === message.id ? (
+                        <footer className="learn-ai-meta">
+                          <button
+                            aria-label={props.retryLabel ?? '重新生成'}
+                            className="chat-user-action"
+                            title={props.retryLabel ?? '重新生成'}
+                            type="button"
+                            onClick={props.onRetryMessage}
+                          >
+                            <span aria-hidden="true">↻</span>
+                          </button>
+                        </footer>
+                      ) : null}
                     </article>
                   ) : (
                     <UserMessageRow

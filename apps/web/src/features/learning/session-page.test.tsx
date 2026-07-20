@@ -500,6 +500,10 @@ describe('learning SessionPage', () => {
     const stream = vi
       .fn()
       .mockImplementationOnce(async (_taskId, onEvent) => {
+        onEvent({
+          type: 'message.delta',
+          data: { markdown: '接下来比较两个量词：\n\n' },
+        });
         onEvent({ type: 'task.failed', data: { code: 'provider_failed' } });
       })
       .mockImplementationOnce(async (_taskId, onEvent) => {
@@ -513,7 +517,10 @@ describe('learning SessionPage', () => {
     fireEvent.change(input, { target: { value: '请解释函数变换' } });
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
 
-    const regenerate = await screen.findByRole('button', { name: '重新生成' });
+    const interruptedReply = await screen.findByText('接下来比较两个量词：');
+    const interruptedMessage = interruptedReply.closest('article');
+    expect(interruptedMessage).not.toBeNull();
+    const regenerate = within(interruptedMessage!).getByRole('button', { name: '重新生成' });
     expect(regenerate).toHaveTextContent('↻');
     expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
 

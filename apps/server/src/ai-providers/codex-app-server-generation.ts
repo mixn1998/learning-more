@@ -28,6 +28,12 @@ export type CodexCliAppServerGenerationRunner = (
 ) => AsyncIterable<ProviderDelta>;
 
 const MAX_BUFFERED_DELTA_LENGTH = 2_048;
+const LEGACY_AGENT_ITEM_ID = '__legacy_agent_message__';
+
+type AgentItemStream = {
+  assembled: string;
+  buffered: string;
+};
 
 function flushBoundary(value: string): number {
   let boundary = 0;
@@ -134,8 +140,15 @@ export async function* runCodexAppServerGeneration(
   if (signal.aborted) return;
   const connection = connectionFactory(executable, signal);
   const iterator = connection.messages()[Symbol.asyncIterator]();
-  let assembled = '';
-  let buffered = '';
+  const agentItems = new Map<string, AgentItemStream>();
+  let yieldedAnyText = false;
+  const streamFor = (itemId: string): AgentItemStream => {
+    const existing = agentItems.get(itemId);
+    if (existing !== undefined) return existing;
+    const created = { assembled: '', buffered: '' };
+    agentItems.set(itemId, created);
+    return created;
+  };
   try {
     connection.send({
       id: 1,
@@ -193,12 +206,15 @@ export async function* runCodexAppServerGeneration(
       if (method === 'item/agentMessage/delta' && params?.turnId === turnId) {
         const delta = typeof params.delta === 'string' ? params.delta : '';
         if (delta !== '') {
-          assembled += delta;
-          buffered += delta;
-          const boundary = flushBoundary(buffered);
+          const itemId = typeof params.itemId === 'string' ? params.itemId : LEGACY_AGENT_ITEM_ID;
+          const stream = streamFor(itemId);
+          stream.assembled += delta;
+          stream.buffered += delta;
+          const boundary = flushBoundary(stream.buffered);
           if (boundary > 0) {
-            const text = buffered.slice(0, boundary);
-            buffered = buffered.slice(boundary);
+            const text = stream.buffered.slice(0, boundary);
+            stream.buffered = stream.buffered.slice(boundary);
+            yieldedAnyText = true;
             yield { type: 'text', text };
           }
         }
@@ -207,19 +223,28 @@ export async function* runCodexAppServerGeneration(
       if (method === 'item/completed' && params?.turnId === turnId) {
         const item = object(params.item);
         if (item?.type === 'agentMessage' && typeof item.text === 'string') {
-          if (assembled !== '' && !item.text.startsWith(assembled)) {
+          const itemId =
+            typeof item.id === 'string'
+              ? item.id
+              : agentItems.size === 1
+                ? (agentItems.keys().next().value ?? LEGACY_AGENT_ITEM_ID)
+                : LEGACY_AGENT_ITEM_ID;
+          const stream = streamFor(itemId);
+          if (stream.assembled !== '' && !item.text.startsWith(stream.assembled)) {
             throw new Error('codex_app_server_stream_mismatch');
           }
-          const remaining = item.text.startsWith(assembled)
-            ? item.text.slice(assembled.length)
+          const remaining = item.text.startsWith(stream.assembled)
+            ? item.text.slice(stream.assembled.length)
             : '';
-          const text = assembled === '' ? item.text : remaining;
-          assembled += text;
-          buffered += text;
-          if (buffered !== '') {
-            yield { type: 'text', text: buffered };
-            buffered = '';
+          const text = stream.assembled === '' ? item.text : remaining;
+          stream.assembled += text;
+          stream.buffered += text;
+          if (stream.buffered !== '') {
+            yieldedAnyText = true;
+            yield { type: 'text', text: stream.buffered };
+            stream.buffered = '';
           }
+          agentItems.delete(itemId);
         }
         continue;
       }
@@ -234,7 +259,12 @@ export async function* runCodexAppServerGeneration(
             String(object(turn.error)?.message ?? `codex_turn_${String(turn.status)}`),
           );
         }
-        if (buffered !== '') yield { type: 'text', text: buffered };
+        for (const stream of agentItems.values()) {
+          if (stream.buffered === '') continue;
+          yieldedAnyText = true;
+          yield { type: 'text', text: stream.buffered };
+          stream.buffered = '';
+        }
         return;
       }
       if (message.id !== undefined && method !== '') {
@@ -250,7 +280,7 @@ export async function* runCodexAppServerGeneration(
       error instanceof Error ? error.message : 'codex_app_server_failed',
       {
         retryable: true,
-        beforeFirstDelta: assembled === '',
+        beforeFirstDelta: !yieldedAnyText,
         code: 'provider_process_failed',
       },
     );
