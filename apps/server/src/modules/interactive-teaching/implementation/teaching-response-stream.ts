@@ -3,6 +3,7 @@ import { TeachingDirectiveSchema } from './teaching-directive.js';
 import {
   CONTROL_END,
   CONTROL_START,
+  normalizeTerminalTeachingControl,
   parseTeachingAgentResult,
   REPLY_END,
   REPLY_START,
@@ -297,6 +298,7 @@ export function createTeachingResponseStream(): Readonly<{
       return synchronize(false);
     },
     finish() {
+      raw = normalizeTerminalTeachingControl(raw);
       const result = parseTeachingAgentResult(raw, true);
       const events = synchronize(true);
       return { events, result };

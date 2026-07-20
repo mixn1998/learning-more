@@ -64,6 +64,19 @@ describe('TeachingResponseStream', () => {
     expect(() => stream.finish()).toThrow();
   });
 
+  it('recovers a complete directive when the model repeats the control opening tag at EOF', () => {
+    const stream = createTeachingResponseStream();
+    const malformedTerminalTag = `<learning-more-reply>本课总结。</learning-more-reply><learning-more-control>${JSON.stringify(directive)}<learning-more-control>`;
+
+    const events = stream.push(malformedTerminalTag);
+
+    expect(events).toContainEqual({ type: 'reply.completed', markdown: '本课总结。' });
+    expect(events.some((event) => event.type === 'directive.ready')).toBe(false);
+    const completed = stream.finish();
+    expect(completed.events).toContainEqual({ type: 'directive.ready', directive });
+    expect(completed.result).toEqual({ markdown: '本课总结。', directive });
+  });
+
   it('does not publish an inline formula until its delimiter and sentence are closed', () => {
     const stream = createTeachingResponseStream();
     stream.push('<learning-more-reply>');

@@ -7,6 +7,19 @@ export const CONTROL_END = '</learning-more-control>';
 export const REPLY_START = '<learning-more-reply>';
 export const REPLY_END = '</learning-more-reply>';
 
+export function normalizeTerminalTeachingControl(raw: string): string {
+  if (raw.includes(CONTROL_END)) return raw;
+  const controlStart = raw.indexOf(CONTROL_START);
+  if (controlStart < 0) return raw;
+  const repeatedStart = raw.indexOf(CONTROL_START, controlStart + CONTROL_START.length);
+  if (repeatedStart < 0) return raw;
+  if (raw.slice(repeatedStart + CONTROL_START.length).trim().length > 0) return raw;
+  if (raw.indexOf(CONTROL_START, repeatedStart + CONTROL_START.length) >= 0) return raw;
+  return `${raw.slice(0, repeatedStart)}${CONTROL_END}${raw.slice(
+    repeatedStart + CONTROL_START.length,
+  )}`;
+}
+
 function machineControlContext(context: TeachingContextPackage): string {
   const state = normalizeTeachingControlState(context.teachingState);
   const currentUserMessageId = context.recentMessages.findLast(
@@ -69,8 +82,9 @@ function extractBetween(value: string, start: string, end: string): string | und
 }
 
 export function parseTeachingAgentResult(raw: string, structured: boolean): TeachingAgentResult {
-  const control = extractBetween(raw, CONTROL_START, CONTROL_END);
-  const markdown = extractBetween(raw, REPLY_START, REPLY_END);
+  const normalizedRaw = normalizeTerminalTeachingControl(raw);
+  const control = extractBetween(normalizedRaw, CONTROL_START, CONTROL_END);
+  const markdown = extractBetween(normalizedRaw, REPLY_START, REPLY_END);
   if (control === undefined || markdown === undefined) {
     if (structured) throw new Error('teaching_control_protocol_invalid');
     return { markdown: raw };
