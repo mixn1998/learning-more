@@ -8,6 +8,7 @@ import { createHostManager, type HostManager } from './host-manager.js';
 import { startOrAdoptLauncher, waitForLauncherReady } from './launcher-process.js';
 import { createHostSupervisor } from './supervisor.js';
 import { createWorkspaceActivationWorker } from './workspace-activation.js';
+import { createWorkspaceAutoActivationMonitor } from './workspace-auto-activation.js';
 import type { HostTaskDefinition } from './task-scheduler.js';
 import { createWindowsTaskScheduler } from './windows-task-scheduler.js';
 import { observeWindowsProcess } from './windows-process-observer.js';
@@ -269,16 +270,24 @@ export async function runHost(projectRoot: string): Promise<void> {
         supervisor,
         readActiveBuildId: async () => (await activation.current()).activeBuildId,
       });
+  const workspaceAutoActivation = identity.portable
+    ? undefined
+    : createWorkspaceAutoActivationMonitor({
+        projectRoot: resolvedRoot,
+        requestPath: activationRequestPath,
+      });
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   try {
     workspaceActivation?.start();
+    workspaceAutoActivation?.start();
     await supervisor.run(activeReleaseRoot);
     if (supervisor.status().state === 'blocked_restart_storm') {
       throw new Error('host_launcher_restart_storm');
     }
   } finally {
     workspaceActivation?.stop();
+    workspaceAutoActivation?.stop();
     process.off('SIGINT', stop);
     process.off('SIGTERM', stop);
     await supervisor.stop();

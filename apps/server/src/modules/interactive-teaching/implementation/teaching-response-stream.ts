@@ -14,6 +14,8 @@ export type TeachingResponseStreamEvent =
   | Readonly<{ type: 'reply.delta'; markdown: string }>
   | Readonly<{ type: 'reply.completed'; markdown: string }>;
 
+const EARLY_PLAIN_TEXT_CHUNK_LENGTH = 32;
+
 type Fence = Readonly<{
   start: number;
   end: number;
@@ -113,7 +115,7 @@ function escaped(value: string, index: number): boolean {
   return slashes % 2 === 1;
 }
 
-function safeMarkdownBoundary(markdown: string, final: boolean): number {
+function safeMarkdownBoundary(markdown: string, final: boolean, emittedLength: number): number {
   const fences = fencedRanges(markdown, final);
   const fencesByStart = new Map(fences.map((fence) => [fence.start, fence]));
   let boundary = 0;
@@ -122,6 +124,7 @@ function safeMarkdownBoundary(markdown: string, final: boolean): number {
   let bracketDepth = 0;
   let linkTargetDepth = 0;
   let htmlTag = false;
+  let earlyPlainTextBoundary = 0;
 
   for (let index = 0; index < markdown.length;) {
     const fence = fencesByStart.get(index);
@@ -212,6 +215,13 @@ function safeMarkdownBoundary(markdown: string, final: boolean): number {
     }
 
     const neutral = bracketDepth === 0;
+    if (
+      neutral &&
+      earlyPlainTextBoundary === 0 &&
+      index + 1 - emittedLength >= EARLY_PLAIN_TEXT_CHUNK_LENGTH
+    ) {
+      earlyPlainTextBoundary = index + 1;
+    }
     if (neutral && ['。', '！', '？', '；'].includes(character)) boundary = index + 1;
     if (neutral && character === '\n') boundary = index + 1;
     if (neutral && ['.', '!', '?', ';'].includes(character)) {
@@ -234,7 +244,7 @@ function safeMarkdownBoundary(markdown: string, final: boolean): number {
     }
     return markdown.length;
   }
-  return boundary;
+  return boundary > emittedLength ? boundary : earlyPlainTextBoundary;
 }
 
 export function createTeachingResponseStream(): Readonly<{
@@ -259,7 +269,7 @@ export function createTeachingResponseStream(): Readonly<{
     const contentStart = replyStart + REPLY_START.length;
     const replyEnd = raw.indexOf(REPLY_END, contentStart);
     const reply = raw.slice(contentStart, replyEnd < 0 ? undefined : replyEnd);
-    const safeLength = safeMarkdownBoundary(reply, final || replyEnd >= 0);
+    const safeLength = safeMarkdownBoundary(reply, final || replyEnd >= 0, emittedReplyLength);
     if (safeLength > emittedReplyLength) {
       events.push({
         type: 'reply.delta',

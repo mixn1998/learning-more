@@ -73,6 +73,47 @@ const headers = {
 };
 
 describe('LearningSession HTTP contract', () => {
+  it('reconciles durable generation state before returning a session snapshot', async () => {
+    const calls: string[] = [];
+    const reconcileSession = vi.fn().mockImplementation(async () => {
+      calls.push('reconcile');
+    });
+    const module: LearningSessionModule = {
+      execute: vi.fn(),
+      query: vi.fn().mockImplementation(async () => {
+        calls.push('query');
+        return {
+          learning: {
+            lessonId: 'lesson_01',
+            progress: 'in_progress',
+            processedCommandIds: [],
+            session: {
+              id: 'session_01',
+              state: 'paused',
+              messageIds: [],
+              evidenceCheckpoint: false,
+            },
+          },
+          resourceVersion: 4,
+          actualSeconds: 10,
+        };
+      }),
+    };
+    const { app } = fixture({ module, reconcileSession });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/lesson-sessions/session_01',
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(reconcileSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'session_01', lessonId: 'lesson_01' }),
+      'correlation_01',
+    );
+    expect(calls).toEqual(['reconcile', 'query']);
+  });
+
   it('starts one original session with Location and lease token', async () => {
     const { app } = fixture();
     const response = await app.inject({

@@ -21,6 +21,7 @@ export interface GenerationTask {
   readonly attempts?: readonly GenerationAttempt[] | undefined;
   readonly prompt?: string | undefined;
   readonly draftMarkdown?: string | undefined;
+  readonly firstDeltaAt?: string | undefined;
   readonly resultRef?: string | undefined;
   readonly errorCode?: string | undefined;
   readonly leaseExpiresAt?: string | undefined;

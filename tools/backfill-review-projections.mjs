@@ -60,6 +60,36 @@ function evidenceRefs(sourceMessageIds, limit = 6) {
   return sourceMessageIds.slice(0, limit).map((id) => `message:${id}`);
 }
 
+function methodologyInsightFromCoreInsight(coreInsight) {
+  const paragraphs = String(coreInsight ?? '')
+    .split(/\r?\n\s*\r?\n/u)
+    .map((paragraph) => paragraph.replace(/\s+/gu, ' ').trim())
+    .filter(Boolean);
+  const preferred = paragraphs.find((paragraph) =>
+    /^(?:核心方法|解决方法|可以先|检查这条链时)/u.test(paragraph),
+  );
+  const candidate = preferred ?? paragraphs[0];
+  if (!candidate) return undefined;
+  const normalized = candidate.replace(/^(?:核心方法|解决方法)是[：:]?\s*/u, '').trim();
+  const withoutList = normalized.split(/\s+[-*+]\s+/u)[0]?.trim() ?? normalized;
+  const sentence = withoutList.match(/^.{1,240}?[。！？；]/u)?.[0] ?? withoutList;
+  const result = sentence.replace(/[：:]$/u, '。').trim();
+  if (result.length === 0) return undefined;
+  return result.length <= 240 ? result : `${result.slice(0, 239).trimEnd()}…`;
+}
+
+function migrateMethodologyInsight(document) {
+  if (document?.kind !== 'lesson-final') return document;
+  const legacy = document.portableTakeaway?.trim();
+  const current = document.methodologyInsight?.trim();
+  const methodologyInsight =
+    current || legacy || methodologyInsightFromCoreInsight(document.coreInsight);
+  if (methodologyInsight === undefined || methodologyInsight === '') return document;
+  const withoutLegacy = { ...document };
+  delete withoutLegacy.portableTakeaway;
+  return { ...withoutLegacy, methodologyInsight };
+}
+
 function projectFinal(markdown, sourceMessageIds) {
   const parsed = parseMarkdown(markdown);
   const core = firstSection(parsed.sections, [/核心/u, /本质/u, /关键判断/u]);
@@ -172,6 +202,7 @@ const lessonProgress = await Promise.all(
 let finalCount = 0;
 let stageCount = 0;
 let checksumRepairCount = 0;
+let methodologyInsightCount = 0;
 
 async function repairProjectionChecksum(file, aggregate) {
   const containsProjection =
@@ -229,6 +260,30 @@ for (const file of await filesUnder(path.join(root, 'entities', 'reviews'))) {
   stageCount += 1;
 }
 
+for (const file of lessonProgressFiles) {
+  const aggregate = JSON.parse(await readFile(file, 'utf8'));
+  const document = aggregate.data?.finalReview?.document;
+  const migrated = migrateMethodologyInsight(document);
+  if (migrated === document) continue;
+  await writeAggregate(file, aggregate, (data) => ({
+    ...data,
+    finalReview: { ...data.finalReview, document: migrated },
+  }));
+  methodologyInsightCount += 1;
+}
+
+for (const file of await filesUnder(path.join(root, 'entities', 'lesson-closures'))) {
+  const aggregate = JSON.parse(await readFile(file, 'utf8'));
+  const document = aggregate.data?.review?.document;
+  const migrated = migrateMethodologyInsight(document);
+  if (migrated === document) continue;
+  await writeAggregate(file, aggregate, (data) => ({
+    ...data,
+    review: { ...data.review, document: migrated },
+  }));
+  methodologyInsightCount += 1;
+}
+
 const projectionAggregateFiles = [
   ...lessonProgressFiles,
   ...(await filesUnder(path.join(root, 'entities', 'lesson-closures'))),
@@ -239,5 +294,5 @@ for (const file of new Set(projectionAggregateFiles)) {
 }
 
 process.stdout.write(
-  `${apply ? 'APPLIED' : 'DRY_RUN'} final=${finalCount} stage=${stageCount} checksum_repairs=${checksumRepairCount} immutable_markdown=preserved\n`,
+  `${apply ? 'APPLIED' : 'DRY_RUN'} final=${finalCount} stage=${stageCount} methodology_insight=${methodologyInsightCount} checksum_repairs=${checksumRepairCount} immutable_markdown=preserved\n`,
 );

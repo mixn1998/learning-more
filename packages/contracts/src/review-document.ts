@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 const markdown = z.string().trim().min(1);
 const identifier = z.string().trim().min(1).max(200);
+const methodologyInsight = z
+  .string()
+  .trim()
+  .min(1)
+  .max(240)
+  .refine((value) => !/[\r\n]/u.test(value));
 
 export const ReviewTextBlockSchema = z.looseObject({
   title: markdown,
@@ -16,6 +22,7 @@ export const LessonFinalReviewDocumentSchema = z.looseObject({
   kind: z.literal('lesson-final'),
   title: markdown,
   knowledgeMap: ReviewTextBlockSchema,
+  methodologyInsight: methodologyInsight.optional(),
   coreInsight: markdown,
   performance: z.array(ReviewTextBlockSchema).min(1),
   additionalSections,
@@ -75,6 +82,9 @@ export function reviewDocumentToMarkdown(document: ReviewDocument): string {
     return [
       `# ${document.title}`,
       blockMarkdown(document.knowledgeMap),
+      ...(document.methodologyInsight === undefined
+        ? []
+        : [`## 本课方法论启示\n\n${document.methodologyInsight.trim()}`]),
       `## 核心思想\n\n${document.coreInsight.trim()}`,
       '## 学习表现评价',
       ...document.performance.map(blockMarkdown),

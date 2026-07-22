@@ -55,7 +55,8 @@ export function buildPortraitInsights(input: {
         boundary: true,
       });
     }
-    const independentGroups = new Set(selected.map((item) => item.sourceGroupId)).size;
+    const independentGroups =
+      claim.evidenceSessionCount ?? new Set(selected.map((item) => item.sourceGroupId)).size;
     return {
       claimId: claim.claimId,
       markdown: displayMarkdown(claim.markdown),

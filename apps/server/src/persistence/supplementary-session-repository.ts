@@ -48,11 +48,14 @@ export function createInMemorySupplementarySessionRepository(): SupplementarySes
 
 const SessionSchema = z.strictObject({
   id: z.string().min(1),
+  title: z.string().trim().min(1).max(30).optional(),
   courseId: z.string().min(1),
   lessonId: z.string().min(1),
   sourceFinalReviewId: z.string().min(1),
   status: z.enum(['active', 'archived']),
   messageIds: z.array(z.string().min(1)),
+  activeGenerationTaskId: z.string().min(1).optional(),
+  generationErrorCode: z.string().min(1).optional(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
   resourceVersion: z.number().int().nonnegative(),

@@ -12,6 +12,53 @@ function initial() {
 }
 
 describe('teaching directive', () => {
+  it('materializes a sparse version 2 update against the authoritative ledger', () => {
+    const next = applyTeachingDirective(initial(), {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+    });
+
+    expect(next).toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      comprehensiveCheck: 'pending',
+      closureInquiry: 'pending',
+      summaryStatus: 'pending',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', progress: 'learning', interactionStatus: 'pending' },
+        { ref: 'knowledge:kp_2', progress: 'pending', interactionStatus: 'pending' },
+      ],
+    });
+  });
+
+  it('applies a sparse completion without requiring unchanged knowledge points', () => {
+    const learning = applyTeachingDirective(initial(), {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+    });
+    const advanced = applyTeachingDirective(learning, {
+      schemaVersion: 2,
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      knowledgePoints: [
+        {
+          ref: 'knowledge:kp_1',
+          status: 'completed',
+          interactionStatus: 'completed',
+        },
+        { ref: 'knowledge:kp_2', status: 'learning' },
+      ],
+    });
+
+    expect(advanced.knowledgePoints).toMatchObject([
+      { progress: 'completed', interactionStatus: 'completed' },
+      { progress: 'learning', interactionStatus: 'pending' },
+    ]);
+  });
+
   it('stores the learner-requested condensed depth as a session-only ledger override', () => {
     const next = applyTeachingDirective(initial(), {
       schemaVersion: 1,

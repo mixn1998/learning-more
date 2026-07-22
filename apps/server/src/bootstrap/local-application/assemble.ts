@@ -147,7 +147,32 @@ export async function assembleLocalApplication(
     learningSession: learning.routes,
     reviewClosure: review.routes,
     planning: planningRuntime.routes,
-    learningFacts: insights.routes,
+    learningFacts: {
+      ...insights.routes,
+      async getLessonActualInterval(lessonId) {
+        const record = await learning.access.getRecord(lessonId);
+        const closedIntervals = (record?.intervals ?? []).filter(
+          (interval): interval is typeof interval & { endedAt: string } =>
+            interval.endedAt !== undefined &&
+            Number.isFinite(Date.parse(interval.startedAt)) &&
+            Number.isFinite(Date.parse(interval.endedAt)) &&
+            Date.parse(interval.endedAt) > Date.parse(interval.startedAt),
+        );
+        if (closedIntervals.length === 0) return undefined;
+        return {
+          actualStartedAt: closedIntervals.reduce(
+            (earliest, interval) =>
+              Date.parse(interval.startedAt) < Date.parse(earliest) ? interval.startedAt : earliest,
+            closedIntervals[0]!.startedAt,
+          ),
+          actualEndedAt: closedIntervals.reduce(
+            (latest, interval) =>
+              Date.parse(interval.endedAt) > Date.parse(latest) ? interval.endedAt : latest,
+            closedIntervals[0]!.endedAt,
+          ),
+        };
+      },
+    },
     profile: profile.profileRoutes,
     portraits: profile.portraitRoutes,
     generationFrameLog: frameLog,

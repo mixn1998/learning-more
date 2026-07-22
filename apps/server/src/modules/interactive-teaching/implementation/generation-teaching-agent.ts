@@ -5,6 +5,7 @@ import type { GenerationExecution } from '../../generation-runtime/interface.js'
 import type { TeachingAgent, TeachingAgentCompletionObserver } from '../ports/teaching-agent.js';
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
 import { renderMathPlotCapability } from './math-plot-capability.js';
+import { capabilitiesForTeachingTurn } from './teaching-capability-router.js';
 import { renderTeachingBoundaryPolicy } from './teaching-boundary-policy.js';
 import { renderTeachingClosurePolicy } from './teaching-closure-policy.js';
 import {
@@ -16,6 +17,7 @@ import { renderTeachingCorePolicy } from './teaching-core-policy.js';
 import { renderTeachingDepthPolicy } from './teaching-depth-policy.js';
 import { renderTeachingFactContext } from './teaching-fact-context.js';
 import { renderTeachingFlowPolicy } from './teaching-flow-policy.js';
+import { reasoningEffortForTeachingTurn } from './teaching-turn-policy.js';
 import {
   createTeachingResponseStream,
   type TeachingResponseStreamEvent,
@@ -29,11 +31,12 @@ function sha256(value: string): string {
 
 export function renderTeachingConversationInput(context: TeachingContextPackage): string {
   const opening = context.turnKind === 'opening';
+  const capabilities = capabilitiesForTeachingTurn(context);
   return [
     renderTeachingCorePolicy(),
     renderTeachingBoundaryPolicy(),
     renderTeachingClosurePolicy(),
-    renderMathPlotCapability(),
+    capabilities.has('math-plot') ? renderMathPlotCapability() : undefined,
     renderTeachingFlowPolicy(context),
     renderTeachingDepthPolicy(context),
     renderTeachingFactContext(context),
@@ -100,6 +103,7 @@ export function createGenerationTeachingAgent(options: {
         ownerRef: context.teachingState.sessionId,
         requestRef,
         providerId: options.providerId,
+        reasoningEffort: reasoningEffortForTeachingTurn(context),
         priority: 100,
         prompt: expressionContext,
       });

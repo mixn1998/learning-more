@@ -1,6 +1,7 @@
 import type { TeachingAgentResult } from '../ports/teaching-agent.js';
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
-import { TeachingDirectiveSchema, normalizeTeachingControlState } from './teaching-directive.js';
+import { TeachingDirectiveSchema } from './teaching-directive.js';
+import { projectTeachingLedger } from './teaching-ledger-projection.js';
 
 export const CONTROL_START = '<learning-more-control>';
 export const CONTROL_END = '</learning-more-control>';
@@ -21,52 +22,59 @@ export function normalizeTerminalTeachingControl(raw: string): string {
 }
 
 function machineControlContext(context: TeachingContextPackage): string {
-  const state = normalizeTeachingControlState(context.teachingState);
+  const projection = projectTeachingLedger(context);
   const currentUserMessageId = context.recentMessages.findLast(
     (message) => message.role === 'user' && message.completionStatus === 'complete',
   )?.messageId;
   return JSON.stringify({
     schemaVersion: 1,
-    lessonPhase: state.lessonPhase ?? 'warmup',
-    ...(state.activeKnowledgePointRef === undefined
+    lessonPhase: projection.lessonPhase,
+    projectionMode: projection.mode,
+    ...(projection.activeKnowledgePointRef === undefined
       ? {}
-      : { activeKnowledgePointRef: state.activeKnowledgePointRef }),
-    knowledgePoints: context.lesson.coreKnowledgePoints.map((point) => {
-      const existing = state.knowledgePoints.find((candidate) => candidate.ref === point.ref);
-      return {
-        ref: point.ref,
-        title: point.text,
-        status: existing?.progress ?? 'pending',
-        interactionStatus: existing?.interactionStatus ?? 'pending',
-        depthPreference: existing?.depthPreference ?? 'default',
-      };
-    }),
+      : { activeKnowledgePointRef: projection.activeKnowledgePointRef }),
+    knowledgePoints: projection.knowledgePoints.map((point) => ({
+      ref: point.ref,
+      title: point.title,
+      status: point.status,
+      interactionStatus: point.interactionStatus,
+      depthPreference: point.depthPreference,
+      deepFollowUpCount: point.deepFollowUpCount,
+    })),
+    ...(projection.nextKnowledgePoint === undefined
+      ? {}
+      : { nextKnowledgePoint: projection.nextKnowledgePoint }),
+    progress: {
+      completedOrSkipped: projection.completedOrSkippedCount,
+      total: projection.totalKnowledgePointCount,
+      allTerminal: projection.allKnowledgePointsTerminal,
+    },
     difficultySignals: [],
     ...(context.turnKind === 'opening' || currentUserMessageId === undefined
       ? {}
       : { allowedDifficultySignalSourceMessageId: currentUserMessageId }),
-    comprehensiveCheck: state.comprehensiveCheck ?? 'pending',
-    closureInquiry: state.closureInquiry ?? 'pending',
-    summaryStatus: state.summaryStatus ?? 'pending',
+    comprehensiveCheck: projection.comprehensiveCheck,
+    closureInquiry: projection.closureInquiry,
+    summaryStatus: projection.summaryStatus,
   });
 }
 
 export function renderTeachingControlProtocol(context: TeachingContextPackage): string {
   return [
     '【机器控制协议｜不得展示给学习者】',
-    '本轮必须严格输出两个区块，可见回复区块在前、控制区块在后：',
+    '严格输出两个区块：先给学习者可见回复，再给隐藏控制 JSON：',
     `${REPLY_START}{仅供学习者阅读的 Markdown}${REPLY_END}`,
-    `${CONTROL_START}{完整 JSON 教学状态快照}${CONTROL_END}`,
-    '必须先完整输出面向学习者的可见回复，再依据本轮实际教学内容生成控制 JSON；控制区块不得夹入可见回复，也不得省略。',
-    '控制 JSON 必须包含 schemaVersion=1、lessonPhase、knowledgePoints、difficultySignals、comprehensiveCheck、closureInquiry、summaryStatus；只在 warmup 或 knowledge_point 阶段按需包含 activeKnowledgePointRef。',
-    'knowledgePoints 必须完整返回给定的全部 ref；可原样保留用于辨认知识点的 title。每项 status 只能是 pending|learning|completed|skipped，interactionStatus 只能是 pending|completed|skipped，depthPreference 只能是 default|condensed。',
-    '只有用户当前原话经语义判断明确表示“不用深入展开、简要带过”或同义意图时，才把对应知识点 depthPreference 设为 condensed；否则保持既有值。若用户之后明确要求深入讲解，可恢复为 default。该字段只调整本次会话教学深度，不改写课程预设重点。',
+    `${CONTROL_START}{schemaVersion=2 的稀疏 JSON 教学状态变更}${CONTROL_END}`,
+    '可见回复必须完整且不得混入控制内容。控制 JSON 使用 schemaVersion=2，只返回本轮变化；其余状态由服务端权威账本补齐。',
+    'lessonPhase 每轮必须返回，且只能是 warmup|knowledge_point|comprehensive_check|discussion|summary|ready_to_close；即使阶段未变化也必须返回当前值。',
+    'knowledgePoints 仅列变化项，每项含 ref 及发生变化的 status、interactionStatus、depthPreference；无变化则省略。difficultySignals 同理。',
+    'activeKnowledgePointRef 仅在发生变化时返回；需要清除当前知识点时明确返回 null。status 只能是 pending|learning|completed|skipped，interactionStatus 只能是 pending|completed|skipped，depthPreference 只能是 default|condensed。',
+    '仅当用户当前原话明确要求简要带过时，才将对应 depthPreference 设为 condensed；之后明确要求深入可恢复 default。它只影响本会话教学深度，不改课程预设重点。',
     'status=completed 表示你已完成该知识点教学，并基于教学互动自主判断可以进入下一阶段；此时 interactionStatus 必须是 completed 或 skipped。',
-    'difficultySignals 只上报当前用户原话中与本课具体知识点直接相关的新信号；每项包含 knowledgePointRef、sourceMessageId、kind。kind 只能是 answer_error、misunderstanding、not_understood、request_deeper_explanation。',
-    '回答错误、概念误解、明确不理解、直接要求深入讲解分别独立计数；同一条消息可以同时上报不同 kind，但同一 kind 不得重复。延伸拓展、脑洞类或仅相邻探索的问题不得计入。没有新信号时返回空数组。',
+    'difficultySignals 只上报当前用户原话对具体知识点产生的新信号，每项含 knowledgePointRef、sourceMessageId、kind；kind∈answer_error|misunderstanding|not_understood|request_deeper_explanation。',
+    '四类信号独立计数；同一消息可上报不同 kind、不可重复同一 kind。延伸、脑洞或相邻探索不计；无新信号时省略。',
     '用户跳过整个知识点时使用 status=skipped 且 interactionStatus=skipped；只跳过知识点互动时使用 status=completed 且 interactionStatus=skipped。',
-    'comprehensiveCheck 只能是 pending|learning|completed|skipped；用户跳过综合检测时使用 skipped。',
-    '已 completed 或 skipped 的节点不得倒退。只有全部知识点 completed/skipped 后才能进入 comprehensive_check；只有综合检测 completed/skipped 后才能进入 discussion。',
+    'comprehensiveCheck∈pending|learning|completed|skipped；跳过检测用 skipped。节点终态不得倒退；全部知识点终态后才能进入 comprehensive_check，检测终态后才能进入 discussion。',
     '综合检测 completed 或 skipped 后必须先进入 lessonPhase=discussion、closureInquiry=awaiting_confirmation；讨论答疑期间用户提出任何问题都必须保持该状态并继续答疑。',
     '只有用户在当前轮明确没有其他疑问且最终课程总结已经输出时，才能令 lessonPhase=ready_to_close、closureInquiry=confirmed_no_questions、summaryStatus=delivered。',
     `当前机器状态：${machineControlContext(context)}`,

@@ -41,14 +41,31 @@ function KnowledgeMap(props: {
 
 export function LessonFinalReviewDocumentView(props: {
   readonly document: LessonFinalReviewDocument;
+  readonly legacyMarkdown?: string | undefined;
 }) {
-  const presentation = projectLessonReviewDocument(props.document);
+  const legacyPortableTakeaway = (
+    props.document as LessonFinalReviewDocument & { readonly portableTakeaway?: unknown }
+  ).portableTakeaway;
+  const presentation = projectLessonReviewDocument({
+    ...props.document,
+    ...(props.document.methodologyInsight === undefined &&
+    typeof legacyPortableTakeaway === 'string'
+      ? { methodologyInsight: legacyPortableTakeaway }
+      : {}),
+    legacyMarkdown: props.legacyMarkdown,
+  });
   return (
     <article className="structured-review lesson-final-review-document">
       <section>
         <h2>知识图谱</h2>
         <KnowledgeMap block={presentation.knowledgeMap} nodes={presentation.knowledgeMapNodes} />
       </section>
+      {presentation.methodologyInsight === undefined ? null : (
+        <section className="review-methodology-insight">
+          <h2>本课方法论启示</h2>
+          <AiContent markdown={presentation.methodologyInsight} />
+        </section>
+      )}
       <section>
         <h2>核心思想</h2>
         <AiContent markdown={presentation.coreInsight} />

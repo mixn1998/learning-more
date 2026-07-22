@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import type { TeachingStateSnapshot } from '@learning-more/contracts';
-import type { TeachingDirective } from '../ports/teaching-agent.js';
+import type { FullTeachingDirective, TeachingDirective } from '../ports/teaching-agent.js';
 
 const KnowledgePointDirectiveSchema = z
   .strictObject({
@@ -18,7 +18,7 @@ const KnowledgePointDirectiveSchema = z
     ...(point.depthPreference === undefined ? {} : { depthPreference: point.depthPreference }),
   }));
 
-export const TeachingDirectiveSchema = z.strictObject({
+const FullTeachingDirectiveSchema = z.strictObject({
   schemaVersion: z.literal(1),
   lessonPhase: z.enum([
     'warmup',
@@ -48,6 +48,51 @@ export const TeachingDirectiveSchema = z.strictObject({
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),
   summaryStatus: z.enum(['pending', 'delivered']),
 });
+
+const SparseKnowledgePointDirectiveSchema = z.strictObject({
+  ref: z.string().trim().min(1).max(2_000),
+  status: z.enum(['pending', 'learning', 'completed', 'skipped']).optional(),
+  interactionStatus: z.enum(['pending', 'completed', 'skipped']).optional(),
+  depthPreference: z.enum(['default', 'condensed']).optional(),
+});
+
+const SparseTeachingDirectiveSchema = z.strictObject({
+  schemaVersion: z.literal(2),
+  lessonPhase: z
+    .enum([
+      'warmup',
+      'knowledge_point',
+      'comprehensive_check',
+      'discussion',
+      'summary',
+      'ready_to_close',
+    ])
+    .optional(),
+  activeKnowledgePointRef: z.string().trim().min(1).max(2_000).nullable().optional(),
+  knowledgePoints: z.array(SparseKnowledgePointDirectiveSchema).optional(),
+  difficultySignals: z
+    .array(
+      z.strictObject({
+        knowledgePointRef: z.string().trim().min(1).max(2_000),
+        sourceMessageId: z.string().trim().min(1).max(500),
+        kind: z.enum([
+          'answer_error',
+          'misunderstanding',
+          'not_understood',
+          'request_deeper_explanation',
+        ]),
+      }),
+    )
+    .optional(),
+  comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']).optional(),
+  closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']).optional(),
+  summaryStatus: z.enum(['pending', 'delivered']).optional(),
+});
+
+export const TeachingDirectiveSchema = z.union([
+  FullTeachingDirectiveSchema,
+  SparseTeachingDirectiveSchema,
+]);
 
 function normalizedProgress(
   progress: TeachingStateSnapshot['knowledgePoints'][number]['progress'],
@@ -87,11 +132,57 @@ export function normalizeTeachingControlState(state: TeachingStateSnapshot): Tea
   };
 }
 
+export function materializeTeachingDirective(
+  stateInput: TeachingStateSnapshot,
+  directiveInput: unknown,
+): FullTeachingDirective {
+  const state = normalizeTeachingControlState(stateInput);
+  const parsed = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
+  if (parsed.schemaVersion === 1) return parsed;
+
+  const updates = parsed.knowledgePoints ?? [];
+  const updateRefs = updates.map((point) => point.ref);
+  if (new Set(updateRefs).size !== updateRefs.length) {
+    invalid('teaching_directive_knowledge_point_update_duplicate');
+  }
+  const knownRefs = new Set(state.knowledgePoints.map((point) => point.ref));
+  if (updateRefs.some((ref) => !knownRefs.has(ref))) {
+    invalid('teaching_directive_knowledge_point_update_unknown');
+  }
+  const updateByRef = new Map(updates.map((point) => [point.ref, point]));
+  const currentActive = state.activeKnowledgePointRef;
+  const activeKnowledgePointRef =
+    parsed.activeKnowledgePointRef === null
+      ? undefined
+      : (parsed.activeKnowledgePointRef ?? currentActive);
+
+  return {
+    schemaVersion: 1,
+    lessonPhase: parsed.lessonPhase ?? state.lessonPhase ?? 'warmup',
+    ...(activeKnowledgePointRef === undefined ? {} : { activeKnowledgePointRef }),
+    knowledgePoints: state.knowledgePoints.map((point) => {
+      const update = updateByRef.get(point.ref);
+      return {
+        ref: point.ref,
+        status: update?.status ?? normalizedProgress(point.progress),
+        interactionStatus: update?.interactionStatus ?? point.interactionStatus ?? 'pending',
+        depthPreference: update?.depthPreference ?? point.depthPreference ?? 'default',
+      };
+    }),
+    difficultySignals: parsed.difficultySignals ?? [],
+    comprehensiveCheck:
+      parsed.comprehensiveCheck ?? normalizedComprehensive(state.comprehensiveCheck),
+    closureInquiry: parsed.closureInquiry ?? state.closureInquiry ?? 'pending',
+    summaryStatus: parsed.summaryStatus ?? state.summaryStatus ?? 'pending',
+  };
+}
+
 export function teachingDirectiveMatchesState(
   stateInput: TeachingStateSnapshot,
-  directive: TeachingDirective,
+  directiveInput: TeachingDirective,
 ): boolean {
   const state = normalizeTeachingControlState(stateInput);
+  const directive = materializeTeachingDirective(state, directiveInput);
   const statePoints = state.knowledgePoints.map((point) => ({
     ref: point.ref,
     status: normalizedProgress(point.progress),
@@ -126,7 +217,7 @@ function invalid(code: string): never {
   throw new Error(code);
 }
 
-function closureStateMatchesPhase(directive: TeachingDirective): boolean {
+function closureStateMatchesPhase(directive: FullTeachingDirective): boolean {
   const expected = {
     warmup: ['pending', 'pending'],
     knowledge_point: ['pending', 'pending'],
@@ -136,8 +227,8 @@ function closureStateMatchesPhase(directive: TeachingDirective): boolean {
     ready_to_close: ['confirmed_no_questions', 'delivered'],
   } as const satisfies Readonly<
     Record<
-      TeachingDirective['lessonPhase'],
-      readonly [TeachingDirective['closureInquiry'], TeachingDirective['summaryStatus']]
+      FullTeachingDirective['lessonPhase'],
+      readonly [FullTeachingDirective['closureInquiry'], FullTeachingDirective['summaryStatus']]
     >
   >;
   const [closureInquiry, summaryStatus] = expected[directive.lessonPhase];
@@ -150,7 +241,7 @@ export function applyTeachingDirective(
   validation?: Readonly<{ currentUserMessageId?: string }>,
 ): TeachingStateSnapshot {
   const current = normalizeTeachingControlState(currentInput);
-  const directive = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
+  const directive = materializeTeachingDirective(current, directiveInput);
   const expectedRefs = current.knowledgePoints.map((point) => point.ref);
   const incomingRefs = directive.knowledgePoints.map((point) => point.ref);
   if (

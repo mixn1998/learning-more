@@ -3,7 +3,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { PortraitRouteOptions } from '../../http/routes/portraits.js';
 import type { ProfileRouteOptions } from '../../http/routes/profile.js';
 import { createGenerationReasoningBehaviorAnalyzer } from '../../modules/global-user-profile/implementation/generation-reasoning-behavior-analyzer.js';
+import { createGenerationSemanticProfileCoreMerger } from '../../modules/global-user-profile/implementation/generation-semantic-profile-core-merger.js';
+import {
+  createPersonalizationDigestSource,
+  renderPersonalizationDigest,
+} from '../../modules/global-user-profile/implementation/personalization-digest.js';
 import { createReasoningBehaviorModule } from '../../modules/global-user-profile/implementation/reasoning-behavior-module.js';
+import { createCrossSessionSemanticCore } from '../../modules/global-user-profile/implementation/semantic-profile-core.js';
 import type { ReasoningBehaviorAnalysisRecord } from '../../modules/global-user-profile/ports/reasoning-behavior-repository.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
 import { packPortraitEvidence } from '../../modules/learning-portrait/implementation/evidence-packer.js';
@@ -11,6 +17,7 @@ import { createPortraitModule } from '../../modules/learning-portrait/implementa
 import { createPortraitRefreshCoordinator } from '../../modules/learning-portrait/implementation/portrait-refresh-coordinator.js';
 import { createWeeklyPortraitScheduler } from '../../modules/learning-portrait/implementation/weekly-portrait-scheduler.js';
 import { createAiProfileEvidenceExtractor } from '../../modules/profile-evidence/implementation/ai-profile-evidence-extractor.js';
+import type { CandidateEvidence } from '../../modules/profile-evidence/interface.js';
 import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/implementation/profile-evidence-aggregator.js';
 import { assembleProfileEvidenceContext } from '../../modules/profile-evidence/implementation/profile-evidence-context-assembler.js';
 import { purgeDeprecatedReasoningEvidence } from '../../modules/profile-evidence/implementation/deprecated-reasoning-evidence-migration.js';
@@ -18,11 +25,13 @@ import { createProfileEvidencePipeline } from '../../modules/profile-evidence/im
 import { reasoningEvidenceSummaryForRead } from '../../modules/profile-evidence/implementation/reasoning-evidence-summary.js';
 import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
 import { createReasoningEvidenceProjector } from '../../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
-import { isGovernedBehaviorDetail } from '../../modules/profile-evidence/interface.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createLocalFilePortraitRepository } from '../../persistence/portrait-repositories.js';
+import { createLocalFilePersonalizationDigestRepository } from '../../persistence/personalization-digest-repositories.js';
 import { createLocalFileEvidenceRepositories } from '../../persistence/profile-evidence-repositories.js';
 import { createLocalFileReasoningBehaviorRepository } from '../../persistence/reasoning-behavior-repositories.js';
+import { createLocalFileSemanticProfileCoreRepository } from '../../persistence/semantic-profile-core-repositories.js';
+import { RepositoryVersionConflictError } from '../../persistence/repository-errors.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
 import type { StructuredLogInput } from '../../runtime/logger.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
@@ -45,6 +54,7 @@ export type LocalProfileRuntime = Readonly<{
   portraitRoutes: PortraitRouteOptions;
   requestPortraitRefresh: PortraitRouteOptions['requestRefresh'];
   getTeachingPersonalization: TeachingContextSources['getPersonalizationView'];
+  refreshPersonalizationDigest(): Promise<void>;
   recoverReasoningAnalysis(): Promise<void>;
   getProjectionStatus(): 'ready' | 'degraded';
   start(): void;
@@ -64,6 +74,24 @@ export function createLocalProfileRuntime(
   const evidenceRepositories = createLocalFileEvidenceRepositories(input.dataRoot);
   const reasoningBehaviorRepository = createLocalFileReasoningBehaviorRepository(input.dataRoot);
   const portraitRepository = createLocalFilePortraitRepository(input.dataRoot);
+  const personalizationDigestRepository = createLocalFilePersonalizationDigestRepository(
+    input.dataRoot,
+  );
+  const semanticProfileCoreRepository = createLocalFileSemanticProfileCoreRepository(
+    input.dataRoot,
+  );
+  const semanticProfileCore = createCrossSessionSemanticCore({
+    repository: semanticProfileCoreRepository,
+    merger: createGenerationSemanticProfileCoreMerger({
+      runtime: input.generation.runtime,
+      execution: input.generation.execution,
+      providerId: 'current',
+      mergerVersion: 'semantic-profile-core-merger@1',
+    }),
+    unitOfWork: input.unitOfWork,
+    now: input.now,
+    nextTransactionId: () => `tx_semantic_profile_${randomUUID()}`,
+  });
   const reasoningBehaviorModule = createReasoningBehaviorModule({
     repository: reasoningBehaviorRepository,
     unitOfWork: input.unitOfWork,
@@ -132,6 +160,9 @@ export function createLocalProfileRuntime(
       if (await checkpointRecovery.isCompleted(context)) return;
       const extracted = await profileEvidenceExtractor.extract(context.checkpoint);
       await profileEvidenceAggregator.ingest(extracted);
+      const sessionSource = extracted.checkpoint.dependentSourceGroupIds
+        .map((sourceGroupId) => /^lesson:([^:]+):session:(.+)$/u.exec(sourceGroupId))
+        .find((match): match is RegExpExecArray => match !== null);
       let projectedCandidateCount = extracted.candidates.length;
       if (
         extracted.checkpoint.checkpointKind === 'authoring_candidate_confirmed' &&
@@ -159,9 +190,6 @@ export function createLocalProfileRuntime(
         extracted.checkpoint.courseId !== undefined &&
         extracted.checkpoint.courseMode !== undefined
       ) {
-        const sessionSource = extracted.checkpoint.dependentSourceGroupIds
-          .map((sourceGroupId) => /^lesson:([^:]+):session:(.+)$/u.exec(sourceGroupId))
-          .find((match): match is RegExpExecArray => match !== null);
         if (sessionSource !== undefined) {
           projectedCandidateCount = extracted.candidates.filter(
             (candidate) =>
@@ -184,6 +212,64 @@ export function createLocalProfileRuntime(
           });
         }
       }
+      const isFinalLessonReview =
+        extracted.checkpoint.checkpointKind === 'lesson_review_finalized' &&
+        sessionSource !== undefined;
+      const semanticCandidates = extracted.candidates.filter(
+        (candidate) =>
+          candidate.safetyStatus !== 'blocked' &&
+          ((isFinalLessonReview && candidate.candidateKind === 'thinking_behavior') ||
+            (candidate.candidateKind === 'durable_preference' &&
+              candidate.explicitness === 'user_declared' &&
+              candidate.expiryPolicy.kind === 'until_corrected')),
+      );
+      if (semanticCandidates.length > 0) {
+        const evidenceByKey = new Map<string, string[]>();
+        for await (const evidence of evidenceRepositories.evidence.list()) {
+          const governance = evidence.governance;
+          if (
+            evidence.status !== 'active' ||
+            governance === undefined ||
+            !governance.checkpointIds.includes(extracted.checkpoint.checkpointId)
+          ) {
+            continue;
+          }
+          const key = `${governance.candidateKind}:${evidence.claimDimension}:${governance.label}`;
+          evidenceByKey.set(key, [...(evidenceByKey.get(key) ?? []), evidence.evidenceId]);
+        }
+        await semanticProfileCore.ingest({
+          sourceId: extracted.checkpoint.checkpointId,
+          sourceSnapshotHash: extracted.sourceSnapshotHash,
+          sourceGroupId:
+            isFinalLessonReview && sessionSource !== undefined
+              ? `session:${sessionSource[2]}`
+              : extracted.checkpoint.sourceGroupId,
+          observations: semanticCandidates.map((candidate) => ({
+            observationId: `semantic_observation_${createHash('sha256')
+              .update(
+                JSON.stringify({
+                  checkpointId: extracted.checkpoint.checkpointId,
+                  candidateKind: candidate.candidateKind,
+                  claimDimension: candidate.claimDimension,
+                  label: candidate.label,
+                  sourceRefs: candidate.sourceRefs,
+                }),
+              )
+              .digest('hex')
+              .slice(0, 40)}`,
+            origin:
+              candidate.candidateKind === 'durable_preference'
+                ? ('explicit_preference' as const)
+                : ('observed_behavior' as const),
+            summary: `${candidate.label}：${candidate.summary}`,
+            evidenceIds:
+              evidenceByKey.get(
+                `${candidate.candidateKind}:${candidate.claimDimension}:${candidate.label}`,
+              ) ?? [],
+            sourceRefs: candidate.sourceRefs,
+          })),
+        });
+      }
       await checkpointRecovery.markCompleted({
         checkpointId: extracted.checkpoint.checkpointId,
         sourceType: extracted.checkpoint.sourceType,
@@ -192,6 +278,7 @@ export function createLocalProfileRuntime(
         ignoredCandidateCount: extracted.candidates.length - projectedCandidateCount,
         updatedAt: extracted.extractedAt,
       });
+      if (semanticCandidates.length > 0) schedulePersonalizationDigestRefresh();
       projectionStatus = 'ready';
     });
     profileEvidenceBarrier = queued.catch(() => {
@@ -227,14 +314,140 @@ export function createLocalProfileRuntime(
     return latest;
   }
 
-  function stableReasoningDimensions(analysis: ReasoningBehaviorAnalysisRecord | undefined) {
-    if (analysis === undefined) return [];
-    const stableIds = new Set(
-      analysis.snapshot.dimensions
-        .filter((dimension) => dimension.independentSourceGroupCount >= 2)
-        .map((dimension) => dimension.dimensionId),
-    );
-    return analysis.dimensions.filter((dimension) => stableIds.has(dimension.dimensionId));
+  async function collectPersonalizationDigestSource() {
+    const core = await semanticProfileCore.getCurrent();
+    return createPersonalizationDigestSource({
+      profileVersion: core?.resourceVersion ?? 0,
+      items: (core?.modes ?? [])
+        .filter((mode) => mode.status === 'stable')
+        .map((mode) => ({
+          sourceId: mode.modeId,
+          kind:
+            mode.origin === 'explicit_preference'
+              ? ('durable_preference' as const)
+              : ('stable_dimension' as const),
+          summary: mode.feature,
+          teachingImpact: mode.teachingImpact,
+          priority: mode.priority,
+          supportingSessionCount: mode.supportingSessionCount,
+          sourceRefs: [...mode.representativeSourceRefs],
+        })),
+    });
+  }
+
+  async function updatePersonalizationDigest(
+    transactionPrefix: string,
+    update: (
+      current: Awaited<ReturnType<typeof personalizationDigestRepository.get>>,
+    ) =>
+      | Exclude<Awaited<ReturnType<typeof personalizationDigestRepository.get>>, undefined>
+      | undefined,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await personalizationDigestRepository.get();
+      const next = update(current);
+      if (next === undefined) return;
+      try {
+        await input.unitOfWork.execute(
+          { transactionId: `${transactionPrefix}_${randomUUID()}` },
+          (tx) => personalizationDigestRepository.save(tx, next, current?.resourceVersion ?? 0),
+        );
+        return;
+      } catch (error) {
+        if (error instanceof RepositoryVersionConflictError && attempt < 2) continue;
+        throw error;
+      }
+    }
+  }
+
+  let personalizationDigestBarrier: Promise<void> = Promise.resolve();
+  async function performPersonalizationDigestRefresh(): Promise<void> {
+    await bootstrapSemanticProfileCore();
+    const source = await collectPersonalizationDigestSource();
+    const before = await personalizationDigestRepository.get();
+    if (
+      before?.refreshStatus === 'succeeded' &&
+      before.latestSuccessful?.projectionVersion === 'semantic-profile-digest@1' &&
+      before.requestedProfileVersion === source.profileVersion &&
+      before.requestedSourceSnapshotHash === source.sourceSnapshotHash
+    ) {
+      return;
+    }
+    await updatePersonalizationDigest('tx_personalization_digest_pending', (current) => ({
+      digestId: 'interactive_teaching',
+      resourceVersion: current?.resourceVersion ?? 0,
+      requestedProfileVersion: source.profileVersion,
+      requestedSourceSnapshotHash: source.sourceSnapshotHash,
+      refreshStatus: 'pending',
+      ...(current?.latestSuccessful === undefined
+        ? {}
+        : { latestSuccessful: current.latestSuccessful }),
+      updatedAt: input.now().toISOString(),
+    }));
+    try {
+      const projection = renderPersonalizationDigest(source);
+      await updatePersonalizationDigest('tx_personalization_digest_ready', (current) => {
+        if (
+          current === undefined ||
+          current.requestedSourceSnapshotHash !== source.sourceSnapshotHash
+        ) {
+          return undefined;
+        }
+        return {
+          ...current,
+          refreshStatus: 'succeeded',
+          latestSuccessful: {
+            projectionVersion: 'semantic-profile-digest@1',
+            profileVersion: source.profileVersion,
+            sourceSnapshotHash: source.sourceSnapshotHash,
+            summary: projection.summary,
+            selectedModeIds: projection.selectedModeIds,
+            sourceRefs: source.items
+              .filter((item) => projection.selectedModeIds.includes(item.sourceId))
+              .flatMap((item) => item.sourceRefs),
+            generatedAt: input.now().toISOString(),
+          },
+          updatedAt: input.now().toISOString(),
+        };
+      });
+    } catch (error) {
+      await updatePersonalizationDigest('tx_personalization_digest_failed', (current) => {
+        if (
+          current === undefined ||
+          current.requestedSourceSnapshotHash !== source.sourceSnapshotHash
+        ) {
+          return undefined;
+        }
+        return {
+          ...current,
+          refreshStatus: 'failed',
+          lastError:
+            error instanceof Error ? error.message : 'personalization_digest_refresh_failed',
+          updatedAt: input.now().toISOString(),
+        };
+      });
+      throw error;
+    }
+  }
+
+  function refreshPersonalizationDigest(): Promise<void> {
+    const queued = personalizationDigestBarrier.then(performPersonalizationDigestRefresh);
+    personalizationDigestBarrier = queued.catch((error) => {
+      void input
+        .logProjectionEvent?.({
+          level: 'error',
+          component: 'PersonalizationDigestProjection',
+          correlationId: 'refresh_personalization_digest',
+          eventCode: 'personalization_digest_refresh_failed',
+          fields: { error },
+        })
+        .catch(() => undefined);
+    });
+    return personalizationDigestBarrier;
+  }
+
+  function schedulePersonalizationDigestRefresh(): void {
+    void refreshPersonalizationDigest();
   }
 
   async function refreshAndProjectReasoningAnalysis(
@@ -261,6 +474,7 @@ export function createLocalProfileRuntime(
       });
       const analysis = await refreshAndProjectReasoningAnalysis();
       if (analysis !== undefined) projectionStatus = 'ready';
+      await refreshPersonalizationDigest();
     } catch (error) {
       projectionStatus = 'degraded';
       await input
@@ -273,6 +487,71 @@ export function createLocalProfileRuntime(
         })
         .catch(() => undefined);
     }
+  }
+
+  let semanticCoreBootstrapBarrier: Promise<void> | undefined;
+  function bootstrapSemanticProfileCore(): Promise<void> {
+    semanticCoreBootstrapBarrier ??= (async () => {
+      if ((await semanticProfileCore.getCurrent()) !== undefined) return;
+      const reasoning = await latestUsableReasoningAnalysis();
+      const stableCounts = new Map(
+        (reasoning?.snapshot.dimensions ?? []).map((item) => [
+          item.dimensionId,
+          item.independentSourceGroupCount,
+        ]),
+      );
+      const evidence: CandidateEvidence[] = [];
+      for await (const candidate of evidenceRepositories.evidence.list()) {
+        if (candidate.status === 'active') evidence.push(candidate);
+      }
+      const observations = [
+        ...(reasoning?.dimensions ?? []).map((dimension) => ({
+          observationId: `semantic_bootstrap_${dimension.dimensionId}`,
+          origin: 'observed_behavior' as const,
+          summary: `${dimension.label}：${dimension.description}`,
+          evidenceIds: evidence
+            .filter(
+              (candidate) =>
+                candidate.summary.startsWith(`${dimension.label}：`) &&
+                candidate.sourceGroup === 'behavior',
+            )
+            .map((candidate) => candidate.evidenceId)
+            .slice(0, 3),
+          supportingSessionCount: stableCounts.get(dimension.dimensionId) ?? 1,
+          sourceRefs: dimension.derivedFromEpisodeIds.map(
+            (episodeId) => `reasoning-episode:${episodeId}`,
+          ),
+        })),
+        ...evidence
+          .filter(
+            (candidate) =>
+              candidate.governance?.candidateKind === 'durable_preference' &&
+              candidate.governance.explicitness === 'user_declared' &&
+              candidate.governance.safetyStatus !== 'blocked' &&
+              candidate.governance.expiryPolicy.kind === 'until_corrected',
+          )
+          .map((candidate) => ({
+            observationId: `semantic_bootstrap_${candidate.evidenceId}`,
+            origin: 'explicit_preference' as const,
+            summary: `${candidate.governance!.label}：${candidate.summary}`,
+            evidenceIds: [candidate.evidenceId],
+            sourceRefs: [...candidate.sourceRefs],
+          })),
+      ];
+      if (observations.length === 0) return;
+      const sourceSnapshotHash = createHash('sha256')
+        .update(JSON.stringify(observations))
+        .digest('hex');
+      await semanticProfileCore.bootstrap({
+        sourceId: 'semantic-profile-core-bootstrap@1',
+        sourceSnapshotHash,
+        sourceGroupId: 'migration:legacy-global-profile',
+        observations,
+      });
+    })().finally(() => {
+      semanticCoreBootstrapBarrier = undefined;
+    });
+    return semanticCoreBootstrapBarrier;
   }
 
   const evidencePipeline = createProfileEvidencePipeline({
@@ -348,32 +627,50 @@ export function createLocalProfileRuntime(
   }) {
     await profileEvidenceBarrier;
     await profileEvidenceAggregator.expire();
-    await recoverReasoningAnalysis();
-    const [profile, reasoningBehaviorAnalysis] = await Promise.all([
+    await bootstrapSemanticProfileCore();
+    const [profile, semanticCore] = await Promise.all([
       globalProfile(),
-      latestUsableReasoningAnalysis(),
+      semanticProfileCore.getCurrent(),
     ]);
-    const stableReasoning = stableReasoningDimensions(reasoningBehaviorAnalysis);
+    const stableModes = (semanticCore?.modes ?? []).filter(
+      (mode) =>
+        mode.status === 'stable' &&
+        mode.origin === 'observed_behavior' &&
+        mode.supportingSessionCount >= 2 &&
+        mode.representativeEvidenceIds.length >= 2,
+    );
+    const stableEvidenceIds = stableModes.flatMap((mode) => mode.representativeEvidenceIds);
     const candidates = [];
     for await (const candidate of evidenceRepositories.evidence.list()) candidates.push(candidate);
     const packedEvidence = packPortraitEvidence({
       evidence: candidates,
       tokenBudget: inputRequest.tokenBudget,
       dimensionPriority: [],
+      stableEvidenceIds,
     });
+    const includedEvidenceIds = new Set(packedEvidence.includedEvidenceIds);
+    const portraitModes = stableModes
+      .map((mode) => ({
+        modeId: mode.modeId,
+        feature: mode.feature,
+        teachingImpact: mode.teachingImpact,
+        applicabilityBoundary: mode.applicabilityBoundary,
+        evidenceSessionCount: mode.supportingSessionCount,
+        evidenceIds: mode.representativeEvidenceIds.filter((id) => includedEvidenceIds.has(id)),
+      }))
+      .filter((mode) => mode.evidenceIds.length >= 2);
     const requested = await portraitModule.requestRefresh({
       profileVersion: profile.profileSchemaVersion,
       packedEvidence,
       window: profile.window,
-      promptTemplateVersion: 'portrait@1',
+      promptTemplateVersion: 'portrait-semantic-core@1',
       providerConfigFingerprint: createHash('sha256').update('mock').digest('hex'),
-      ...(reasoningBehaviorAnalysis === undefined || stableReasoning.length === 0
+      ...(semanticCore === undefined
         ? {}
         : {
-            reasoningBehaviorInput: {
-              snapshotId: reasoningBehaviorAnalysis.snapshot.snapshotId,
-              sourceSnapshotHash: reasoningBehaviorAnalysis.snapshot.sourceSnapshotHash,
-              dimensionSetVersion: reasoningBehaviorAnalysis.snapshot.dimensionSetVersion,
+            semanticCoreInput: {
+              sourceSnapshotHash: semanticCore.sourceSnapshotHash,
+              modes: portraitModes,
             },
           }),
       idempotencyKey: inputRequest.idempotencyKey,
@@ -423,78 +720,30 @@ export function createLocalProfileRuntime(
     courseId,
     lessonId,
   }) => {
-    const reasoning = await latestUsableReasoningAnalysis();
     const createdAt = input.now().toISOString();
-    const reasoningSignals = stableReasoningDimensions(reasoning)
-      .slice(0, 8)
-      .map((dimension) => ({
-        evidenceId: dimension.dimensionId,
-        summary: `当前证据窗口中出现“${dimension.label}”：${dimension.description}`,
-        explicitness: 'ai_observed' as const,
-        sourceRefs: dimension.derivedFromEpisodeIds.map(
-          (episodeId) => `reasoning-episode:${episodeId}`,
-        ),
-        limitations: [
-          '这是从当前证据窗口动态归纳的学习行为维度，不是永久人格、能力等级或固定思维类型。',
-        ],
-      }));
-    const candidateSignals = [];
-    let candidateProfileVersion = 0;
-    for await (const candidate of evidenceRepositories.evidence.list()) {
-      const governance = candidate.governance;
-      if (
-        candidate.status !== 'active' ||
-        governance === undefined ||
-        isGovernedBehaviorDetail(candidate) ||
-        governance.safetyStatus === 'blocked' ||
-        governance.confidence < 0.65 ||
-        (governance.explicitness === 'ai_observed' && governance.observedCount < 2)
-      ) {
-        continue;
-      }
-      const expiry = governance.expiryPolicy;
-      const expiryAt =
-        expiry.kind === 'until_corrected'
-          ? undefined
-          : expiry.kind === 'window_bound'
-            ? expiry.expiresAt
-            : expiry.reviewAt;
-      if (expiryAt !== undefined && Date.parse(expiryAt) <= input.now().getTime()) continue;
-      candidateProfileVersion = Math.max(candidateProfileVersion, candidate.resourceVersion);
-      candidateSignals.push({
-        evidenceId: candidate.evidenceId,
-        summary: `${governance.label}：${candidate.summary}`,
-        explicitness: governance.explicitness,
-        sourceRefs: [...candidate.sourceRefs],
-        limitations: [
-          ...governance.limitations,
-          '该信号是可撤回的候选证据，只用于调整当前教学表达与探查方式，不代表已确认的全局用户档案事实。',
-        ],
-      });
-    }
-    const signals = [...candidateSignals, ...reasoningSignals]
-      .filter(
-        (signal, index, all) =>
-          all.findIndex((candidate) => candidate.evidenceId === signal.evidenceId) === index,
-      )
-      .slice(0, 8);
+    const digest = (await personalizationDigestRepository.get())?.latestSuccessful;
+    const signals =
+      digest === undefined || digest.summary.trim() === ''
+        ? []
+        : [
+            {
+              evidenceId: `personalization_digest_${digest.sourceSnapshotHash.slice(0, 24)}`,
+              summary: digest.summary,
+              explicitness: 'ai_observed' as const,
+              sourceRefs: [...digest.sourceRefs],
+              limitations: [
+                '仅包含跨独立学习会话稳定出现的抽象维度与长期明确偏好，不包含当前单次会话候选判断。',
+              ],
+            },
+          ];
     return {
-      profileVersion: Math.max(reasoning?.resourceVersion ?? 0, candidateProfileVersion),
+      profileVersion: digest?.profileVersion ?? 0,
       purpose: 'interactive_teaching',
       courseId,
       lessonId,
       signals,
       completeness: signals.length === 0 ? 'insufficient' : 'limited',
-      sourceSnapshotHash: createHash('sha256')
-        .update(
-          JSON.stringify({
-            courseId,
-            lessonId,
-            reasoningSource: reasoning?.snapshot.sourceSnapshotHash,
-            evidenceIds: signals.map((signal) => signal.evidenceId),
-          }),
-        )
-        .digest('hex'),
+      sourceSnapshotHash: digest?.sourceSnapshotHash ?? '0'.repeat(64),
       createdAt,
     };
   };
@@ -525,30 +774,7 @@ export function createLocalProfileRuntime(
   };
 
   async function portraitWithReasoning(versionId: string) {
-    const [portrait, reasoningBehaviorAnalysis] = await Promise.all([
-      portraitRepository.getVersion(versionId),
-      latestUsableReasoningAnalysis(),
-    ]);
-    const stableDimensions = stableReasoningDimensions(reasoningBehaviorAnalysis);
-    const stableIds = new Set(stableDimensions.map((dimension) => dimension.dimensionId));
-    return portrait === undefined
-      ? undefined
-      : {
-          ...portrait,
-          ...(reasoningBehaviorAnalysis === undefined || stableDimensions.length === 0
-            ? {}
-            : {
-                reasoningBehaviorAnalysis: {
-                  snapshot: {
-                    ...reasoningBehaviorAnalysis.snapshot,
-                    dimensions: reasoningBehaviorAnalysis.snapshot.dimensions.filter((dimension) =>
-                      stableIds.has(dimension.dimensionId),
-                    ),
-                  },
-                  dimensions: stableDimensions,
-                },
-              }),
-        };
+    return portraitRepository.getVersion(versionId);
   }
 
   const portraitRoutes: PortraitRouteOptions = {
@@ -568,9 +794,25 @@ export function createLocalProfileRuntime(
     portraitRoutes,
     requestPortraitRefresh,
     getTeachingPersonalization,
+    refreshPersonalizationDigest,
     recoverReasoningAnalysis,
     getProjectionStatus: () => projectionStatus,
-    start: weeklyPortraitScheduler.start,
+    start() {
+      weeklyPortraitScheduler.start();
+      void bootstrapSemanticProfileCore()
+        .then(refreshPersonalizationDigest)
+        .catch((error) => {
+          void input
+            .logProjectionEvent?.({
+              level: 'error',
+              component: 'SemanticProfileCoreBootstrap',
+              correlationId: 'semantic_profile_core_bootstrap',
+              eventCode: 'semantic_profile_core_bootstrap_failed',
+              fields: { error },
+            })
+            .catch(() => undefined);
+        });
+    },
     close: weeklyPortraitScheduler.stop,
   };
 }

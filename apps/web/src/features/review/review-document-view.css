@@ -1,7 +1,17 @@
 .structured-review {
   display: grid;
+  width: min(100%, 820px);
+  min-width: 0;
+  margin-inline: auto;
   gap: 34px;
   color: var(--ink);
+}
+.structured-review > * {
+  min-width: 0;
+}
+.structured-review > section > * {
+  max-width: 100%;
+  min-width: 0;
 }
 .structured-review > h2,
 .structured-review > section > h2 {
@@ -18,6 +28,11 @@
   line-height: 1.55;
 }
 .review-knowledge-map {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 20px 22px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -27,8 +42,21 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap;
 }
+.review-methodology-insight {
+  padding: 20px 22px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 14px;
+  background: var(--tint);
+}
+.structured-review > .review-methodology-insight > h2 {
+  margin-bottom: 10px;
+  font-size: 20px;
+}
 .review-knowledge-chain {
   display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   grid-auto-flow: column;
   grid-auto-columns: minmax(132px, 1fr);
   align-items: stretch;

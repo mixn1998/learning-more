@@ -23,6 +23,23 @@ export const PortraitInputManifestSchema = z.strictObject({
       dimensionSetVersion: z.string().min(1),
     })
     .optional(),
+  semanticCoreInput: z
+    .strictObject({
+      sourceSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/),
+      modes: z
+        .array(
+          z.strictObject({
+            modeId: z.string().min(1),
+            feature: z.string().min(1),
+            teachingImpact: z.string().min(1),
+            applicabilityBoundary: z.string().min(1),
+            evidenceSessionCount: z.number().int().min(2),
+            evidenceIds: z.array(z.string().min(1)).min(2).max(3),
+          }),
+        )
+        .max(5),
+    })
+    .optional(),
   manifestChecksum: z.string().min(1),
   createdAt: z.iso.datetime({ offset: true }),
 });
@@ -38,6 +55,7 @@ export function createPortraitInputManifest(input: {
     sourceSnapshotHash: string;
     dimensionSetVersion: string;
   }>;
+  semanticCoreInput?: PortraitInputManifest['semanticCoreInput'];
   createdAt: string;
 }): PortraitInputManifest {
   if (Date.parse(input.window.from) >= Date.parse(input.window.to)) {
@@ -54,6 +72,9 @@ export function createPortraitInputManifest(input: {
     ...(input.reasoningBehaviorInput === undefined
       ? {}
       : { reasoningBehaviorInput: input.reasoningBehaviorInput }),
+    ...(input.semanticCoreInput === undefined
+      ? {}
+      : { semanticCoreInput: input.semanticCoreInput }),
     createdAt: input.createdAt,
   };
   const manifestChecksum = checksumJson(frozen);
@@ -61,5 +82,5 @@ export function createPortraitInputManifest(input: {
     ...frozen,
     manifestId: `manifest_${createHash('sha256').update(manifestChecksum).digest('hex').slice(0, 40)}`,
     manifestChecksum,
-  });
+  }) as PortraitInputManifest;
 }

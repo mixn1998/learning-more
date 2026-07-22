@@ -1,10 +1,13 @@
 export type SupplementarySession = Readonly<{
   id: string;
+  title?: string;
   courseId: string;
   lessonId: string;
   sourceFinalReviewId: string;
   status: 'active' | 'archived';
   messageIds: readonly string[];
+  activeGenerationTaskId?: string;
+  generationErrorCode?: string;
   createdAt: string;
   updatedAt: string;
   resourceVersion: number;

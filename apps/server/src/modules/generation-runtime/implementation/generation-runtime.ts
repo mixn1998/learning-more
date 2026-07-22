@@ -68,6 +68,8 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
   let currentModel: string | undefined;
   let claimBarrier: Promise<void> = Promise.resolve();
   const subscribers = new Map<string, Set<(task: GenerationTask) => void>>();
+  let taskIndex: Map<string, GenerationTask> | undefined;
+  let taskIndexLoading: Promise<Map<string, GenerationTask>> | undefined;
 
   function publish(task: GenerationTask): void {
     for (const observer of subscribers.get(task.id) ?? []) {
@@ -79,10 +81,23 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     }
   }
 
+  async function indexedTasks(): Promise<Map<string, GenerationTask>> {
+    if (taskIndex !== undefined) return taskIndex;
+    taskIndexLoading ??= (async () => {
+      const loaded = new Map<string, GenerationTask>();
+      for await (const task of options.repository.list()) loaded.set(task.id, task);
+      taskIndex = loaded;
+      return loaded;
+    })();
+    try {
+      return await taskIndexLoading;
+    } finally {
+      taskIndexLoading = undefined;
+    }
+  }
+
   async function allTasks(): Promise<GenerationTask[]> {
-    const tasks: GenerationTask[] = [];
-    for await (const task of options.repository.list()) tasks.push(task);
-    return tasks;
+    return [...(await indexedTasks()).values()];
   }
 
   async function persist(task: GenerationTask): Promise<GenerationTask> {
@@ -92,6 +107,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       );
       const stored = await options.repository.get(task.id);
       if (stored === undefined) throw new Error('GENERATION_TASK_NOT_PERSISTED');
+      (await indexedTasks()).set(stored.id, stored);
       publish(stored);
       return stored;
     } catch (error) {
@@ -208,6 +224,9 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
         0,
       ),
     );
+    const stored = await options.repository.get(id);
+    if (stored === undefined) throw new Error('GENERATION_TASK_NOT_PERSISTED');
+    (await indexedTasks()).set(stored.id, stored);
     return { taskId: id };
   }
 
@@ -291,13 +310,15 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
         )) {
           if (controller.signal.aborted) break;
           emittedDelta = true;
+          const deltaAt = now().toISOString();
           current = await persist({
             ...current,
             draftMarkdown: `${current.draftMarkdown ?? ''}${delta.text}`,
+            ...(current.firstDeltaAt === undefined ? { firstDeltaAt: deltaAt } : {}),
             attempts: (current.attempts ?? []).map((attempt, index, all) =>
               index === all.length - 1 ? { ...attempt, emittedDelta: true } : attempt,
             ),
-            updatedAt: now().toISOString(),
+            updatedAt: deltaAt,
             leaseExpiresAt: new Date(now().getTime() + 30_000).toISOString(),
           });
         }

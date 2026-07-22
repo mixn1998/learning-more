@@ -307,6 +307,11 @@ export function createWorkspaceActivationWorker(options: {
           stageName = 'staging';
           await publish('staging', attempt);
           await stage(candidate.expandedRoot, releaseRoot(options.releasesRoot, candidate.buildId));
+          const activationIdentity = await readIdentity(options.projectRoot);
+          if (candidate.buildId !== activationIdentity.buildId) {
+            throw new WorkspaceActivationFailure('workspace_identity_changed', 'verifying');
+          }
+          sourceIdentity = activationIdentity;
           stageName = 'activating';
           await publish('activating', attempt);
           const result = await options.supervisor.activateCandidate(candidate.buildId);

@@ -38,6 +38,7 @@ export function packPortraitEvidence(input: {
   evidence: readonly CandidateEvidence[];
   tokenBudget: number;
   dimensionPriority: readonly string[];
+  stableEvidenceIds?: readonly string[];
 }): PackedPortraitEvidence {
   if (!Number.isInteger(input.tokenBudget) || input.tokenBudget < 0) {
     throw new RangeError('portrait_token_budget_invalid');
@@ -51,10 +52,11 @@ export function packPortraitEvidence(input: {
   }
   const exclusions = new Map<string, EvidenceExclusionReason>();
   const active: CandidateEvidence[] = [];
+  const stableEvidenceIds = new Set(input.stableEvidenceIds ?? []);
   for (const candidate of latest.values()) {
     if (candidate.status === 'retracted') exclusions.set(candidate.evidenceId, 'retracted');
     else if (candidate.status === 'superseded') exclusions.set(candidate.evidenceId, 'superseded');
-    else if (!isGlobalProfileEvidence(candidate)) {
+    else if (!isGlobalProfileEvidence(candidate) && !stableEvidenceIds.has(candidate.evidenceId)) {
       exclusions.set(candidate.evidenceId, 'not_global_profile_evidence');
     } else active.push(candidate);
   }
@@ -82,6 +84,16 @@ export function packPortraitEvidence(input: {
 
   const included = new Map<string, CandidateEvidence>();
   let estimatedTokens = 0;
+  for (const candidate of active
+    .filter((item) => stableEvidenceIds.has(item.evidenceId))
+    .sort((left, right) => compareEvidence(left, right, input.dimensionPriority))) {
+    const cost = estimateEvidenceTokens(candidate);
+    if (estimatedTokens + cost <= input.tokenBudget) {
+      included.set(candidate.evidenceId, candidate);
+      estimatedTokens += cost;
+      exclusions.delete(candidate.evidenceId);
+    } else exclusions.set(candidate.evidenceId, 'budget_exceeded');
+  }
   for (const dimension of eligibleDimensions) {
     const candidates = [...dimensions.get(dimension)!].sort((left, right) =>
       compareEvidence(left, right, input.dimensionPriority),
@@ -95,7 +107,8 @@ export function packPortraitEvidence(input: {
       seed.push(candidate);
       if (seed.length === 2) break;
     }
-    const seedCost = seed.reduce(
+    const newSeed = seed.filter((candidate) => !included.has(candidate.evidenceId));
+    const seedCost = newSeed.reduce(
       (total, candidate) => total + estimateEvidenceTokens(candidate),
       0,
     );
@@ -103,7 +116,7 @@ export function packPortraitEvidence(input: {
       for (const candidate of candidates) exclusions.set(candidate.evidenceId, 'budget_exceeded');
       continue;
     }
-    for (const candidate of seed) included.set(candidate.evidenceId, candidate);
+    for (const candidate of newSeed) included.set(candidate.evidenceId, candidate);
     estimatedTokens += seedCost;
   }
 

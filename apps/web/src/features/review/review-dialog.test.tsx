@@ -60,6 +60,7 @@ describe('ReviewDialog', () => {
           kind: 'lesson-final',
           title: '第一讲总结：判断何时发生反转',
           knowledgeMap: { title: '决策线索', markdown: '情境 → 阈值 → 选择' },
+          methodologyInsight: '先找会改变结果的阈值，再比较跨过阈值前后的选择。',
           coreInsight: '答案取决于是否跨过会改变结果的边界。',
           performance: [
             { title: '你做得很好的地方', markdown: '主动检查了规则前提。' },
@@ -77,7 +78,82 @@ describe('ReviewDialog', () => {
     expect(
       screen.getByRole('list', { name: '本课知识关系主链' }).querySelectorAll('li'),
     ).toHaveLength(3);
+    const headings = screen.getAllByRole('heading').map((heading) => heading.textContent);
+    expect(headings.indexOf('本课方法论启示')).toBeGreaterThan(headings.indexOf('知识图谱'));
+    expect(headings.indexOf('本课方法论启示')).toBeLessThan(headings.indexOf('核心思想'));
+    expect(screen.getByText('先找会改变结果的阈值，再比较跨过阈值前后的选择。')).toBeVisible();
     expect(screen.getByText('主动检查了规则前提。')).toBeVisible();
     expect(screen.queryByText('AI 接口 · Codex')).not.toBeInTheDocument();
+  });
+
+  it('projects a methodology insight from historical core insight when the field is absent', () => {
+    render(
+      <ReviewDialog
+        document={{
+          schemaVersion: 1,
+          kind: 'lesson-final',
+          title: '历史课时 Review',
+          knowledgeMap: { title: '知识图谱', markdown: '前提 → 判断' },
+          coreInsight: '核心方法是先确认判断条件，再决定结论能否迁移。',
+          performance: [{ title: '已经形成', markdown: '完成了本课互动。' }],
+        }}
+        markdown="legacy"
+        open
+        title="历史课节"
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '本课方法论启示' })).toBeVisible();
+    expect(screen.getByText('先确认判断条件，再决定结论能否迁移。')).toBeVisible();
+  });
+
+  it('projects a legacy methodology insight block into the shared module', () => {
+    render(
+      <ReviewDialog
+        document={{
+          schemaVersion: 1,
+          kind: 'lesson-final',
+          title: '旧课时 Review',
+          knowledgeMap: { title: '知识图谱', markdown: '前提 → 判断' },
+          coreInsight: '旧版核心思想。',
+          performance: [{ title: '已经形成', markdown: '完成了本课互动。' }],
+          additionalSections: [
+            {
+              title: '可以带走的一句话',
+              markdown: '先检查会改变结论的条件，再决定原来的判断能否迁移。',
+            },
+          ],
+        }}
+        markdown="legacy"
+        open
+        title="旧课节"
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '本课方法论启示' })).toBeVisible();
+    expect(screen.getByText('先检查会改变结论的条件，再决定原来的判断能否迁移。')).toBeVisible();
+  });
+
+  it('projects a methodology insight heading from legacy Review Markdown', () => {
+    render(
+      <ReviewDialog
+        document={{
+          schemaVersion: 1,
+          kind: 'lesson-final',
+          title: '旧课时 Markdown Review',
+          knowledgeMap: { title: '知识图谱', markdown: '前提 → 判断' },
+          coreInsight: '旧版核心思想。',
+          performance: [{ title: '已经形成', markdown: '完成了本课互动。' }],
+        }}
+        markdown={
+          '# 旧课时 Markdown Review\n\n## 可以带走的一句话\n\n先检查条件，再决定判断是否能迁移。\n\n## 核心思想\n\n旧版核心思想。'
+        }
+        open
+        title="旧课节 Markdown"
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '本课方法论启示' })).toBeVisible();
+    expect(screen.getByText('先检查条件，再决定判断是否能迁移。')).toBeVisible();
   });
 });

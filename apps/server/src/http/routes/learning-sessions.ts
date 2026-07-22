@@ -13,6 +13,7 @@ import {
   LessonRecordResponseSchema,
   LessonEntryStateResponseSchema,
   ReviseLessonMessageBodySchema,
+  RenameSupplementarySessionBodySchema,
   StartLessonSessionBodySchema,
   StartSupplementarySessionBodySchema,
   StopLessonGenerationBodySchema,
@@ -30,12 +31,14 @@ type SessionReference = Readonly<{
   courseId: string;
   lessonId: string;
   sessionId: string;
+  pageInstanceId?: string;
 }>;
 
 export type LearningSessionRouteOptions = Readonly<{
   module: LearningSessionModule;
   teaching: InteractiveTeaching;
   resolveSession(sessionId: string): Promise<SessionReference>;
+  reconcileSession?(reference: SessionReference, correlationId: string): Promise<void>;
   saveUserMessage(messageId: string, markdown: string): Promise<string>;
   loadArtifactMarkdown?(artifactRef: string): Promise<string | undefined>;
   listSessionMessages?(sessionId: string): Promise<
@@ -63,22 +66,19 @@ export type LearningSessionRouteOptions = Readonly<{
   nextMessageId(): string;
   now(): Date;
   supplementary?: {
-    execute(
-      command:
-        | { type: 'StartSupplementarySession'; lessonId: string }
-        | {
-            type: 'AppendSupplementaryMessage';
-            supplementarySessionId: string;
-            messageId: string;
-            expectedVersion: number;
-          }
-        | {
-            type: 'ArchiveSupplementarySession';
-            supplementarySessionId: string;
-            expectedVersion: number;
-          },
-    ): Promise<unknown>;
-    get(id: string): Promise<unknown>;
+    start(lessonId: string): Promise<unknown>;
+    view(sessionId: string): Promise<unknown>;
+    send(input: { sessionId: string; markdown: string; expectedVersion: number }): Promise<unknown>;
+    revise(input: {
+      sessionId: string;
+      replacedUserMessageId: string;
+      markdown: string;
+      expectedVersion: number;
+    }): Promise<unknown>;
+    retry(input: { sessionId: string; expectedVersion: number }): Promise<unknown>;
+    rename(input: { sessionId: string; title: string; expectedVersion: number }): Promise<unknown>;
+    stop(input: { sessionId: string; taskId: string }): Promise<unknown>;
+    archive(input: { sessionId: string; expectedVersion: number }): Promise<unknown>;
   };
 }>;
 
@@ -148,10 +148,7 @@ export async function registerLearningSessionRoutes(
             requirePageInstanceId: true,
           });
           const session = SupplementarySessionResponseSchema.parse(
-            await options.supplementary!.execute({
-              type: 'StartSupplementarySession',
-              lessonId: request.params.lessonId,
-            }),
+            await options.supplementary!.start(request.params.lessonId),
           );
           return reply
             .header('location', `/api/v1/supplementary-sessions/${session.id}`)
@@ -178,14 +175,156 @@ export async function registerLearningSessionRoutes(
             requireIfMatch: true,
             requirePageInstanceId: true,
           });
-          const messageId = options.nextMessageId();
-          await options.saveUserMessage(messageId, body.markdown);
-          const session = SupplementarySessionResponseSchema.parse(
-            await options.supplementary!.execute({
-              type: 'AppendSupplementaryMessage',
-              supplementarySessionId: request.params.sessionId,
-              messageId,
+          const task = GenerationTaskAcceptedResponseSchema.parse(
+            await options.supplementary!.send({
+              sessionId: request.params.sessionId,
+              markdown: body.markdown,
               expectedVersion: context.expectedVersion!,
+            }),
+          );
+          return reply.header('etag', `"${task.resourceVersion}"`).code(202).send(task);
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+
+    app.get<{ Params: { sessionId: string } }>(
+      '/api/v1/supplementary-sessions/:sessionId',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          const session = SupplementarySessionResponseSchema.parse(
+            await options.supplementary!.view(request.params.sessionId),
+          );
+          return reply
+            .header('cache-control', 'no-store')
+            .header('etag', `"${session.resourceVersion}"`)
+            .code(200)
+            .send(session);
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+
+    app.patch<{ Params: { sessionId: string } }>(
+      '/api/v1/supplementary-sessions/:sessionId/title',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          const body = RenameSupplementarySessionBodySchema.parse(request.body);
+          const context = buildCommandContext(request, {
+            commandId: options.nextCommandId(),
+            correlationId: correlation,
+            now: options.now(),
+            requireIfMatch: true,
+            requirePageInstanceId: true,
+          });
+          const session = SupplementarySessionResponseSchema.parse(
+            await options.supplementary!.rename({
+              sessionId: request.params.sessionId,
+              title: body.title,
+              expectedVersion: context.expectedVersion!,
+            }),
+          );
+          return reply.header('etag', `"${session.resourceVersion}"`).code(200).send(session);
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+
+    app.post<{ Params: { sessionId: string; messageId: string } }>(
+      '/api/v1/supplementary-sessions/:sessionId/messages/:messageId/revisions',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          const body = ReviseLessonMessageBodySchema.parse(request.body);
+          const context = buildCommandContext(request, {
+            commandId: options.nextCommandId(),
+            correlationId: correlation,
+            now: options.now(),
+            requireIfMatch: true,
+            requirePageInstanceId: true,
+          });
+          const task = GenerationTaskAcceptedResponseSchema.parse(
+            await options.supplementary!.revise({
+              sessionId: request.params.sessionId,
+              replacedUserMessageId: request.params.messageId,
+              markdown: body.markdown,
+              expectedVersion: context.expectedVersion!,
+            }),
+          );
+          return reply.header('etag', `"${task.resourceVersion}"`).code(202).send(task);
+        } catch (error) {
+          const problem = mapApplicationError(error, correlation);
+          return reply.code(problem.status).send(problem);
+        }
+      },
+    );
+
+    for (const [suffix, operation] of [
+      ['generation-retries', 'retry'],
+      ['archives', 'archive'],
+    ] as const) {
+      app.post<{ Params: { sessionId: string } }>(
+        `/api/v1/supplementary-sessions/:sessionId/${suffix}`,
+        async (request, reply) => {
+          const correlation = correlationId(request, options);
+          try {
+            EmptyLearningSessionCommandBodySchema.parse(request.body ?? {});
+            const context = buildCommandContext(request, {
+              commandId: options.nextCommandId(),
+              correlationId: correlation,
+              now: options.now(),
+              requireIfMatch: true,
+              requirePageInstanceId: true,
+            });
+            if (operation === 'retry') {
+              const task = GenerationTaskAcceptedResponseSchema.parse(
+                await options.supplementary!.retry({
+                  sessionId: request.params.sessionId,
+                  expectedVersion: context.expectedVersion!,
+                }),
+              );
+              return reply.header('etag', `"${task.resourceVersion}"`).code(202).send(task);
+            }
+            const session = SupplementarySessionResponseSchema.parse(
+              await options.supplementary!.archive({
+                sessionId: request.params.sessionId,
+                expectedVersion: context.expectedVersion!,
+              }),
+            );
+            return reply.header('etag', `"${session.resourceVersion}"`).code(200).send(session);
+          } catch (error) {
+            const problem = mapApplicationError(error, correlation);
+            return reply.code(problem.status).send(problem);
+          }
+        },
+      );
+    }
+
+    app.post<{ Params: { sessionId: string } }>(
+      '/api/v1/supplementary-sessions/:sessionId/generation-stops',
+      async (request, reply) => {
+        const correlation = correlationId(request, options);
+        try {
+          const body = StopLessonGenerationBodySchema.parse(request.body);
+          buildCommandContext(request, {
+            commandId: options.nextCommandId(),
+            correlationId: correlation,
+            now: options.now(),
+            requireIfMatch: true,
+            requirePageInstanceId: true,
+          });
+          const session = SupplementarySessionResponseSchema.parse(
+            await options.supplementary!.stop({
+              sessionId: request.params.sessionId,
+              taskId: body.taskId,
             }),
           );
           return reply.header('etag', `"${session.resourceVersion}"`).code(200).send(session);
@@ -432,6 +571,7 @@ export async function registerLearningSessionRoutes(
       const correlation = correlationId(request, options);
       try {
         const reference = await options.resolveSession(request.params.sessionId);
+        await options.reconcileSession?.(reference, correlation);
         const view = await options.module.query(
           { type: 'GetLessonLearning', lessonId: reference.lessonId },
           buildQueryContext(correlation, options.now()),

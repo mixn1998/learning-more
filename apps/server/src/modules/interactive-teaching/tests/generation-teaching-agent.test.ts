@@ -173,6 +173,46 @@ function runtime(
 }
 
 describe('GenerationTeachingAgent', () => {
+  it('bounds course-wide and personalization context around the current lesson', async () => {
+    const fake = runtime();
+    const base = context();
+    const bounded: TeachingContextPackage = {
+      ...base,
+      course: {
+        ...base.course,
+        goals: Array.from({ length: 12 }, (_, index) => `goal-${index}`),
+        lessonMap: Array.from({ length: 12 }, (_, index) => ({
+          lessonId: index === 6 ? base.lesson.lessonId : `other_lesson_${index}`,
+          title: `lesson-title-${index}`,
+          objective: `lesson-objective-${index}`,
+          relation: index === 6 ? ('current' as const) : ('other' as const),
+        })),
+      },
+      personalization: {
+        ...base.personalization,
+        signals: Array.from({ length: 12 }, (_, index) => ({
+          evidenceId: `evidence_${index}`,
+          summary: `personalization-signal-${index}`,
+          explicitness: 'ai_observed' as const,
+          sourceRefs: [`message:${index}`],
+          limitations: [],
+        })),
+      },
+    };
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(bounded, 'message_user_bounded');
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('goal-5；goal-6；goal-7');
+    expect(prompt).not.toContain('goal-0');
+    expect(prompt).toContain('lesson-title-3');
+    expect(prompt).toContain('lesson-title-10');
+    expect(prompt).not.toContain('lesson-title-11');
+    expect(prompt).toContain('personalization-signal-7');
+    expect(prompt).toContain('只读压缩投影');
+  });
+
   it('renders an active opening instruction without a fabricated learner request', async () => {
     const fake = runtime();
     const opening = { ...context(), turnKind: 'opening' as const, recentMessages: [] };
@@ -183,7 +223,7 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('主动导入语境');
     expect(fake.request()?.prompt).toContain('当前阶段是课前热身');
     expect(fake.request()?.prompt).toContain('不要开始连续讲解全部知识点');
-    expect(fake.request()?.prompt).toContain('【本课知识责任与现有证据】');
+    expect(fake.request()?.prompt).toContain('【当前教学窗口】');
     expect(fake.request()?.prompt).not.toContain('【当前诉求｜用户原话】');
   });
 
@@ -213,23 +253,38 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('课程邻接探索');
     expect(fake.request()?.prompt).toContain('把选择权交给学习者');
     expect(fake.request()?.prompt).toContain(
-      '不要默认我已经理解，我想要更加深入透彻的学习理解过程体验，更强的思维激活程度和思考密度。',
+      '不要默认我已经理解；提供深入透彻的理解过程、更强的思维激活和思考密度。',
     );
-    expect(fake.request()?.prompt).toContain('不要向学习者播报正在检测或已经通过检测');
+    expect(fake.request()?.prompt).toContain(
+      '严谨应服务于理解推进；纠偏后沿知识逻辑自然前进，避免反复盘问相似细节。',
+    );
+    expect(fake.request()?.prompt).toContain('不要播报正在检测、已经通过');
     expect(fake.request()?.prompt).toContain('用一至两句小结当前知识点');
-    expect(fake.request()?.prompt).toContain('综合检测通过后也不播报通过状态');
+    expect(fake.request()?.prompt).toContain('综合检测终态后先作跨知识点小结');
     expect(fake.request()?.prompt).toContain('是否还有疑惑或其他讲解需求');
-    expect(fake.request()?.prompt).toContain('每一轮回复都必须以一个自然、容易回应');
-    expect(fake.request()?.prompt).toContain('最终课程总结是唯一不再提出问题');
-    expect(fake.request()?.prompt).toContain('```math-plot');
-    expect(fake.request()?.prompt).toContain('vectorField2d');
-    expect(fake.request()?.prompt).toContain('odePhase2d');
-    expect(fake.request()?.prompt).toContain('不得输出 JavaScript');
+    expect(fake.request()?.prompt).toContain('提问不要求机械复述');
+    expect(fake.request()?.prompt).toContain('定位概念、条件、边界、推理或迁移漏洞');
+    expect(fake.request()?.prompt).toContain('据此补讲或换支架');
+    expect(fake.request()?.prompt).toContain('再用新问题验证');
+    expect(fake.request()?.prompt).toContain('每轮都以自然、易回应');
+    expect((fake.request()?.prompt ?? '').indexOf('提问不要求机械复述')).toBeLessThan(
+      (fake.request()?.prompt ?? '').indexOf('每轮都以自然、易回应'),
+    );
+    expect(fake.request()?.prompt).toContain('该总结是唯一不再提问');
+    expect(fake.request()?.prompt).not.toContain('```math-plot');
+    expect(fake.request()?.prompt).not.toContain('vectorField2d');
+    expect(fake.request()?.reasoningEffort).toBe('low');
     expect(fake.request()?.prompt).toContain('<learning-more-control>');
+    expect(fake.request()?.prompt).toContain('控制 JSON 使用 schemaVersion=2');
+    expect(fake.request()?.prompt).toContain('lessonPhase 每轮必须返回');
+    expect(fake.request()?.prompt).toContain(
+      'warmup|knowledge_point|comprehensive_check|discussion|summary|ready_to_close',
+    );
+    expect(fake.request()?.prompt).toContain('knowledgePoints 仅列变化项');
     expect(fake.request()?.prompt).toContain('interactionStatus');
     expect(fake.request()?.prompt).toContain('difficultySignals');
     expect(fake.request()?.prompt).toContain('answer_error');
-    expect(fake.request()?.prompt).toContain('延伸拓展、脑洞类或仅相邻探索的问题不得计入');
+    expect(fake.request()?.prompt).toContain('延伸、脑洞或相邻探索不计');
     expect(fake.request()?.prompt).toContain(
       '"allowedDifficultySignalSourceMessageId":"message_current"',
     );
@@ -253,6 +308,44 @@ describe('GenerationTeachingAgent', () => {
       markdown: 'A free-form explanation. A second sentence.',
       directive: fake.directive,
     });
+  });
+
+  it('injects the math capability and raises effort only when the turn needs them', async () => {
+    const fake = runtime();
+    const base = context();
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(
+      {
+        ...base,
+        teachingState: {
+          ...base.teachingState,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'knowledge:kp_1',
+        },
+        lesson: {
+          ...base.lesson,
+          objective: '理解函数图像与坐标变化',
+          coreKnowledgePoints: [
+            { ref: 'knowledge:kp_1', text: '函数图像', fixedImportance: 'key' },
+          ],
+        },
+        recentMessages: [
+          {
+            messageId: 'message_current',
+            role: 'user',
+            completionStatus: 'complete',
+            markdown: '能画图解释为什么会这样吗？',
+            sourceRef: 'message:message_current',
+          },
+        ],
+      },
+      'message_user_visual',
+    );
+
+    expect(fake.request()?.prompt).toContain('```math-plot');
+    expect(fake.request()?.prompt).toContain('vectorField2d');
+    expect(fake.request()?.reasoningEffort).toBe('medium');
   });
 
   it('accepts the knowledge-point titles included in the supplied machine state', async () => {

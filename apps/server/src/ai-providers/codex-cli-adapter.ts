@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { ProviderModelOption } from '@learning-more/contracts';
 
 import {
+  createCodexAppServerGenerationRunner,
   runCodexAppServerGeneration,
   type CodexCliAppServerGenerationRunner,
   type CodexCliGenerationRequest,
@@ -273,7 +274,11 @@ export function createCodexCliAdapter(
   const run = options.run ?? runCommand;
   const startLoginProcess = options.startLogin ?? startInteractiveLogin;
   const generate = options.generate ?? runGeneration;
-  const streamGenerate = options.streamGenerate ?? runCodexAppServerGeneration;
+  const streamGenerate =
+    options.streamGenerate ??
+    (options.generate === undefined
+      ? createCodexAppServerGenerationRunner()
+      : runCodexAppServerGeneration);
   const fallbackGenerate = options.fallbackGenerate ?? runGeneration;
   const now = options.now ?? Date.now;
   const catalogTtlMs = options.catalogTtlMs ?? 60_000;

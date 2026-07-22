@@ -1,5 +1,12 @@
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
 import { normalizeTeachingControlState } from './teaching-directive.js';
+import { projectTeachingLedger } from './teaching-ledger-projection.js';
+import { renderTeachingPersonalizationPrompt } from './teaching-personalization-prompt.js';
+
+const MAX_COURSE_RELATIONS = 8;
+const MAX_LOCAL_COURSE_GOALS = 3;
+const MAX_RELEVANT_REVIEWS = 3;
+const MAX_READING_EXCERPTS = 4;
 
 function section(title: string, values: readonly string[]): string | undefined {
   const content = values.map((value) => value.trim()).filter((value) => value.length > 0);
@@ -8,10 +15,13 @@ function section(title: string, values: readonly string[]): string | undefined {
 
 function knowledgeBackground(context: TeachingContextPackage): string[] {
   const state = normalizeTeachingControlState(context.teachingState);
+  const projection = projectTeachingLedger(context);
   const textByRef = new Map(
     context.lesson.coreKnowledgePoints.map((point) => [point.ref, point.text] as const),
   );
-  return state.knowledgePoints.map((point) => {
+  return projection.knowledgePoints.map((projected) => {
+    const point = state.knowledgePoints.find((candidate) => candidate.ref === projected.ref);
+    if (point === undefined) return `- ${projected.title}：待讲解`;
     const text = textByRef.get(point.ref) ?? '本课的一个知识责任点';
     const definition = context.lesson.coreKnowledgePoints.find(
       (candidate) => candidate.ref === point.ref,
@@ -38,7 +48,13 @@ function knowledgeBackground(context: TeachingContextPackage): string[] {
           : point.progress === 'learning'
             ? '正在学习中'
             : '待讲解';
-    return `- ${text}：${progress}；${weight}；${difficulty}；${delivery}；${evidence}`;
+    const need =
+      point.verification === 'limiting' || point.verification === 'mixed'
+        ? '本轮需要针对现有理解缺口继续支架'
+        : point.progress === 'pending'
+          ? '按本课顺序建立理解并形成可回应的互动'
+          : '依据当前证据自然推进';
+    return `- ${text}：${progress}；${weight}；${difficulty}；${delivery}；${evidence}；教学需要：${need}`;
   });
 }
 
@@ -61,18 +77,30 @@ function priorConversation(context: TeachingContextPackage): string[] {
   });
 }
 
+function localCourseWindow(context: TeachingContextPackage) {
+  const currentIndex = context.course.lessonMap.findIndex(
+    (lesson) => lesson.relation === 'current' || lesson.lessonId === context.lesson.lessonId,
+  );
+  if (currentIndex < 0) return context.course.lessonMap.slice(0, MAX_COURSE_RELATIONS);
+  const start = Math.max(0, currentIndex - Math.floor((MAX_COURSE_RELATIONS - 1) / 2));
+  return context.course.lessonMap.slice(start, start + MAX_COURSE_RELATIONS);
+}
+
+function localCourseGoals(context: TeachingContextPackage): readonly string[] {
+  const currentIndex = context.course.lessonMap.findIndex(
+    (lesson) => lesson.relation === 'current' || lesson.lessonId === context.lesson.lessonId,
+  );
+  if (currentIndex < 0) return context.course.goals.slice(0, MAX_LOCAL_COURSE_GOALS);
+  const start = Math.max(0, currentIndex - 1);
+  return context.course.goals.slice(start, start + MAX_LOCAL_COURSE_GOALS);
+}
+
 export function renderTeachingFactContext(context: TeachingContextPackage): string {
-  const relations = context.course.lessonMap.map(
+  const relations = localCourseWindow(context).map(
     (lesson) =>
       `- ${lesson.title}（${lesson.relation === 'current' ? '本课' : lesson.relation === 'prerequisite' ? '前置课' : '相关课'}）：${lesson.objective}`,
   );
-  const personalization = context.personalization.signals.map((signal) => {
-    const basis =
-      signal.explicitness === 'user_declared' ? '学习者曾明确说明' : '历史互动中的弱信号';
-    const limitations =
-      signal.limitations.length === 0 ? '' : `；使用时注意：${signal.limitations.join('；')}`;
-    return `- ${basis}：${signal.summary}${limitations}`;
-  });
+  const personalization = renderTeachingPersonalizationPrompt(context.personalization);
   const branches = context.teachingState.explorationBranches.map((branch) => {
     const status =
       branch.status === 'active'
@@ -95,7 +123,7 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
     opening
       ? '这是学习者刚进入本课的课前热身。'
       : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
-    `【已知学习背景】\n课程：${context.course.title}\n课程目标：${context.course.goals.join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
+    `【已知学习背景】\n课程：${context.course.title}\n课程目标：${localCourseGoals(context).join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
     section('课程关系', relations),
     context.course.playIntent === undefined
       ? undefined
@@ -103,7 +131,7 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
     context.learningStartSummary === undefined
       ? undefined
       : `【学习起点】\n${context.learningStartSummary.trim()}`,
-    section('本课知识责任与现有证据', knowledgeBackground(context)),
+    section('当前教学窗口', knowledgeBackground(context)),
     section(
       '尚待处理的问题',
       context.teachingState.openLoops.map((loop) => `- ${loop.summary}`),
@@ -113,11 +141,13 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
     section('可用于个性化的背景', personalization),
     section(
       '相关 Review 摘要',
-      context.relevantFinalReviews.map((review) => review.markdown),
+      context.relevantFinalReviews.slice(0, MAX_RELEVANT_REVIEWS).map((review) => review.markdown),
     ),
     section(
       '相关学习材料',
-      context.readingMaterialExcerpts.map((material) => material.markdown),
+      context.readingMaterialExcerpts
+        .slice(0, MAX_READING_EXCERPTS)
+        .map((material) => material.markdown),
     ),
     section('此前真实对话', priorConversation(context)),
     ...(opening ? [] : [`【当前诉求｜用户原话】\n${currentRequest}`]),

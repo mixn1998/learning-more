@@ -82,6 +82,7 @@ const GenerationTaskSchema: z.ZodType<GenerationTask> = z.object({
     .optional(),
   prompt: z.string().optional(),
   draftMarkdown: z.string().optional(),
+  firstDeltaAt: z.string().optional(),
   resultRef: z.string().optional(),
   errorCode: z.string().optional(),
   leaseExpiresAt: z.string().optional(),

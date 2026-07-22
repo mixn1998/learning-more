@@ -76,6 +76,7 @@ type Action =
       sessionSnapshotHash?: string;
       closurePreparation?: State['closurePreparation'];
       teachingProgress?: TeachingProgress;
+      activeGenerationTaskId?: string;
     }>
   | Readonly<{ type: 'input'; value: string }>
   | Readonly<{
@@ -193,6 +194,7 @@ function lessonClosureFailureMessage(error: unknown): string {
 
 const GENERATION_RECONCILIATION_DELAY_MS = 8_000;
 const GENERATION_PROJECTION_POLL_MS = 1_000;
+const GENERATION_STOP_ERROR = '无法取消当前生成，请取消编辑后重试。';
 
 async function consumeGenerationStream(
   api: LearningClient,
@@ -264,6 +266,16 @@ function reducer(state: State, action: Action): State {
         (message) =>
           message.role === 'user' && message.markdown === state.pendingUserMessage?.markdown,
       );
+    const streamedReplyCommitted =
+      state.taskId !== undefined &&
+      action.messages?.some(
+        (message) => message.role === 'assistant' && message.generationTaskId === state.taskId,
+      ) === true;
+    const preserveActiveStream =
+      state.assistantMarkdown !== '' &&
+      state.taskId !== undefined &&
+      action.activeGenerationTaskId === state.taskId &&
+      !streamedReplyCommitted;
     return {
       ...state,
       resourceVersion: action.resourceVersion,
@@ -275,7 +287,7 @@ function reducer(state: State, action: Action): State {
         ? {}
         : {
             messages: action.messages,
-            assistantMarkdown: '',
+            assistantMarkdown: preserveActiveStream ? state.assistantMarkdown : '',
             ...(state.revisingMessageId !== undefined &&
             !action.messages.some((message) => message.id === state.revisingMessageId)
               ? { revisingMessageId: undefined }
@@ -645,6 +657,14 @@ export function SessionPage(props: {
   );
 
   const hydrate = (snapshot: Awaited<ReturnType<LearningClient['getSession']>>) => {
+    const activeGenerationTaskId = snapshot.learning.session?.activeGenerationTaskId;
+    const activeReplyCommitted = snapshot.messages?.some(
+      (message) =>
+        message.role === 'assistant' && message.generationTaskId === activeGenerationTaskId,
+    );
+    if (activeGenerationTaskId === undefined || activeReplyCommitted === true) {
+      setNavigationError((current) => (current === GENERATION_STOP_ERROR ? undefined : current));
+    }
     dispatch({
       type: 'hydrated',
       resourceVersion: snapshot.resourceVersion,
@@ -668,6 +688,7 @@ export function SessionPage(props: {
       ...(snapshot.teachingProgress === undefined
         ? {}
         : { teachingProgress: snapshot.teachingProgress }),
+      ...(activeGenerationTaskId === undefined ? {} : { activeGenerationTaskId }),
     });
   };
 
@@ -949,6 +970,30 @@ export function SessionPage(props: {
     }
   };
 
+  const reconcileFailedStop = async (input: {
+    localMessageId: string;
+    userMessageId?: string | undefined;
+    requestAccepted: boolean;
+  }): Promise<boolean> => {
+    if (state.sessionId === undefined) return false;
+    try {
+      const snapshot = await api.getSession(state.sessionId);
+      hydrateAndRefreshTeachingProgress(state.sessionId, snapshot);
+      if (snapshot.learning.session?.activeGenerationTaskId !== undefined) return false;
+      dispatch({
+        type: 'edit-generation-synchronized',
+        localMessageId: input.localMessageId,
+        ...(input.userMessageId === undefined ? {} : { userMessageId: input.userMessageId }),
+        resourceVersion: snapshot.resourceVersion,
+        requestAccepted: input.requestAccepted,
+      });
+      setNavigationError(undefined);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const finishMessageTask = async (
     task: Awaited<ReturnType<LearningClient['sendMessage']>>,
     content: string,
@@ -974,7 +1019,12 @@ export function SessionPage(props: {
           requestAccepted: true,
         });
       } catch {
-        setNavigationError('无法取消当前生成，请取消编辑后重试。');
+        const reconciled = await reconcileFailedStop({
+          localMessageId,
+          ...(task.userMessageId === undefined ? {} : { userMessageId: task.userMessageId }),
+          requestAccepted: true,
+        });
+        if (!reconciled) setNavigationError(GENERATION_STOP_ERROR);
       }
       return;
     }
@@ -1083,7 +1133,11 @@ export function SessionPage(props: {
           requestAccepted: true,
         });
       } catch {
-        setNavigationError('无法取消当前生成，请取消编辑后重试。');
+        const reconciled = await reconcileFailedStop({
+          localMessageId: messageId,
+          requestAccepted: true,
+        });
+        if (!reconciled) setNavigationError(GENERATION_STOP_ERROR);
       }
     });
 

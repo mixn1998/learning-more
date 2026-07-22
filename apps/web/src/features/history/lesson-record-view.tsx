@@ -4,12 +4,19 @@ import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface, tabId, tabPanelId, Tabs } from '@learning-more/ui';
 import type { ReviewDocument } from '@learning-more/contracts';
 
-import { ChatComposer, ConversationStream, UserMessageRow } from '../../components/chat/chat.js';
+import {
+  ChatComposer,
+  ConversationStream,
+  RetryIcon,
+  UserMessageRow,
+} from '../../components/chat/chat.js';
+import type { SupplementarySessionView } from '../../client/lesson-record-client.js';
 import { BrandIdentity } from '../../components/brand/brand-identity.js';
 import {
   LessonFinalReviewDocumentView,
   LessonStageReviewDocumentView,
 } from '../review/review-document-view.js';
+import { projectLegacyReviewMarkdown } from '../review/review-document-presentation.js';
 
 import './lesson-record-view.css';
 
@@ -20,7 +27,11 @@ type SessionRecord = Readonly<{
     id: string;
     role: 'user' | 'assistant';
     markdown: string;
+    completionStatus?: 'complete' | 'interrupted';
+    generationTaskId?: string;
   }>[];
+  status?: 'active' | 'archived';
+  resourceVersion?: number;
   meta?: string;
 }>;
 
@@ -30,16 +41,6 @@ const lessonRecordTabs = [
 ] as const;
 
 const lessonRecordTabsIdPrefix = 'lesson-record-content';
-
-function ReadonlyMessage(props: { readonly message: SessionRecord['messages'][number] }) {
-  return props.message.role === 'assistant' ? (
-    <article aria-label="AI 导师" className="learn-ai">
-      <AiContent markdown={props.message.markdown} />
-    </article>
-  ) : (
-    <UserMessageRow messageId={props.message.id} text={props.message.markdown} />
-  );
-}
 
 function durationLabel(seconds: number | undefined) {
   if (seconds === undefined) return '时长已归档';
@@ -68,6 +69,8 @@ function reviewFailureReason(errorCode: string | undefined): string {
 export function LessonRecordView(props: {
   readonly original: SessionRecord;
   readonly supplementary: readonly SessionRecord[];
+  readonly activeSupplementary?: SupplementarySessionView;
+  readonly assistantMarkdown?: string;
   readonly finalReviewMarkdown?: string;
   readonly progress?: 'in_progress' | 'abandoned' | 'completed';
   readonly reviewKind?: 'stage' | 'final';
@@ -88,6 +91,13 @@ export function LessonRecordView(props: {
   readonly onStartSupplementary?: (() => Promise<{ sessionId: string }>) | undefined;
   readonly onSendSupplementary?:
     ((sessionId: string, markdown: string) => Promise<void>) | undefined;
+  readonly onReviseSupplementary?:
+    ((messageId: string, markdown: string) => Promise<void>) | undefined;
+  readonly onRetrySupplementary?: (() => Promise<void>) | undefined;
+  readonly onStopSupplementary?: (() => Promise<void>) | undefined;
+  readonly onArchiveSupplementary?: (() => Promise<string>) | undefined;
+  readonly onRenameSupplementary?:
+    ((sessionId: string, title: string, resourceVersion: number) => Promise<void>) | undefined;
 }) {
   const [topTab, setTopTab] = useState<'conversation' | 'review'>(
     props.initialTab ?? 'conversation',
@@ -96,8 +106,21 @@ export function LessonRecordView(props: {
   const [supplementaryInput, setSupplementaryInput] = useState('');
   const [supplementaryBusy, setSupplementaryBusy] = useState(false);
   const [supplementaryError, setSupplementaryError] = useState<string>();
+  const [editingMessageId, setEditingMessageId] = useState<string>();
+  const [editingDraft, setEditingDraft] = useState('');
+  const [renamingSessionId, setRenamingSessionId] = useState<string>();
+  const [renamingDraft, setRenamingDraft] = useState('');
+  const [renameError, setRenameError] = useState<string>();
   const sessions = [props.original, ...props.supplementary];
   const selected = sessions.find((session) => session.sessionId === sessionId) ?? props.original;
+  const selectedIsActive =
+    selected.sessionId === props.activeSupplementary?.id &&
+    props.activeSupplementary.status === 'active';
+  const supplementaryGenerating =
+    selectedIsActive && props.activeSupplementary?.activeGenerationTaskId !== undefined;
+  const supplementaryRetryAvailable =
+    props.activeSupplementary?.generationErrorCode !== undefined ||
+    props.activeSupplementary?.messages?.at(-1)?.completionStatus === 'interrupted';
   const date = props.completedAt ?? '完成时间已归档';
   const duration = durationLabel(props.actualSeconds);
   const progressLabel = props.progress === 'abandoned' ? '已结束' : '已完成';
@@ -170,13 +193,19 @@ export function LessonRecordView(props: {
             >
               <article aria-label="权威课时 Review" className="lesson-record-review">
                 {props.reviewDocument?.kind === 'lesson-final' ? (
-                  <LessonFinalReviewDocumentView document={props.reviewDocument} />
+                  <LessonFinalReviewDocumentView
+                    document={props.reviewDocument}
+                    legacyMarkdown={props.finalReviewMarkdown}
+                  />
                 ) : props.reviewDocument?.kind === 'lesson-stage' ? (
                   <LessonStageReviewDocumentView document={props.reviewDocument} />
                 ) : props.reviewContent !== undefined ? (
                   <AiSurface className="review-content">{props.reviewContent}</AiSurface>
                 ) : props.finalReviewMarkdown !== undefined ? (
-                  <AiContent className="review-content" markdown={props.finalReviewMarkdown} />
+                  <AiContent
+                    className="review-content"
+                    markdown={projectLegacyReviewMarkdown(props.finalReviewMarkdown)}
+                  />
                 ) : props.reviewStatus === 'failed' ? (
                   <div className="lesson-record-review-failure" role="alert">
                     <h2>Review 生成失败</h2>
@@ -216,22 +245,130 @@ export function LessonRecordView(props: {
                 <aside className="lesson-record-sessions" aria-label="会话时间线">
                   <h3>学习会话</h3>
                   <p>原始学习与补充学习分别归档；补充学习不会改变最终 Review。</p>
-                  {sessions.map((session, index) => (
+                  {sessions.map((session, index) => {
+                    if (index === 0) {
+                      return (
+                        <button
+                          aria-label={session.label}
+                          className={`lesson-record-session ${session.sessionId === selected.sessionId ? 'active' : ''}`}
+                          key={session.sessionId}
+                          type="button"
+                          onClick={() => setSessionId(session.sessionId)}
+                        >
+                          <b>{session.label}</b>
+                          <span>{session.meta ?? `${date} · ${duration}`}</span>
+                        </button>
+                      );
+                    }
+                    const canRename =
+                      session.resourceVersion !== undefined &&
+                      props.onRenameSupplementary !== undefined;
+                    const isRenaming = renamingSessionId === session.sessionId;
+                    return (
+                      <div className="lesson-record-session-row" key={session.sessionId}>
+                        {isRenaming ? (
+                          <form
+                            className="lesson-record-session-rename-form"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              const title = renamingDraft.trim();
+                              if (!canRename || title === '') return;
+                              setSupplementaryBusy(true);
+                              setRenameError(undefined);
+                              void props.onRenameSupplementary!(
+                                session.sessionId,
+                                title,
+                                session.resourceVersion!,
+                              ).then(
+                                () => {
+                                  setRenamingSessionId(undefined);
+                                  setRenamingDraft('');
+                                  setSupplementaryBusy(false);
+                                },
+                                () => {
+                                  setRenameError('补充会话重命名失败，请重试。');
+                                  setSupplementaryBusy(false);
+                                },
+                              );
+                            }}
+                          >
+                            <input
+                              autoFocus
+                              aria-label={`重命名 ${session.label}`}
+                              maxLength={30}
+                              value={renamingDraft}
+                              onChange={(event) => setRenamingDraft(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key !== 'Escape') return;
+                                setRenamingSessionId(undefined);
+                                setRenamingDraft('');
+                              }}
+                            />
+                            <button
+                              aria-label="确认重命名"
+                              className="lm-btn primary"
+                              disabled={supplementaryBusy || renamingDraft.trim() === ''}
+                              type="submit"
+                            >
+                              保存
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            aria-label={session.label}
+                            className={`lesson-record-session ${session.sessionId === selected.sessionId ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setSessionId(session.sessionId)}
+                          >
+                            <b
+                              className={
+                                canRename ? 'lesson-record-session-title-editable' : undefined
+                              }
+                              onClick={(event) => {
+                                if (!canRename) return;
+                                event.stopPropagation();
+                                setRenamingSessionId(session.sessionId);
+                                setRenamingDraft(session.label);
+                                setRenameError(undefined);
+                              }}
+                            >
+                              {session.label}
+                            </b>
+                            <span>{session.meta ?? '独立补充学习归档'}</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {renameError === undefined ? null : (
+                    <p className="lm-form-error" role="alert">
+                      {renameError}
+                    </p>
+                  )}
+                  {props.activeSupplementary?.status === 'active' &&
+                  props.onArchiveSupplementary !== undefined ? (
                     <button
-                      aria-label={session.label}
-                      className={`lesson-record-session ${session.sessionId === selected.sessionId ? 'active' : ''}`}
-                      key={session.sessionId}
+                      className="lm-btn lesson-record-start-supplementary"
+                      disabled={supplementaryBusy}
                       type="button"
-                      onClick={() => setSessionId(session.sessionId)}
+                      onClick={() => {
+                        setSupplementaryBusy(true);
+                        setSupplementaryError(undefined);
+                        void props.onArchiveSupplementary!().then(
+                          () => {
+                            setSessionId(props.original.sessionId);
+                            setSupplementaryBusy(false);
+                          },
+                          () => {
+                            setSupplementaryError('关闭本轮学习失败，请重试。');
+                            setSupplementaryBusy(false);
+                          },
+                        );
+                      }}
                     >
-                      <b>{session.label}</b>
-                      <span>
-                        {session.meta ??
-                          (index === 0 ? `${date} · ${duration}` : '独立补充学习归档')}
-                      </span>
+                      关闭本轮学习
                     </button>
-                  ))}
-                  {props.progress === 'completed' && props.onStartSupplementary !== undefined ? (
+                  ) : props.progress === 'completed' && props.onStartSupplementary !== undefined ? (
                     <button
                       className="lm-btn lesson-record-start-supplementary"
                       disabled={supplementaryBusy}
@@ -258,39 +395,115 @@ export function LessonRecordView(props: {
                 <main className="lesson-record-chat-column">
                   <ConversationStream
                     className="lesson-record-chat"
-                    followKey={`${selected.sessionId}:${selected.messages.length}`}
+                    followKey={`${selected.sessionId}:${selected.messages.length}:${props.assistantMarkdown?.length ?? 0}`}
                     forceFollowKey={selected.sessionId}
-                    label="只读学习对话"
+                    generating={supplementaryGenerating}
+                    label={selectedIsActive ? '补充学习对话' : '只读学习对话'}
                   >
-                    {selected.messages.map((message) => (
-                      <ReadonlyMessage key={message.id} message={message} />
-                    ))}
+                    {selected.messages.map((message) =>
+                      message.role === 'assistant' ? (
+                        <article aria-label="AI 导师" className="learn-ai" key={message.id}>
+                          <AiContent markdown={message.markdown} />
+                        </article>
+                      ) : (
+                        <UserMessageRow
+                          key={message.id}
+                          messageId={message.id}
+                          text={message.markdown}
+                          editing={editingMessageId === message.id}
+                          editValue={editingMessageId === message.id ? editingDraft : undefined}
+                          onEdit={
+                            selectedIsActive && !supplementaryGenerating
+                              ? () => {
+                                  setEditingMessageId(message.id);
+                                  setEditingDraft(message.markdown);
+                                }
+                              : undefined
+                          }
+                          onEditChange={setEditingDraft}
+                          onEditCancel={() => {
+                            setEditingMessageId(undefined);
+                            setEditingDraft('');
+                          }}
+                          onEditSubmit={() => {
+                            if (props.onReviseSupplementary === undefined) return;
+                            setSupplementaryBusy(true);
+                            void props.onReviseSupplementary(message.id, editingDraft).then(
+                              () => {
+                                setEditingMessageId(undefined);
+                                setEditingDraft('');
+                                setSupplementaryBusy(false);
+                              },
+                              () => {
+                                setSupplementaryError('重新编辑失败，请重试。');
+                                setSupplementaryBusy(false);
+                              },
+                            );
+                          }}
+                          editSubmitDisabled={supplementaryBusy}
+                        />
+                      ),
+                    )}
+                    {props.assistantMarkdown === undefined ||
+                    props.assistantMarkdown === '' ? null : (
+                      <article aria-label="补充学习助手 · 生成中" className="learn-ai">
+                        <AiContent markdown={props.assistantMarkdown} />
+                      </article>
+                    )}
+                    {supplementaryGenerating &&
+                    (props.assistantMarkdown === undefined || props.assistantMarkdown === '') ? (
+                      <p className="lesson-record-thinking" role="status">
+                        正在思考中……
+                      </p>
+                    ) : null}
                   </ConversationStream>
-                  {selected.sessionId !== props.original.sessionId &&
-                  props.onSendSupplementary !== undefined ? (
-                    <ChatComposer
-                      busy={supplementaryBusy}
-                      error={supplementaryError}
-                      label="补充学习输入"
-                      placeholder="继续追问或补充你的思考…"
-                      sendLabel="发送补充消息"
-                      value={supplementaryInput}
-                      onChange={setSupplementaryInput}
-                      onSubmit={(markdown) => {
-                        setSupplementaryBusy(true);
-                        setSupplementaryError(undefined);
-                        void props.onSendSupplementary!(selected.sessionId, markdown).then(
-                          () => {
-                            setSupplementaryInput('');
-                            setSupplementaryBusy(false);
-                          },
-                          () => {
-                            setSupplementaryError('补充消息发送失败，请重试。');
-                            setSupplementaryBusy(false);
-                          },
-                        );
-                      }}
-                    />
+                  {selectedIsActive && props.onSendSupplementary !== undefined ? (
+                    <>
+                      {!supplementaryRetryAvailable ? null : (
+                        <button
+                          aria-label="重新生成 AI 回复"
+                          className="chat-user-action lesson-record-supplementary-retry"
+                          disabled={supplementaryBusy || supplementaryGenerating}
+                          title="重新生成 AI 回复"
+                          type="button"
+                          onClick={() => void props.onRetrySupplementary?.()}
+                        >
+                          <RetryIcon />
+                        </button>
+                      )}
+                      {supplementaryGenerating && props.onStopSupplementary !== undefined ? (
+                        <button
+                          className="lm-btn lesson-record-stop-supplementary"
+                          type="button"
+                          onClick={() => void props.onStopSupplementary?.()}
+                        >
+                          停止生成
+                        </button>
+                      ) : null}
+                      <ChatComposer
+                        busy={supplementaryBusy || supplementaryGenerating}
+                        error={supplementaryError}
+                        label="补充学习输入"
+                        placeholder="继续追问或补充你的思考…"
+                        sendLabel="发送补充消息"
+                        value={supplementaryInput}
+                        onChange={setSupplementaryInput}
+                        onSubmit={(markdown) => {
+                          setSupplementaryBusy(true);
+                          setSupplementaryError(undefined);
+                          void props.onSendSupplementary!(selected.sessionId, markdown).then(
+                            () => {
+                              setSupplementaryInput('');
+                              setSupplementaryBusy(false);
+                            },
+                            () => {
+                              setSupplementaryError('补充消息发送失败，请重试。');
+                              setSupplementaryBusy(false);
+                            },
+                          );
+                        }}
+                      />
+                    </>
                   ) : null}
                 </main>
               </div>

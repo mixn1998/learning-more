@@ -3,6 +3,23 @@ import { describe, expect, it } from 'vitest';
 import { ReviewDocumentSchema, reviewDocumentToMarkdown } from './review-document.js';
 
 describe('ReviewDocument', () => {
+  it('renders an optional methodology insight immediately after the knowledge map', () => {
+    const document = ReviewDocumentSchema.parse({
+      schemaVersion: 1,
+      kind: 'lesson-final',
+      title: '课时 Review',
+      knowledgeMap: { title: '知识图谱', markdown: '条件 → 判断 → 行动' },
+      methodologyInsight: '先找出会改变结论的条件，再决定是否沿用原有判断。',
+      coreInsight: '本课讨论如何根据条件变化修正判断。',
+      performance: [{ title: '已经形成', markdown: '能够检查关键条件。' }],
+    });
+
+    const markdown = reviewDocumentToMarkdown(document);
+    expect(markdown).toContain('## 本课方法论启示');
+    expect(markdown.indexOf('## 本课方法论启示')).toBeGreaterThan(markdown.indexOf('## 知识图谱'));
+    expect(markdown.indexOf('## 本课方法论启示')).toBeLessThan(markdown.indexOf('## 核心思想'));
+  });
+
   it('accepts useful extensions without weakening the stable semantic slots', () => {
     const document = ReviewDocumentSchema.parse({
       schemaVersion: 1,

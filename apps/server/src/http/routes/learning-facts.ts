@@ -15,6 +15,9 @@ import { sendConditionalJson } from '../conditional-get.js';
 import { mapApplicationError } from '../error-mapper.js';
 
 export type LearningFactsRouteOptions = Readonly<{
+  getLessonActualInterval?(
+    lessonId: string,
+  ): Promise<Readonly<{ actualStartedAt: string; actualEndedAt: string }> | undefined>;
   queries: {
     getHistory(): Promise<HistoryView | undefined>;
     getCourseSummary(): Promise<CourseSummaryView | undefined>;
@@ -134,9 +137,32 @@ export async function registerLearningFactsRoutes(
         throw new HttpContractError('request_invalid', 400);
       }
       const view = requireSnapshot(await options.queries.getCalendar());
+      const selectedDays = view.days.filter(
+        (day) => day.localDate >= query.from && day.localDate <= query.to,
+      );
+      const intervalEntries =
+        options.getLessonActualInterval === undefined
+          ? []
+          : await Promise.all(
+              [
+                ...new Set(
+                  selectedDays.flatMap((day) => day.completions.map((item) => item.lessonId)),
+                ),
+              ].map(
+                async (lessonId) =>
+                  [lessonId, await options.getLessonActualInterval!(lessonId)] as const,
+              ),
+            );
+      const intervalByLesson = new Map(intervalEntries);
       return sendProjection(request, reply, {
         ...view,
-        days: view.days.filter((day) => day.localDate >= query.from && day.localDate <= query.to),
+        days: selectedDays.map((day) => ({
+          ...day,
+          completions: day.completions.map((completion) => ({
+            ...completion,
+            ...intervalByLesson.get(completion.lessonId),
+          })),
+        })),
       });
     } catch (error) {
       const problem = mapApplicationError(error, 'calendar_query');

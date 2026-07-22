@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createTeachingState,
+  reconcileTeachingObservations,
   reduceTeachingState,
 } from '../implementation/teaching-state-reducer.js';
 
@@ -578,5 +579,77 @@ describe('teaching state reducer', () => {
       }),
     ]);
     expect(next.scopeStatus).toBe('needs_return');
+  });
+
+  it('retracts observations whose edited messages no longer exist and rebuilds evidence state', () => {
+    const first = observation({
+      observationId: 'observation_replaced_turn',
+      entries: [
+        {
+          entryId: 'entry_replaced_turn',
+          kind: 'learner_misconception',
+          summary: 'This observation belongs to the turn that was replaced.',
+          knowledgePointRefs: ['knowledge:kp_1'],
+          sourceRefs: ['message:message_user_1'],
+          assessment: 'limits',
+          explicitness: 'ai_observed',
+          resolvesEntryRefs: [],
+          qualityFlags: ['direct', 'complete'],
+        },
+      ],
+    });
+    const current = {
+      ...reduceTeachingState(
+        createTeachingState({
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          knowledgePointRefs: ['knowledge:kp_1'],
+        }),
+        first,
+      ),
+      lessonPhase: 'knowledge_point' as const,
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [
+        {
+          ...reduceTeachingState(
+            createTeachingState({
+              lessonId: 'lesson_1',
+              sessionId: 'session_1',
+              knowledgePointRefs: ['knowledge:kp_1'],
+            }),
+            first,
+          ).knowledgePoints[0]!,
+          progress: 'learning' as const,
+          interactionStatus: 'pending' as const,
+          difficultySignals: [
+            { sourceMessageId: 'message_user_1', kind: 'misunderstanding' as const },
+          ],
+          adaptiveDifficulty: 'normal' as const,
+          depthPreference: 'default' as const,
+        },
+      ],
+    };
+
+    const reconciled = reconcileTeachingObservations(
+      current,
+      [first],
+      new Set(['message_user_replacement']),
+    );
+
+    expect(reconciled.changed).toBe(true);
+    expect(reconciled.observations[0]?.status).toBe('retracted');
+    expect(reconciled.state).toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [
+        {
+          progress: 'learning',
+          delivery: 'not_addressed',
+          verification: 'not_observed',
+          learnerEvidenceRefs: [],
+          difficultySignals: [],
+        },
+      ],
+    });
   });
 });

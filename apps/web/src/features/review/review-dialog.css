@@ -69,8 +69,10 @@ body:has([data-visual-ready='true']) .lesson-review-overlay {
   font-size: 11px;
 }
 .lesson-review-dialog .review-markdown {
-  max-width: none;
-  margin: 0;
+  width: min(100%, 820px);
+  min-width: 0;
+  max-width: 820px;
+  margin: 0 auto;
   padding: 0;
 }
 .lesson-review-dialog .review-markdown h2 {

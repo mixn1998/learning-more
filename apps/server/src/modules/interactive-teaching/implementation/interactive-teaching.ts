@@ -8,6 +8,7 @@ import type {
 } from '@learning-more/contracts';
 
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
+import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
 import type { GenerationFrameLog } from '../../generation-runtime/interface.js';
 import type { LearningSessionModule } from '../../learning-session/interface.js';
 import type {
@@ -34,6 +35,7 @@ import {
 import {
   alignTeachingState,
   createTeachingState,
+  reconcileTeachingObservations,
   reduceTeachingState,
 } from './teaching-state-reducer.js';
 import {
@@ -108,9 +110,20 @@ export function createInteractiveTeaching(options: {
   nextCheckpointId(): string;
   nextTransactionId(): string;
   now(): Date;
+  resolveSession?(sessionId: string): Promise<{
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+  }>;
 }): {
   module: InteractiveTeaching;
   drainObservations(sessionId: string): Promise<void>;
+  reconcileGeneration(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    context: CommandContext;
+  }): Promise<void>;
   recoverSession(input: {
     courseId: string;
     lessonId: string;
@@ -256,6 +269,7 @@ export function createInteractiveTeaching(options: {
       let streamedMarkdown = '';
       let completedReplyMarkdown: string | undefined;
       let directiveValidated = false;
+      let directiveApplied = false;
       let generationTerminalPublished = false;
       let streamProjectionAvailable = true;
       try {
@@ -310,6 +324,14 @@ export function createInteractiveTeaching(options: {
           markdown: result.markdown,
           completionStatus: 'complete',
         });
+        await applyCommittedDirective({
+          courseId: input.courseId,
+          lessonId: input.lessonId,
+          sessionId: input.sessionId,
+          directive: result.directive,
+          ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+        });
+        directiveApplied = true;
         await options.sessionModule.execute(
           {
             type: 'CommitAssistantMessage',
@@ -323,13 +345,6 @@ export function createInteractiveTeaching(options: {
           backgroundContext(input.context, `${input.context.commandId}:assistant-complete`),
         );
         replyCommitted = true;
-        await applyCommittedDirective({
-          courseId: input.courseId,
-          lessonId: input.lessonId,
-          sessionId: input.sessionId,
-          directive: result.directive,
-          ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
-        });
         taskContext.delete(accepted.taskId);
         await tryAppendFrame(accepted.taskId, 'message.completed', {
           messageId: assistantMessageId,
@@ -345,14 +360,12 @@ export function createInteractiveTeaching(options: {
         });
         generationTerminalPublished = true;
         if (input.observe) {
-          await observationQueue.enqueue(input.sessionId, () =>
-            observeCompletedTurn({
-              courseId: input.courseId,
-              lessonId: input.lessonId,
-              sessionId: input.sessionId,
-              context: input.context,
-            }),
-          );
+          scheduleObservation({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
+            context: input.context,
+          });
         }
       } catch (error) {
         taskContext.delete(accepted.taskId);
@@ -372,7 +385,7 @@ export function createInteractiveTeaching(options: {
         let failedReplyCommitted = false;
         const failedReplyMarkdown = completedReplyMarkdown ?? streamedMarkdown;
         const failedReplyStatus = completedReplyMarkdown === undefined ? 'interrupted' : 'complete';
-        if (failedReplyMarkdown.length > 0) {
+        if (failedReplyMarkdown.length > 0 && (!directiveValidated || directiveApplied)) {
           try {
             await options.assistantArtifacts.save({
               artifactRef,
@@ -455,6 +468,25 @@ export function createInteractiveTeaching(options: {
     );
   }
 
+  function scheduleObservation(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    context: CommandContext;
+  }): void {
+    const observation = observationQueue
+      .enqueue(input.sessionId, () => observeCompletedTurn(input))
+      .catch(async (error: unknown) => {
+        try {
+          await markObservationFailed(input.courseId, input.lessonId, input.sessionId);
+        } catch {
+          // Observation recovery is ledger-driven; preserve the original observer failure.
+        }
+        throw error;
+      });
+    track(input.sessionId, observation);
+  }
+
   async function initialState(courseId: string, lessonId: string, sessionId: string) {
     const facts = await options.contextSources.getCourseAndLesson({ courseId, lessonId });
     const knowledgePointRefs = facts.lesson.coreKnowledgePoints.map((point) => point.ref);
@@ -480,31 +512,118 @@ export function createInteractiveTeaching(options: {
     currentUserMessageId?: string;
   }): Promise<void> {
     if (input.directive === undefined) return;
-    const current = await options.ledgerRepository.get(input.sessionId);
-    const base = await initialState(input.courseId, input.lessonId, input.sessionId);
-    if (teachingDirectiveMatchesState(base, input.directive)) return;
-    const nextState = applyTeachingDirective(
-      base,
-      input.directive,
-      input.currentUserMessageId === undefined
-        ? undefined
-        : { currentUserMessageId: input.currentUserMessageId },
+    const facts = await options.contextSources.getCourseAndLesson({
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+    });
+    const knowledgePointRefs = facts.lesson.coreKnowledgePoints.map((point) => point.ref);
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const current = await options.ledgerRepository.get(input.sessionId);
+      if (
+        current !== undefined &&
+        (current.courseId !== input.courseId || current.lessonId !== input.lessonId)
+      ) {
+        throw new Error('teaching_ledger_identity_mismatch');
+      }
+      const base =
+        current === undefined
+          ? createTeachingState({
+              lessonId: input.lessonId,
+              sessionId: input.sessionId,
+              knowledgePointRefs,
+            })
+          : alignTeachingState(current.state, knowledgePointRefs);
+      if (teachingDirectiveMatchesState(base, input.directive)) return;
+      const nextState = applyTeachingDirective(
+        base,
+        input.directive,
+        input.currentUserMessageId === undefined
+          ? undefined
+          : { currentUserMessageId: input.currentUserMessageId },
+      );
+      try {
+        await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
+          options.ledgerRepository.save(
+            tx,
+            {
+              courseId: input.courseId,
+              lessonId: input.lessonId,
+              sessionId: input.sessionId,
+              observations: current?.observations ?? [],
+              checkpoints: current?.checkpoints ?? [],
+              state: nextState,
+              resourceVersion: current?.resourceVersion ?? 0,
+            },
+            current?.resourceVersion ?? 0,
+          ),
+        );
+        return;
+      } catch (error) {
+        if (!(error instanceof RepositoryVersionConflictError) || attempt === maxAttempts) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  async function reconcileLatestCommittedDirective(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    messages: Awaited<ReturnType<TeachingContextSources['listMessages']>>;
+    tasks: Awaited<ReturnType<TeachingAgent['listTasks']>>;
+  }): Promise<void> {
+    const latestAssistantIndex = input.messages.findLastIndex(
+      (message) =>
+        message.role === 'assistant' &&
+        message.completionStatus === 'complete' &&
+        message.generationTaskId !== undefined,
     );
-    await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
-      options.ledgerRepository.save(
-        tx,
-        {
-          courseId: input.courseId,
-          lessonId: input.lessonId,
-          sessionId: input.sessionId,
-          observations: current?.observations ?? [],
-          checkpoints: current?.checkpoints ?? [],
-          state: nextState,
-          resourceVersion: current?.resourceVersion ?? 0,
-        },
-        current?.resourceVersion ?? 0,
-      ),
-    );
+    if (latestAssistantIndex < 0) return;
+    const latestAssistant = input.messages[latestAssistantIndex];
+    const taskId = latestAssistant?.generationTaskId;
+    if (taskId === undefined) return;
+    const task = input.tasks.find((candidate) => candidate.id === taskId);
+    if (task?.status !== 'completed') return;
+    let result: Awaited<ReturnType<TeachingAgent['read']>>;
+    try {
+      result = await options.agent.read(taskId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message === 'teaching_control_protocol_invalid' || error.name === 'ZodError')
+      ) {
+        return;
+      }
+      throw error;
+    }
+    if (result?.directive === undefined) return;
+    const currentUserMessageId = input.messages
+      .slice(0, latestAssistantIndex)
+      .findLast(
+        (message) => message.role === 'user' && message.completionStatus === 'complete',
+      )?.messageId;
+    try {
+      await applyCommittedDirective({
+        courseId: input.courseId,
+        lessonId: input.lessonId,
+        sessionId: input.sessionId,
+        directive: result.directive,
+        ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message === 'teaching_directive_phase_regression' ||
+          error.message === 'teaching_directive_completed_point_regression' ||
+          error.message === 'teaching_directive_learning_point_regression' ||
+          error.message === 'teaching_directive_comprehensive_regression')
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async function validateDirective(input: {
@@ -532,6 +651,7 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     context: CommandContext;
+    recoverRunning?: boolean;
   }): Promise<Awaited<ReturnType<TeachingContextSources['listMessages']>>> {
     const queryLearning = () =>
       options.sessionModule.query(
@@ -551,6 +671,13 @@ export function createInteractiveTeaching(options: {
     }
     let messages = await options.contextSources.listMessages(input.sessionId);
     let tasks = await options.agent.listTasks(input.sessionId);
+    await reconcileLatestCommittedDirective({
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+      sessionId: input.sessionId,
+      messages,
+      tasks,
+    });
     let plan = planTeachingGenerationReconciliation({
       sessionId: input.sessionId,
       ...(learning.learning.session.activeGenerationTaskId === undefined
@@ -588,6 +715,13 @@ export function createInteractiveTeaching(options: {
     }
 
     if (plan.taskId === undefined || taskContext.has(plan.taskId)) return messages;
+    const plannedTask = tasks.find((task) => task.id === plan.taskId);
+    if (
+      input.recoverRunning === false &&
+      (plannedTask?.status === 'queued' || plannedTask?.status === 'running')
+    ) {
+      return messages;
+    }
     const recoveringTaskId = plan.taskId;
     if (plan.bindTask) {
       if (learning.learning.session?.activeGenerationTaskId !== undefined) return messages;
@@ -705,6 +839,13 @@ export function createInteractiveTeaching(options: {
       markdown: recovered.markdown,
       completionStatus: recovered.completionStatus,
     });
+    await applyCommittedDirective({
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+      sessionId: input.sessionId,
+      directive: recovered.directive,
+      ...(sourceMessageId === undefined ? {} : { currentUserMessageId: sourceMessageId }),
+    });
     await options.sessionModule.execute(
       {
         type: 'CommitAssistantMessage',
@@ -717,13 +858,6 @@ export function createInteractiveTeaching(options: {
       },
       backgroundContext(input.context, `recover-assistant:${recoveringTaskId}`),
     );
-    await applyCommittedDirective({
-      courseId: input.courseId,
-      lessonId: input.lessonId,
-      sessionId: input.sessionId,
-      directive: recovered.directive,
-      ...(sourceMessageId === undefined ? {} : { currentUserMessageId: sourceMessageId }),
-    });
     await tryAppendFrame(recoveringTaskId, 'message.completed', {
       messageId: assistantMessageId,
       contentSha256: sha256(recovered.markdown),
@@ -910,6 +1044,30 @@ export function createInteractiveTeaching(options: {
     );
   }
 
+  async function reconcileObservationHistory(sessionId: string) {
+    const current = await options.ledgerRepository.get(sessionId);
+    if (current === undefined) return undefined;
+    const messages = await options.contextSources.listMessages(sessionId);
+    const reconciled = reconcileTeachingObservations(
+      current.state,
+      current.observations,
+      new Set(messages.map((message) => message.messageId)),
+    );
+    if (!reconciled.changed) return current;
+    await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
+      options.ledgerRepository.save(
+        tx,
+        {
+          ...current,
+          observations: reconciled.observations,
+          state: reconciled.state,
+        },
+        current.resourceVersion,
+      ),
+    );
+    return options.ledgerRepository.get(sessionId);
+  }
+
   async function recoverEvidenceEffect(input: {
     lessonId: string;
     sessionId: string;
@@ -1019,6 +1177,7 @@ export function createInteractiveTeaching(options: {
           expectedVersion: learning.resourceVersion,
         },
       );
+      await reconcileObservationHistory(input.sessionId);
       const state = await markObservationPending(input.courseId, input.lessonId, input.sessionId);
       const assembled = await options.contextAssembler.assemble({
         courseId: input.courseId,
@@ -1134,10 +1293,38 @@ export function createInteractiveTeaching(options: {
       });
     },
     async stopTurn(input, context): Promise<TeachingTurnStopped> {
-      const owner = taskContext.get(input.taskId);
-      if (owner === undefined || owner.sessionId !== input.sessionId) {
-        throw new Error('teaching_task_not_found');
+      let owner = taskContext.get(input.taskId);
+      if (owner === undefined) {
+        const durableTask = (await options.agent.listTasks(input.sessionId)).find(
+          (task) => task.id === input.taskId,
+        );
+        const resolved = await options.resolveSession?.(input.sessionId);
+        if (durableTask === undefined || resolved === undefined) {
+          throw new Error('teaching_task_not_found');
+        }
+        const learning = await options.sessionModule.query(
+          { type: 'GetLessonLearning', lessonId: resolved.lessonId },
+          {
+            correlationId: context.correlationId,
+            actor: context.actor,
+            requestedAt: context.requestedAt,
+            receivedAt: context.receivedAt,
+          },
+        );
+        if (
+          learning.learning.session?.id !== input.sessionId ||
+          learning.learning.session.activeGenerationTaskId !== input.taskId
+        ) {
+          throw new Error('teaching_task_not_found');
+        }
+        owner = {
+          courseId: resolved.courseId,
+          lessonId: resolved.lessonId,
+          sessionId: resolved.sessionId,
+          commandContext: context,
+        };
       }
+      if (owner.sessionId !== input.sessionId) throw new Error('teaching_task_not_found');
       const result = await options.agent.stop(input.taskId);
       taskContext.delete(input.taskId);
       const assistantMessageId = options.nextAssistantMessageId();
@@ -1176,7 +1363,7 @@ export function createInteractiveTeaching(options: {
       return normalizeTeachingControlState(record.state);
     },
     async freezeCheckpoint(input) {
-      const record = await options.ledgerRepository.get(input.sessionId);
+      const record = await reconcileObservationHistory(input.sessionId);
       if (record === undefined) throw new Error('teaching_state_not_found');
       const completeness = record.state.observationStatus;
       const activeObservations = record.observations.filter(
@@ -1238,31 +1425,11 @@ export function createInteractiveTeaching(options: {
       }
       await observationQueue.drain(sessionId);
     },
+    async reconcileGeneration(input) {
+      await reconcileGeneration({ ...input, recoverRunning: false });
+    },
     async recoverSession(input) {
       const messages = await reconcileGeneration(input);
-      for (let index = messages.length - 1; index >= 0; index -= 1) {
-        const message = messages[index]!;
-        if (
-          message.role !== 'assistant' ||
-          message.completionStatus !== 'complete' ||
-          message.generationTaskId === undefined
-        ) {
-          continue;
-        }
-        try {
-          const result = await options.agent.read(message.generationTaskId);
-          if (result?.directive === undefined) continue;
-          await applyCommittedDirective({
-            courseId: input.courseId,
-            lessonId: input.lessonId,
-            sessionId: input.sessionId,
-            directive: result.directive,
-          });
-          break;
-        } catch {
-          // Older or unavailable generation tasks do not prevent observation recovery.
-        }
-      }
       if (messages.length === 0 || !messages.some((message) => message.role === 'user')) return;
       let ledger = await options.ledgerRepository.get(input.sessionId);
       const observedThrough = ledger?.state.observedThroughMessageId;

@@ -31,6 +31,7 @@ describe('generation scenario reasoning policy', () => {
     expect(reasoningEffortForScenario('outline-candidate')).toBe('high');
     expect(reasoningEffortForScenario('interactive-teaching')).toBe('medium');
     expect(reasoningEffortForScenario('interactive-teaching-observation')).toBe('medium');
+    expect(reasoningEffortForScenario('semantic-profile-core')).toBe('medium');
     expect(reasoningEffortForScenario('next-lesson-recommendation')).toBe('low');
   });
 

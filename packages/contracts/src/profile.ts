@@ -110,6 +110,8 @@ export const PortraitEvidencePageSchema = z.strictObject({
 
 export const PortraitClaimSchema = z.strictObject({
   claimId: z.string().min(1),
+  semanticModeId: z.string().min(1).optional(),
+  evidenceSessionCount: z.number().int().nonnegative().optional(),
   markdown: z.string(),
   evidenceIds: z.array(z.string().min(1)),
   confidence: z.number().min(0).max(1),

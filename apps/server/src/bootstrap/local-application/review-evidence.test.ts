@@ -4,6 +4,73 @@ import type { LocalLearningRuntime } from './learning-runtime.js';
 import { createReviewEvidence } from './review-evidence.js';
 
 describe('review evidence', () => {
+  it('maps short evidence aliases and drops only invalid references', () => {
+    const evidence = createReviewEvidence(
+      {
+        access: { teachingContextSources: {} },
+      } as unknown as Pick<LocalLearningRuntime, 'access'>,
+      {
+        read: vi.fn(),
+        readDraft: vi.fn(),
+      },
+    );
+
+    const normalized = evidence.normalizeRefs(
+      {
+        schemaVersion: 1,
+        kind: 'lesson-final',
+        title: 'Review',
+        knowledgeMap: {
+          title: 'Map',
+          markdown: 'A → B',
+          evidenceRefs: ['E1', 'E99', 'message:message_ai_1', 'message:message_invented'],
+        },
+        coreInsight: 'Insight',
+        performance: [{ title: 'Done', markdown: 'Evidence', evidenceRefs: ['e2'] }],
+      },
+      'lesson-final',
+      ['message_user_1', 'message_ai_1'],
+    );
+
+    expect(normalized).toMatchObject({
+      knowledgeMap: {
+        evidenceRefs: ['message:message_user_1', 'message:message_ai_1'],
+      },
+      performance: [{ evidenceRefs: ['message:message_ai_1'] }],
+    });
+  });
+
+  it('keeps the evidence gate when every supplied reference is invalid', () => {
+    const evidence = createReviewEvidence(
+      {
+        access: { teachingContextSources: {} },
+      } as unknown as Pick<LocalLearningRuntime, 'access'>,
+      {
+        read: vi.fn(),
+        readDraft: vi.fn(),
+      },
+    );
+
+    expect(() =>
+      evidence.normalizeRefs(
+        {
+          schemaVersion: 1,
+          kind: 'lesson-final',
+          title: 'Review',
+          knowledgeMap: {
+            title: 'Map',
+            markdown: 'A → B',
+            evidenceRefs: ['E99'],
+          },
+          coreInsight: 'Insight',
+          performance: [{ title: 'Done', markdown: 'Evidence' }],
+        },
+        'lesson-final',
+        ['message_user_1'],
+      ),
+    ).toThrow('review_document_evidence_refs_unusable');
+  });
+
   it('materializes the raw message log so checkpoint source ids survive retry projection collapse', async () => {
     const sourceSnapshotHash = 'a'.repeat(64);
     const checkpoint = {

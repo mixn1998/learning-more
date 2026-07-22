@@ -21,11 +21,11 @@ export function createLocalCourseReviewRuntime(input: {
   learning: LocalLearningRuntime;
   events: LocalEventFactsRuntime;
   reviewWriter: ReturnType<typeof createGenerationReviewWriter>;
-  assertEvidenceRefs(
+  normalizeEvidenceRefs(
     document: ReviewDocument | undefined,
     expectedKind: ReviewDocument['kind'],
     allowedRefs: ReadonlySet<string>,
-  ): void;
+  ): ReviewDocument | undefined;
 }) {
   const reviews = createCourseReviewWorkflow({
     repository: input.repositories.courseReviews,
@@ -163,7 +163,7 @@ export function createLocalCourseReviewRuntime(input: {
             throw new Error('course_review_generation_task_missing');
           }
           const generated = await input.reviewWriter.complete(current.generationTaskId);
-          input.assertEvidenceRefs(
+          const document = input.normalizeEvidenceRefs(
             generated.document,
             'course-final',
             await allowedEvidenceRefs(current.inputManifest),
@@ -184,7 +184,7 @@ export function createLocalCourseReviewRuntime(input: {
             courseId,
             artifactRef,
             generated.contentSha256,
-            generated.document,
+            document,
           );
         }
         if (current.state !== 'review-ready' || current.artifactRef === undefined) return;

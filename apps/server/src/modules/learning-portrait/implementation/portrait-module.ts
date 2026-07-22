@@ -28,6 +28,17 @@ function renderPortraitEvidence(
   manifest: PortraitInputManifest,
   evidence: readonly CandidateEvidence[],
 ): string {
+  const stableModes = (manifest.semanticCoreInput?.modes ?? []).map((mode, index) =>
+    [
+      `### 稳定学习模式 ${index + 1}`,
+      `模式编号：${mode.modeId}`,
+      `核心结论：${mode.feature}`,
+      `教学影响：${mode.teachingImpact}`,
+      `适用边界：${mode.applicabilityBoundary}`,
+      `独立证据会话数量：${mode.evidenceSessionCount}`,
+      `可引用证据编号：${mode.evidenceIds.join('、')}`,
+    ].join('\n'),
+  );
   const entries = evidence.map((candidate, index) =>
     [
       `### 学习证据 ${index + 1}`,
@@ -42,8 +53,9 @@ function renderPortraitEvidence(
   );
   return [
     '【机器输出契约】',
-    '只返回一个 JSON 对象：{"title":"...","summary":"...","claims":[{"claimId":"...","markdown":"...","evidenceIds":["..."],"confidence":0.0,"limitations":["..."],"counterEvidenceChecked":true}]}。',
-    '每条 claims 必须引用至少两个满足独立来源规则的可用证据编号；没有足够证据时允许返回空 claims。',
+    '只返回一个 JSON 对象：{"title":"...","summary":"...","claims":[{"claimId":"...","semanticModeId":"...","markdown":"...","evidenceIds":["..."],"confidence":0.0,"limitations":["..."],"counterEvidenceChecked":true}]}。',
+    '跨会话语义核心已经完成模式归并和稳定性校验。不得重新发明、拆分或合并模式；每条 claims 必须对应一个给定 semanticModeId，且只引用该模式列出的证据编号。',
+    '画像只解释稳定 observed_behavior 模式。每条正文按“核心结论 → 具体表现 → 教学建议 → 适用边界”组织，不得使用相同模板换词重复。',
     '【输出语言】',
     '所有面向学习者的 title、summary、claims.markdown 和 limitations 必须使用简体中文。必要的专有名词可以保留原文，但不得把整段学习画像写成英文。',
     '这些字段是直接展示给学习者的界面文案，不得照抄后台维度名或分析术语。必须使用“你”来描述：在什么学习情境中做了什么、这种做法可能带来什么帮助、目前还不能说明什么。',
@@ -54,7 +66,10 @@ function renderPortraitEvidence(
     '每条 claims.markdown 必须以“### 你……”形式的简短、日常语言标题开头，各条标题不得重复；正文最多两段。不要说明系统如何做分析，也不要报告证据条数。',
     '',
     '【分析边界】',
-    `只分析 ${manifest.window.from} 至 ${manifest.window.to} 的冻结证据。形成开放的、情境化的学习观察，不生成固定人格轴，也不新增或改写全局用户档案事实。`,
+    `只解释 ${manifest.window.from} 至 ${manifest.window.to} 已校验的稳定学习模式。形成开放的、情境化的学习观察，不生成固定人格轴，也不新增或改写全局用户档案事实。`,
+    '',
+    '【已校验稳定学习模式】',
+    stableModes.length === 0 ? '当前没有可投影的稳定学习模式。' : stableModes.join('\n\n'),
     '',
     '【可用学习证据】',
     entries.length === 0 ? '当前没有满足纳入规则的学习证据。' : entries.join('\n\n'),
@@ -134,6 +149,7 @@ export function createPortraitModule(options: {
         sourceSnapshotHash: string;
         dimensionSetVersion: string;
       }>;
+      semanticCoreInput?: PortraitInputManifest['semanticCoreInput'];
       idempotencyKey: string;
     }) {
       const existingReceipt = await options.repository.getReceipt(input.idempotencyKey);
@@ -152,6 +168,9 @@ export function createPortraitModule(options: {
         ...(input.reasoningBehaviorInput === undefined
           ? {}
           : { reasoningBehaviorInput: input.reasoningBehaviorInput }),
+        ...(input.semanticCoreInput === undefined
+          ? {}
+          : { semanticCoreInput: input.semanticCoreInput }),
         createdAt: timestamp,
       });
       const versionId = options.nextVersionId();

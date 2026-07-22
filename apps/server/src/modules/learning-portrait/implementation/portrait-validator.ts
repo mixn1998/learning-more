@@ -20,6 +20,7 @@ export class PortraitValidationError extends Error {
 
 const ClaimSchema = z.strictObject({
   claimId: z.string().min(1).max(200),
+  semanticModeId: z.string().trim().min(1).max(200).optional(),
   markdown: z.string().trim().min(1).max(20_000),
   evidenceIds: z.array(z.string().min(1)).min(2),
   confidence: z.number().min(0).max(1),
@@ -91,10 +92,25 @@ export function validatePortraitOutput(input: {
     input.evidence.map((candidate) => [candidate.evidenceId, candidate]),
   );
   const claimIds = new Set<string>();
+  const semanticModeIds = new Set<string>();
   const claimHeadings = new Set<string>();
+  const modes = new Map(
+    (input.manifest.semanticCoreInput?.modes ?? []).map((mode) => [mode.modeId, mode]),
+  );
   for (const claim of parsed.data.claims) {
     if (claimIds.has(claim.claimId)) throw new PortraitValidationError('portrait_output_invalid');
     claimIds.add(claim.claimId);
+    const semanticMode =
+      claim.semanticModeId === undefined ? undefined : modes.get(claim.semanticModeId);
+    if (
+      modes.size > 0 &&
+      (semanticMode === undefined ||
+        claim.semanticModeId === undefined ||
+        semanticModeIds.has(claim.semanticModeId))
+    ) {
+      throw new PortraitValidationError('portrait_output_invalid');
+    }
+    if (claim.semanticModeId !== undefined) semanticModeIds.add(claim.semanticModeId);
     if (new Set(claim.evidenceIds).size !== claim.evidenceIds.length) {
       throw new PortraitValidationError('portrait_output_invalid');
     }
@@ -121,6 +137,9 @@ export function validatePortraitOutput(input: {
     claimHeadings.add(heading);
     const sources: CandidateEvidence[] = [];
     for (const evidenceId of claim.evidenceIds) {
+      if (semanticMode !== undefined && !semanticMode.evidenceIds.includes(evidenceId)) {
+        throw new PortraitValidationError('portrait_evidence_outside_manifest');
+      }
       if (!manifestIds.has(evidenceId)) {
         throw new PortraitValidationError('portrait_evidence_outside_manifest');
       }
@@ -134,5 +153,21 @@ export function validatePortraitOutput(input: {
       throw new PortraitValidationError('portrait_claim_not_composite');
     }
   }
-  return parsed.data;
+  return {
+    ...parsed.data,
+    claims: parsed.data.claims.map((claim) => {
+      const mode = claim.semanticModeId === undefined ? undefined : modes.get(claim.semanticModeId);
+      const normalized: PortraitClaim = {
+        claimId: claim.claimId,
+        ...(claim.semanticModeId === undefined ? {} : { semanticModeId: claim.semanticModeId }),
+        ...(mode === undefined ? {} : { evidenceSessionCount: mode.evidenceSessionCount }),
+        markdown: claim.markdown,
+        evidenceIds: claim.evidenceIds,
+        confidence: claim.confidence,
+        limitations: claim.limitations,
+        counterEvidenceChecked: claim.counterEvidenceChecked,
+      };
+      return normalized;
+    }),
+  };
 }

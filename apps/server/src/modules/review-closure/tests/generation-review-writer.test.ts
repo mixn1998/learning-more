@@ -34,6 +34,7 @@ describe('GenerationReviewWriter', () => {
               markdown: '样本空间 → 条件事件 → 新的分母',
               evidenceRefs: ['message:message_user_1'],
             },
+            methodologyInsight: '先确认参照总体是否改变，再决定原来的计算方式能否继续使用。',
             coreInsight: '分母变化不是技巧，而是参照总体已经改变。',
             performance: [
               { title: '你做得很好的地方', markdown: '主动追问了分母为什么变化。' },
@@ -156,12 +157,15 @@ describe('GenerationReviewWriter', () => {
     expect(request?.prompt).toContain('课程邻接探索');
     expect(request?.prompt).toContain('没有实际邻接探索时省略该模块');
     expect(request?.prompt).toContain('knowledgeMap 只负责把本课知识点串成关系图式');
+    expect(request?.prompt).toContain('methodologyInsight');
+    expect(request?.prompt).toContain('一句方法论启示');
     expect(request?.prompt).toContain('coreInsight 只回答两件事');
     expect(request?.prompt).toContain('performance 在后端继续完整记录');
     expect(request?.prompt).toContain('自然关注情境信息使用、约束意识和迁移边界。');
     expect(request?.prompt).not.toContain('observationCompleteness');
     expect(request?.prompt).not.toContain('checkpoint_1');
-    expect(request?.prompt).toContain('message:message_user_1');
+    expect(request?.prompt).toContain('[E1]');
+    expect(request?.prompt).not.toContain('message:message_user_1');
     expect(request?.prompt).not.toContain('The denominator follows');
     expect(request?.prompt).not.toContain('sourceSnapshotHash');
     expect(request?.prompt).not.toContain('reviewLens');

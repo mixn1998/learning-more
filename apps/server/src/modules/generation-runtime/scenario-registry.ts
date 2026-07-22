@@ -5,6 +5,7 @@ export const AI_SCENARIOS = [
   'teaching-weight-analysis',
   'interactive-teaching',
   'interactive-teaching-observation',
+  'supplementary-learning',
   'stage-review',
   'final-review',
   'course-review',
@@ -12,6 +13,7 @@ export const AI_SCENARIOS = [
   'learning-portrait',
   'next-lesson-recommendation',
   'reasoning-behavior-analysis',
+  'semantic-profile-core',
   'profile-evidence-extraction',
 ] as const;
 
@@ -26,6 +28,7 @@ const SCENARIO_REASONING_EFFORT: Readonly<Partial<Record<AiScenario, AiReasoning
   'teaching-weight-analysis': 'medium',
   'interactive-teaching': 'medium',
   'interactive-teaching-observation': 'medium',
+  'supplementary-learning': 'medium',
   'stage-review': 'medium',
   'final-review': 'medium',
   'course-review': 'medium',
@@ -33,6 +36,7 @@ const SCENARIO_REASONING_EFFORT: Readonly<Partial<Record<AiScenario, AiReasoning
   'learning-portrait': 'medium',
   'next-lesson-recommendation': 'low',
   'reasoning-behavior-analysis': 'medium',
+  'semantic-profile-core': 'medium',
   'profile-evidence-extraction': 'medium',
 };
 

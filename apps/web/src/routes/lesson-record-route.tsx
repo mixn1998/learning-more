@@ -5,6 +5,7 @@ import {
   lessonRecordClient,
   type LessonRecord,
   type LessonRecordClient,
+  type SupplementarySessionView,
 } from '../client/lesson-record-client.js';
 import { LessonRecordView } from '../features/history/lesson-record-view.js';
 
@@ -27,15 +28,22 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
   const [failed, setFailed] = useState(false);
   const [reviewRetryBusy, setReviewRetryBusy] = useState(false);
   const [reviewRetryError, setReviewRetryError] = useState<string>();
-  const [activeSupplementary, setActiveSupplementary] = useState<{
-    id: string;
-    resourceVersion: number;
-  }>();
+  const [activeSupplementary, setActiveSupplementary] = useState<SupplementarySessionView>();
+  const [assistantMarkdown, setAssistantMarkdown] = useState('');
   const api = props.api ?? lessonRecordClient;
 
   const refreshRecord = useCallback(async () => {
     if (lessonId === undefined) return;
-    setRecord(await api.getLessonRecord(lessonId));
+    const next = await api.getLessonRecord(lessonId);
+    setRecord(next);
+    const active = next.supplementary.find((session) => session.status === 'active');
+    if (active === undefined) {
+      setActiveSupplementary(undefined);
+      return;
+    }
+    if (api.getSupplementary !== undefined) {
+      setActiveSupplementary(await api.getSupplementary(active.sessionId));
+    }
   }, [api, lessonId]);
 
   useEffect(() => {
@@ -46,22 +54,77 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
 
   useEffect(() => {
     if (record?.reviewStatus !== 'generating') return;
-    const timer = window.setInterval(() => {
-      void refreshRecord().catch(() => undefined);
-    }, 2_000);
+    const timer = window.setInterval(() => void refreshRecord().catch(() => undefined), 2_000);
     return () => window.clearInterval(timer);
   }, [record?.reviewStatus, refreshRecord]);
+
+  const convergeSupplementary = useCallback(
+    async (sessionId: string, taskId: string) => {
+      if (api.getSupplementary === undefined) return;
+      for (let index = 0; index < 120; index += 1) {
+        const snapshot = await api.getSupplementary(sessionId);
+        setActiveSupplementary(snapshot);
+        if (snapshot.activeGenerationTaskId !== taskId) {
+          setAssistantMarkdown('');
+          await refreshRecord();
+          return;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+      }
+    },
+    [api, refreshRecord],
+  );
+
+  const consumeTask = useCallback(
+    async (sessionId: string, taskId: string) => {
+      setAssistantMarkdown('');
+      try {
+        await api.streamSupplementary?.(taskId, (event) => {
+          if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+            setAssistantMarkdown((current) => current + event.data.markdown);
+          }
+        });
+      } catch {
+        // The persisted task and session snapshot remain authoritative.
+      }
+      await convergeSupplementary(sessionId, taskId);
+    },
+    [api, convergeSupplementary],
+  );
+
+  useEffect(() => {
+    const taskId = activeSupplementary?.activeGenerationTaskId;
+    if (taskId === undefined || activeSupplementary === undefined) return;
+    void consumeTask(activeSupplementary.id, taskId);
+  }, [activeSupplementary?.activeGenerationTaskId, activeSupplementary?.id, consumeTask]);
 
   if (lessonId === undefined) return <p>课节不存在</p>;
   if (failed) return <p role="alert">课节档案加载失败</p>;
   if (record === undefined) return <p role="status">正在加载课节档案…</p>;
+
+  const supplementary = record.supplementary.map((session) =>
+    activeSupplementary?.id === session.sessionId
+      ? {
+          sessionId: session.sessionId,
+          label: session.label,
+          createdAt: session.createdAt,
+          status: activeSupplementary.status,
+          resourceVersion: activeSupplementary.resourceVersion,
+          messages: activeSupplementary.messages ?? [],
+          meta: `${archivedDateLabel(session.createdAt)} · 补充学习`,
+        }
+      : {
+          ...session,
+          meta: `${archivedDateLabel(session.createdAt)} · 补充学习`,
+        },
+  );
+
   return (
     <LessonRecordView
       original={record.original}
-      supplementary={record.supplementary.map((session) => ({
-        ...session,
-        meta: `${archivedDateLabel(session.createdAt)} · 独立补充学习`,
-      }))}
+      supplementary={supplementary}
+      {...(activeSupplementary === undefined ? {} : { activeSupplementary })}
+      assistantMarkdown={assistantMarkdown}
       {...(record.finalReviewMarkdown === undefined
         ? {}
         : { finalReviewMarkdown: record.finalReviewMarkdown })}
@@ -106,22 +169,102 @@ export function LessonRecordRoute(props: { readonly api?: LessonRecordClient }) 
           : async () => {
               const session = await api.startSupplementary!(lessonId);
               setActiveSupplementary(session);
-              const refreshed = await api.getLessonRecord(lessonId);
-              setRecord(refreshed);
+              await refreshRecord();
               return { sessionId: session.id };
             }
       }
       onSendSupplementary={
         activeSupplementary === undefined || api.sendSupplementary === undefined
           ? undefined
-          : async (sessionId, markdown) => {
-              const updated = await api.sendSupplementary!(
-                sessionId,
+          : async (_sessionId, markdown) => {
+              const task = await api.sendSupplementary!(
+                activeSupplementary.id,
                 markdown,
                 activeSupplementary.resourceVersion,
               );
+              setActiveSupplementary({
+                ...activeSupplementary,
+                resourceVersion: task.resourceVersion,
+                activeGenerationTaskId: task.taskId,
+                generationErrorCode: undefined,
+              });
+            }
+      }
+      onReviseSupplementary={
+        activeSupplementary === undefined || api.reviseSupplementary === undefined
+          ? undefined
+          : async (messageId, markdown) => {
+              const task = await api.reviseSupplementary!(
+                activeSupplementary.id,
+                messageId,
+                markdown,
+                activeSupplementary.resourceVersion,
+              );
+              setActiveSupplementary({
+                ...activeSupplementary,
+                resourceVersion: task.resourceVersion,
+                activeGenerationTaskId: task.taskId,
+                generationErrorCode: undefined,
+              });
+            }
+      }
+      onRetrySupplementary={
+        activeSupplementary === undefined || api.retrySupplementary === undefined
+          ? undefined
+          : async () => {
+              const task = await api.retrySupplementary!(
+                activeSupplementary.id,
+                activeSupplementary.resourceVersion,
+              );
+              setActiveSupplementary({
+                ...activeSupplementary,
+                resourceVersion: task.resourceVersion,
+                activeGenerationTaskId: task.taskId,
+                generationErrorCode: undefined,
+              });
+            }
+      }
+      onStopSupplementary={
+        activeSupplementary?.activeGenerationTaskId === undefined ||
+        api.stopSupplementary === undefined
+          ? undefined
+          : async () => {
+              const updated = await api.stopSupplementary!(
+                activeSupplementary.id,
+                activeSupplementary.activeGenerationTaskId!,
+                activeSupplementary.resourceVersion,
+              );
+              setAssistantMarkdown('');
               setActiveSupplementary(updated);
-              setRecord(await api.getLessonRecord(lessonId));
+              await refreshRecord();
+            }
+      }
+      onArchiveSupplementary={
+        activeSupplementary === undefined || api.archiveSupplementary === undefined
+          ? undefined
+          : async () => {
+              const archived = await api.archiveSupplementary!(
+                activeSupplementary.id,
+                activeSupplementary.resourceVersion,
+              );
+              setAssistantMarkdown('');
+              setActiveSupplementary(undefined);
+              await refreshRecord();
+              return archived.id;
+            }
+      }
+      onRenameSupplementary={
+        api.renameSupplementary === undefined
+          ? undefined
+          : async (sessionId, title, resourceVersion) => {
+              try {
+                const renamed = await api.renameSupplementary!(sessionId, title, resourceVersion);
+                if (activeSupplementary?.id === sessionId) setActiveSupplementary(renamed);
+                await refreshRecord();
+              } catch (error) {
+                await refreshRecord().catch(() => undefined);
+                throw error;
+              }
             }
       }
     />

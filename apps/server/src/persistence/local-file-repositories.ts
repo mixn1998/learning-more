@@ -80,6 +80,7 @@ const GenerationTaskSchema = z.strictObject({
     .optional(),
   prompt: z.string().optional(),
   draftMarkdown: z.string().optional(),
+  firstDeltaAt: timestampSchema.optional(),
   resultRef: z.string().optional(),
   errorCode: z.string().optional(),
   leaseExpiresAt: z.string().optional(),

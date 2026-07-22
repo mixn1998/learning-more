@@ -3,6 +3,7 @@ import { AiContent, AiSurface, Dialog } from '@learning-more/ui';
 import type { LessonFinalReviewDocument } from '@learning-more/contracts';
 
 import { LessonFinalReviewDocumentView } from './review-document-view.js';
+import { projectLegacyReviewMarkdown } from './review-document-presentation.js';
 
 import './review-dialog.css';
 
@@ -47,9 +48,15 @@ export function ReviewDialog(props: {
           </header>
           <div className="lesson-review-scroll">
             {props.document !== undefined ? (
-              <LessonFinalReviewDocumentView document={props.document} />
+              <LessonFinalReviewDocumentView
+                document={props.document}
+                legacyMarkdown={props.markdown}
+              />
             ) : props.content === undefined ? (
-              <AiContent className="review-markdown" markdown={props.markdown} />
+              <AiContent
+                className="review-markdown"
+                markdown={projectLegacyReviewMarkdown(props.markdown)}
+              />
             ) : (
               <AiSurface className="review-markdown">{props.content}</AiSurface>
             )}

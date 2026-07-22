@@ -137,10 +137,10 @@ export function createLocalReviewRuntime(
           currentReview.sourceSessionId,
           currentReview.sourceSnapshotHash,
         );
-        reviewEvidence.assertRefs(
+        const document = reviewEvidence.normalizeRefs(
           generated.document,
           'lesson-stage',
-          new Set(evidence.checkpoint.sourceMessageIds.map((id) => `message:${id}`)),
+          evidence.checkpoint.sourceMessageIds,
         );
         const markdown = generated.markdown;
         const artifactRef = `lesson_review_${review.reviewId}`;
@@ -155,7 +155,7 @@ export function createLocalReviewRuntime(
           taskId: review.taskId,
           artifactRef,
           contentSha256: generated.contentSha256,
-          ...(generated.document === undefined ? {} : { document: generated.document }),
+          ...(document === undefined ? {} : { document }),
         });
         const committedReview = await reviewClosureRepositories.stageReviews.get(review.reviewId);
         const reviewedLesson = await input.course.access.getLesson(review.lessonId);
@@ -298,12 +298,18 @@ export function createLocalReviewRuntime(
             `initial_${current.transactionId}`,
           );
         }
-        if (current.state === 'generating') {
+        if (
+          current.state === 'generating' ||
+          (current.state === 'generating-failed' &&
+            ['review_output_contract_invalid', 'review_document_evidence_ref_invalid'].includes(
+              current.errorCode ?? '',
+            ))
+        ) {
           const generated = await reviewWriter.complete(current.generationTaskId);
-          reviewEvidence.assertRefs(
+          const document = reviewEvidence.normalizeRefs(
             generated.document,
             'lesson-final',
-            new Set(current.sourceMessageIds.map((id) => `message:${id}`)),
+            current.sourceMessageIds,
           );
           const artifactRef = `lesson_review_${reviewIdForLesson(current.lessonId)}`;
           await input.artifactStore.finalize({
@@ -318,7 +324,7 @@ export function createLocalReviewRuntime(
             sourceSessionIds: current.sourceSessionIds,
             messageRangeChecksum: current.messageRangeChecksum,
             contentSha256: generated.contentSha256,
-            ...(generated.document === undefined ? {} : { document: generated.document }),
+            ...(document === undefined ? {} : { document }),
           });
         }
         const committed =
@@ -374,7 +380,7 @@ export function createLocalReviewRuntime(
     learning: input.learning,
     events: input.events,
     reviewWriter,
-    assertEvidenceRefs: reviewEvidence.assertRefs,
+    normalizeEvidenceRefs: reviewEvidence.normalizeAllowedRefs,
   });
   const courseReviews = courseReviewRuntime.reviews;
 
@@ -545,7 +551,17 @@ export function createLocalReviewRuntime(
       }
       const recoverableClosures: LessonClosureRecord[] = [];
       for await (const closure of lessonClosureRepository.list()) {
-        if (!['open', 'generating', 'review-ready', 'committing'].includes(closure.state)) continue;
+        if (
+          !['open', 'generating', 'review-ready', 'committing'].includes(closure.state) &&
+          !(
+            closure.state === 'generating-failed' &&
+            ['review_output_contract_invalid', 'review_document_evidence_ref_invalid'].includes(
+              closure.errorCode ?? '',
+            )
+          )
+        ) {
+          continue;
+        }
         recoverableClosures.push(closure);
       }
       const recoveryRank: Readonly<Record<LessonClosureRecord['state'], number>> = {

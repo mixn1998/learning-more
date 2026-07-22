@@ -173,6 +173,7 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
 
   it('joins identical task keys and input snapshots so the Provider runs once', async () => {
     const repositories = createInMemoryRepositories();
+    const listSpy = vi.spyOn(repositories.generationTasks, 'list');
     const provider = createMockProvider({
       id: 'mock',
       script: [{ type: 'text', text: 'answer' }],
@@ -210,9 +211,11 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     expect(joined.taskId).toBe(first.taskId);
     await runtime.runNext();
     expect(generateSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenCalledTimes(1);
     await expect(runtime.get(first.taskId)).resolves.toMatchObject({
       status: 'completed',
       draftMarkdown: 'answer',
+      firstDeltaAt: '2026-07-13T00:00:00.000Z',
     });
   });
 

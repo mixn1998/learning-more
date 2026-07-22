@@ -9,6 +9,8 @@ type CalendarDay = Readonly<{
     lessonId: string;
     courseId?: string;
     actualSeconds: number;
+    actualStartedAt?: string;
+    actualEndedAt?: string;
   }>[];
 }>;
 

@@ -115,7 +115,7 @@ export interface LearningClient {
     sessionId: string,
     markdown: string,
     resourceVersion: number,
-  ): Promise<{ id: string; resourceVersion: number }>;
+  ): Promise<{ taskId: string; resourceVersion: number }>;
   closeCourse(
     courseId: string,
     resourceVersion: number,
@@ -286,7 +286,7 @@ export const learningClient: LearningClient = {
   sendSupplementary: (sessionId, markdown, resourceVersion) =>
     commandRequest(`/api/v1/supplementary-sessions/${encodeURIComponent(sessionId)}/messages`, {
       body: { markdown },
-      schema: SupplementarySessionResponseSchema,
+      schema: GenerationTaskAcceptedResponseSchema,
       resourceVersion,
     }),
   closeCourse: (courseId, resourceVersion, confirmAbandoned) =>

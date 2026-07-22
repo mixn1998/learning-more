@@ -80,6 +80,8 @@ export const CalendarDaySchema = z.strictObject({
         lessonId: z.string().min(1),
         courseId: z.string().min(1).optional(),
         actualSeconds: z.number().nonnegative(),
+        actualStartedAt: z.iso.datetime({ offset: true }).optional(),
+        actualEndedAt: z.iso.datetime({ offset: true }).optional(),
       }),
     )
     .default([]),

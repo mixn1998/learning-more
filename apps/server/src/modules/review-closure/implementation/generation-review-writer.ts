@@ -11,11 +11,13 @@ import {
 import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import type { GenerationExecution } from '../../generation-runtime/interface.js';
 import type { MaterializedTeachingMessage } from '../../interactive-teaching/interface.js';
+import { parseJsonWithSyntaxRepair } from './review-json-syntax.js';
 
 const REVIEW_CAPABILITY = [
   '根据完整、冻结且可追溯的教学证据生成学习者可见 Review。',
   '先忠实覆盖本课知识责任、实际教学、学习者证据、未解决项与教学支线；支线不能冒充本课覆盖或未来课节完成。',
   'knowledgeMap 只负责把本课知识点串成关系图式：优先输出一条主链，必要时最多补两条分支链；使用“节点 → 节点”表达，不在 knowledgeMap 中重复正文解释。',
+  'lesson-final 必须提供 methodologyInsight：只用一句方法论启示归纳本课核心内容，使学习者能带到新情境中使用；不要复述具体知识点，不要换行，不要写成多句。',
   'lesson-final 的 coreInsight 只回答两件事：本课要解决什么问题，以及用什么核心思想或方法解决。先用一小段界定问题，再用一小段说明方法；必要时用三至五个短要点解释方法组成，最后用一句话收束。不要在 coreInsight 重复知识图谱、学习过程流水账或后续建议。',
   'performance 在后端继续完整记录可追溯表现与待验证项；每个条目的标题必须明确表示“已形成/做得好”或“尚待验证/接下来”，以便前端归并为两个阅读区块。',
   '如果本课对话确实涉及有价值但不属于本课主线的课程邻接探索，可在 additionalSections 中保留一个附加模块，标题以“课程邻接探索：”开头，并明确它不替代本课责任；没有实际邻接探索时省略该模块，不要为了凑结构生成。',
@@ -33,7 +35,7 @@ const COURSE_REVIEW_CAPABILITY = [
 function outputContract(kind: ReviewDocument['kind']): string {
   const fields =
     kind === 'lesson-final'
-      ? 'title, knowledgeMap:{title,markdown,evidenceRefs?}, coreInsight, performance:[{title,markdown,evidenceRefs?}], additionalSections?'
+      ? 'title, knowledgeMap:{title,markdown,evidenceRefs?}, methodologyInsight, coreInsight, performance:[{title,markdown,evidenceRefs?}], additionalSections?'
       : kind === 'lesson-stage'
         ? 'title, lead, establishedUnderstanding:[{title,markdown,evidenceRefs?}], pendingValidation:[{title,markdown,evidenceRefs?}], knowledgeMap:{title,markdown,evidenceRefs?}, performance:[{title,markdown,evidenceRefs?}], continuationNotice, additionalSections?'
         : 'title, lead?, knowledgeThreads:[{title,markdown,evidenceRefs?}], strengths:[{title,markdown,evidenceRefs?}], development:[{title,markdown,evidenceRefs?}], boundaries:[{title,markdown,evidenceRefs?}], extensions:[{title,markdown,evidenceRefs?}], sourceCoverage?, additionalSections?';
@@ -41,7 +43,7 @@ function outputContract(kind: ReviewDocument['kind']): string {
     '接口输出协议：只返回一个 JSON 对象，不要使用代码围栏或附加说明。',
     `固定识别字段：{"schemaVersion":1,"kind":"${kind}"}。`,
     `内容字段：${fields}。`,
-    '未知的有价值内容可以放入 additionalSections；evidenceRefs 只填写证据中真实存在的引用。',
+    '未知的有价值内容可以放入 additionalSections；evidenceRefs 只填写证据中真实存在的 E 编号（例如 E1），必须原样使用，不要输出或编造 message UUID。',
   ].join('\n');
 }
 
@@ -100,6 +102,11 @@ function renderLessonReviewEvidence(pack: ReviewEvidencePack): string {
       ...observation.entries.map((entry) => entry.summary),
     ]);
   const sourceMessageIds = new Set(pack.checkpoint.sourceMessageIds);
+  const evidenceAliasByMessageId = new Map(
+    pack.checkpoint.sourceMessageIds.map(
+      (messageId, index) => [messageId, `E${index + 1}`] as const,
+    ),
+  );
   const dialogue = pack.messages
     .filter(
       (message) =>
@@ -109,7 +116,7 @@ function renderLessonReviewEvidence(pack: ReviewEvidencePack): string {
     )
     .map((message) => {
       const interrupted = message.completionStatus === 'interrupted' ? '（未完成）' : '';
-      return `- [message:${message.messageId}] 学习者${interrupted}：${message.markdown.trim()}`;
+      return `- [${evidenceAliasByMessageId.get(message.messageId)}] 学习者${interrupted}：${message.markdown.trim()}`;
     });
   return [
     `Review 类型：${pack.kind === 'final' ? '本课最终 Review' : '阶段 Review'}`,
@@ -203,16 +210,11 @@ function parseDocument(raw: string, taskKind: string | undefined): ReviewDocumen
   const first = trimmed.indexOf('{');
   const last = trimmed.lastIndexOf('}');
   if (first < 0 || last <= first) return undefined;
-  try {
-    const parsed = ReviewDocumentSchema.safeParse(JSON.parse(trimmed.slice(first, last + 1)));
-    if (!parsed.success) return undefined;
-    const expectedKind = expectedDocumentKind(taskKind);
-    return expectedKind === undefined || parsed.data.kind === expectedKind
-      ? parsed.data
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  const repaired = parseJsonWithSyntaxRepair(trimmed.slice(first, last + 1));
+  const parsed = ReviewDocumentSchema.safeParse(repaired);
+  if (!parsed.success) return undefined;
+  const expectedKind = expectedDocumentKind(taskKind);
+  return expectedKind === undefined || parsed.data.kind === expectedKind ? parsed.data : undefined;
 }
 
 function generatedResult(raw: string, taskKind: string | undefined) {

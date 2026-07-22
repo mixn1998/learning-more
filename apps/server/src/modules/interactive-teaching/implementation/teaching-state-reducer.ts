@@ -310,3 +310,70 @@ export function reduceTeachingState(
       .slice(-20),
   };
 }
+
+export function reconcileTeachingObservations(
+  current: TeachingStateSnapshot,
+  observations: readonly TeachingObservation[],
+  currentMessageIds: ReadonlySet<string>,
+): Readonly<{
+  changed: boolean;
+  observations: readonly TeachingObservation[];
+  state: TeachingStateSnapshot;
+}> {
+  const retractedObservationIds = new Set<string>();
+  const reconciledObservations = observations.map((observation) => {
+    if (
+      observation.status !== 'active' ||
+      observation.sourceMessageIds.every((messageId) => currentMessageIds.has(messageId))
+    ) {
+      return observation;
+    }
+    retractedObservationIds.add(observation.observationId);
+    return { ...observation, status: 'retracted' as const };
+  });
+  if (retractedObservationIds.size === 0) {
+    return { changed: false, observations, state: current };
+  }
+
+  let rebuilt = createTeachingState({
+    lessonId: current.lessonId,
+    sessionId: current.sessionId,
+    knowledgePointRefs: current.knowledgePoints.map((point) => point.ref),
+  });
+  for (const observation of reconciledObservations) {
+    rebuilt = reduceTeachingState(rebuilt, observation);
+  }
+
+  const currentByRef = new Map(current.knowledgePoints.map((point) => [point.ref, point]));
+  const knowledgePoints = rebuilt.knowledgePoints.map((point) => {
+    const control = currentByRef.get(point.ref);
+    const difficultySignals = (control?.difficultySignals ?? []).filter((signal) =>
+      currentMessageIds.has(signal.sourceMessageId),
+    );
+    return {
+      ...point,
+      progress: control?.progress ?? point.progress,
+      interactionStatus: control?.interactionStatus ?? point.interactionStatus,
+      difficultySignals,
+      adaptiveDifficulty:
+        difficultySignals.length >= 2 ? ('difficult' as const) : ('normal' as const),
+      depthPreference: control?.depthPreference ?? 'default',
+    };
+  });
+  const activeKnowledgePointRef = current.activeKnowledgePointRef;
+  return {
+    changed: true,
+    observations: reconciledObservations,
+    state: {
+      ...rebuilt,
+      ledgerVersion: current.ledgerVersion + 1,
+      observationStatus: current.observationStatus,
+      lessonPhase: current.lessonPhase,
+      ...(activeKnowledgePointRef === undefined ? {} : { activeKnowledgePointRef }),
+      comprehensiveCheck: current.comprehensiveCheck,
+      closureInquiry: current.closureInquiry,
+      summaryStatus: current.summaryStatus,
+      knowledgePoints,
+    },
+  };
+}

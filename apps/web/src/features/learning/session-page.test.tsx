@@ -392,6 +392,45 @@ describe('learning SessionPage', () => {
     expect(screen.getByRole('textbox', { name: '编辑消息' })).toHaveValue('原始问题');
   });
 
+  it('clears a stale stop error after the authoritative session has no active task', async () => {
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resourceVersion: 1,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        resourceVersion: 4,
+        learning: { progress: 'in_progress', session: { state: 'active' } },
+        messages: [
+          { id: 'message_user_01', role: 'user', markdown: 'Explain this.' },
+          { id: 'message_ai_01', role: 'assistant', markdown: 'Recovered reply.' },
+        ],
+      });
+    const api = client({
+      getSession,
+      sendMessage: vi.fn().mockResolvedValue({
+        taskId: 'task_01',
+        resourceVersion: 3,
+        userMessageId: 'message_user_01',
+      }),
+      stream: vi.fn(() => new Promise<void>(() => undefined)),
+      stop: vi.fn().mockRejectedValue(new Error('volatile task context lost')),
+    });
+    render(<SessionPage lessonId="lesson_01" client={api} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: 'Explain this.' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await screen.findByRole('button', { name: '停止生成' });
+    fireEvent.click(await screen.findByRole('button', { name: '重新编辑' }));
+
+    await waitFor(() => expect(getSession).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('无法取消当前生成，请取消编辑后重试。')).not.toBeInTheDocument();
+    expect(screen.getByText('Recovered reply.')).toBeInTheDocument();
+  });
+
   it('retries a failed AI response without appending the user message again', async () => {
     const retryGeneration = vi
       .fn()
@@ -1212,10 +1251,9 @@ describe('learning SessionPage', () => {
   });
 
   it('keeps one stream subscription for a restored task under React StrictMode', async () => {
-    const listeners: Array<(event: {
-      type: string;
-      data: { markdown?: string; resultRef?: string };
-    }) => void> = [];
+    const listeners: Array<
+      (event: { type: string; data: { markdown?: string; resultRef?: string } }) => void
+    > = [];
     const stream = vi.fn(
       (_taskId: string, listener: (typeof listeners)[number]) =>
         new Promise<never>(() => {
@@ -1395,7 +1433,7 @@ describe('learning SessionPage', () => {
 
     completed = true;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(8_000);
       await Promise.resolve();
     });
 
@@ -1422,5 +1460,67 @@ describe('learning SessionPage', () => {
     expect(await screen.findByText('这是已经完成的回答。')).toBeInTheDocument();
     expect(screen.queryByRole('status', { name: 'AI 回复状态' })).not.toBeInTheDocument();
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
+  });
+
+  it('keeps streamed Markdown visible while teaching progress is refreshed', async () => {
+    vi.useFakeTimers();
+    let listener:
+      | ((event: { type: string; data: { markdown?: string; resultRef?: string } }) => void)
+      | undefined;
+    const stream = vi.fn(
+      (_taskId: string, onEvent: NonNullable<typeof listener>) =>
+        new Promise<never>(() => {
+          listener = onEvent;
+        }),
+    );
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 4,
+      learning: {
+        progress: 'in_progress',
+        session: { state: 'active', activeGenerationTaskId: 'task_running_01' },
+      },
+      teachingProgress: {
+        ledgerVersion: 3,
+        observationStatus: 'pending',
+        lessonPhase: 'knowledge_point',
+        comprehensiveCheck: 'pending',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+        knowledgePoints: [],
+      },
+      messages: [{ id: 'message_user_01', role: 'user', markdown: 'Explain this further.' }],
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, stream })} />);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
+
+    act(() =>
+      listener?.({ type: 'message.delta', data: { markdown: 'First streamed paragraph.' } }),
+    );
+    expect(screen.getByText('First streamed paragraph.')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+    });
+
+    expect(getSession).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('First streamed paragraph.')).toBeInTheDocument();
+
+    act(() => listener?.({ type: 'message.delta', data: { markdown: ' Second paragraph.' } }));
+    expect(screen.getByText('First streamed paragraph. Second paragraph.')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+    });
+
+    expect(getSession).toHaveBeenCalledTimes(3);
+    expect(screen.getByText('First streamed paragraph. Second paragraph.')).toBeInTheDocument();
   });
 });

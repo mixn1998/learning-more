@@ -5,31 +5,60 @@ type TeachingGenerationTask = Awaited<
   ReturnType<Pick<GenerationRuntime, 'listByOwner'>['listByOwner']>
 >[number];
 
-export type TeachingDirective = Readonly<{
+type TeachingLessonPhase =
+  | 'warmup'
+  | 'knowledge_point'
+  | 'comprehensive_check'
+  | 'discussion'
+  | 'summary'
+  | 'ready_to_close';
+
+type TeachingKnowledgePointStatus = 'pending' | 'learning' | 'completed' | 'skipped';
+type TeachingInteractionStatus = 'pending' | 'completed' | 'skipped';
+type TeachingDepthPreference = 'default' | 'condensed';
+type TeachingComprehensiveStatus = 'pending' | 'learning' | 'completed' | 'skipped';
+type TeachingClosureInquiry = 'pending' | 'awaiting_confirmation' | 'confirmed_no_questions';
+type TeachingSummaryStatus = 'pending' | 'delivered';
+
+type TeachingDifficultySignal = Readonly<{
+  knowledgePointRef: string;
+  sourceMessageId: string;
+  kind: 'answer_error' | 'misunderstanding' | 'not_understood' | 'request_deeper_explanation';
+}>;
+
+export type FullTeachingDirective = Readonly<{
   schemaVersion: 1;
-  lessonPhase:
-    | 'warmup'
-    | 'knowledge_point'
-    | 'comprehensive_check'
-    | 'discussion'
-    | 'summary'
-    | 'ready_to_close';
+  lessonPhase: TeachingLessonPhase;
   activeKnowledgePointRef?: string | undefined;
   knowledgePoints: readonly Readonly<{
     ref: string;
-    status: 'pending' | 'learning' | 'completed' | 'skipped';
-    interactionStatus: 'pending' | 'completed' | 'skipped';
-    depthPreference?: 'default' | 'condensed';
+    status: TeachingKnowledgePointStatus;
+    interactionStatus: TeachingInteractionStatus;
+    depthPreference?: TeachingDepthPreference;
   }>[];
-  difficultySignals?: readonly Readonly<{
-    knowledgePointRef: string;
-    sourceMessageId: string;
-    kind: 'answer_error' | 'misunderstanding' | 'not_understood' | 'request_deeper_explanation';
-  }>[];
-  comprehensiveCheck: 'pending' | 'learning' | 'completed' | 'skipped';
-  closureInquiry: 'pending' | 'awaiting_confirmation' | 'confirmed_no_questions';
-  summaryStatus: 'pending' | 'delivered';
+  difficultySignals?: readonly TeachingDifficultySignal[];
+  comprehensiveCheck: TeachingComprehensiveStatus;
+  closureInquiry: TeachingClosureInquiry;
+  summaryStatus: TeachingSummaryStatus;
 }>;
+
+export type SparseTeachingDirective = Readonly<{
+  schemaVersion: 2;
+  lessonPhase?: TeachingLessonPhase;
+  activeKnowledgePointRef?: string | null;
+  knowledgePoints?: readonly Readonly<{
+    ref: string;
+    status?: TeachingKnowledgePointStatus;
+    interactionStatus?: TeachingInteractionStatus;
+    depthPreference?: TeachingDepthPreference;
+  }>[];
+  difficultySignals?: readonly TeachingDifficultySignal[];
+  comprehensiveCheck?: TeachingComprehensiveStatus;
+  closureInquiry?: TeachingClosureInquiry;
+  summaryStatus?: TeachingSummaryStatus;
+}>;
+
+export type TeachingDirective = FullTeachingDirective | SparseTeachingDirective;
 
 export type TeachingAgentResult = Readonly<{
   markdown: string;

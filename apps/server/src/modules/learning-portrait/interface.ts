@@ -40,12 +40,25 @@ export type PortraitInputManifest = Readonly<{
         dimensionSetVersion: string;
       }>
     | undefined;
+  semanticCoreInput?: Readonly<{
+    sourceSnapshotHash: string;
+    modes: readonly Readonly<{
+      modeId: string;
+      feature: string;
+      teachingImpact: string;
+      applicabilityBoundary: string;
+      evidenceSessionCount: number;
+      evidenceIds: readonly string[];
+    }>[];
+  }>;
   manifestChecksum: string;
   createdAt: string;
 }>;
 
 export type PortraitClaim = Readonly<{
   claimId: string;
+  semanticModeId?: string;
+  evidenceSessionCount?: number;
   markdown: string;
   evidenceIds: readonly string[];
   confidence: number;

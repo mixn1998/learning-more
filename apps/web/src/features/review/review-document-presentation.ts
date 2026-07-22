@@ -2,14 +2,18 @@ import type { ReviewTextBlock } from '@learning-more/contracts';
 
 type ReviewPresentationInput = Readonly<{
   knowledgeMap: ReviewTextBlock;
+  methodologyInsight?: string | undefined;
   coreInsight: string;
   performance: readonly ReviewTextBlock[];
   additionalSections?: readonly ReviewTextBlock[] | undefined;
+  legacyMarkdown?: string | undefined;
 }>;
 
 const NEXT_JUDGMENT_TITLE = /接下来|下一步|尚待|待验证|仍需|继续|未解决|局限|不足/u;
 const STRENGTH_TITLE = /你做得.*好|做得好的地方/u;
 const ADJACENT_EXPLORATION_TITLE = /课程邻接探索|邻接探索/u;
+const METHODOLOGY_INSIGHT_TITLE =
+  /^(?:本课)?(?:方法论启示|(?:可以|可)带走的一句话)(?:（[^）]*）)?$/u;
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value !== ''))];
@@ -28,6 +32,68 @@ function conciseSentence(value: string, limit = 220): string {
   if (normalized.length <= limit) return normalized;
   const sentence = normalized.slice(0, limit + 1).match(/^.{1,220}?[。！？；]/u)?.[0];
   return sentence ?? `${normalized.slice(0, limit).trimEnd()}…`;
+}
+
+function normalizedSectionTitle(value: string): string {
+  return value.replaceAll(/[\s:：]/gu, '').trim();
+}
+
+function isMethodologyInsightTitle(value: string): boolean {
+  return METHODOLOGY_INSIGHT_TITLE.test(normalizedSectionTitle(value));
+}
+
+function methodologyInsightText(markdown: string): string | undefined {
+  const units = markdownUnits(markdown);
+  const value = conciseSentence(units.join(' '), 240);
+  return value === '' ? undefined : value;
+}
+
+function methodologyInsightFromCoreInsight(coreInsight: string): string | undefined {
+  const paragraphs = coreInsight
+    .split(/\r?\n\s*\r?\n/u)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  const preferred = paragraphs.find((paragraph) =>
+    /^(?:核心方法|解决方法|可以先|检查这条链时)/u.test(paragraph),
+  );
+  const candidate = preferred ?? paragraphs[0];
+  if (candidate === undefined) return undefined;
+  const normalized = candidate.replace(/^(?:核心方法|解决方法)是[：:]?\s*/u, '').trim();
+  const withoutList = normalized.split(/\s+[-*+]\s+/u)[0]?.trim() ?? normalized;
+  return methodologyInsightText(withoutList);
+}
+
+function methodologyInsightFromLegacyMarkdown(markdown: string | undefined): string | undefined {
+  if (markdown === undefined) return undefined;
+  const lines = markdown.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index += 1) {
+    const heading = lines[index]?.match(/^#{1,6}\s*(.*?)\s*$/u)?.[1];
+    if (heading === undefined || !isMethodologyInsightTitle(heading)) continue;
+    const content: string[] = [];
+    for (let next = index + 1; next < lines.length; next += 1) {
+      if (/^#{1,6}\s+/u.test(lines[next] ?? '')) break;
+      content.push(lines[next] ?? '');
+    }
+    const value = methodologyInsightText(content.join('\n'));
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function projectMethodologyInsight(input: ReviewPresentationInput): string | undefined {
+  const explicit = input.methodologyInsight?.trim();
+  if (explicit !== undefined && explicit !== '') return explicit;
+
+  const legacyBlock = input.additionalSections?.find((block) =>
+    isMethodologyInsightTitle(block.title),
+  );
+  const fromBlock =
+    legacyBlock === undefined ? undefined : methodologyInsightText(legacyBlock.markdown);
+  return (
+    fromBlock ??
+    methodologyInsightFromLegacyMarkdown(input.legacyMarkdown) ??
+    methodologyInsightFromCoreInsight(input.coreInsight)
+  );
 }
 
 function markdownUnits(markdown: string): string[] {
@@ -155,13 +221,22 @@ function projectPerformance(
 
 export function projectLessonReviewDocument(input: ReviewPresentationInput) {
   const knowledgeMap = projectKnowledgeMap(input.knowledgeMap);
+  const methodologyInsight = projectMethodologyInsight(input);
   return {
     knowledgeMap,
     knowledgeMapNodes: knowledgeMapNodes(knowledgeMap.markdown),
+    ...(methodologyInsight === undefined ? {} : { methodologyInsight }),
     coreInsight: projectCoreInsight(input.coreInsight),
     performance: projectPerformance(input.performance),
     adjacentExploration: (input.additionalSections ?? []).filter((block) =>
       ADJACENT_EXPLORATION_TITLE.test(block.title),
     ),
   };
+}
+
+export function projectLegacyReviewMarkdown(markdown: string): string {
+  return markdown.replace(
+    /^(#{1,6})\s*(?:本课)?(?:可以|可)带走的一句话(?:（[^）]*）)?\s*$/gmu,
+    '$1 本课方法论启示',
+  );
 }

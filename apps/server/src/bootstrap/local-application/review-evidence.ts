@@ -13,11 +13,16 @@ export function createReviewEvidence(
     sessionId: string,
     sourceSnapshotHash: string,
   ): Promise<ReviewEvidencePack>;
-  assertRefs(
+  normalizeRefs(
+    document: ReviewDocument | undefined,
+    expectedKind: ReviewDocument['kind'],
+    sourceMessageIds: readonly string[],
+  ): ReviewDocument | undefined;
+  normalizeAllowedRefs(
     document: ReviewDocument | undefined,
     expectedKind: ReviewDocument['kind'],
     allowedRefs: ReadonlySet<string>,
-  ): void;
+  ): ReviewDocument | undefined;
 }> {
   const teachingContextSources = learning.access.teachingContextSources;
 
@@ -48,14 +53,66 @@ export function createReviewEvidence(
     ];
   }
 
-  return {
-    assertRefs(document, expectedKind, allowedRefs): void {
-      if (document === undefined) return;
-      if (document.kind !== expectedKind) throw new Error('review_document_kind_mismatch');
-      const refs = documentBlocks(document).flatMap((block) => block.evidenceRefs ?? []);
-      if (refs.some((ref) => !allowedRefs.has(ref))) {
-        throw new Error('review_document_evidence_ref_invalid');
+  function normalizeDocumentRefs(
+    document: ReviewDocument | undefined,
+    expectedKind: ReviewDocument['kind'],
+    allowedRefs: ReadonlySet<string>,
+    resolveRef: (ref: string) => string,
+  ): ReviewDocument | undefined {
+    if (document === undefined) return undefined;
+    if (document.kind !== expectedKind) throw new Error('review_document_kind_mismatch');
+    let suppliedRefCount = 0;
+    let acceptedRefCount = 0;
+    const normalizeValue = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(normalizeValue);
+      if (value === null || typeof value !== 'object') return value;
+      const source = value as Readonly<Record<string, unknown>>;
+      const normalized = Object.fromEntries(
+        Object.entries(source)
+          .filter(([key]) => key !== 'evidenceRefs')
+          .map(([key, item]) => [key, normalizeValue(item)]),
+      );
+      if (Array.isArray(source.evidenceRefs)) {
+        suppliedRefCount += source.evidenceRefs.filter((ref) => typeof ref === 'string').length;
+        const refs = [
+          ...new Set(
+            source.evidenceRefs
+              .filter((ref): ref is string => typeof ref === 'string')
+              .map(resolveRef)
+              .filter((ref) => allowedRefs.has(ref)),
+          ),
+        ];
+        acceptedRefCount += refs.length;
+        if (refs.length > 0) normalized.evidenceRefs = refs;
       }
+      return normalized;
+    };
+    const normalized = normalizeValue(document) as ReviewDocument;
+    const refs = documentBlocks(normalized).flatMap((block) => block.evidenceRefs ?? []);
+    if (refs.some((ref) => !allowedRefs.has(ref))) {
+      throw new Error('review_document_evidence_ref_invalid');
+    }
+    if (suppliedRefCount > 0 && acceptedRefCount === 0) {
+      throw new Error('review_document_evidence_refs_unusable');
+    }
+    return normalized;
+  }
+
+  return {
+    normalizeRefs(document, expectedKind, sourceMessageIds) {
+      const allowedRefs = new Set(sourceMessageIds.map((id) => `message:${id}`));
+      const aliases = new Map<string, string>(
+        sourceMessageIds.map((id, index) => [`E${index + 1}`, `message:${id}`] as const),
+      );
+      return normalizeDocumentRefs(
+        document,
+        expectedKind,
+        allowedRefs,
+        (ref) => aliases.get(ref.toUpperCase()) ?? ref,
+      );
+    },
+    normalizeAllowedRefs(document, expectedKind, allowedRefs) {
+      return normalizeDocumentRefs(document, expectedKind, allowedRefs, (ref) => ref);
     },
     async build(kind, sessionId, sourceSnapshotHash) {
       const ledger = await learning.access.getTeachingLedger(sessionId);

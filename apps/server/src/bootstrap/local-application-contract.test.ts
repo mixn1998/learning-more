@@ -61,6 +61,7 @@ describe('local application public interface', () => {
         'nextCorrelationId',
         'nextMessageId',
         'now',
+        'reconcileSession',
         'resolveSession',
         'saveUserMessage',
         'supplementary',
@@ -79,7 +80,10 @@ describe('local application public interface', () => {
         'planFlows',
         'planning',
       ]);
-      expect(Object.keys(local.serverDependencies.learningFacts!).sort()).toEqual(['queries']);
+      expect(Object.keys(local.serverDependencies.learningFacts!).sort()).toEqual([
+        'getLessonActualInterval',
+        'queries',
+      ]);
       expect(Object.keys(local.serverDependencies.profile!).sort()).toEqual([
         'getGlobalProfile',
         'getReasoningAnalysis',

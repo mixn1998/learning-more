@@ -29,7 +29,12 @@ const entries = [
   },
 ];
 
-function fixture(overrides: Record<string, unknown> = {}) {
+function fixture(
+  overrides: Record<string, unknown> = {},
+  getLessonActualInterval?: (
+    lessonId: string,
+  ) => Promise<Readonly<{ actualStartedAt: string; actualEndedAt: string }> | undefined>,
+) {
   const queries = {
     getHistory: vi.fn().mockResolvedValue({
       entries,
@@ -65,7 +70,10 @@ function fixture(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
   const app = Fastify();
-  void registerLearningFactsRoutes(app, { queries });
+  void registerLearningFactsRoutes(app, {
+    queries,
+    ...(getLessonActualInterval === undefined ? {} : { getLessonActualInterval }),
+  });
   return { app, queries };
 }
 
@@ -95,6 +103,44 @@ describe('LearningFacts HTTP routes', () => {
     ]) {
       expect((await app.inject({ method: 'GET', url })).statusCode).toBe(400);
     }
+  });
+
+  it('enriches completed calendar lessons with the full actual study interval', async () => {
+    const getLessonActualInterval = vi.fn().mockResolvedValue({
+      actualStartedAt: '2026-07-20T08:10:00.000Z',
+      actualEndedAt: '2026-07-20T09:25:00.000Z',
+    });
+    const { app } = fixture(
+      {
+        getCalendar: vi.fn().mockResolvedValue({
+          days: [
+            {
+              localDate: '2026-07-20',
+              actualSeconds: 3_600,
+              completedLessonIds: ['lesson_1'],
+              completions: [{ lessonId: 'lesson_1', courseId: 'course_1', actualSeconds: 3_600 }],
+            },
+          ],
+          asOfEventId: 'event_f3',
+          projectionVersion: 1,
+          freshness: 'current',
+        }),
+      },
+      getLessonActualInterval,
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/history/calendar?from=2026-07-20&to=2026-07-20',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().days[0].completions[0]).toMatchObject({
+      lessonId: 'lesson_1',
+      actualStartedAt: '2026-07-20T08:10:00.000Z',
+      actualEndedAt: '2026-07-20T09:25:00.000Z',
+    });
+    expect(getLessonActualInterval).toHaveBeenCalledWith('lesson_1');
   });
 
   it('returns the selected week without leaking the projection collection', async () => {

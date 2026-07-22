@@ -5,8 +5,11 @@ import path from 'node:path';
 import type { TeachingObservation } from '@learning-more/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import type { PersonalizationDigestRecord } from '../../modules/global-user-profile/ports/personalization-digest-repository.js';
 import { createLocalFileEvidenceRepositories } from '../../persistence/profile-evidence-repositories.js';
+import { createLocalFilePersonalizationDigestRepository } from '../../persistence/personalization-digest-repositories.js';
 import { createLocalFileReasoningBehaviorRepository } from '../../persistence/reasoning-behavior-repositories.js';
+import { createLocalFileSemanticProfileCoreRepository } from '../../persistence/semantic-profile-core-repositories.js';
 import type { LocalApplicationOptions } from './contracts.js';
 import { createLocalEventFactsRuntime } from './event-facts-runtime.js';
 import { createLocalFoundation } from './foundation.js';
@@ -159,6 +162,85 @@ describe('local profile runtime', () => {
         independentSourceGroupCount: 2,
       },
     });
+    const digestRepository = createLocalFilePersonalizationDigestRepository(foundation.dataRoot);
+    const digestBeforeConcurrentRefresh = await digestRepository.get();
+    expect(digestBeforeConcurrentRefresh).toMatchObject({ refreshStatus: 'succeeded' });
+    await Promise.all([
+      profile.refreshPersonalizationDigest(),
+      profile.refreshPersonalizationDigest(),
+      profile.refreshPersonalizationDigest(),
+    ]);
+    const personalization = await profile.getTeachingPersonalization({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+    });
+    expect(personalization.signals).toHaveLength(1);
+    expect(personalization.signals[0]?.summary.trim().length).toBeGreaterThan(0);
+    const semanticCore = await createLocalFileSemanticProfileCoreRepository(
+      foundation.dataRoot,
+    ).getCore();
+    expect(semanticCore?.modes).toEqual([
+      expect.objectContaining({ status: 'stable', supportingSessionCount: 2 }),
+    ]);
+    await expect(digestRepository.get()).resolves.toMatchObject({
+      resourceVersion: digestBeforeConcurrentRefresh!.resourceVersion,
+      refreshStatus: 'succeeded',
+      latestSuccessful: {
+        projectionVersion: 'semantic-profile-digest@1',
+        profileVersion: semanticCore!.resourceVersion,
+        selectedModeIds: [semanticCore!.modes[0]!.modeId],
+      },
+    });
+    const currentDigest = await digestRepository.get();
+    await foundation.unitOfWork.execute(
+      { transactionId: 'tx_replace_digest_with_legacy_success' },
+      async (tx) => {
+        await digestRepository.save(
+          tx,
+          {
+            ...currentDigest!,
+            latestSuccessful: {
+              profileVersion: currentDigest!.requestedProfileVersion,
+              sourceSnapshotHash: currentDigest!.requestedSourceSnapshotHash,
+              summary: '旧版五百字截断摘要',
+              sourceRefs: ['legacy:reasoning-analysis'],
+              generatedAt: '2026-07-20T00:00:00.000Z',
+            },
+          } as unknown as PersonalizationDigestRecord,
+          currentDigest!.resourceVersion,
+        );
+      },
+    );
+    await expect(digestRepository.get()).resolves.toMatchObject({ latestSuccessful: undefined });
+    await profile.refreshPersonalizationDigest();
+    const successfulDigest = await digestRepository.get();
+    expect(successfulDigest?.latestSuccessful).toMatchObject({
+      projectionVersion: 'semantic-profile-digest@1',
+      selectedModeIds: [semanticCore!.modes[0]!.modeId],
+    });
+    await foundation.unitOfWork.execute(
+      { transactionId: 'tx_personalization_digest_pending_fallback' },
+      async (tx) => {
+        await digestRepository.save(
+          tx,
+          {
+            ...successfulDigest!,
+            requestedProfileVersion: successfulDigest!.requestedProfileVersion + 1,
+            requestedSourceSnapshotHash: 'f'.repeat(64),
+            refreshStatus: 'pending',
+            updatedAt: '2026-07-21T00:00:00.000Z',
+          },
+          successfulDigest!.resourceVersion,
+        );
+      },
+    );
+    await expect(
+      profile.getTeachingPersonalization({ courseId: 'course_1', lessonId: 'lesson_1' }),
+    ).resolves.toMatchObject({
+      sourceSnapshotHash: successfulDigest!.latestSuccessful!.sourceSnapshotHash,
+      signals: [expect.objectContaining({ summary: successfulDigest!.latestSuccessful!.summary })],
+    });
+    await profile.refreshPersonalizationDigest();
     const repositories = createLocalFileEvidenceRepositories(foundation.dataRoot);
     const evidence = [];
     for await (const candidate of repositories.evidence.list()) evidence.push(candidate);
@@ -182,9 +264,12 @@ describe('local profile runtime', () => {
     expect(portrait).toMatchObject({ state: 'completed' });
     expect(portrait.claims).toHaveLength(1);
     await expect(profile.portraitRoutes.getCurrent()).resolves.toMatchObject({
-      reasoningBehaviorAnalysis: {
-        snapshot: { analyzerVersion: 'reasoning-global-analyzer@2', status: 'usable' },
-      },
+      claims: [
+        expect.objectContaining({
+          semanticModeId: semanticCore!.modes[0]!.modeId,
+          evidenceSessionCount: 2,
+        }),
+      ],
     });
 
     const projected = evidence.find((candidate) =>

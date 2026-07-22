@@ -29,6 +29,32 @@ function visible(events: readonly Readonly<{ type: string; markdown?: string }>[
 }
 
 describe('TeachingResponseStream', () => {
+  it('publishes a safe plain-text prefix before a long sentence is complete', () => {
+    const stream = createTeachingResponseStream();
+    stream.push('<learning-more-reply>');
+    const prefix = 'A'.repeat(31);
+
+    expect(visible(stream.push(prefix))).toBe('');
+    expect(visible(stream.push('B and the rest is still being generated'))).toBe(`${prefix}B`);
+  });
+
+  it('parses a sparse version 2 control directive after the visible reply', () => {
+    const stream = createTeachingResponseStream();
+    const sparse = {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:one',
+      knowledgePoints: [{ ref: 'knowledge:one', status: 'learning' }],
+    } as const;
+
+    const events = stream.push(
+      `<learning-more-reply>Visible reply.</learning-more-reply><learning-more-control>${JSON.stringify(sparse)}</learning-more-control>`,
+    );
+
+    expect(events).toContainEqual({ type: 'directive.ready', directive: sparse });
+    expect(stream.finish().result).toEqual({ markdown: 'Visible reply.', directive: sparse });
+  });
+
   it('publishes safe reply sentences before the trailing control block is available', () => {
     const stream = createTeachingResponseStream();
 

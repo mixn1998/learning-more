@@ -2,12 +2,14 @@ import type {
   CommandContext,
   PersonalizationView,
   TeachingObservation,
+  TeachingStateSnapshot,
 } from '@learning-more/contracts';
 import { GenerationStreamEventSchema, type GenerationStreamEvent } from '@learning-more/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { createInMemoryLearningSessionRepositories } from '../../../persistence/learning-session-repositories.js';
 import { createInMemoryTeachingLedgerRepository } from '../../../persistence/teaching-ledger-repositories.js';
+import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
 import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import { createInMemoryMessageLog } from '../../learning-session/implementation/message-log.js';
 import { createSessionModule } from '../../learning-session/implementation/session-module.js';
@@ -18,6 +20,7 @@ import { createTeachingState } from '../implementation/teaching-state-reducer.js
 import type { TeachingAgent } from '../ports/teaching-agent.js';
 import type { TeachingDirective } from '../ports/teaching-agent.js';
 import type { TeachingContextSources } from '../ports/teaching-context-sources.js';
+import type { TeachingLedgerRepository } from '../ports/teaching-ledger-repository.js';
 import type { TeachingObserver } from '../ports/teaching-observer.js';
 
 type GenerationTask = Awaited<ReturnType<GenerationRuntime['get']>>;
@@ -59,6 +62,9 @@ async function fixture(
     frameDeltaFailsOnce?: boolean;
     agentDirective?: TeachingDirective;
     legacyRecoveredTaskSourceId?: string;
+    recoveredTaskStatus?: GenerationTask['status'];
+    ledgerDirectiveSaveConflictsOnce?: boolean;
+    agentReadError?: Error;
   } = {},
 ) {
   const artifacts = new Map<string, string>([
@@ -87,6 +93,8 @@ async function fixture(
   );
   let evidenceEffectShouldFail = options.evidenceEffectFailsOnce ?? false;
   let startGenerationShouldFail = options.startGenerationFailsOnce ?? false;
+  const ledgerRepositoryForCommit: { current?: TeachingLedgerRepository } = {};
+  const ledgerStatesAtAssistantCommit: TeachingStateSnapshot[] = [];
   const sessionModule: LearningSessionModule = {
     query: (query, context) => storedSessionModule.query(query, context),
     async execute(command, context) {
@@ -97,6 +105,10 @@ async function fixture(
       if (command.type === 'EstablishEvidenceCheckpoint' && evidenceEffectShouldFail) {
         evidenceEffectShouldFail = false;
         throw new Error('simulated_projection_failure');
+      }
+      if (command.type === 'CommitAssistantMessage') {
+        const ledger = await ledgerRepositoryForCommit.current?.get('session_1');
+        if (ledger !== undefined) ledgerStatesAtAssistantCommit.push(ledger.state);
       }
       return storedSessionModule.execute(command, context);
     },
@@ -223,7 +235,7 @@ async function fixture(
         {
           id: 'task_recovered',
           taskKey: 'teaching:task_recovered',
-          status: 'completed' as const,
+          status: options.recoveredTaskStatus ?? ('completed' as const),
           createdAt: '2026-07-14T00:00:00.000Z',
           updatedAt: '2026-07-14T00:01:00.000Z',
           resourceVersion: 1,
@@ -262,6 +274,7 @@ async function fixture(
       };
     },
     async read() {
+      if (options.agentReadError !== undefined) throw options.agentReadError;
       return options.agentDirective === undefined
         ? undefined
         : { markdown: 'Recovered teaching explanation.', directive: options.agentDirective };
@@ -376,7 +389,22 @@ async function fixture(
       };
     },
   };
-  const ledgerRepository = createInMemoryTeachingLedgerRepository();
+  const storedLedgerRepository = createInMemoryTeachingLedgerRepository();
+  let ledgerDirectiveSaveShouldConflict = options.ledgerDirectiveSaveConflictsOnce ?? false;
+  const ledgerRepository: TeachingLedgerRepository = {
+    get: (sessionId) => storedLedgerRepository.get(sessionId),
+    async save(context, record, expectedVersion) {
+      if (record.state.summaryStatus === 'delivered' && ledgerDirectiveSaveShouldConflict) {
+        ledgerDirectiveSaveShouldConflict = false;
+        throw new RepositoryVersionConflictError(expectedVersion);
+      }
+      return storedLedgerRepository.save(context, record, expectedVersion);
+    },
+    delete: (context, sessionId, expectedVersion) =>
+      storedLedgerRepository.delete(context, sessionId, expectedVersion),
+    list: (filter) => storedLedgerRepository.list(filter),
+  };
+  ledgerRepositoryForCommit.current = ledgerRepository;
   const created = createInteractiveTeaching({
     sessionModule,
     contextSources: sources,
@@ -435,6 +463,10 @@ async function fixture(
     nextCheckpointId: () => 'checkpoint_1',
     nextTransactionId: () => 'tx_interactive_1',
     now: () => new Date('2026-07-14T00:02:00.000Z'),
+    async resolveSession(sessionId) {
+      if (sessionId !== 'session_1') throw new Error('teaching_session_not_found');
+      return { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' };
+    },
   });
   return {
     ...created,
@@ -447,6 +479,7 @@ async function fixture(
     capturedInteractionObservations,
     observedMessageBatches,
     ledgerRepository,
+    ledgerStatesAtAssistantCommit,
     frames,
     resolveAgentCompletion(markdown: string) {
       if (resolveAgentCompletion === undefined) throw new Error('completion_not_deferred');
@@ -795,6 +828,135 @@ describe('InteractiveTeaching deep module', () => {
     expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
   });
 
+  it('stops a durable generation after volatile task ownership is lost', async () => {
+    const { module, sessionModule, messageLog } = await fixture();
+    await sessionModule.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_1',
+        taskId: 'task_recovered',
+        mode: 'new-turn',
+      },
+      { ...commandContext, commandId: 'bind_durable_task', expectedVersion: 1 },
+    );
+
+    const stopped = await module.stopTurn(
+      { sessionId: 'session_1', taskId: 'task_recovered' },
+      { ...commandContext, commandId: 'stop_durable_task', expectedVersion: 2 },
+    );
+
+    expect(stopped).toMatchObject({ taskId: 'task_recovered', completionStatus: 'interrupted' });
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_after_durable_stop',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({
+        generationTaskId: 'task_recovered',
+        completionStatus: 'interrupted',
+      }),
+    ]);
+  });
+
+  it.each(['failed', 'cancelled', 'timeout'] as const)(
+    'clears a %s durable task binding during read reconciliation',
+    async (status) => {
+      const { reconcileGeneration, sessionModule } = await fixture({
+        recoveredTaskStatus: status,
+      });
+      await sessionModule.execute(
+        {
+          type: 'StartSessionGeneration',
+          lessonId: 'lesson_1',
+          taskId: 'task_recovered',
+          mode: 'new-turn',
+        },
+        { ...commandContext, commandId: `bind_${status}_task`, expectedVersion: 1 },
+      );
+
+      await reconcileGeneration({
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        context: { ...commandContext, commandId: `reconcile_${status}_task` },
+      });
+
+      const view = await sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+        {
+          correlationId: `query_${status}_task`,
+          actor: 'local-user',
+          requestedAt: commandContext.requestedAt,
+          receivedAt: commandContext.receivedAt,
+        },
+      );
+      expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
+    },
+  );
+
+  it('leaves a running task active while a paused session snapshot is reconciled', async () => {
+    const { reconcileGeneration, sessionModule } = await fixture({
+      recoveredTaskStatus: 'running',
+    });
+    const appended = await sessionModule.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_1',
+        messageId: 'message_user_1',
+        contentArtifactRef: 'artifact:user:1',
+      },
+      { ...commandContext, commandId: 'append_running_task_user', expectedVersion: 1 },
+    );
+    const bound = await sessionModule.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_1',
+        taskId: 'task_recovered',
+        mode: 'new-turn',
+      },
+      {
+        ...commandContext,
+        commandId: 'bind_running_task',
+        expectedVersion: appended.value.resourceVersion,
+      },
+    );
+    await sessionModule.execute(
+      { type: 'PauseLesson', lessonId: 'lesson_1' },
+      {
+        ...commandContext,
+        commandId: 'pause_running_task',
+        expectedVersion: bound.value.resourceVersion,
+      },
+    );
+
+    await reconcileGeneration({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: { ...commandContext, commandId: 'reconcile_running_task' },
+    });
+
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_running_task',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(view.learning.session).toMatchObject({
+      state: 'paused',
+      activeGenerationTaskId: 'task_recovered',
+    });
+  });
+
   it('advances a turn, observes the complete reply, and freezes a source-bound checkpoint', async () => {
     const {
       module,
@@ -892,6 +1054,87 @@ describe('InteractiveTeaching deep module', () => {
     });
   });
 
+  it('atomically completes discussion and summary before publishing the final reply', async () => {
+    const directive: TeachingDirective = {
+      schemaVersion: 1,
+      lessonPhase: 'ready_to_close',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'completed',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    };
+    const {
+      module,
+      drainObservations,
+      ledgerRepository,
+      ledgerStatesAtAssistantCommit,
+      messageLog,
+    } = await fixture({
+      agentDirective: directive,
+      ledgerDirectiveSaveConflictsOnce: true,
+    });
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1'],
+    });
+    await ledgerRepository.save(
+      tx,
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        observations: [],
+        checkpoints: [],
+        state: {
+          ...initial,
+          lessonPhase: 'discussion',
+          comprehensiveCheck: 'completed',
+          closureInquiry: 'awaiting_confirmation',
+          summaryStatus: 'pending',
+          knowledgePoints: initial.knowledgePoints.map((point) => ({
+            ...point,
+            progress: 'completed',
+            interactionStatus: 'completed',
+          })),
+        },
+        resourceVersion: 0,
+      },
+      0,
+    );
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'ready_to_close',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    });
+    expect(ledgerStatesAtAssistantCommit).toEqual([
+      expect.objectContaining({
+        lessonPhase: 'ready_to_close',
+        closureInquiry: 'confirmed_no_questions',
+        summaryStatus: 'delivered',
+      }),
+    ]);
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ role: 'user' }),
+      expect.objectContaining({ role: 'assistant', completionStatus: 'complete' }),
+    ]);
+  });
+
   it('rebuilds each teaching observation from the complete session history', async () => {
     const { module, drainObservations, observedMessageBatches, capturedInteractionObservations } =
       await fixture();
@@ -940,7 +1183,7 @@ describe('InteractiveTeaching deep module', () => {
     ]);
   });
 
-  it('replays the latest hidden teaching directive when the persisted ledger is stale', async () => {
+  it('replays the latest hidden teaching directive during read reconciliation', async () => {
     const directive: TeachingDirective = {
       schemaVersion: 1,
       lessonPhase: 'comprehensive_check',
@@ -951,7 +1194,7 @@ describe('InteractiveTeaching deep module', () => {
       closureInquiry: 'pending',
       summaryStatus: 'pending',
     };
-    const { module, drainObservations, recoverSession, ledgerRepository } = await fixture({
+    const { module, drainObservations, reconcileGeneration, ledgerRepository } = await fixture({
       agentDirective: directive,
     });
     await module.advanceTurn(
@@ -979,7 +1222,7 @@ describe('InteractiveTeaching deep module', () => {
       current.resourceVersion,
     );
 
-    await recoverSession({
+    await reconcileGeneration({
       courseId: 'course_1',
       lessonId: 'lesson_1',
       sessionId: 'session_1',
@@ -991,6 +1234,35 @@ describe('InteractiveTeaching deep module', () => {
       comprehensiveCheck: 'learning',
       knowledgePoints: [{ progress: 'completed', interactionStatus: 'completed' }],
     });
+  });
+
+  it.each([
+    new Error('teaching_control_protocol_invalid'),
+    Object.assign(new Error('invalid persisted directive'), { name: 'ZodError' }),
+  ])('does not let an invalid committed control block break read reconciliation', async (error) => {
+    const { module, drainObservations, reconcileGeneration } = await fixture({
+      agentReadError: error,
+    });
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    await expect(
+      reconcileGeneration({
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        context: commandContext,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it('records adjacent exploration without changing current knowledge coverage', async () => {

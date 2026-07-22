@@ -264,8 +264,11 @@ export function createLessonClosureWorkflow(options: {
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
       if (current.state === 'cancelled') throw new LessonClosureError('lesson_not_completable');
       validateFinalReview(review, current);
+      const { errorCode: _error, draftArtifactRef: _draft, ...rest } = current;
+      void _error;
+      void _draft;
       return save({
-        ...current,
+        ...rest,
         state: 'review-ready',
         review,
         updatedAt: options.now().toISOString(),

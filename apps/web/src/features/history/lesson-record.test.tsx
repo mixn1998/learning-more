@@ -72,6 +72,105 @@ describe('lesson history record', () => {
     expect(onStartSupplementary).toHaveBeenCalledTimes(1);
   });
 
+  it('switches the left action to close while a supplementary session is active', async () => {
+    const onArchiveSupplementary = vi.fn().mockResolvedValue('supplement-1');
+    render(
+      <LessonRecordView
+        original={{ sessionId: 'original', label: '原始学习', messages: [] }}
+        progress="completed"
+        supplementary={[
+          {
+            sessionId: 'supplement-1',
+            label: '补充学习 1',
+            status: 'active',
+            messages: [],
+          },
+        ]}
+        activeSupplementary={{
+          id: 'supplement-1',
+          courseId: 'course-1',
+          lessonId: 'lesson-1',
+          sourceFinalReviewId: 'review-1',
+          status: 'active',
+          messageIds: [],
+          messages: [],
+          createdAt: '2026-07-22T00:00:00.000Z',
+          updatedAt: '2026-07-22T00:00:00.000Z',
+          resourceVersion: 1,
+        }}
+        onArchiveSupplementary={onArchiveSupplementary}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭本轮学习' }));
+    expect(onArchiveSupplementary).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: '开始补充学习' })).not.toBeInTheDocument();
+  });
+
+  it('shows a visible thinking state before the first supplementary stream segment arrives', () => {
+    render(
+      <LessonRecordView
+        original={{ sessionId: 'original', label: 'Original', messages: [] }}
+        progress="completed"
+        supplementary={[
+          {
+            sessionId: 'supplement-1',
+            label: 'Supplementary 1',
+            status: 'active',
+            messages: [],
+          },
+        ]}
+        activeSupplementary={{
+          id: 'supplement-1',
+          courseId: 'course-1',
+          lessonId: 'lesson-1',
+          sourceFinalReviewId: 'review-1',
+          status: 'active',
+          messageIds: [],
+          messages: [],
+          activeGenerationTaskId: 'task-1',
+          createdAt: '2026-07-22T00:00:00.000Z',
+          updatedAt: '2026-07-22T00:00:00.000Z',
+          resourceVersion: 2,
+        }}
+        assistantMarkdown=""
+        onSendSupplementary={async () => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Supplementary 1' }));
+    expect(screen.getByRole('status')).toHaveTextContent('正在思考中……');
+  });
+
+  it('renames an archived supplementary session inline', async () => {
+    const onRenameSupplementary = vi.fn().mockResolvedValue(undefined);
+    render(
+      <LessonRecordView
+        original={{ sessionId: 'original', label: '原始学习', messages: [] }}
+        progress="completed"
+        supplementary={[
+          {
+            sessionId: 'supplement-1',
+            label: '补充学习 1',
+            status: 'archived',
+            resourceVersion: 3,
+            messages: [],
+          },
+        ]}
+        onRenameSupplementary={onRenameSupplementary}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '原始学习' })).toHaveTextContent('原始学习');
+    fireEvent.click(screen.getByText('补充学习 1'));
+    fireEvent.change(screen.getByRole('textbox', { name: '重命名 补充学习 1' }), {
+      target: { value: '  函数边界讨论  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '确认重命名' }));
+
+    expect(onRenameSupplementary).toHaveBeenCalledWith('supplement-1', '函数边界讨论', 3);
+  });
+
   it('renders message roles from structured data instead of parsing visible prefixes', () => {
     render(
       <LessonRecordView

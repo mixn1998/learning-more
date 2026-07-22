@@ -18,6 +18,9 @@ export const StartSupplementarySessionBodySchema = z.strictObject({});
 export const AppendSupplementaryMessageBodySchema = z.strictObject({
   markdown: z.string().trim().min(1).max(200_000),
 });
+export const RenameSupplementarySessionBodySchema = z.strictObject({
+  title: z.string().trim().min(1).max(30),
+});
 
 export const LessonSessionStartedResponseSchema = z.strictObject({
   lessonId: identifier,
@@ -38,11 +41,26 @@ export const GenerationStoppedResponseSchema = z.strictObject({
 });
 export const SupplementarySessionResponseSchema = z.strictObject({
   id: identifier,
+  title: z.string().trim().min(1).max(30).optional(),
   courseId: identifier,
   lessonId: identifier,
   sourceFinalReviewId: identifier,
   status: z.enum(['active', 'archived']),
   messageIds: z.array(identifier),
+  activeGenerationTaskId: identifier.optional(),
+  generationErrorCode: identifier.optional(),
+  messages: z
+    .array(
+      z.strictObject({
+        id: identifier,
+        role: z.enum(['user', 'assistant']),
+        createdAt: z.iso.datetime({ offset: true }),
+        markdown: z.string(),
+        completionStatus: z.enum(['complete', 'interrupted']).optional(),
+        generationTaskId: identifier.optional(),
+      }),
+    )
+    .optional(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
   resourceVersion: z.number().int().nonnegative(),
@@ -178,7 +196,9 @@ export const LessonRecordResponseSchema = z.strictObject({
     z.strictObject({
       sessionId: identifier,
       label: z.string(),
+      resourceVersion,
       createdAt: z.iso.datetime({ offset: true }),
+      status: z.enum(['active', 'archived']),
       messages: z.array(LessonRecordMessageSchema),
     }),
   ),

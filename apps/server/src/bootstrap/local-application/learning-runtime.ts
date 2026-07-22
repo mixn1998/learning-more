@@ -18,6 +18,7 @@ import { collapseRetryDuplicateUserMessages } from '../../modules/learning-sessi
 import { createLocalFileMessageLog } from '../../modules/learning-session/implementation/message-log.js';
 import { createSessionModule } from '../../modules/learning-session/implementation/session-module.js';
 import { createSupplementarySessionModule } from '../../modules/learning-session/implementation/supplementary-session-module.js';
+import { createSupplementaryLearning } from '../../modules/learning-session/implementation/supplementary-learning.js';
 import { actualLearningSeconds } from '../../modules/learning-session/implementation/time-intervals.js';
 import { reviewIdForLesson } from '../../modules/review-closure/implementation/stage-review.js';
 import type { LessonClosureRecord } from '../../modules/review-closure/model/review-state.js';
@@ -83,6 +84,7 @@ export function createLocalLearningRuntime(
   const teachingLedgerRepository = createLocalFileTeachingLedgerRepository(input.dataRoot);
   let projectionStatus: 'ready' | 'degraded' = 'ready';
   const teachingRecoveryBySession = new Map<string, Promise<void>>();
+  const generationReconciliationBySession = new Map<string, Promise<void>>();
 
   const sessionModule = createSessionModule({
     repositories: learningRepositories,
@@ -194,21 +196,40 @@ export function createLocalLearningRuntime(
     nextCheckpointId: () => `teaching_checkpoint_${randomUUID()}`,
     nextTransactionId: () => `tx_teaching_${randomUUID()}`,
     now: input.now,
+    resolveSession,
   });
   const supplementarySessions = createSupplementarySessionModule({
     repository: supplementaryRepository,
+    messageLog,
     unitOfWork: input.unitOfWork,
     async getCompletedLesson(lessonId) {
       const learning = await learningRepositories.get(lessonId);
       if (learning?.learning.progress !== 'completed' || learning.finalReview === undefined) {
         return undefined;
       }
+      const finalReview = await input.artifactStore.read(learning.finalReview.artifactRef);
+      if (finalReview === undefined || finalReview.content.trim() === '') return undefined;
       const lesson = await input.course.access.getLesson(lessonId);
       if (lesson === undefined) return undefined;
       return { courseId: lesson.courseId, finalReview: learning.finalReview };
     },
     nextSessionId: () => `supplementary_${randomUUID()}`,
     now: () => new Date(),
+  });
+  const supplementaryLearning = createSupplementaryLearning({
+    sessions: supplementarySessions,
+    runtime: input.generation.runtime,
+    execution: input.generation.execution,
+    artifacts: input.artifactStore,
+    async loadFinalReviewMarkdown(lessonId) {
+      const learning = await learningRepositories.get(lessonId);
+      const artifactRef = learning?.finalReview?.artifactRef;
+      if (artifactRef === undefined) return undefined;
+      return (await input.artifactStore.read(artifactRef))?.content;
+    },
+    nextMessageId: () => `message_${randomUUID()}`,
+    now: input.now,
+    providerId: 'current',
   });
 
   async function captureTeachingProfileCheckpoint(
@@ -254,49 +275,6 @@ export function createLocalLearningRuntime(
     });
   }
 
-  async function captureSupplementaryProfileCheckpoint(
-    session: NonNullable<Awaited<ReturnType<typeof supplementarySessions.get>>>,
-  ): Promise<void> {
-    const sourceGroupId = `supplementary:${session.id}`;
-    const sources = (
-      await Promise.all(
-        session.messageIds.slice(-64).map(async (messageId) => {
-          const excerpt =
-            (await input.artifactStore.read(messageId))?.content ??
-            (await input.artifactStore.readDraft(messageId));
-          if (excerpt === undefined || excerpt.trim() === '') return undefined;
-          return {
-            sourceRef: `supplementary:${messageId}`,
-            sourceGroupId,
-            sourceType: 'supplementary' as const,
-            role: 'user' as const,
-            excerpt,
-            observedAt: session.updatedAt,
-          };
-        }),
-      )
-    ).filter((source) => source !== undefined);
-    if (sources.length === 0) return;
-    const lesson = await input.course.access.getLesson(session.lessonId);
-    const course = await input.course.access.getCourse(session.courseId);
-    const learning = await learningRepositories.get(session.lessonId);
-    const dependentSourceGroupIds =
-      learning?.learning.session?.id === undefined
-        ? []
-        : [`lesson:${session.lessonId}:session:${learning.learning.session.id}`];
-    void input.profile.checkpointSink.capture({
-      checkpointId: `profile:${session.id}:closed`,
-      checkpointKind: 'supplementary_session_closed',
-      sourceType: 'supplementary',
-      sourceGroupId,
-      dependentSourceGroupIds,
-      ...(course === undefined ? {} : { courseContext: course.title }),
-      ...(lesson === undefined ? {} : { lessonContext: `${lesson.title}｜${lesson.objective}` }),
-      completeness: 'complete',
-      sources,
-    });
-  }
-
   async function resolveSession(sessionId: string) {
     let found;
     for await (const record of learningRepositories.list()) {
@@ -326,6 +304,9 @@ export function createLocalLearningRuntime(
       outlineVersionId: lesson.outlineVersionId,
       completedReviewRefs,
       currentMessageRefs: messages.map((message) => message.contentArtifactRef),
+      ...(found.writeLease?.pageInstanceId === undefined
+        ? {}
+        : { pageInstanceId: found.writeLease.pageInstanceId }),
     };
   }
 
@@ -333,6 +314,33 @@ export function createLocalLearningRuntime(
     module: sessionModule,
     teaching: interactiveTeachingRuntime.module,
     resolveSession,
+    async reconcileSession(reference, correlationId) {
+      const existing = generationReconciliationBySession.get(reference.sessionId);
+      if (existing !== undefined) return existing;
+      const timestamp = input.now().toISOString();
+      const commandId = `reconcile_generation_${reference.sessionId}_${randomUUID()}`;
+      const reconciliation = interactiveTeachingRuntime
+        .reconcileGeneration({
+          courseId: reference.courseId,
+          lessonId: reference.lessonId,
+          sessionId: reference.sessionId,
+          context: {
+            commandId,
+            correlationId,
+            idempotencyKey: commandId,
+            actor: 'local-user',
+            requestedAt: timestamp,
+            receivedAt: timestamp,
+            pageInstanceId:
+              reference.pageInstanceId ?? `generation-reconciliation:${reference.sessionId}`,
+          },
+        })
+        .finally(() => {
+          generationReconciliationBySession.delete(reference.sessionId);
+        });
+      generationReconciliationBySession.set(reference.sessionId, reconciliation);
+      return reconciliation;
+    },
     async getTeachingProgress(sessionId) {
       const reference = await resolveSession(sessionId);
       const facts = await teachingContextSources.getCourseAndLesson({
@@ -483,18 +491,30 @@ export function createLocalLearningRuntime(
       );
       const supplementary = [];
       for await (const session of supplementarySessions.listByLesson(lessonId)) {
+        const loggedMessages = await supplementarySessions.listMessages(session.id);
+        const loggedById = new Map(loggedMessages.map((message) => [message.id, message]));
+        const projectedMessages = session.messageIds.map(
+          (messageId) =>
+            loggedById.get(messageId) ?? {
+              id: messageId,
+              role: 'user' as const,
+              contentArtifactRef: messageId,
+            },
+        );
         const sessionMessages = await Promise.all(
-          session.messageIds.map(async (messageId) => {
+          projectedMessages.map(async (message) => {
             const markdown =
-              (await input.artifactStore.read(messageId))?.content ??
-              (await input.artifactStore.readDraft(messageId));
-            return { id: messageId, role: 'user' as const, markdown: markdown ?? '' };
+              (await input.artifactStore.read(message.contentArtifactRef))?.content ??
+              (await input.artifactStore.readDraft(message.contentArtifactRef));
+            return { id: message.id, role: message.role, markdown: markdown ?? '' };
           }),
         );
         supplementary.push({
           sessionId: session.id,
-          label: `补充学习 ${supplementary.length + 1}`,
+          label: session.title ?? `补充学习 ${supplementary.length + 1}`,
+          resourceVersion: session.resourceVersion,
           createdAt: session.createdAt,
+          status: session.status,
           messages: sessionMessages,
         });
       }
@@ -567,14 +587,14 @@ export function createLocalLearningRuntime(
     nextMessageId: () => `message_${randomUUID()}`,
     now: () => new Date(),
     supplementary: {
-      async execute(command) {
-        const session = await supplementarySessions.execute(command);
-        if (command.type === 'ArchiveSupplementarySession') {
-          await captureSupplementaryProfileCheckpoint(session);
-        }
-        return session;
-      },
-      get: supplementarySessions.get,
+      start: supplementaryLearning.start,
+      view: supplementaryLearning.view,
+      send: supplementaryLearning.send,
+      revise: supplementaryLearning.revise,
+      retry: supplementaryLearning.retry,
+      rename: supplementaryLearning.rename,
+      stop: supplementaryLearning.stop,
+      archive: supplementaryLearning.archive,
     },
   };
 

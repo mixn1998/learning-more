@@ -160,6 +160,45 @@ function mockScript(
       },
     ];
   }
+  if (prompt.includes('增量归并到一个有界的跨会话语义核心')) {
+    const input = JSON.parse(prompt.slice(prompt.lastIndexOf('\n\n') + 2)) as {
+      currentModes?: { modeId: string; origin: 'observed_behavior' | 'explicit_preference' }[];
+      newReviewObservations?: {
+        observationId: string;
+        origin: 'observed_behavior' | 'explicit_preference';
+      }[];
+    };
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          assignments: (input.newReviewObservations ?? []).map((observation) => {
+            const current = (input.currentModes ?? []).find(
+              (mode) => mode.origin === observation.origin,
+            );
+            return {
+              sourceModeIds: current === undefined ? [] : [current.modeId],
+              observationIds: [observation.observationId],
+              mode: {
+                origin: observation.origin,
+                feature:
+                  observation.origin === 'observed_behavior'
+                    ? '倾向先核验前提、边界与条件变化再修正判断'
+                    : '偏好使用对比和反例理解复杂概念',
+                teachingImpact:
+                  observation.origin === 'observed_behavior'
+                    ? '沿统一问题主线加入对比、反推和条件变化，促使用户主动检验结论'
+                    : '讲解复杂概念时优先提供对比和反例',
+                applicabilityBoundary: '只适用于已经记录的学习情境，不代表固定人格或能力',
+                priority: 5,
+              },
+            };
+          }),
+          ignoredObservationIds: [],
+        }),
+      },
+    ];
+  }
   if (prompt.includes('【分析边界】') && prompt.includes('【可用学习证据】')) {
     const evidence = prompt
       .split(/^### 学习证据 \d+$/gmu)
@@ -175,13 +214,28 @@ function mockScript(
       group.push(item);
       groups.set(item.theme, group);
     }
-    const claims = [...groups.entries()]
-      .filter(([, group]) => group.length >= 2)
-      .map(([, group], index) => ({
+    const semanticModes = prompt
+      .split(/^### 稳定学习模式 \d+$/gmu)
+      .slice(1)
+      .flatMap((block) => {
+        const modeId = /^模式编号：([^\r\n]+)$/mu.exec(block)?.[1];
+        const evidenceIds = /^可引用证据编号：([^\r\n]+)$/mu.exec(block)?.[1]?.split('、');
+        return modeId === undefined || evidenceIds === undefined ? [] : [{ modeId, evidenceIds }];
+      });
+    const claims = (
+      semanticModes.length > 0
+        ? semanticModes.map((mode) => [mode.modeId, mode.evidenceIds] as const)
+        : [...groups.entries()].map(
+            ([theme, group]) => [theme, group.map((item) => item.evidenceId)] as const,
+          )
+    )
+      .filter(([, evidenceIds]) => evidenceIds.length >= 2)
+      .map(([modeId, evidenceIds], index) => ({
         claimId: `claim_${index + 1}`,
+        ...(semanticModes.length === 0 ? {} : { semanticModeId: modeId }),
         markdown:
-          '### 你会在不同学习中重复使用相似的做法\n\n你在几次不同的学习记录中，都用相似的方式检查问题并调整判断。这说明在当前这些学习任务里，这种做法不是偶然出现。',
-        evidenceIds: group.map((item) => item.evidenceId),
+          '### 你会先核验条件再修正判断\n\n核心结论：你会检查前提与边界。具体表现：在不同学习中根据条件变化调整结论。教学建议：继续使用对比和反推激活思考。适用边界：只代表已有学习记录。',
+        evidenceIds,
         confidence: 0.65,
         limitations: ['这条观察只适用于当前已经记录的学习情境，不能说明固定人格或永久能力。'],
         counterEvidenceChecked: true,
@@ -340,6 +394,7 @@ function mockScript(
           kind: 'lesson-final',
           title: '本课学习回看',
           knowledgeMap: { title: '知识图谱', markdown: '本课知识线索已依据冻结证据整理。' },
+          methodologyInsight: '先把判断连接到可观察证据，再决定结论能否迁移到新情境。',
           coreInsight: '把本课中的关键判断连接到可观察的学习证据。',
           performance: [
             { title: '已经推进的部分', markdown: '学习者已完成本课要求的主要互动。' },
