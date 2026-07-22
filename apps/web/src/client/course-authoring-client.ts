@@ -13,6 +13,8 @@ import {
   OutlineMaterialResponseSchema,
   OutlineSessionResponseSchema,
   OutlineSessionViewResponseSchema,
+  RenameCourseTitleBodySchema,
+  RenameCourseTitleResponseSchema,
   type CourseMode,
   type CandidateGenerationFailureCode,
   type CourseArchiveView,
@@ -127,6 +129,12 @@ export interface CourseAuthoringClient {
     pageInstanceId: string;
   }): Promise<{ courseId: string; outlineVersionId?: string; resourceVersion: number }>;
   getCourse(courseId: string): Promise<CourseArchiveView>;
+  renameCourseTitle(input: {
+    courseId: string;
+    title: string;
+    resourceVersion: number;
+    pageInstanceId: string;
+  }): Promise<{ courseId: string; title: string; resourceVersion: number }>;
   reviseOutline(input: {
     courseId: string;
     sourceCandidateVersionId: string;
@@ -300,6 +308,17 @@ export const courseAuthoringClient: CourseAuthoringClient = {
     return (
       await apiRequest(`/api/v1/courses/${encodeURIComponent(courseId)}`, {
         schema: CourseArchiveResponseSchema,
+      })
+    ).data;
+  },
+  async renameCourseTitle(input) {
+    return (
+      await apiRequest(`/api/v1/courses/${encodeURIComponent(input.courseId)}/title`, {
+        method: 'PATCH',
+        body: RenameCourseTitleBodySchema.parse({ title: input.title }),
+        schema: RenameCourseTitleResponseSchema,
+        command: command(input.pageInstanceId),
+        resourceVersion: input.resourceVersion,
       })
     ).data;
   },

@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import type { CompiledCandidate } from '../ports/candidate-version-repository.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
 import type { LessonDefinition } from '../model/lesson-definition.js';
-import { resolveCourseTitle } from '../model/course-title.js';
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import {
   resolveNextLessonRecommendation,
@@ -252,7 +251,6 @@ export async function reviseCourseOutline(
         tx,
         {
           ...courseWithoutRecommendation,
-          title: resolveCourseTitle(command.candidate.outlineMarkdown, course.title),
           outlineVersionId: command.newOutlineVersionId,
           lessonIds,
           ...(recommendedLessonId === undefined ? {} : { recommendedLessonId }),

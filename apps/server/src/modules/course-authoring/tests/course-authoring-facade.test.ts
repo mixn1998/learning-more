@@ -85,6 +85,41 @@ function setup(
 }
 
 describe('CourseAuthoring public facade', () => {
+  it('renames an active or closed course without changing its outline reference', async () => {
+    const { courses, facade } = setup();
+    await courses.courses.save(
+      tx,
+      {
+        id: 'course_rename',
+        title: 'Original title',
+        courseMode: 'standard',
+        outlineVersionId: 'outline_v1',
+        lessonIds: [],
+        status: 'closed',
+        closedAt: context.requestedAt,
+        createdAt: context.requestedAt,
+        resourceVersion: 0,
+      },
+      0,
+    );
+
+    const renamed = await facade.execute(
+      { type: 'RenameCourse', courseId: 'course_rename', title: '  User title  ' },
+      { ...context, commandId: 'rename_course', expectedVersion: 1 },
+    );
+
+    expect(renamed).toMatchObject({
+      resourceVersion: 2,
+      value: { kind: 'course-renamed', courseId: 'course_rename', title: 'User title' },
+    });
+    await expect(courses.courses.get('course_rename')).resolves.toMatchObject({
+      title: 'User title',
+      outlineVersionId: 'outline_v1',
+      status: 'closed',
+      resourceVersion: 2,
+    });
+  });
+
   it('recovers a completed provider reply when an authoring turn was left running', async () => {
     const { authoring, facade } = setup();
     await authoring.outlineSessions.save(
@@ -374,7 +409,7 @@ describe('CourseAuthoring public facade', () => {
       value: { outlineSessionId: 'legacy_adjustment_session' },
     });
     await expect(facade.getCourse?.('course_1', queryContext)).resolves.toMatchObject({
-      title: '微积分',
+      title: '我想系统学习从直观变化到严格推导的完整路径',
     });
   });
 

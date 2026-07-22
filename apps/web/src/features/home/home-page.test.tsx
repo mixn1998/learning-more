@@ -23,6 +23,7 @@ function client(
     cancelCandidateGeneration: vi.fn(),
     confirmCandidate: vi.fn(),
     getCourse: vi.fn(),
+    renameCourseTitle: vi.fn(),
     reviseOutline: vi.fn(),
     getOutlineVersion: vi.fn(),
     uploadMaterial: vi.fn(),

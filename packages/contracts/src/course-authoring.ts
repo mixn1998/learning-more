@@ -98,6 +98,16 @@ export const ReviseCourseOutlineBodySchema = z.strictObject({
   sourceCandidateVersionId: identifierSchema,
 });
 
+export const RenameCourseTitleBodySchema = z.strictObject({
+  title: z.string().trim().min(1).max(200),
+});
+
+export const RenameCourseTitleResponseSchema = z.strictObject({
+  courseId: identifierSchema,
+  title: z.string().min(1).max(200),
+  resourceVersion: resourceVersionSchema,
+});
+
 export const IngestOutlineMaterialBodySchema = z.strictObject({
   fileName: z.string().trim().min(1).max(500),
   mediaType: z.enum(['application/pdf', 'text/plain', 'text/markdown']),

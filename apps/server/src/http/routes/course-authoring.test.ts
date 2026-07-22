@@ -341,6 +341,54 @@ describe('CourseAuthoring HTTP contract', () => {
     );
   });
 
+  it('renames a course through a page-scoped conditional command', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      commandId: 'command_01',
+      outcome: 'completed',
+      resourceVersion: 5,
+      value: { kind: 'course-renamed', courseId: 'course_01', title: 'New title' },
+    });
+    const response = await appWith(execute).inject({
+      method: 'PATCH',
+      url: '/api/v1/courses/course_01/title',
+      headers: {
+        ...headers,
+        'if-match': '"4"',
+        'x-page-instance-id': 'page_01',
+      },
+      payload: { title: '  New title  ' },
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.headers.etag).toBe('"5"');
+    expect(response.json()).toEqual({
+      courseId: 'course_01',
+      title: 'New title',
+      resourceVersion: 5,
+    });
+    expect(execute).toHaveBeenCalledWith(
+      { type: 'RenameCourse', courseId: 'course_01', title: 'New title' },
+      expect.objectContaining({ expectedVersion: 4, pageInstanceId: 'page_01' }),
+    );
+  });
+
+  it('rejects an empty course title before command execution', async () => {
+    const execute = vi.fn();
+    const response = await appWith(execute).inject({
+      method: 'PATCH',
+      url: '/api/v1/courses/course_01/title',
+      headers: {
+        ...headers,
+        'if-match': '"4"',
+        'x-page-instance-id': 'page_01',
+      },
+      payload: { title: '   ' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('permanently deletes an unconfirmed outline session through a conditional command', async () => {
     const execute = vi.fn().mockResolvedValue({
       commandId: 'command_01',

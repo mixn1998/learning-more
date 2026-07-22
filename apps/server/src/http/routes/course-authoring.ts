@@ -24,6 +24,8 @@ import {
   OutlineSessionResponseSchema,
   OutlineSessionViewResponseSchema,
   RequestCandidateGenerationBodySchema,
+  RenameCourseTitleBodySchema,
+  RenameCourseTitleResponseSchema,
   ReviseCourseOutlineBodySchema,
   type CommandContext,
   type OutlineMaterialView,
@@ -468,6 +470,43 @@ export async function registerCourseAuthoringRoutes(
             portraitRefresh: result.value.portraitRefresh,
           }),
         );
+      } catch (error) {
+        const problem = mapApplicationError(error, correlation);
+        return reply.code(problem.status).send(problem);
+      }
+    },
+  );
+
+  app.patch<{ Params: { courseId: string } }>(
+    '/api/v1/courses/:courseId/title',
+    async (request, reply) => {
+      const correlation = correlationId(request, options);
+      try {
+        const { courseId } = CourseParamsSchema.parse(request.params);
+        const body = RenameCourseTitleBodySchema.parse(request.body);
+        const context = buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId: correlation,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        });
+        const result = await options.module.execute(
+          { type: 'RenameCourse', courseId, title: body.title },
+          context,
+        );
+        if (result.value.kind !== 'course-renamed') {
+          throw new Error('unexpected_module_result');
+        }
+        return etag(reply, result.resourceVersion)
+          .code(200)
+          .send(
+            RenameCourseTitleResponseSchema.parse({
+              courseId: result.value.courseId,
+              title: result.value.title,
+              resourceVersion: result.resourceVersion,
+            }),
+          );
       } catch (error) {
         const problem = mapApplicationError(error, correlation);
         return reply.code(problem.status).send(problem);

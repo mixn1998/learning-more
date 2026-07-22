@@ -70,6 +70,7 @@ function client(overrides: Partial<CourseAuthoringClient> = {}): CourseAuthoring
       resourceVersion: 4,
     }),
     getCourse: vi.fn(),
+    renameCourseTitle: vi.fn(),
     reviseOutline: vi.fn(),
     getOutlineVersion: vi.fn(),
     uploadMaterial: vi.fn(),

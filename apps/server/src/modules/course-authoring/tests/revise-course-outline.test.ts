@@ -114,7 +114,7 @@ describe('reviseCourseOutline', () => {
     );
 
     await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
-      title: 'v2',
+      title: '概率论',
       outlineVersionId: 'outline_v2',
       lessonIds: ['lesson_stable'],
       resourceVersion: 2,
@@ -122,7 +122,9 @@ describe('reviseCourseOutline', () => {
     await expect(repositories.outlineVersions.get('outline_v1')).resolves.toMatchObject({
       outlineMarkdown: '# v1',
     });
-    await expect(repositories.outlineVersions.get('outline_v2')).resolves.toBeDefined();
+    await expect(repositories.outlineVersions.get('outline_v2')).resolves.toMatchObject({
+      outlineMarkdown: '# v2',
+    });
     expect(retireOutlineReferences).toHaveBeenCalledWith(
       expect.objectContaining({
         courseId: 'course_01',

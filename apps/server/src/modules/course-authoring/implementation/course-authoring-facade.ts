@@ -30,7 +30,6 @@ import type { PlanningOutlineRevisionParticipant } from '../../planning/interfac
 import { confirmCourse } from './confirm-course.js';
 import { createAuthoringContextAssembler } from './authoring-context-assembler.js';
 import { reviseCourseOutline } from './revise-course-outline.js';
-import { resolveCourseTitle } from '../model/course-title.js';
 
 export interface CandidateGenerationCoordinator {
   generate(input: { readonly commandId: string; readonly outlineSessionId: string }): Promise<{
@@ -481,7 +480,7 @@ export function createCourseAuthoringFacade(options: {
         if (baselineCandidate === undefined) throw new ResourceNotFoundError();
         const started = await openCourseAdjustmentSession({
           courseId: course.id,
-          topic: resolveCourseTitle(outline.outlineMarkdown, course.title),
+          topic: course.title,
           courseMode: course.courseMode,
           baselineCandidateVersionId: baselineCandidate.id,
           commandId: context.commandId,
@@ -816,6 +815,25 @@ export function createCourseAuthoringFacade(options: {
           course.resourceVersion + 1,
         );
       }
+      if (command.type === 'RenameCourse') {
+        const course = await options.courses.courses.get(command.courseId);
+        if (course === undefined) throw new ResourceNotFoundError();
+        assertVersion(course.resourceVersion, context);
+        const title = command.title.trim();
+        if (title === '')
+          throw Object.assign(new Error('course_title_required'), {
+            code: 'course_title_required',
+          });
+        await options.unitOfWork.execute(
+          { transactionId: `tx_rename_course_${context.commandId}` },
+          (tx) => options.courses.courses.save(tx, { ...course, title }, course.resourceVersion),
+        );
+        return result(
+          context,
+          { kind: 'course-renamed', courseId: course.id, title },
+          course.resourceVersion + 1,
+        );
+      }
       if (command.type === 'DeleteCourseArchive') {
         if (options.courseArchiveDeletion === undefined) {
           throw new Error('course_archive_deletion_not_configured');
@@ -940,7 +958,7 @@ export function createCourseAuthoringFacade(options: {
       }
       return {
         courseId: course.id,
-        title: resolveCourseTitle(outline.outlineMarkdown, course.title),
+        title: course.title,
         status: course.status,
         courseMode: course.courseMode,
         outlineVersionId: course.outlineVersionId,

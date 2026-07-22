@@ -44,6 +44,47 @@
   letter-spacing: -0.035em;
 }
 
+.course-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.course-title-row h1 {
+  min-width: 0;
+}
+
+.course-title-editor {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+  margin: 4px 0 16px;
+}
+
+.course-title-editor label {
+  font-weight: 700;
+}
+
+.course-title-editor input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--ink);
+  font: inherit;
+}
+
+.course-title-editor__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.course-title-editor [role='alert'] {
+  margin: 0;
+  color: var(--danger, #a33);
+}
+
 .course-hero .course-hero__introduction {
   margin: 0;
   max-width: 1100px;

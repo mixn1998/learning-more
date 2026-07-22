@@ -20,6 +20,8 @@ import {
   OutlineSessionResponseSchema,
   OutlineSessionViewResponseSchema,
   RequestCandidateGenerationBodySchema,
+  RenameCourseTitleBodySchema,
+  RenameCourseTitleResponseSchema,
   ReviseCourseOutlineBodySchema,
 } from '../dist/index.js';
 
@@ -156,6 +158,17 @@ function document() {
           },
         },
       },
+      '/api/v1/courses/{courseId}/title': {
+        patch: {
+          operationId: 'renameCourseTitle',
+          parameters: [courseParameter],
+          requestBody: jsonBody('RenameCourseTitleBody'),
+          responses: {
+            200: response('Course display title renamed', 'RenameCourseTitleResponse'),
+            ...errorResponses(),
+          },
+        },
+      },
       '/api/v1/courses/{courseId}': {
         get: {
           operationId: 'getCourseArchive',
@@ -192,12 +205,14 @@ function document() {
         RequestCandidateGenerationBody: embeddedSchema(RequestCandidateGenerationBodySchema),
         ConfirmOutlineCandidateBody: embeddedSchema(ConfirmOutlineCandidateBodySchema),
         ReviseCourseOutlineBody: embeddedSchema(ReviseCourseOutlineBodySchema),
+        RenameCourseTitleBody: embeddedSchema(RenameCourseTitleBodySchema),
         OutlineSessionResponse: embeddedSchema(OutlineSessionResponseSchema),
         OutlineSessionViewResponse: embeddedSchema(OutlineSessionViewResponseSchema),
         OutlineMessageResponse: embeddedSchema(OutlineMessageResponseSchema),
         GenerationAcceptedResponse: embeddedSchema(GenerationAcceptedResponseSchema),
         ConfirmationResponse: embeddedSchema(ConfirmationResponseSchema),
         OutlineRevisionResponse: embeddedSchema(OutlineRevisionResponseSchema),
+        RenameCourseTitleResponse: embeddedSchema(RenameCourseTitleResponseSchema),
         CourseArchiveResponse: embeddedSchema(CourseArchiveResponseSchema),
         DeleteCourseArchiveResponse: embeddedSchema(DeleteCourseArchiveResponseSchema),
         DeleteOutlineSessionResponse: embeddedSchema(DeleteOutlineSessionResponseSchema),

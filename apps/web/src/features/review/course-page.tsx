@@ -38,6 +38,7 @@ type CoursePageAuthoringClient = Pick<
   | 'getOutlineSession'
   | 'getOutlineVersion'
   | 'requestCandidateGeneration'
+  | 'renameCourseTitle'
   | 'reviseOutline'
 >;
 
@@ -691,6 +692,32 @@ export function CoursePage(props: {
     (lessonId) => lessonStates[lessonId]?.progress === 'abandoned',
   );
 
+  const renameCourseTitle = async (title: string) => {
+    if (authoring === undefined) throw new Error('course_rename_unavailable');
+    const renamed = await authoring.renameCourseTitle({
+      courseId: course.courseId,
+      title,
+      resourceVersion: course.resourceVersion,
+      pageInstanceId: getPageInstanceId(),
+    });
+    if (!mounted.current) return;
+    setCourse((current) =>
+      current === undefined
+        ? current
+        : { ...current, title: renamed.title, resourceVersion: renamed.resourceVersion },
+    );
+    setDashboard((current) =>
+      current === undefined
+        ? current
+        : {
+            ...current,
+            courses: current.courses.map((item) =>
+              item.courseId === renamed.courseId ? { ...item, title: renamed.title } : item,
+            ),
+          },
+    );
+  };
+
   return (
     <>
       <FormalCourseView
@@ -704,6 +731,7 @@ export function CoursePage(props: {
         onModifyOutline={() => navigate(`/courses/${course.courseId}?view=revision`)}
         onNavigate={navigate}
         onOpenReview={() => navigate(`/courses/${course.courseId}?view=review`)}
+        onRenameCourse={authoring === undefined ? undefined : renameCourseTitle}
         onSelectVersion={async (outlineVersionId) => {
           if (authoring === undefined) throw new Error('outline_history_unavailable');
           return authoring.getOutlineVersion(course.courseId, outlineVersionId);

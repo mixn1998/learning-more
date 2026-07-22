@@ -22,6 +22,7 @@ export type CourseAuthoringCommand =
       courseId: string;
       sourceCandidateVersionId: string;
     }>
+  | Readonly<{ type: 'RenameCourse'; courseId: string; title: string }>
   | Readonly<{ type: 'DeleteOutlineSessionDraft'; outlineSessionId: string }>
   | Readonly<{ type: 'SaveOutlineSessionDraft'; outlineSessionId: string }>
   | Readonly<{ type: 'DeleteCourseArchive'; courseId: string }>;
@@ -59,6 +60,7 @@ export type CourseAuthoringResult =
       outlineVersionId?: string;
     }>
   | Readonly<{ kind: 'revision'; courseId: string; outlineVersionId: string }>
+  | Readonly<{ kind: 'course-renamed'; courseId: string; title: string }>
   | Readonly<{ kind: 'outline-session-deleted'; outlineSessionId: string; deletedAt: string }>
   | Readonly<{ kind: 'outline-session-draft-saved'; outlineSessionId: string }>
   | CourseArchiveDeletedResult;

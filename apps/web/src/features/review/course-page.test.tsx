@@ -11,6 +11,69 @@ import { CoursePage } from './course-page.js';
 afterEach(cleanup);
 
 describe('CoursePage', () => {
+  it('saves a course-page title edit and updates the visible canonical name', async () => {
+    const course = {
+      courseId: 'course_rename',
+      title: 'Original course title',
+      status: 'active' as const,
+      courseMode: 'standard' as const,
+      outlineVersionId: 'outline_01',
+      lessonIds: [],
+      outlineMarkdown: '# Markdown title',
+      resourceVersion: 4,
+    };
+    const renameCourseTitle = vi.fn().mockResolvedValue({
+      courseId: 'course_rename',
+      title: 'User course title',
+      resourceVersion: 5,
+    });
+    render(
+      <CoursePage
+        courseId="course_rename"
+        client={
+          {
+            getCourseReview: vi.fn().mockResolvedValue(undefined),
+          } as unknown as LearningClient
+        }
+        authoringClient={
+          {
+            getCourse: vi.fn().mockResolvedValue(course),
+            getOutlineVersion: vi.fn().mockResolvedValue({
+              courseId: 'course_rename',
+              outlineVersionId: 'outline_01',
+              sourceCandidateVersionId: 'candidate_01',
+              outlineMarkdown: '# Markdown title',
+              disciplineTag: 'general',
+              topicTags: [],
+              createdAt: '2026-07-22T00:00:00.000Z',
+              resourceVersion: 1,
+              current: true,
+            }),
+            renameCourseTitle,
+          } as unknown as CourseAuthoringClient
+        }
+      />,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Original course title' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '修改课程名称' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '课程名称' }), {
+      target: { value: 'User course title' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByRole('heading', { name: 'User course title' })).toBeInTheDocument();
+    expect(renameCourseTitle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        courseId: 'course_rename',
+        title: 'User course title',
+        resourceVersion: 4,
+      }),
+    );
+  });
+
   it('[EQ-COURSE-01] closes an eligible course and exposes its immutable topic summary only from the course archive', async () => {
     const course = {
       courseId: 'course_01',

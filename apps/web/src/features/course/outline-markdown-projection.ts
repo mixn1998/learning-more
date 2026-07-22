@@ -433,7 +433,7 @@ export function resolveCourseIntroduction(
   projection: OutlineMarkdownProjection,
   fallbackTitle: string,
 ): ResolvedCourseIntroduction {
-  const title = projection.title?.trim() || fallbackTitle.trim() || '课程';
+  const title = fallbackTitle.trim() || projection.title?.trim() || '课程';
   return {
     title,
     introductionText: projection.introductionText ?? `这是一门关于“${title}”的课程。`,

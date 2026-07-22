@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FormalCourseView } from './formal-course-view.js';
@@ -9,6 +9,43 @@ import { FormalCourseView } from './formal-course-view.js';
 afterEach(cleanup);
 
 describe('FormalCourseView outline history', () => {
+  it('edits the canonical course name without displaying the Markdown title', async () => {
+    const onRenameCourse = vi.fn().mockResolvedValue(undefined);
+    render(
+      <FormalCourseView
+        course={{
+          courseId: 'course_named',
+          title: '用户课程名称',
+          status: 'closed',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_named',
+          lessonIds: [],
+          outlineMarkdown: '# Markdown 大纲标题\n\n大纲介绍保持不变。',
+          resourceVersion: 3,
+        }}
+        lessonStates={{}}
+        onCloseCourse={vi.fn()}
+        onDeleteCourse={vi.fn()}
+        onModifyOutline={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenReview={vi.fn()}
+        onRenameCourse={onRenameCourse}
+        onSelectVersion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '用户课程名称' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Markdown 大纲标题' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '修改课程名称' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '课程名称' }), {
+      target: { value: '  新课程名称  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(onRenameCourse).toHaveBeenCalledWith('新课程名称'));
+    expect(screen.queryByRole('textbox', { name: '课程名称' })).not.toBeInTheDocument();
+  });
+
   it('renders the generated course summary and normalized discipline identity', () => {
     const summary =
       '本课程围绕一元微积分的核心概念与推理方法展开，结合图像直觉、公式计算和严格证明，帮助学习者建立可迁移的数学思维与后续学习基础。';
@@ -59,9 +96,7 @@ describe('FormalCourseView outline history', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('heading', { name: '微积分：从直观变化到严格推导' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '微积分' })).toBeInTheDocument();
     expect(screen.getByText(summary).tagName).toBe('P');
     expect(screen.getByText('数学 · 正式课程')).toBeInTheDocument();
     expect(screen.queryByText('每课遵循大致相同的思维路径：')).not.toBeInTheDocument();
@@ -122,8 +157,8 @@ describe('FormalCourseView outline history', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '数据分析进阶' })).toBeInTheDocument();
-    expect(screen.getByText('这是一门关于“数据分析进阶”的课程。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '数据分析' })).toBeInTheDocument();
+    expect(screen.getByText('这是一门关于“数据分析”的课程。')).toBeInTheDocument();
     expect(screen.queryByText('数据基础 → 诊断方法')).not.toBeInTheDocument();
   });
 
@@ -172,9 +207,7 @@ describe('FormalCourseView outline history', () => {
       />,
     );
 
-    expect(
-      screen.getByText('这是一门关于“AI Token 会成为企业“成本硬通货”吗？”的课程。').tagName,
-    ).toBe('P');
+    expect(screen.getByText('这是一门关于“AI 成本”的课程。').tagName).toBe('P');
     expect(screen.getByText('商业 · 正式课程')).toBeInTheDocument();
     const chips = document.querySelector('.course-hero__chips');
     expect(chips?.querySelectorAll('.lm-pill')).toHaveLength(2);

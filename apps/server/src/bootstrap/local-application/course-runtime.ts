@@ -33,7 +33,6 @@ import type { UnitOfWork } from '../../persistence/unit-of-work.js';
 import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalGenerationRuntime } from './generation-runtime.js';
 import type { LocalProfileRuntime } from './profile-runtime.js';
-import { resolveCourseTitle } from '../../modules/course-authoring/model/course-title.js';
 
 type CourseRepositories = ReturnType<typeof createLocalFileCourseCreationRepositories>;
 type AuthoringRepositories = ReturnType<typeof createLocalFileCourseAuthoringRepositories>;
@@ -143,24 +142,12 @@ export function createLocalCourseRuntime(
 
   async function getCourseWithOutlineTitle(courseId: string) {
     const course = await courseRepositories.courses.get(courseId);
-    if (course === undefined) return undefined;
-    const outline = await courseRepositories.outlineVersions.get(course.outlineVersionId);
-    if (outline === undefined) return course;
-    return {
-      ...course,
-      title: resolveCourseTitle(outline.outlineMarkdown, course.title),
-    };
+    return course;
   }
 
   async function* listCoursesWithOutlineTitle() {
     for await (const course of courseRepositories.courses.list()) {
-      const outline = await courseRepositories.outlineVersions.get(course.outlineVersionId);
-      yield outline === undefined
-        ? course
-        : {
-            ...course,
-            title: resolveCourseTitle(outline.outlineMarkdown, course.title),
-          };
+      yield course;
     }
   }
 

@@ -41,6 +41,7 @@ export function FormalCourseView(props: {
   readonly onModifyOutline: () => void;
   readonly onNavigate: (path: string) => void;
   readonly onOpenReview: () => void;
+  readonly onRenameCourse?: ((title: string) => Promise<void>) | undefined;
   readonly onSelectVersion: (outlineVersionId: string) => Promise<CourseOutlineVersionView>;
 }) {
   const { course } = props;
@@ -50,6 +51,10 @@ export function FormalCourseView(props: {
   const [chooserMode, setChooserMode] = useState<CourseMode | ''>('');
   const [selectedVersion, setSelectedVersion] = useState<CourseOutlineVersionView>();
   const [versionError, setVersionError] = useState<string>();
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(course.title);
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleError, setTitleError] = useState<string>();
   const mode = courseModeDefinition(course.courseMode);
   const disciplineLabel =
     toBroadDisciplineLabel(props.currentOutline?.disciplineTag) ?? mode.shortLabel;
@@ -97,6 +102,26 @@ export function FormalCourseView(props: {
     });
   };
 
+  const saveTitle = async () => {
+    const title = titleDraft.trim();
+    if (title === '') {
+      setTitleError('课程名称不能为空。');
+      return;
+    }
+    if (props.onRenameCourse === undefined) return;
+    setTitleSaving(true);
+    setTitleError(undefined);
+    try {
+      await props.onRenameCourse(title);
+      setTitleDraft(title);
+      setTitleEditing(false);
+    } catch {
+      setTitleError('课程名称保存失败，请重试。');
+    } finally {
+      setTitleSaving(false);
+    }
+  };
+
   return (
     <main
       className={`lm-page formal-course-page formal-course-page--${course.status}`}
@@ -107,7 +132,58 @@ export function FormalCourseView(props: {
           <div className="lm-kicker">
             {disciplineLabel} · {course.status === 'closed' ? '已关闭课程' : '正式课程'}
           </div>
-          <h1>{courseIntroduction.title}</h1>
+          {titleEditing ? (
+            <form
+              className="course-title-editor"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveTitle();
+              }}
+            >
+              <label htmlFor="course-title-input">课程名称</label>
+              <input
+                autoFocus
+                disabled={titleSaving}
+                id="course-title-input"
+                maxLength={200}
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+              />
+              <div className="course-title-editor__actions">
+                <Button busy={titleSaving} type="submit" variant="primary">
+                  保存
+                </Button>
+                <Button
+                  disabled={titleSaving}
+                  type="button"
+                  onClick={() => {
+                    setTitleDraft(course.title);
+                    setTitleError(undefined);
+                    setTitleEditing(false);
+                  }}
+                >
+                  取消
+                </Button>
+              </div>
+              {titleError === undefined ? null : <p role="alert">{titleError}</p>}
+            </form>
+          ) : (
+            <div className="course-title-row">
+              <h1>{courseIntroduction.title}</h1>
+              {props.onRenameCourse === undefined ? null : (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setTitleDraft(course.title);
+                    setTitleError(undefined);
+                    setTitleEditing(true);
+                  }}
+                >
+                  修改课程名称
+                </Button>
+              )}
+            </div>
+          )}
           <p className="course-hero__introduction">{courseIntroduction.introductionText}</p>
           <div className="lm-chips course-hero__chips">
             <span className="lm-pill">{mode.label}</span>

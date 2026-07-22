@@ -96,8 +96,8 @@ describe('projectOutlineMarkdown', () => {
 
     expect(projection.introductionText).toBeUndefined();
     expect(resolveCourseIntroduction(projection, '备用课程名')).toEqual({
-      title: '从哲学思维走向严格数学：微积分基础课程',
-      introductionText: '这是一门关于“从哲学思维走向严格数学：微积分基础课程”的课程。',
+      title: '备用课程名',
+      introductionText: '这是一门关于“备用课程名”的课程。',
     });
   });
 
@@ -112,8 +112,8 @@ describe('projectOutlineMarkdown', () => {
 
     expect(projection.introductionText).toBeUndefined();
     expect(resolveCourseIntroduction(projection, '备用课程名')).toEqual({
-      title: '微积分',
-      introductionText: '这是一门关于“微积分”的课程。',
+      title: '备用课程名',
+      introductionText: '这是一门关于“备用课程名”的课程。',
     });
   });
 
