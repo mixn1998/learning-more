@@ -30,6 +30,7 @@ export type LocalApplicationOptions = Readonly<{
   initialProviderId?: string;
   defaultFallbackProviderIds?: readonly string[];
   defaultMaxAttempts?: number;
+  lessonClosureReconcileIntervalMs?: number;
   secretStore?: SecretStore;
   providerConfigRepository?: ProviderConfigRepository;
   createDiagnostics?: () => Promise<Readonly<{ artifactRef: string }>>;

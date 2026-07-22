@@ -77,6 +77,12 @@ const LessonClosureSchema = z.strictObject({
   finalReviewId: identifier.optional(),
   errorCode: identifier.optional(),
   draftArtifactRef: identifier.optional(),
+  workflowAttempt: z.number().int().nonnegative().optional(),
+  failureStage: z
+    .enum(['preparing', 'generating', 'finalizing', 'committing', 'post-commit'])
+    .optional(),
+  lastAttemptAt: timestamp.optional(),
+  nextAttemptAt: timestamp.optional(),
   updatedAt: timestamp,
   resourceVersion: version,
 });

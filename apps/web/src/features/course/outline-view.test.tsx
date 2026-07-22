@@ -9,6 +9,48 @@ import { OutlineView } from './outline-view.js';
 afterEach(cleanup);
 
 describe('OutlineView', () => {
+  it('does not highlight a completed lesson when a stale recommendation still points to it', () => {
+    const { container } = render(
+      <OutlineView
+        course={{
+          courseId: 'course_completed_recommendation',
+          title: 'Course',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_completed_recommendation',
+          lessonIds: ['lesson_completed', 'lesson_next'],
+          recommendedLessonId: 'lesson_completed',
+          lessons: [
+            {
+              lessonId: 'lesson_completed',
+              outlineVersionId: 'outline_completed_recommendation',
+              title: 'Completed lesson',
+              objective: 'Already completed',
+              coreKnowledgePoints: [],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+            {
+              lessonId: 'lesson_next',
+              outlineVersionId: 'outline_completed_recommendation',
+              title: 'Next lesson',
+              objective: 'Continue learning',
+              coreKnowledgePoints: [],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+          ],
+          outlineMarkdown: '# Course\n\n## Module\n\n### Completed lesson\n\n### Next lesson',
+          resourceVersion: 1,
+        }}
+        lessonStates={{ lesson_completed: { progress: 'completed' } }}
+        onOpenLesson={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('.course-lesson--completed')).not.toHaveClass('recommended');
+  });
+
   it('projects an authoritative completed lesson directly to its learning record', () => {
     const onOpenLesson = vi.fn();
     render(

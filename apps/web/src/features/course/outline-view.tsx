@@ -87,7 +87,10 @@ export function OutlineView(props: {
               {moduleLessons.map((lesson) => {
                 const state = props.lessonStates[lesson.lessonId];
                 const progress = closed ? 'completed' : (state?.progress ?? 'not_started');
-                const recommended = !closed && lesson.lessonId === props.course.recommendedLessonId;
+                const recommended =
+                  !closed &&
+                  progress !== 'completed' &&
+                  lesson.lessonId === props.course.recommendedLessonId;
                 const destination = progress === 'completed' ? 'record' : 'lesson';
                 return (
                   <button

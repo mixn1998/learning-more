@@ -6,7 +6,7 @@ import { RepositoryVersionConflictError } from '../../../persistence/repository-
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { LearningSessionModule } from '../../learning-session/interface.js';
 import type { LessonClosureRepository } from '../interface.js';
-import type { LessonClosureRecord } from '../model/review-state.js';
+import type { LessonClosureRecord, LessonClosureWorkflowStage } from '../model/review-state.js';
 import { validateFinalReview } from './final-review-validator.js';
 
 class LessonClosureError extends Error {
@@ -151,8 +151,21 @@ export function createLessonClosureWorkflow(options: {
       },
     );
     await options.afterLearningCommit?.();
+    const {
+      errorCode: _error,
+      draftArtifactRef: _draft,
+      failureStage: _stage,
+      nextAttemptAt: _next,
+      lastAttemptAt: _last,
+      ...completed
+    } = committing;
+    void _error;
+    void _draft;
+    void _stage;
+    void _next;
+    void _last;
     return save({
-      ...committing,
+      ...completed,
       state: 'completed',
       finalReviewId,
       updatedAt: options.now().toISOString(),
@@ -184,35 +197,102 @@ export function createLessonClosureWorkflow(options: {
         ...input,
         state: 'open',
         generationTaskId: 'pending',
+        workflowAttempt: 0,
         updatedAt: options.now().toISOString(),
         resourceVersion: 0,
       };
       return save(draft);
     },
-    async fail(transactionId: string, errorCode: string, draftArtifactRef: string) {
+    async fail(
+      transactionId: string,
+      errorCode: string,
+      draftArtifactRef: string,
+      failure?: Readonly<{ stage: LessonClosureWorkflowStage; nextAttemptAt?: string }>,
+    ) {
       const current = await options.repository.get(transactionId);
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
+      const attemptedAt = options.now().toISOString();
       return save({
         ...current,
         state: 'generating-failed',
         errorCode,
         draftArtifactRef,
+        workflowAttempt: (current.workflowAttempt ?? 0) + 1,
+        failureStage: failure?.stage ?? 'generating',
+        lastAttemptAt: attemptedAt,
+        ...(failure?.nextAttemptAt === undefined
+          ? { nextAttemptAt: attemptedAt }
+          : { nextAttemptAt: failure.nextAttemptAt }),
+        updatedAt: attemptedAt,
+      });
+    },
+    async defer(
+      transactionId: string,
+      failure: Readonly<{
+        stage: LessonClosureWorkflowStage;
+        errorCode: string;
+        nextAttemptAt: string;
+      }>,
+    ) {
+      const current = await options.repository.get(transactionId);
+      if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
+      const attemptedAt = options.now().toISOString();
+      return save({
+        ...current,
+        errorCode: failure.errorCode,
+        workflowAttempt: (current.workflowAttempt ?? 0) + 1,
+        failureStage: failure.stage,
+        lastAttemptAt: attemptedAt,
+        nextAttemptAt: failure.nextAttemptAt,
+        updatedAt: attemptedAt,
+      });
+    },
+    async clearFailure(transactionId: string) {
+      const current = await options.repository.get(transactionId);
+      if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
+      const {
+        errorCode: _error,
+        draftArtifactRef: _draft,
+        failureStage: _stage,
+        nextAttemptAt: _next,
+        lastAttemptAt: _last,
+        ...rest
+      } = current;
+      void _error;
+      void _draft;
+      void _stage;
+      void _next;
+      void _last;
+      return save({
+        ...rest,
+        workflowAttempt: 0,
         updatedAt: options.now().toISOString(),
       });
     },
-    async resetPreparation(transactionId: string) {
+    async resetPreparation(transactionId: string, resetAttempts = true) {
       const current = await options.repository.get(transactionId);
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
       if (current.state === 'completed') throw new LessonClosureError('final_review_immutable');
       if (current.state === 'cancelled') throw new LessonClosureError('lesson_not_completable');
       if (current.state !== 'generating-failed') return current;
-      const { errorCode: _error, draftArtifactRef: _draft, ...rest } = current;
+      const {
+        errorCode: _error,
+        draftArtifactRef: _draft,
+        failureStage: _stage,
+        nextAttemptAt: _next,
+        lastAttemptAt: _last,
+        ...rest
+      } = current;
       void _error;
       void _draft;
+      void _stage;
+      void _next;
+      void _last;
       return save({
         ...rest,
         state: 'open',
         generationTaskId: 'pending',
+        workflowAttempt: resetAttempts ? 0 : (current.workflowAttempt ?? 0),
         updatedAt: options.now().toISOString(),
       });
     },
@@ -246,9 +326,19 @@ export function createLessonClosureWorkflow(options: {
         throw new LessonClosureError('lesson_not_completable');
       }
       const taskId = await submit(current, commandId);
-      const { errorCode: _error, draftArtifactRef: _draft, ...rest } = current;
+      const {
+        errorCode: _error,
+        draftArtifactRef: _draft,
+        failureStage: _stage,
+        nextAttemptAt: _next,
+        lastAttemptAt: _last,
+        ...rest
+      } = current;
       void _error;
       void _draft;
+      void _stage;
+      void _next;
+      void _last;
       return save({
         ...rest,
         state: 'generating',
@@ -264,9 +354,19 @@ export function createLessonClosureWorkflow(options: {
       if (current === undefined) throw new Error('LESSON_CLOSURE_NOT_FOUND');
       if (current.state === 'cancelled') throw new LessonClosureError('lesson_not_completable');
       validateFinalReview(review, current);
-      const { errorCode: _error, draftArtifactRef: _draft, ...rest } = current;
+      const {
+        errorCode: _error,
+        draftArtifactRef: _draft,
+        failureStage: _stage,
+        nextAttemptAt: _next,
+        lastAttemptAt: _last,
+        ...rest
+      } = current;
       void _error;
       void _draft;
+      void _stage;
+      void _next;
+      void _last;
       return save({
         ...rest,
         state: 'review-ready',

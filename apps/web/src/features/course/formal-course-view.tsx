@@ -75,8 +75,11 @@ export function FormalCourseView(props: {
       ? completed === lessons.length
       : course.lessonIds.length > 0 && course.lessons === undefined;
   const recommended =
-    lessons.find((lesson) => lesson.lessonId === course.recommendedLessonId) ??
-    lessons.find((lesson) => props.lessonStates[lesson.lessonId]?.progress !== 'completed');
+    lessons.find(
+      (lesson) =>
+        lesson.lessonId === course.recommendedLessonId &&
+        props.lessonStates[lesson.lessonId]?.progress !== 'completed',
+    ) ?? lessons.find((lesson) => props.lessonStates[lesson.lessonId]?.progress !== 'completed');
   const otherCourses = (props.availableCourses ?? []).filter(
     (item) => item.courseId !== course.courseId,
   );

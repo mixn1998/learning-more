@@ -51,6 +51,7 @@ async function fixture(
   options: {
     adjacent?: boolean;
     observerFailsOnce?: boolean;
+    observerReturnsInvalidInteraction?: boolean;
     evidenceEffectFailsOnce?: boolean;
     reasoningSinkFailsOnce?: boolean;
     artifactSaveFails?: boolean;
@@ -367,6 +368,15 @@ async function fixture(
               message.role === 'assistant' && message.completionStatus === 'complete',
           )
           .map(({ message, index }) => {
+            if (options.observerReturnsInvalidInteraction) {
+              return {
+                interactionId: `interaction:${message.messageId}`,
+                knowledgePointRefs: ['knowledge:kp_1'],
+                promptSourceRef: `message:${message.messageId}`,
+                outcome: 'responded' as const,
+                responseSourceRef: `message:${message.messageId}`,
+              };
+            }
             const response = input.messages
               .slice(index + 1)
               .find(
@@ -1181,6 +1191,35 @@ describe('InteractiveTeaching deep module', () => {
         outcome: 'pending',
       }),
     ]);
+  });
+
+  it('degrades invalid derived interaction metadata without blocking the durable transcript', async () => {
+    const { module, drainObservations, ledgerRepository, capturedInteractionObservations } =
+      await fixture({ observerReturnsInvalidInteraction: true });
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+
+    await expect(drainObservations('session_1')).resolves.toBeUndefined();
+    const ledger = await ledgerRepository.get('session_1');
+    expect(ledger?.state.observationStatus).toBe('current');
+    expect(ledger?.observations.at(-1)).toMatchObject({
+      observerVersion: 'teaching-observer-fallback@1',
+      sourceMessageIds: ['message_user_1', 'message_ai_1'],
+      entries: [],
+      interactions: [],
+    });
+    expect(capturedInteractionObservations.at(-1)?.observerVersion).toBe(
+      'teaching-observer-fallback@1',
+    );
   });
 
   it('replays the latest hidden teaching directive during read reconciliation', async () => {

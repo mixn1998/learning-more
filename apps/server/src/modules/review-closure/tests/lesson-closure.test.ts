@@ -179,6 +179,28 @@ describe('lesson closure workflow', () => {
     expect(submitReview).not.toHaveBeenCalled();
   });
 
+  it('persists retry metadata without discarding a durable review-ready checkpoint', async () => {
+    const { workflow, closureRepository } = await fixture();
+    const started = await workflow.begin(snapshot);
+    await workflow.retry(started.transactionId, 'initial');
+    await workflow.markReviewReady(started.transactionId, review);
+
+    await workflow.defer(started.transactionId, {
+      stage: 'committing',
+      errorCode: 'simulated_commit_interruption',
+      nextAttemptAt: '2026-07-13T00:02:00.000Z',
+    });
+
+    await expect(closureRepository.get(started.transactionId)).resolves.toMatchObject({
+      state: 'review-ready',
+      review,
+      workflowAttempt: 1,
+      failureStage: 'committing',
+      errorCode: 'simulated_commit_interruption',
+      nextAttemptAt: '2026-07-13T00:02:00.000Z',
+    });
+  });
+
   it('rejects a late Review write after permanent course deletion starts', async () => {
     let deleted = false;
     const { workflow, closureRepository } = await fixture(false, async () => {

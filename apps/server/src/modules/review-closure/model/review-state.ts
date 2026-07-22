@@ -29,6 +29,9 @@ export type LessonClosureState =
   | 'completed'
   | 'cancelled';
 
+export type LessonClosureWorkflowStage =
+  'preparing' | 'generating' | 'finalizing' | 'committing' | 'post-commit';
+
 export type LessonClosureRecord = Readonly<{
   transactionId: string;
   lessonId: string;
@@ -51,6 +54,10 @@ export type LessonClosureRecord = Readonly<{
   finalReviewId?: string;
   errorCode?: string;
   draftArtifactRef?: string;
+  workflowAttempt?: number;
+  failureStage?: LessonClosureWorkflowStage;
+  lastAttemptAt?: string;
+  nextAttemptAt?: string;
   updatedAt: string;
   resourceVersion: number;
 }>;

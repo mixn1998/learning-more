@@ -86,6 +86,9 @@ export async function assembleLocalApplication(
     generation,
     events,
     profile,
+    ...(options.lessonClosureReconcileIntervalMs === undefined
+      ? {}
+      : { reconcileIntervalMs: options.lessonClosureReconcileIntervalMs }),
   });
   await review.recoverCommittingClosures();
   const insights = createLocalInsightsRuntime({
@@ -188,7 +191,8 @@ export async function assembleLocalApplication(
         ...startupRecoveries,
         ...(backgroundRecovery === undefined ? [] : [backgroundRecovery]),
       ]);
-      profile.close();
+      await profile.close();
+      await review.close();
       await insights.close();
     },
     serverDependencies,

@@ -744,10 +744,14 @@ describe('local CourseAuthoring application', () => {
     await local.close();
   }, 60_000);
 
-  it('recovers a persisted committing lesson closure when the local service restarts', async () => {
+  it('reconciles a persisted committing lesson closure without restarting the local service', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-recovery-'));
     roots.push(directory);
-    const first = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
+    const first = await createLocalApplication({
+      dataRoot: directory,
+      csrfToken: 'test-csrf',
+      lessonClosureReconcileIntervalMs: 10,
+    });
     const dataRoot = DataRoot.create(directory);
     const unitOfWork = createUnitOfWork({ dataRoot });
     await unitOfWork.execute({ transactionId: 'tx_seed_recovery_course' }, async (tx) => {
@@ -854,30 +858,36 @@ describe('local CourseAuthoring application', () => {
       ),
     );
 
+    await expect
+      .poll(
+        () =>
+          first.serverDependencies.learningSession!.module.query(
+            { type: 'GetLessonLearning', lessonId: 'lesson_recovery' },
+            {
+              correlationId: 'query_recovered',
+              actor: 'local-user',
+              requestedAt: '2026-07-13T00:02:00.000Z',
+              receivedAt: '2026-07-13T00:02:00.000Z',
+            },
+          ),
+        { timeout: 3_000, interval: 20 },
+      )
+      .toMatchObject({
+        learning: { progress: 'completed', session: { finalReviewId: 'review_final_recovery' } },
+      });
+    await expect
+      .poll(
+        () =>
+          first.serverDependencies.reviewClosure!.services.getClosure('closure_recovery', {
+            correlationId: 'query_closure',
+            actor: 'local-user',
+            requestedAt: '2026-07-13T00:02:00.000Z',
+            receivedAt: '2026-07-13T00:02:00.000Z',
+          }),
+        { timeout: 3_000, interval: 20 },
+      )
+      .toMatchObject({ state: 'completed', finalReviewId: 'review_final_recovery' });
     await first.close();
-    const restarted = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
-    await expect(
-      restarted.serverDependencies.learningSession!.module.query(
-        { type: 'GetLessonLearning', lessonId: 'lesson_recovery' },
-        {
-          correlationId: 'query_recovered',
-          actor: 'local-user',
-          requestedAt: '2026-07-13T00:02:00.000Z',
-          receivedAt: '2026-07-13T00:02:00.000Z',
-        },
-      ),
-    ).resolves.toMatchObject({
-      learning: { progress: 'completed', session: { finalReviewId: 'review_final_recovery' } },
-    });
-    await expect(
-      restarted.serverDependencies.reviewClosure!.services.getClosure('closure_recovery', {
-        correlationId: 'query_closure',
-        actor: 'local-user',
-        requestedAt: '2026-07-13T00:02:00.000Z',
-        receivedAt: '2026-07-13T00:02:00.000Z',
-      }),
-    ).resolves.toMatchObject({ state: 'completed', finalReviewId: 'review_final_recovery' });
-    await restarted.close();
   }, 60_000);
 
   it('switches the active provider through HTTP and snapshots it on new generation tasks', async () => {

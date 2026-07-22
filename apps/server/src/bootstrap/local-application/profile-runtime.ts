@@ -58,7 +58,7 @@ export type LocalProfileRuntime = Readonly<{
   recoverReasoningAnalysis(): Promise<void>;
   getProjectionStatus(): 'ready' | 'degraded';
   start(): void;
-  close(): void;
+  close(): Promise<void>;
 }>;
 
 export function createLocalProfileRuntime(
@@ -813,6 +813,14 @@ export function createLocalProfileRuntime(
             .catch(() => undefined);
         });
     },
-    close: weeklyPortraitScheduler.stop,
+    async close() {
+      weeklyPortraitScheduler.stop();
+      await Promise.allSettled([
+        profileEvidenceBarrier,
+        personalizationDigestBarrier,
+        ...(semanticCoreBootstrapBarrier === undefined ? [] : [semanticCoreBootstrapBarrier]),
+        evidenceBarrier,
+      ]);
+    },
   };
 }

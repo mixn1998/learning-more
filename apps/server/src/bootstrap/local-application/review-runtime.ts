@@ -6,7 +6,10 @@ import type { ReviewClosureRouteOptions } from '../../http/routes/review-closure
 import { closeCourse as closeCourseAggregate } from '../../modules/course-authoring/implementation/close-course.js';
 import { createGenerationReviewWriter } from '../../modules/review-closure/implementation/generation-review-writer.js';
 import { createLessonClosureWorkflow } from '../../modules/review-closure/implementation/lesson-closure.js';
-import type { LessonClosureRecord } from '../../modules/review-closure/model/review-state.js';
+import type {
+  LessonClosureRecord,
+  LessonClosureWorkflowStage,
+} from '../../modules/review-closure/model/review-state.js';
 import {
   createStageReviewWorkflow,
   reviewIdForLesson,
@@ -31,6 +34,7 @@ export type LocalReviewRuntime = Readonly<{
   routes: ReviewClosureRouteOptions;
   recoverCommittingClosures(): Promise<void>;
   recoverProfileCheckpoints(): Promise<void>;
+  close(): Promise<void>;
 }>;
 
 export function createLocalReviewRuntime(
@@ -45,6 +49,7 @@ export function createLocalReviewRuntime(
     generation: LocalGenerationRuntime;
     events: LocalEventFactsRuntime;
     profile: LocalProfileRuntime;
+    reconcileIntervalMs?: number;
   }>,
 ): LocalReviewRuntime {
   const reviewClosureRepositories = createLocalFileReviewClosureRepositories(
@@ -244,6 +249,10 @@ export function createLocalReviewRuntime(
     assertLessonWritable: input.course.access.assertLessonWritable,
   });
   const activeLessonClosureFinalizations = new Map<string, Promise<void>>();
+  const maxAutomaticClosureAttempts = 5;
+  const reconcileIntervalMs = Math.max(10, input.reconcileIntervalMs ?? 15_000);
+  let lessonClosureReconcileTimer: ReturnType<typeof setInterval> | undefined;
+  let activeLessonClosureScan: Promise<void> | undefined;
 
   async function prepareLessonClosureSnapshot(
     closure: LessonClosureRecord,
@@ -288,23 +297,28 @@ export function createLocalReviewRuntime(
     const active = activeLessonClosureFinalizations.get(closure.transactionId);
     if (active !== undefined) return active;
     const finalization = (async () => {
+      let stage: LessonClosureWorkflowStage = 'preparing';
       try {
         let current = await lessonClosureRepository.get(closure.transactionId);
         if (current === undefined) throw new Error('lesson_closure_not_found');
+        if (current.state === 'generating-failed') {
+          const retryIsDue =
+            current.nextAttemptAt === undefined ||
+            Date.parse(current.nextAttemptAt) <= input.now().getTime();
+          if (!retryIsDue || (current.workflowAttempt ?? 0) >= maxAutomaticClosureAttempts) return;
+          current = await lessonClosures.resetPreparation(current.transactionId, false);
+        }
         if (current.state === 'open') {
+          stage = 'preparing';
           current = await prepareLessonClosureSnapshot(current, context);
+          stage = 'generating';
           current = await lessonClosures.retry(
             current.transactionId,
-            `initial_${current.transactionId}`,
+            `reconcile_${current.transactionId}_${current.workflowAttempt ?? 0}`,
           );
         }
-        if (
-          current.state === 'generating' ||
-          (current.state === 'generating-failed' &&
-            ['review_output_contract_invalid', 'review_document_evidence_ref_invalid'].includes(
-              current.errorCode ?? '',
-            ))
-        ) {
+        if (current.state === 'generating') {
+          stage = 'finalizing';
           const generated = await reviewWriter.complete(current.generationTaskId);
           const document = reviewEvidence.normalizeRefs(
             generated.document,
@@ -327,6 +341,7 @@ export function createLocalReviewRuntime(
             ...(document === undefined ? {} : { document }),
           });
         }
+        stage = 'committing';
         const committed =
           current.state === 'committing'
             ? await lessonClosures.recover(
@@ -342,6 +357,7 @@ export function createLocalReviewRuntime(
                 )
               : current;
         if (committed.state !== 'completed' || committed.review === undefined) return;
+        stage = 'post-commit';
         const lesson = await input.course.access.getLesson(committed.lessonId);
         if (lesson === undefined) return;
         await captureReviewProfileCheckpoint({
@@ -355,20 +371,43 @@ export function createLocalReviewRuntime(
         });
         await refreshNextLessonRecommendation(lesson.courseId, 'lesson-completed', lesson.id);
         courseReviewRuntime.triggerPregeneration(lesson.courseId);
+        if (
+          committed.failureStage !== undefined ||
+          committed.errorCode !== undefined ||
+          (committed.workflowAttempt ?? 0) > 0
+        ) {
+          await lessonClosures.clearFailure(committed.transactionId);
+        }
       } catch (error) {
         const current = await lessonClosureRepository.get(closure.transactionId);
-        if (current?.state !== 'open' && current?.state !== 'generating') return;
-        await lessonClosures.fail(
-          current.transactionId,
+        if (current === undefined || current.state === 'cancelled') return;
+        const errorCode =
           error instanceof Error && error.message.trim() !== ''
             ? error.message.slice(0, 200)
-            : 'lesson_review_generation_failed',
-          current.draftArtifactRef ?? `draft_${current.generationTaskId}`,
-        );
+            : 'lesson_review_generation_failed';
+        const attempt = (current.workflowAttempt ?? 0) + 1;
+        const retryDelayMs = Math.min(60_000, 1_000 * 2 ** Math.max(0, attempt - 1));
+        const nextAttemptAt = new Date(input.now().getTime() + retryDelayMs).toISOString();
+        if (
+          current.state === 'open' ||
+          current.state === 'generating' ||
+          current.state === 'generating-failed'
+        ) {
+          await lessonClosures.fail(
+            current.transactionId,
+            errorCode,
+            current.draftArtifactRef ?? `draft_${current.generationTaskId}`,
+            { stage, nextAttemptAt },
+          );
+          return;
+        }
+        await lessonClosures.defer(current.transactionId, {
+          stage,
+          errorCode,
+          nextAttemptAt,
+        });
       }
-    })()
-      .catch(() => undefined)
-      .finally(() => activeLessonClosureFinalizations.delete(closure.transactionId));
+    })().finally(() => activeLessonClosureFinalizations.delete(closure.transactionId));
     activeLessonClosureFinalizations.set(closure.transactionId, finalization);
     return finalization;
   }
@@ -525,6 +564,101 @@ export function createLocalReviewRuntime(
     now: () => new Date(),
   };
 
+  function closureRetryIsDue(closure: LessonClosureRecord): boolean {
+    return (
+      closure.nextAttemptAt === undefined ||
+      Date.parse(closure.nextAttemptAt) <= input.now().getTime()
+    );
+  }
+
+  function recoveryContextFor(
+    closure: LessonClosureRecord,
+    learning: Awaited<ReturnType<typeof input.learning.access.getRecord>>,
+  ): CommandContext {
+    const recoveredAt = input.now().toISOString();
+    return {
+      commandId: `recover_${closure.transactionId}`,
+      correlationId: `recover_${closure.transactionId}`,
+      idempotencyKey: `recover_${closure.transactionId}`,
+      actor: 'local-user',
+      requestedAt: recoveredAt,
+      receivedAt: recoveredAt,
+      ...(learning === undefined ? {} : { expectedVersion: learning.resourceVersion }),
+      ...(learning?.writeLease?.pageInstanceId === undefined
+        ? {}
+        : { pageInstanceId: learning.writeLease.pageInstanceId }),
+    };
+  }
+
+  function reconcilePersistedLessonClosures(): Promise<void> {
+    if (activeLessonClosureScan !== undefined) return activeLessonClosureScan;
+    const scan = (async () => {
+      const recoverableClosures: LessonClosureRecord[] = [];
+      for await (const closure of lessonClosureRepository.list()) {
+        const activeState = ['open', 'generating', 'review-ready', 'committing'].includes(
+          closure.state,
+        );
+        const retryableFailure =
+          closure.state === 'generating-failed' &&
+          (closure.workflowAttempt ?? 0) < maxAutomaticClosureAttempts;
+        const pendingPostCommit =
+          closure.state === 'completed' && closure.failureStage === 'post-commit';
+        if (!activeState && !retryableFailure && !pendingPostCommit) continue;
+        if (!closureRetryIsDue(closure)) continue;
+        recoverableClosures.push(closure);
+      }
+      const recoveryRank: Readonly<Record<LessonClosureRecord['state'], number>> = {
+        open: 1,
+        generating: 2,
+        'generating-failed': 0,
+        'review-ready': 3,
+        committing: 4,
+        completed: 5,
+        cancelled: -1,
+      };
+      recoverableClosures.sort(
+        (left, right) =>
+          recoveryRank[right.state] - recoveryRank[left.state] ||
+          right.updatedAt.localeCompare(left.updatedAt),
+      );
+      const selectedClosureSnapshots = new Set<string>();
+      for (const closure of recoverableClosures) {
+        const snapshotKey = `${closure.lessonId}:${closure.sessionId}:${closure.messageRangeChecksum}`;
+        if (closure.state !== 'completed' && selectedClosureSnapshots.has(snapshotKey)) {
+          if (closure.state !== 'committing') await lessonClosures.cancel(closure.transactionId);
+          continue;
+        }
+        selectedClosureSnapshots.add(snapshotKey);
+        const learning = await input.learning.access.getRecord(closure.lessonId);
+        if (learning === undefined && closure.state !== 'completed') continue;
+        const context = recoveryContextFor(closure, learning);
+        if (learning?.learning.progress === 'in_progress') {
+          await sessionModule.execute(
+            { type: 'CompleteLessonPendingReview', lessonId: closure.lessonId },
+            {
+              ...context,
+              commandId: `complete_pending_review_${closure.transactionId}`,
+              idempotencyKey: `complete_pending_review_${closure.transactionId}`,
+            },
+          );
+        }
+        void scheduleLessonClosureFinalization(closure, context).catch(() => undefined);
+      }
+    })().finally(() => {
+      activeLessonClosureScan = undefined;
+    });
+    activeLessonClosureScan = scan;
+    return scan;
+  }
+
+  function startLessonClosureReconciler(): void {
+    if (lessonClosureReconcileTimer !== undefined) return;
+    lessonClosureReconcileTimer = setInterval(() => {
+      void reconcilePersistedLessonClosures().catch(() => undefined);
+    }, reconcileIntervalMs);
+    lessonClosureReconcileTimer.unref();
+  }
+
   return {
     routes,
     async recoverProfileCheckpoints() {
@@ -549,79 +683,8 @@ export function createLocalReviewRuntime(
           taskId: review.taskId,
         });
       }
-      const recoverableClosures: LessonClosureRecord[] = [];
-      for await (const closure of lessonClosureRepository.list()) {
-        if (
-          !['open', 'generating', 'review-ready', 'committing'].includes(closure.state) &&
-          !(
-            closure.state === 'generating-failed' &&
-            ['review_output_contract_invalid', 'review_document_evidence_ref_invalid'].includes(
-              closure.errorCode ?? '',
-            )
-          )
-        ) {
-          continue;
-        }
-        recoverableClosures.push(closure);
-      }
-      const recoveryRank: Readonly<Record<LessonClosureRecord['state'], number>> = {
-        open: 1,
-        generating: 2,
-        'generating-failed': 0,
-        'review-ready': 3,
-        committing: 4,
-        completed: 5,
-        cancelled: -1,
-      };
-      recoverableClosures.sort(
-        (left, right) =>
-          recoveryRank[right.state] - recoveryRank[left.state] ||
-          right.updatedAt.localeCompare(left.updatedAt),
-      );
-      const selectedClosureSnapshots = new Set<string>();
-      for (const closure of recoverableClosures) {
-        const snapshotKey = `${closure.lessonId}:${closure.sessionId}:${closure.messageRangeChecksum}`;
-        if (selectedClosureSnapshots.has(snapshotKey)) {
-          await lessonClosures.cancel(closure.transactionId);
-          continue;
-        }
-        selectedClosureSnapshots.add(snapshotKey);
-        const learning = await input.learning.access.getRecord(closure.lessonId);
-        const pageInstanceId = learning?.writeLease?.pageInstanceId;
-        if (learning === undefined || pageInstanceId === undefined) {
-          throw new Error(`LESSON_CLOSURE_RECOVERY_CONTEXT_MISSING:${closure.transactionId}`);
-        }
-        const recoveredAt = new Date().toISOString();
-        const recoveryContext: CommandContext = {
-          commandId: `recover_${closure.transactionId}`,
-          correlationId: `recover_${closure.transactionId}`,
-          idempotencyKey: `recover_${closure.transactionId}`,
-          actor: 'local-user',
-          requestedAt: recoveredAt,
-          receivedAt: recoveredAt,
-          expectedVersion: learning.resourceVersion,
-          pageInstanceId,
-        };
-        if (learning.learning.progress === 'in_progress') {
-          await sessionModule.execute(
-            { type: 'CompleteLessonPendingReview', lessonId: closure.lessonId },
-            {
-              ...recoveryContext,
-              commandId: `complete_pending_review_${closure.transactionId}`,
-              idempotencyKey: `complete_pending_review_${closure.transactionId}`,
-            },
-          );
-        }
-        if (closure.state === 'committing') {
-          await lessonClosures.recover(
-            closure.transactionId,
-            closure.messageRangeChecksum,
-            recoveryContext,
-          );
-          continue;
-        }
-        void scheduleLessonClosureFinalization(closure, recoveryContext);
-      }
+      await reconcilePersistedLessonClosures();
+      startLessonClosureReconciler();
       for await (const review of reviewClosureRepositories.courseReviews.list()) {
         if (review.state === 'generating-review' || review.state === 'review-ready') {
           void courseReviewRuntime.scheduleFinalization(review.courseId);
@@ -630,6 +693,18 @@ export function createLocalReviewRuntime(
       for await (const course of input.course.access.listCourses()) {
         courseReviewRuntime.triggerPregeneration(course.id);
       }
+    },
+    async close() {
+      if (lessonClosureReconcileTimer !== undefined) {
+        clearInterval(lessonClosureReconcileTimer);
+        lessonClosureReconcileTimer = undefined;
+      }
+      await activeLessonClosureScan;
+      await Promise.allSettled([
+        ...activeLessonClosureFinalizations.values(),
+        ...activeStageReviewFinalizations.values(),
+        ...activeAbandonmentReviewPreparations.values(),
+      ]);
     },
   };
 }

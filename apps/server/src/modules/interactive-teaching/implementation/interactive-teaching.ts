@@ -949,7 +949,37 @@ export function createInteractiveTeaching(options: {
         completionStatus: message.completionStatus,
       })),
     };
-    const validated = validateTeachingObservation(observation, validationContext);
+    let validated: TeachingObservation;
+    try {
+      validated = validateTeachingObservation(observation, validationContext);
+    } catch (error) {
+      const validationError =
+        error instanceof Error && error.message.trim() !== ''
+          ? error.message.slice(0, 160)
+          : 'observation_contract_invalid';
+      validated = validateTeachingObservation(
+        {
+          observationId: `observation_fallback_${sha256(`${input.sessionId}:${sourceSnapshotHash}`).slice(0, 32)}`,
+          schemaVersion: 1,
+          lessonId: input.lessonId,
+          sessionId: input.sessionId,
+          turnSequence: (current?.observations.length ?? 0) + 1,
+          sourceMessageIds: messages.map((message) => message.messageId),
+          sourceSnapshotHash,
+          scope: {
+            alignment: 'direct',
+            relationRefs: [`lesson:${input.lessonId}`],
+            rationale: `Derived observer metadata was discarded (${validationError}); the durable transcript remains authoritative.`,
+          },
+          entries: [],
+          interactions: [],
+          observerVersion: 'teaching-observer-fallback@1',
+          observedAt: options.now().toISOString(),
+          status: 'active',
+        } satisfies TeachingObservation,
+        validationContext,
+      );
+    }
     const duplicate = current?.observations.find(
       (candidate) =>
         candidate.sourceSnapshotHash === validated.sourceSnapshotHash &&
