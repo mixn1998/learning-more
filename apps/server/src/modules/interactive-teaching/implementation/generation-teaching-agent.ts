@@ -17,6 +17,7 @@ import { renderTeachingCorePolicy } from './teaching-core-policy.js';
 import { renderTeachingDepthPolicy } from './teaching-depth-policy.js';
 import { renderTeachingFactContext } from './teaching-fact-context.js';
 import { renderTeachingFlowPolicy } from './teaching-flow-policy.js';
+import { renderTeachingGuidingPolicy } from './teaching-guiding-policy.js';
 import { reasoningEffortForTeachingTurn } from './teaching-turn-policy.js';
 import {
   createTeachingResponseStream,
@@ -33,6 +34,7 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
   const opening = context.turnKind === 'opening';
   const capabilities = capabilitiesForTeachingTurn(context);
   return [
+    renderTeachingGuidingPolicy(),
     renderTeachingCorePolicy(),
     renderTeachingBoundaryPolicy(),
     renderTeachingClosurePolicy(),

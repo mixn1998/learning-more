@@ -255,7 +255,16 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain(
       '不要默认我已经理解；提供深入透彻的理解过程、更强的思维激活和思考密度。',
     );
-    expect(fake.request()?.prompt).toContain(
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('【教学方针（高优先级）】');
+    expect(prompt).toContain(
+      '以开放式的思辨研讨为核心教学原则，不预设任何阅读理解式的标准答案（严禁设计阅读理解式的课堂互动）。提问设计和纠偏都应服务于用户的理解推进，纠偏后沿知识逻辑自然前进，而不是在原地打圈。',
+    );
+    expect(prompt.match(/【教学方针（高优先级）】/gu)).toHaveLength(1);
+    expect(prompt.indexOf('【教学方针（高优先级）】')).toBeLessThan(
+      prompt.indexOf('【通用教学原则】'),
+    );
+    expect(prompt).not.toContain(
       '严谨应服务于理解推进；纠偏后沿知识逻辑自然前进，避免反复盘问相似细节。',
     );
     expect(fake.request()?.prompt).toContain('不要播报正在检测、已经通过');
