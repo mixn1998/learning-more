@@ -807,13 +807,41 @@ describe('CourseAuthoring page', () => {
     expect(screen.getByRole('status')).toHaveTextContent('可以直接重试');
   });
 
-  it('shows a distinct connection interruption when the generation stream disconnects', async () => {
+  it('recovers a candidate when the stream disconnects before backend finalization', async () => {
+    const getOutlineSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_01',
+        resourceVersion: 3,
+        state: 'generating-candidates',
+        topic: '概率论',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: true,
+        candidateVersionIds: [],
+        generationTaskId: 'task_01',
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        outlineSessionId: 'session_01',
+        resourceVersion: 4,
+        state: 'candidate-ready',
+        topic: '概率论',
+        courseMode: 'standard',
+        completedAssessmentRounds: 3,
+        canGenerateCandidate: true,
+        candidateVersionIds: ['candidate_01'],
+        candidateVersionId: 'candidate_01',
+        candidateMarkdown: '# 概率论候选大纲',
+        messages: [],
+      });
     const api = client({
       createOutlineSession: vi.fn().mockResolvedValue({
         outlineSessionId: 'session_01',
         resourceVersion: 1,
         state: 'ready-for-candidates',
       }),
+      getOutlineSession,
       streamGeneration: vi.fn().mockRejectedValue(new Error('stream disconnected')),
     });
     render(<AuthoringPage client={api} />);
@@ -821,8 +849,9 @@ describe('CourseAuthoring page', () => {
     fireEvent.click(screen.getByRole('button', { name: '开始创建' }));
     fireEvent.click(await screen.findByRole('button', { name: '生成候选大纲' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('生成连接中断');
-    expect(screen.getByRole('status')).toHaveTextContent('已收到的草稿仍然保留');
+    expect(await screen.findByRole('heading', { name: '概率论候选大纲' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(getOutlineSession).toHaveBeenCalledTimes(2);
   });
 
   it('confirms the selected candidate and navigates to the course', async () => {

@@ -38,6 +38,9 @@ type Phase =
 
 type RestoreStatus = 'idle' | 'loading' | 'failed';
 
+const CANDIDATE_RECOVERY_INTERVAL_MS = 250;
+const CANDIDATE_RECOVERY_WINDOW_MS = 20 * 60 * 1_000;
+
 type State = Readonly<{
   phase: Phase;
   topic: string;
@@ -453,15 +456,40 @@ export function AuthoringPage(props: {
     applySessionView(await api.getOutlineSession(outlineSessionId));
   };
 
-  const loadCandidateSession = async (outlineSessionId: string) => {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const view = await api.getOutlineSession(outlineSessionId);
-      applySessionView(view);
-      if (typeof view.candidateMarkdown === 'string' && view.candidateMarkdown.trim() !== '')
-        return;
-      if (view.state !== 'generating-candidates' && view.candidateVersionId === undefined) return;
-      await new Promise((resolve) => window.setTimeout(resolve, 250));
+  const loadCandidateSession = async (
+    outlineSessionId: string,
+    options: Readonly<{
+      readonly waitForTerminal?: boolean;
+      readonly signal?: AbortSignal;
+    }> = {},
+  ): Promise<OutlineSessionView | undefined> => {
+    const waitForTerminal = options.waitForTerminal === true;
+    const deadline =
+      Date.now() +
+      (waitForTerminal ? CANDIDATE_RECOVERY_WINDOW_MS : CANDIDATE_RECOVERY_INTERVAL_MS * 20);
+    let lastError: unknown;
+
+    while (Date.now() < deadline && !options.signal?.aborted) {
+      try {
+        const view = await api.getOutlineSession(outlineSessionId);
+        applySessionView(view);
+        if (typeof view.candidateMarkdown === 'string' && view.candidateMarkdown.trim() !== '') {
+          return view;
+        }
+        if (view.state !== 'generating-candidates') return view;
+      } catch (error) {
+        if (!waitForTerminal) throw error;
+        lastError = error;
+      }
+      await new Promise((resolve) =>
+        window.setTimeout(
+          resolve,
+          Math.min(CANDIDATE_RECOVERY_INTERVAL_MS, Math.max(0, deadline - Date.now())),
+        ),
+      );
     }
+    if (lastError !== undefined && !options.signal?.aborted) throw lastError;
+    return undefined;
   };
 
   useEffect(() => {
@@ -510,7 +538,9 @@ export function AuthoringPage(props: {
               event.type === 'task.failed' ||
               event.type === 'task.cancelled'
             ) {
-              terminalRefresh ??= loadCandidateSession(outlineSessionId).catch(() => undefined);
+              terminalRefresh ??= loadCandidateSession(outlineSessionId)
+                .then(() => undefined)
+                .catch(() => undefined);
             }
             dispatch({ type: 'stream-event', event });
           },
@@ -525,10 +555,16 @@ export function AuthoringPage(props: {
           await (terminalRefresh ?? loadSession(outlineSessionId)).catch(() => undefined);
           return;
         }
-        const recovered = await Promise.resolve(api.getOutlineSession(outlineSessionId)).catch(
-          () => undefined,
-        );
-        if (recovered !== undefined && recovered.state !== 'generating-candidates') {
+        const recovered = await loadCandidateSession(outlineSessionId, {
+          waitForTerminal: true,
+          signal: controller.signal,
+        }).catch(() => undefined);
+        if (
+          recovered !== undefined &&
+          (recovered.state === 'candidate-ready' ||
+            (typeof recovered.candidateMarkdown === 'string' &&
+              recovered.candidateMarkdown.trim() !== ''))
+        ) {
           applySessionView(recovered);
           return;
         }
