@@ -89,6 +89,18 @@ describe('candidate output protocol', () => {
         ],
       },
       requestedAdjustment: { action: 'patch', targetModuleIds: ['module:极限'] },
+      pastVersionContext: {
+        dialogueDigest: '用户目标与边界：希望掌握极限、导数及其应用；已经确认保留极限模块。',
+        completedLessons: [
+          {
+            lessonId: 'lesson_limit',
+            semanticKey: 'lesson_limit',
+            title: '极限是什么',
+            objective: '理解极限如何描述趋近过程',
+            coreKnowledgePoints: ['趋近', '极限'],
+          },
+        ],
+      },
     });
 
     expect(prompt).toContain('[CURRENT CANDIDATE]');
@@ -100,5 +112,15 @@ describe('candidate output protocol', () => {
     expect(prompt).not.toContain('[CURRENT OUTLINE NODE MANIFEST]');
     expect(prompt).not.toContain('module:极限');
     expect(prompt).not.toContain('outlineSessionId');
+    expect(prompt).toContain('[PAST VERSION CONTEXT]');
+    expect(prompt).toContain('PART 1 — COMPRESSED OUTLINE-GENERATION DIALOGUE');
+    expect(prompt).toContain('希望掌握极限、导数及其应用');
+    expect(prompt).toContain('PART 2 — COMPLETED LESSON OUTLINE SUMMARIES');
+    expect(prompt).toContain('用户已完成');
+    expect(prompt).toContain('Stable semantic key: lesson_limit');
+    expect(prompt).toContain('理解极限如何描述趋近过程');
+    expect(prompt).toContain(
+      'Do not rename, rewrite, replace, or duplicate these completed lessons',
+    );
   });
 });

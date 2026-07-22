@@ -12,6 +12,7 @@ import type { CandidateGenerationCoordinator } from './course-authoring-facade.j
 import type { createCourseAuthoringModule } from './course-authoring-module.js';
 import { createAuthoringContextAssembler } from './authoring-context-assembler.js';
 import { buildCandidatePromptInput } from './prompt-input-builder.js';
+import type { CompletedLessonOutlineContext } from '../ports/authoring-agent.js';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -53,9 +54,18 @@ export function createCandidateGenerationCoordinator(options: {
   readonly execution: GenerationExecution;
   readonly frameLog: GenerationFrameLog;
   readonly nextCandidateId: () => string;
+  readonly listCompletedLessonOutlineContexts?: (
+    courseId: string,
+  ) => Promise<readonly CompletedLessonOutlineContext[]>;
   readonly dispatchBackground?: (work: () => Promise<void>) => void;
 }): CandidateGenerationCoordinator {
-  const assembleAuthoringContext = createAuthoringContextAssembler(options.repositories);
+  const assembleAuthoringContext = createAuthoringContextAssembler(options.repositories, {
+    ...(options.listCompletedLessonOutlineContexts === undefined
+      ? {}
+      : {
+          listCompletedLessonOutlineContexts: options.listCompletedLessonOutlineContexts,
+        }),
+  });
   const activeFinalizations = new Map<string, Promise<void>>();
   const dispatchBackground =
     options.dispatchBackground ??

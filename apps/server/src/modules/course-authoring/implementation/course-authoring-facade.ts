@@ -21,7 +21,7 @@ import {
   evolveAll,
 } from '../model/outline-session.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
-import type { AuthoringAgent } from '../ports/authoring-agent.js';
+import type { AuthoringAgent, CompletedLessonOutlineContext } from '../ports/authoring-agent.js';
 import type { CandidateAlignmentPlanner } from '../ports/candidate-alignment-planner.js';
 import type { OutlineSessionRecord } from '../ports/outline-session-repository.js';
 import type { OutlineSessionDraftStore } from '../ports/outline-session-draft-store.js';
@@ -71,7 +71,10 @@ export function createCourseAuthoringFacade(options: {
   readonly nextLessonRecommender?: NextLessonRecommender;
   readonly outlineRevisionLiveCleanup?: PlanningOutlineRevisionParticipant;
   readonly outbox?: Outbox;
-  readonly hasLearningEvidence?: (lessonId: string) => Promise<boolean>;
+  readonly isLessonCompleted?: (lessonId: string) => Promise<boolean>;
+  readonly listCompletedLessonOutlineContexts?: (
+    courseId: string,
+  ) => Promise<readonly CompletedLessonOutlineContext[]>;
   readonly profileEvidenceSink?: Readonly<{
     capture(checkpoint: CourseAuthoringEvidenceCheckpoint): void;
   }>;
@@ -91,7 +94,13 @@ export function createCourseAuthoringFacade(options: {
   }>;
   readonly outlineSessionDraftStore?: OutlineSessionDraftStore;
 }): CourseAuthoring {
-  const assembleAuthoringContext = createAuthoringContextAssembler(options.authoring);
+  const assembleAuthoringContext = createAuthoringContextAssembler(options.authoring, {
+    ...(options.listCompletedLessonOutlineContexts === undefined
+      ? {}
+      : {
+          listCompletedLessonOutlineContexts: options.listCompletedLessonOutlineContexts,
+        }),
+  });
 
   async function sessionRecord(outlineSessionId: string) {
     const record = await options.authoring.outlineSessions.get(outlineSessionId);
@@ -753,7 +762,7 @@ export function createCourseAuthoringFacade(options: {
           {
             repositories: options.courses,
             unitOfWork: options.unitOfWork,
-            hasLearningEvidence: options.hasLearningEvidence ?? (async () => false),
+            isLessonCompleted: options.isLessonCompleted ?? (async () => false),
             ...(options.nextLessonRecommender === undefined
               ? {}
               : { nextLessonRecommender: options.nextLessonRecommender }),

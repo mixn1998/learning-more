@@ -107,7 +107,7 @@ describe('reviseCourseOutline', () => {
       {
         repositories,
         unitOfWork,
-        hasLearningEvidence: async (id) => id === 'lesson_stable',
+        isLessonCompleted: async (id) => id === 'lesson_stable',
         liveCleanup: { retireOutlineReferences },
         now: () => new Date('2026-07-13T01:00:00.000Z'),
       },
@@ -148,7 +148,7 @@ describe('reviseCourseOutline', () => {
       {
         repositories,
         unitOfWork,
-        hasLearningEvidence: async () => false,
+        isLessonCompleted: async () => false,
         now: () => new Date('2026-07-13T01:00:00.000Z'),
       },
     );
@@ -187,7 +187,7 @@ describe('reviseCourseOutline', () => {
       {
         repositories,
         unitOfWork,
-        hasLearningEvidence: async () => false,
+        isLessonCompleted: async () => false,
         now: () => new Date('2026-07-13T01:00:00.000Z'),
       },
     );
@@ -210,8 +210,91 @@ describe('reviseCourseOutline', () => {
           expectedCourseVersion: 1,
           candidate: revision,
         },
-        { repositories, unitOfWork, hasLearningEvidence: async () => false, now: () => new Date() },
+        { repositories, unitOfWork, isLessonCompleted: async () => false, now: () => new Date() },
       ),
     ).rejects.toMatchObject({ code: 'course_closed' });
+  });
+
+  it('retains an omitted completed lesson with its original id and frozen definition', async () => {
+    const repositories = await seeded();
+    const addedLesson = {
+      id: 'conditional-probability',
+      title: '条件概率',
+      objective: '理解条件概率',
+      coreKnowledgePoints: ['条件概率'],
+      prerequisiteLessonIds: ['probability-space'],
+      estimatedMinutes: 40,
+      sourceRefs: ['source_topic'],
+    };
+
+    await reviseCourseOutline(
+      {
+        adjustmentSessionId: 'adjustment_omits_completed',
+        courseId: 'course_01',
+        sourceCandidateVersionId: 'candidate_v2',
+        newOutlineVersionId: 'outline_v2',
+        expectedCourseVersion: 1,
+        candidate: {
+          ...revision,
+          modules: [{ id: 'module_next', title: '后续', lessonIds: [addedLesson.id] }],
+          lessons: [addedLesson],
+        },
+      },
+      {
+        repositories,
+        unitOfWork,
+        isLessonCompleted: async (id) => id === 'lesson_stable',
+        now: () => new Date('2026-07-13T01:00:00.000Z'),
+      },
+    );
+
+    const course = await repositories.courses.get('course_01');
+    expect(course?.lessonIds[0]).toBe('lesson_stable');
+    expect(course?.lessonIds).toHaveLength(2);
+    await expect(repositories.lessons.get('lesson_stable')).resolves.toMatchObject({
+      title: '概率空间',
+      objective: '理解概率空间',
+      coreKnowledgePoints: ['样本空间'],
+    });
+  });
+
+  it('ignores model rewrites of a completed semantic key and keeps the frozen lesson definition', async () => {
+    const repositories = await seeded();
+
+    await reviseCourseOutline(
+      {
+        adjustmentSessionId: 'adjustment_rewrites_completed',
+        courseId: 'course_01',
+        sourceCandidateVersionId: 'candidate_v2',
+        newOutlineVersionId: 'outline_v2',
+        expectedCourseVersion: 1,
+        candidate: {
+          ...revision,
+          lessons: [
+            {
+              ...revision.lessons[0]!,
+              title: '模型改写的概率课',
+              objective: '模型改写的目标',
+              coreKnowledgePoints: ['模型改写内容'],
+            },
+          ],
+        },
+      },
+      {
+        repositories,
+        unitOfWork,
+        isLessonCompleted: async (id) => id === 'lesson_stable',
+        now: () => new Date('2026-07-13T01:00:00.000Z'),
+      },
+    );
+
+    await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
+      lessonIds: ['lesson_stable'],
+    });
+    await expect(repositories.lessons.get('lesson_stable')).resolves.toMatchObject({
+      title: '概率空间',
+      objective: '理解概率空间',
+      coreKnowledgePoints: ['样本空间'],
+    });
   });
 });

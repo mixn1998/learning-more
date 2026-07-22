@@ -25,6 +25,7 @@ export type CandidatePromptInput = Readonly<{
     title: string;
     excerpt: string;
   }>[];
+  pastVersionContext?: AuthoringContext['pastVersionContext'];
   currentCandidate?: Readonly<{
     markdown: string;
     outlineNodes?: NonNullable<AuthoringContext['candidate']>['outlineNodes'];
@@ -49,6 +50,9 @@ export function buildCandidatePromptInput(context: AuthoringContext): CandidateP
       { sourceRef: 'source_topic', title: 'Initial course direction', excerpt: context.topic },
       ...context.materials,
     ],
+    ...(context.pastVersionContext === undefined
+      ? {}
+      : { pastVersionContext: context.pastVersionContext }),
     ...(context.candidate === undefined
       ? {}
       : {

@@ -48,6 +48,34 @@ function renderConversation(conversation: CandidatePromptInput['conversation']):
     .join('\n\n');
 }
 
+function renderPastVersionContext(
+  context: NonNullable<CandidatePromptInput['pastVersionContext']>,
+) {
+  const completedLessons =
+    context.completedLessons.length === 0
+      ? 'No lessons from a past version are completed.'
+      : context.completedLessons
+          .map((lesson) =>
+            [
+              '- Completion status: 用户已完成',
+              `  Stable semantic key: ${lesson.semanticKey}`,
+              `  Title: ${lesson.title}`,
+              `  Objective: ${lesson.objective}`,
+              `  Core knowledge points: ${lesson.coreKnowledgePoints.join('、')}`,
+            ].join('\n'),
+          )
+          .join('\n');
+  return [
+    'PART 1 — COMPRESSED OUTLINE-GENERATION DIALOGUE',
+    context.dialogueDigest || 'No historical authoring dialogue is available.',
+    '',
+    'PART 2 — COMPLETED LESSON OUTLINE SUMMARIES',
+    completedLessons,
+    '',
+    'Every listed completed lesson must appear exactly once in the revised outline with its stable semantic key, title, objective, and core knowledge points unchanged. Mark it as already completed by the learner. Do not rename, rewrite, replace, or duplicate these completed lessons. Continue revision around and after these frozen anchors.',
+  ].join('\n');
+}
+
 function renderAdjustmentTargets(input: CandidatePromptInput): string {
   const adjustment = input.requestedAdjustment;
   if (adjustment === undefined || adjustment.action !== 'patch') {
@@ -95,8 +123,16 @@ export function buildCandidateGenerationPrompt(input: CandidatePromptInput): str
     '[SOURCE MATERIALS]',
     renderSources(input.sources),
     '',
-    '[ORIGINAL CONVERSATION]',
-    renderConversation(input.conversation),
+    ...(input.pastVersionContext === undefined
+      ? ['', '[ORIGINAL CONVERSATION]', renderConversation(input.conversation)]
+      : [
+          '',
+          '[PAST VERSION CONTEXT]',
+          renderPastVersionContext(input.pastVersionContext),
+          '',
+          '[CURRENT ADJUSTMENT CONVERSATION]',
+          renderConversation(input.conversation),
+        ]),
     ...(input.currentCandidate === undefined
       ? []
       : ['', '[CURRENT CANDIDATE]', input.currentCandidate.markdown]),

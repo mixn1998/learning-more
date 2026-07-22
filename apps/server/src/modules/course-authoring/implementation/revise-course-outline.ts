@@ -48,7 +48,7 @@ export async function reviseCourseOutline(
   dependencies: {
     readonly repositories: CourseCreationRepositories;
     readonly unitOfWork: UnitOfWork;
-    readonly hasLearningEvidence: (lessonId: string) => Promise<boolean>;
+    readonly isLessonCompleted: (lessonId: string) => Promise<boolean>;
     readonly nextLessonRecommender?: NextLessonRecommender;
     readonly liveCleanup?: PlanningOutlineRevisionParticipant;
     readonly now: () => Date;
@@ -64,20 +64,66 @@ export async function reviseCourseOutline(
   const existingBySemanticKey = new Map(
     existingLessons.map((lesson) => [lesson.semanticKey, lesson]),
   );
+  const existingById = new Map(existingLessons.map((lesson) => [lesson.id, lesson]));
+  const completedLessons = (
+    await Promise.all(
+      existingLessons.map(async (lesson) => ({
+        lesson,
+        completed: await dependencies.isLessonCompleted(lesson.id),
+      })),
+    )
+  )
+    .filter((entry) => entry.completed)
+    .map((entry) => entry.lesson);
+  const activeOrder = new Map(course.lessonIds.map((id, index) => [id, index]));
+  completedLessons.sort(
+    (left, right) =>
+      (activeOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (activeOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id),
+  );
+  const completedBySemanticKey = new Map(
+    completedLessons.map((lesson) => [lesson.semanticKey, lesson]),
+  );
+  const frozenCandidate = (lesson: LessonDefinition): CompiledCandidate['lessons'][number] => ({
+    id: lesson.semanticKey,
+    title: lesson.title,
+    objective: lesson.objective,
+    coreKnowledgePoints: lesson.coreKnowledgePoints,
+    prerequisiteLessonIds: lesson.prerequisiteLessonIds
+      .map((id) => existingById.get(id)?.semanticKey)
+      .filter((key): key is string => key !== undefined),
+    estimatedMinutes: lesson.estimatedMinutes,
+    sourceRefs: lesson.sourceRefs,
+  });
+  const generatedLessons = command.candidate.lessons
+    .filter(
+      (candidate) =>
+        !completedLessons.some(
+          (completed) =>
+            completed.semanticKey !== candidate.id && sameSemanticMeaning(completed, candidate),
+        ),
+    )
+    .map((candidate) => {
+      const completed = completedBySemanticKey.get(candidate.id);
+      return completed === undefined ? candidate : frozenCandidate(completed);
+    });
+  const generatedSemanticKeys = new Set(generatedLessons.map((lesson) => lesson.id));
+  const effectiveLessons = [
+    ...completedLessons
+      .filter((lesson) => !generatedSemanticKeys.has(lesson.semanticKey))
+      .map(frozenCandidate),
+    ...generatedLessons,
+  ];
   const chosenIds = new Map<string, string>();
   const usedExistingIds = new Set<string>();
-  const completedSemanticKeys = new Set<string>();
-  for (const candidate of command.candidate.lessons) {
+  const completedSemanticKeys = new Set(completedLessons.map((lesson) => lesson.semanticKey));
+  for (const lesson of completedLessons) {
+    chosenIds.set(lesson.semanticKey, lesson.id);
+    usedExistingIds.add(lesson.id);
+  }
+  for (const candidate of effectiveLessons) {
+    if (chosenIds.has(candidate.id)) continue;
     const directExisting = existingBySemanticKey.get(candidate.id);
-    const directHasEvidence =
-      directExisting !== undefined && (await dependencies.hasLearningEvidence(directExisting.id));
-    if (
-      directExisting !== undefined &&
-      directHasEvidence &&
-      !sameSemanticMeaning(directExisting, candidate)
-    ) {
-      throw new CourseRevisionError('lesson_semantic_rebind');
-    }
     const existing =
       directExisting !== undefined &&
       !usedExistingIds.has(directExisting.id) &&
@@ -87,11 +133,7 @@ export async function reviseCourseOutline(
             (lesson) => !usedExistingIds.has(lesson.id) && sameSemanticMeaning(lesson, candidate),
           );
     if (existing !== undefined) {
-      const hasEvidence =
-        existing.id === directExisting?.id
-          ? directHasEvidence
-          : await dependencies.hasLearningEvidence(existing.id);
-      if (hasEvidence) {
+      if (await dependencies.isLessonCompleted(existing.id)) {
         completedSemanticKeys.add(candidate.id);
       }
       if (!sameSemanticMeaning(existing, candidate)) {
@@ -104,7 +146,7 @@ export async function reviseCourseOutline(
     }
   }
   const createdAt = dependencies.now().toISOString();
-  const lessonIds = command.candidate.lessons.map((lesson) => chosenIds.get(lesson.id)!);
+  const lessonIds = effectiveLessons.map((lesson) => chosenIds.get(lesson.id)!);
   const semanticKeyByExistingId = new Map(
     existingLessons.map((lesson) => [lesson.id, lesson.semanticKey]),
   );
@@ -136,7 +178,7 @@ export async function reviseCourseOutline(
     input: {
       courseId: command.courseId,
       trigger: 'outline-revised',
-      candidates: command.candidate.lessons.map((lesson) => ({
+      candidates: effectiveLessons.map((lesson) => ({
         semanticKey: lesson.id,
         title: lesson.title,
         objective: lesson.objective,
@@ -183,7 +225,7 @@ export async function reviseCourseOutline(
         },
         0,
       );
-      for (const candidate of command.candidate.lessons) {
+      for (const candidate of effectiveLessons) {
         const id = chosenIds.get(candidate.id)!;
         if (existingLessons.some((lesson) => lesson.id === id)) continue;
         await dependencies.repositories.lessons.save(

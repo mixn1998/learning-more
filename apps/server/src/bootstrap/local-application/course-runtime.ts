@@ -21,6 +21,7 @@ import {
 import { createLocalFileCourseAuthoringRepositories } from '../../persistence/course-authoring-repositories.js';
 import { createLocalFileCourseCreationRepositories } from '../../persistence/course-creation-repositories.js';
 import { createLocalFileTeachingWeightRepository } from '../../persistence/teaching-weight-repository.js';
+import { createLocalFileLearningSessionRepositories } from '../../persistence/learning-session-repositories.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import {
@@ -78,6 +79,30 @@ export function createLocalCourseRuntime(
   const scheduleRepository = createLocalFileScheduleRepository(input.dataRoot);
   const planFlowRepository = createLocalFilePlanFlowRepository(input.dataRoot);
   const teachingWeightRepository = createLocalFileTeachingWeightRepository(input.dataRoot);
+  const learningSessionRepositories = createLocalFileLearningSessionRepositories(input.dataRoot);
+  const isLessonCompleted = async (lessonId: string) =>
+    (await learningSessionRepositories.get(lessonId))?.learning.progress === 'completed';
+  const listCompletedLessonOutlineContexts = async (courseId: string) => {
+    const course = await courseRepositories.courses.get(courseId);
+    if (course === undefined) return [];
+    const lessons = [];
+    for await (const lesson of courseRepositories.lessons.listByCourse(courseId)) {
+      if (await isLessonCompleted(lesson.id)) lessons.push(lesson);
+    }
+    const activeOrder = new Map(course.lessonIds.map((lessonId, index) => [lessonId, index]));
+    lessons.sort(
+      (left, right) =>
+        (activeOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+          (activeOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id),
+    );
+    return lessons.map((lesson) => ({
+      lessonId: lesson.id,
+      semanticKey: lesson.semanticKey,
+      title: lesson.title,
+      objective: lesson.objective,
+      coreKnowledgePoints: lesson.coreKnowledgePoints,
+    }));
+  };
   const teachingWeights = createTeachingWeightService({
     courses: courseRepositories,
     repository: teachingWeightRepository,
@@ -177,6 +202,7 @@ export function createLocalCourseRuntime(
     execution: input.generation.execution,
     frameLog: input.generation.frameLog,
     nextCandidateId: () => `candidate_${randomUUID()}`,
+    listCompletedLessonOutlineContexts,
   });
   const nextId = (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment' | 'message') =>
     `${kind}_${randomUUID()}`;
@@ -224,6 +250,8 @@ export function createLocalCourseRuntime(
       providerId: 'current',
     }),
     nextLessonRecommender: input.generation.nextLessonRecommender,
+    isLessonCompleted,
+    listCompletedLessonOutlineContexts,
     outlineRevisionLiveCleanup,
     outbox: input.events.outbox,
     profileEvidenceSink: input.profile.checkpointSink,

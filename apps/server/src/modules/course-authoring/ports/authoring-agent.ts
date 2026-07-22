@@ -1,6 +1,14 @@
 import type { CourseMode } from '../model/commands.js';
 import type { OutlineMessage } from '../model/outline-message.js';
 
+export type CompletedLessonOutlineContext = Readonly<{
+  lessonId: string;
+  semanticKey: string;
+  title: string;
+  objective: string;
+  coreKnowledgePoints: readonly string[];
+}>;
+
 export type AuthoringContext = Readonly<{
   outlineSessionId: string;
   phase: 'assessment' | 'candidate-alignment';
@@ -13,6 +21,10 @@ export type AuthoringContext = Readonly<{
     title: string;
     excerpt: string;
   }>[];
+  pastVersionContext?: Readonly<{
+    dialogueDigest: string;
+    completedLessons: readonly CompletedLessonOutlineContext[];
+  }>;
   candidate?: Readonly<{
     candidateVersionId: string;
     markdown: string;
