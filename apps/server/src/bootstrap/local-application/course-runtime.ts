@@ -59,6 +59,7 @@ export type LocalCourseRuntime = Readonly<{
   access: CourseAccess;
   courseRepositories: CourseRepositories;
   reconcileOutlineLiveReferences(): Promise<void>;
+  recoverInterruptedAuthoringTurns(): Promise<void>;
   recoverGenerationTasks(): Promise<void>;
   recoverTeachingWeightMetadata(): Promise<void>;
 }>;
@@ -389,6 +390,7 @@ export function createLocalCourseRuntime(
         );
       }
     },
+    recoverInterruptedAuthoringTurns: () => courseAuthoring.recoverInterruptedTurns(),
     async recoverGenerationTasks() {
       for await (const record of authoringRepositories.outlineSessions.list()) {
         if (record.session.state !== 'generating-candidates') continue;

@@ -107,6 +107,7 @@ export async function assembleLocalApplication(
   // Markdown is compiled and the outline session is advanced. Resume both
   // pending work and terminal tasks whose authoring projection was not saved.
   const startupRecoveries = [
+    course.recoverInterruptedAuthoringTurns().catch(() => undefined),
     course.recoverGenerationTasks().catch(() => undefined),
     course.recoverTeachingWeightMetadata().catch(() => undefined),
   ];

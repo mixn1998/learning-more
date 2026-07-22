@@ -49,6 +49,11 @@ export interface CandidateGenerationCoordinator {
   }>;
 }
 
+export type RecoverableCourseAuthoring = CourseAuthoring &
+  Readonly<{
+    recoverInterruptedTurns(): Promise<void>;
+  }>;
+
 class ResourceNotFoundError extends Error {
   readonly code = 'resource_not_found';
   constructor() {
@@ -93,7 +98,7 @@ export function createCourseAuthoringFacade(options: {
     ): Promise<CommandResult<Extract<CourseAuthoringResult, { kind: 'course-archive-deleted' }>>>;
   }>;
   readonly outlineSessionDraftStore?: OutlineSessionDraftStore;
-}): CourseAuthoring {
+}): RecoverableCourseAuthoring {
   const assembleAuthoringContext = createAuthoringContextAssembler(options.authoring, {
     ...(options.listCompletedLessonOutlineContexts === undefined
       ? {}
@@ -433,6 +438,36 @@ export function createCourseAuthoringFacade(options: {
   }
 
   return {
+    async recoverInterruptedTurns() {
+      for await (const record of options.authoring.outlineSessions.list()) {
+        if (
+          record.session.state !== 'assessment-turn-running' &&
+          record.session.state !== 'alignment-turn-running'
+        ) {
+          continue;
+        }
+        const userMessageId = record.session.activeUserMessageId;
+        if (userMessageId === undefined) continue;
+        try {
+          if (record.session.state === 'alignment-turn-running') {
+            await completeAlignmentTurn({
+              record,
+              userMessageId,
+              commandId: `recover_${record.session.outlineSessionId}_${record.resourceVersion}`,
+            });
+          } else {
+            await completeAuthoringTurn({
+              record,
+              userMessageId,
+              commandId: `recover_${record.session.outlineSessionId}_${record.resourceVersion}`,
+            });
+          }
+        } catch {
+          // The completion helpers persist a retryable non-running state when the
+          // provider cannot be recovered. A concurrent writer wins by version.
+        }
+      }
+    },
     async execute(command, context) {
       if (command.type === 'CreateOutlineAdjustmentSession') {
         const course = await options.courses.courses.get(command.courseId);

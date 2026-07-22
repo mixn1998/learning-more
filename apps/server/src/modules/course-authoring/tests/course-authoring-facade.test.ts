@@ -85,6 +85,52 @@ function setup(
 }
 
 describe('CourseAuthoring public facade', () => {
+  it('recovers a completed provider reply when an authoring turn was left running', async () => {
+    const { authoring, facade } = setup();
+    await authoring.outlineSessions.save(
+      tx,
+      {
+        session: {
+          outlineSessionId: 'interrupted_alignment',
+          courseMode: 'standard',
+          topic: 'Interrupted authoring',
+          state: 'alignment-turn-running',
+          messageIds: ['message_user'],
+          completedAssessmentRounds: 3,
+          activeUserMessageId: 'message_user',
+          candidateVersionIds: ['candidate_v1'],
+          latestCandidateVersionId: 'candidate_v1',
+        },
+        resourceVersion: 0,
+        candidateCommandReceipts: {},
+        messages: [
+          {
+            messageId: 'message_user',
+            role: 'user',
+            content: 'Keep the cross-industry structure.',
+            status: 'complete',
+            createdAt: context.requestedAt,
+          },
+        ],
+      },
+      0,
+    );
+
+    await facade.recoverInterruptedTurns();
+    await facade.recoverInterruptedTurns();
+
+    const recovered = await facade.query(
+      { type: 'GetOutlineSession', outlineSessionId: 'interrupted_alignment' },
+      queryContext,
+    );
+    expect(recovered.state).toBe('candidate-ready');
+    expect(recovered.messages).toHaveLength(2);
+    expect(recovered.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      inReplyToMessageId: 'message_user',
+    });
+  });
+
   it('keeps formal-course adjustment messages reply-only until the user requests a candidate', async () => {
     const { authoring, facade, generationCalls, alignmentCalls } = setup();
     await authoring.candidateVersions.save(
