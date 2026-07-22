@@ -306,7 +306,13 @@ export function createLocalReviewRuntime(
             current.nextAttemptAt === undefined ||
             Date.parse(current.nextAttemptAt) <= input.now().getTime();
           if (!retryIsDue || (current.workflowAttempt ?? 0) >= maxAutomaticClosureAttempts) return;
-          current = await lessonClosures.resetPreparation(current.transactionId, false);
+          const previousTask =
+            current.generationTaskId === 'pending'
+              ? undefined
+              : await input.generation.runtime.get(current.generationTaskId).catch(() => undefined);
+          if (previousTask?.status !== 'completed') {
+            current = await lessonClosures.resetPreparation(current.transactionId, false);
+          }
         }
         if (current.state === 'open') {
           stage = 'preparing';
@@ -317,7 +323,7 @@ export function createLocalReviewRuntime(
             `reconcile_${current.transactionId}_${current.workflowAttempt ?? 0}`,
           );
         }
-        if (current.state === 'generating') {
+        if (current.state === 'generating' || current.state === 'generating-failed') {
           stage = 'finalizing';
           const generated = await reviewWriter.complete(current.generationTaskId);
           const document = reviewEvidence.normalizeRefs(
@@ -325,7 +331,7 @@ export function createLocalReviewRuntime(
             'lesson-final',
             current.sourceMessageIds,
           );
-          const artifactRef = `lesson_review_${reviewIdForLesson(current.lessonId)}`;
+          const artifactRef = `lesson_review_${reviewIdForLesson(current.lessonId)}_${generated.contentSha256.slice(0, 16)}`;
           await input.artifactStore.finalize({
             artifactId: artifactRef,
             kind: 'lesson-final-review',
