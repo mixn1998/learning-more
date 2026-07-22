@@ -58,6 +58,18 @@ describe('compileCandidate', () => {
     });
   });
 
+  it('recovers a complete candidate appended after a partial duplicate stream', () => {
+    const complete = markdownFor(baseMetadata);
+    const duplicated = `${complete.slice(0, 120)}${complete}`;
+
+    expect(
+      compileCandidate(duplicated, {
+        draftArtifactRef: 'artifact_reconnected',
+        sourceRefs: ['source_topic'],
+      }),
+    ).toMatchObject({ valid: true });
+  });
+
   it('compiles a real high-freedom draft with more than three topic tags', () => {
     const result = compileCandidate(
       markdownFor({
