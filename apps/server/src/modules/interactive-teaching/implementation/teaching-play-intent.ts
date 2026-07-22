@@ -5,7 +5,7 @@ const TEACHING_PLAY_INTENTS: Readonly<Record<Exclude<CourseMode, 'standard'>, st
   argument_clash:
     '在自然机会中通过有力异议、反例和立场交换，帮助学习者看清主张、前提、证据与价值选择。',
   case_study:
-    '在自然机会中让学习者进入具体情境、真实约束和有限信息，并从判断与结果中提炼机制和迁移边界。',
+    '在自然机会中让学习者进入具体情境、真实约束和有限信息，并从判断与结果中提炼机制和迁移边界。讲述方式需要有面对真实决策的临场感和沉浸感。',
   business_insight:
     '在自然机会中帮助学习者理解价值如何创造、传递和获取，以及机会与判断可以如何被证据验证。',
   process_decomposition:

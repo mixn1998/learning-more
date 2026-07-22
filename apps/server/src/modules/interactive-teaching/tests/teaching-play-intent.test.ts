@@ -10,6 +10,7 @@ describe('teaching play intent', () => {
   it('uses one open learning-experience signal rather than methods or quotas', () => {
     const intent = teachingPlayIntent('case_study');
     expect(intent).toContain('具体情境');
+    expect(intent).toContain('面对真实决策的临场感和沉浸感');
     expect(intent).not.toMatch(/必须|每回合|至少|步骤|模板|SWOT|矩阵/u);
   });
 
