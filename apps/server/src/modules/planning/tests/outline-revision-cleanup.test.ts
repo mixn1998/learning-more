@@ -36,6 +36,7 @@ describe('outline revision planning cleanup', () => {
       );
     await seedSchedule('schedule_old', 'lesson_old');
     await seedSchedule('schedule_current', 'lesson_current');
+    const retainedScheduleBeforeRevision = await schedules.get('schedule_current');
     await planFlows.save(
       tx,
       {
@@ -97,9 +98,9 @@ describe('outline revision planning cleanup', () => {
       status: 'removed',
       cancelReason: 'outline_revised',
     });
-    await expect(schedules.get('schedule_current')).resolves.toMatchObject({
-      status: 'scheduled',
-    });
+    await expect(schedules.get('schedule_current')).resolves.toEqual(
+      retainedScheduleBeforeRevision,
+    );
     await expect(planFlows.get('flow_pending')).resolves.toMatchObject({
       state: 'failed',
       errorCode: 'outline_revised',
@@ -114,6 +115,10 @@ describe('outline revision planning cleanup', () => {
         reason: 'outline_revised',
       }),
       tx,
+    );
+    expect(recordScheduleCancelled).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scheduleItemId: 'schedule_current' }),
+      expect.anything(),
     );
   });
 });
