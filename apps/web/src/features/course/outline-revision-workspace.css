@@ -1,0 +1,208 @@
+.course-revision-page .course-revision-hero {
+  margin-bottom: 0;
+}
+
+.course-revision-page .course-revision-hero::after {
+  right: 72px;
+}
+
+.course-revision-page .ow-workbench {
+  margin-top: 12px;
+}
+
+.course-revision-page .ow-ai > :first-child,
+.course-revision-page .ow-ai > :last-child {
+  margin-block: 0;
+}
+
+.course-revision-page .course-revision-busy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.course-revision-page .course-revision-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 4px 17px;
+}
+
+.course-revision-page .course-revision-unapplied {
+  margin: 0 auto 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.course-revision-page .course-revision-outlines {
+  display: grid;
+  gap: 18px;
+}
+
+.course-revision-page .course-revision-version {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+}
+
+.course-revision-page .course-revision-version__head,
+.course-revision-page .course-revision-diff__row,
+.course-revision-page .course-revision-diff__change-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.course-revision-page .course-revision-version__head h2,
+.course-revision-page .course-revision-diff__head h3,
+.course-revision-page .course-revision-diff__head p {
+  margin: 0;
+}
+
+.course-revision-page .course-revision-markdown {
+  margin-top: 16px;
+}
+
+.course-revision-page .course-revision-guidance {
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.course-revision-page .course-revision-guidance p {
+  margin: 0;
+}
+
+.course-revision-page .course-revision-diff {
+  display: grid;
+  gap: 12px;
+}
+
+.course-revision-page .course-revision-diff__head p {
+  color: var(--muted);
+}
+
+.course-revision-page .course-revision-diff__empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+}
+
+.course-revision-page .course-revision-diff__module {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.course-revision-page .course-revision-diff__row,
+.course-revision-page .course-revision-diff__lesson {
+  padding: 12px 14px;
+}
+
+.course-revision-page .course-revision-diff__lesson {
+  border-top: 1px solid var(--line);
+}
+
+.course-revision-page .course-revision-diff__preview {
+  margin: 0 14px 14px;
+  border-radius: 12px;
+  background: var(--paper-2);
+}
+
+.course-revision-page .course-revision-diff__lesson .course-revision-diff__preview {
+  margin: 10px 0 0;
+}
+
+.course-revision-page .course-revision-diff__preview summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.course-revision-page .course-revision-diff__preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.course-revision-page .course-revision-diff__preview-grid > section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.course-revision-page .course-revision-diff__preview-grid .ai-content {
+  margin-top: 8px;
+}
+
+.course-revision-page .course-revision-diff__badges {
+  display: inline-flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.course-revision-page .course-revision-change {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.course-revision-page .course-revision-change--modified {
+  background: color-mix(in srgb, var(--accent) 14%, var(--paper));
+  color: var(--accent-dark);
+}
+
+.course-revision-page .course-revision-change--added {
+  background: color-mix(in srgb, #2f8f68 14%, var(--paper));
+  color: #23684d;
+}
+
+.course-revision-page .course-revision-change--removed {
+  background: color-mix(in srgb, #b8564d 14%, var(--paper));
+  color: #914038;
+}
+
+.course-revision-page .course-revision-attribution {
+  flex: none;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  border-radius: 999px;
+  color: var(--accent-dark);
+  font-size: 12px;
+}
+
+.course-revision-page .course-revision-attribution--ai_sync {
+  border-color: color-mix(in srgb, #8a6a42 35%, var(--line));
+  color: #795a36;
+}
+
+@media (max-width: 680px) {
+  .course-revision-page .course-revision-hero {
+    flex-direction: row;
+  }
+
+  .course-revision-page .course-revision-hero .lm-actions {
+    width: 100%;
+  }
+
+  .course-revision-page .course-revision-hero .lm-btn {
+    width: auto;
+  }
+}

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Learning MORE · 课节记录</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <link rel="stylesheet" href="../00-设计系统/assets/workspace.css" />
+    <link rel="stylesheet" href="../00-设计系统/assets/learning.css" />
+    <style>
+      .record { margin-top: 14px; overflow: hidden; }
+      .tabs { display:flex; align-items:center; gap:4px; padding:0 18px; border-bottom:1px solid var(--line); background:var(--paper-2); }
+      .tabs .lm-pill { margin-left:auto; }
+      .panel { display:none; }
+      .panel.active { display:block; }
+      .chat-layout { display:grid; grid-template-columns:260px minmax(0, 1fr); min-height:580px; }
+      .sessions { padding:22px 18px; border-right:1px solid var(--line); background:#fffaf4; }
+      .sessions h3 { margin:0 0 8px; font-size:16px; line-height:1.3; }
+      .sessions p { margin:0 0 16px; font-size:12px; line-height:1.65; color:var(--muted); }
+      .session { width:100%; margin-top:8px; padding:12px; border:1px solid var(--line); border-radius:10px; background:#fff; text-align:left; cursor:pointer; }
+      .session.active { border-color:var(--accent); background:var(--tint); }
+      .session b, .session span { display:block; }
+      .session b { font-size:13px; }
+      .session span { margin-top:4px; font-size:11px; color:var(--muted); }
+      .chat { padding:28px; }
+      .chat .learn-ai, .chat .learn-user { max-width:760px; }
+      .review { max-width:920px; margin:0 auto; padding:30px 28px 36px; }
+      .review h2 { margin:0 0 24px; font-size:26px; line-height:1.35; }
+      .review h3 { margin:24px 0 10px; font-size:17px; line-height:1.45; }
+      .review p { margin:0; line-height:1.8; }
+      .review pre { margin:0; padding:16px 18px; overflow:auto; border:1px solid var(--line); border-radius:12px; background:#fffaf4; color:var(--ink); font:13px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:pre-wrap; }
+      .review-callout { margin-top:12px; padding:16px 18px; border-left:4px solid var(--accent); border-radius:0 12px 12px 0; background:var(--tint); }
+      .review-callout + .review-callout { margin-top:10px; }
+      .review-callout b { display:block; margin-bottom:6px; }
+      .stage-summary { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; margin:16px 0 8px; }
+      .stage-summary > div { padding:16px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+      .stage-summary b { display:block; margin-bottom:6px; font-size:14px; }
+      .stage-summary p { font-size:13px; line-height:1.7; color:var(--muted); }
+      .stage-note { margin:18px 0 0; padding:14px 16px; border-left:4px solid var(--accent); border-radius:0 10px 10px 0; background:#fff8e9; color:var(--ink); font-size:13px; line-height:1.7; }
+      @media (max-width:760px) { .chat-layout { grid-template-columns:1fr; } .sessions { border-right:0; border-bottom:1px solid var(--line); } .stage-summary { grid-template-columns:1fr; } .review { padding:22px 18px 28px; } }
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar">
+      <div class="lm-brand"><strong>Learning MORE</strong><span>只读课节记录</span></div>
+      <span class="lm-pill readonly" id="archiveState">● 归档完整</span>
+    </header>
+    <main class="lm-page">
+      <section class="lm-card lesson-hero">
+        <div>
+          <div class="lm-mode-badge">● 标准模式</div>
+          <div class="lm-kicker" id="recordStatus" style="margin-top:10px">已完成 · 课节记录</div>
+          <h1 id="lessonTitle">玩家为什么会停下来</h1>
+          <p id="lessonMeta">《从反馈到核心循环》· 2026/07/12 · 24 分钟</p>
+        </div>
+        <div class="lm-actions">
+          <a class="lm-btn" href="../01-主页与全局导航/主页.html">返回主页</a>
+          <a class="lm-btn" href="../02-课程创建与大纲/正式课程大纲.html">返回课程大纲</a>
+        </div>
+      </section>
+      <section class="lm-card record">
+        <nav class="tabs" aria-label="课节记录内容">
+          <button class="lm-tab active" data-tab="chat">学习对话</button>
+          <button class="lm-tab" data-tab="review" id="reviewTab">课时 Review</button>
+          <span class="lm-pill readonly">永久只读</span>
+        </nav>
+        <section class="panel active" id="chatPanel">
+          <div class="chat-layout">
+            <aside class="sessions">
+              <h3>学习会话</h3>
+              <p id="sessionIntro">原始学习与补充学习分别归档；补充学习不会改变最终 Review。</p>
+              <button class="session active" data-session="original"><b>原始学习对话</b><span id="originalSessionMeta">2026/07/12 · 24 分钟</span></button>
+              <button class="session" data-session="supplement" id="supplementSession"><b>补充学习 01</b><span>2026/07/15 · 金币路线</span></button>
+            </aside>
+            <main class="chat">
+              <div id="original">
+                <div class="learn-ai">回想你提到的平台跳跃原型：玩家在第几分钟开始觉得重复？你当时看到了什么行为证据？</div>
+                <div class="learn-user">大概第三分钟。玩家还在继续跳，但已经不再尝试收集边缘位置的金币，动作变得很机械。</div>
+                <div class="learn-ai">这说明问题不只是“内容数量少”，而是玩家已经不需要重新判断。我们可以把体验断点拆成三个维度：行动是否变化、反馈是否带来新信息、目标是否继续推进。</div>
+                <div class="learn-user">应该是反馈没有新信息。金币只是加分，没有改变玩家接下来怎么跳。</div>
+                <div class="learn-ai">很好。你已经从“重复感”推进到了可设计的问题：反馈有没有改变下一次行动。</div>
+              </div>
+              <div id="supplement" hidden>
+                <div class="learn-user">如果边缘金币临时提高跳跃高度，它是不是能改变路线判断？</div>
+                <div class="learn-ai">关键不在奖励更强，而在玩家是否会因此重新比较路线；路线选择变化才是更直接的证据。</div>
+              </div>
+            </main>
+          </div>
+        </section>
+        <section class="panel" id="reviewPanel">
+          <article class="review review-content" id="reviewContent">
+            <h2>第一讲总结：玩家为什么会停下来</h2>
+            <h3>知识图谱</h3>
+            <pre>体验断点
+├── 行动变化：玩家是否仍需做新判断
+├── 反馈信息：系统是否带来新信息
+└── 目标推进：当前行为是否改变下一步追求</pre>
+            <h3>核心思想</h3>
+            <p>玩家停下来往往不是因为看过相同画面，而是系统不再要求新的判断。</p>
+            <h3>学习表现评价</h3>
+            <div class="review-callout"><b>你做得很好的地方</b><p>你从“玩家不再收集边缘金币”的行为证据，推出反馈没有改变下一次行动。</p></div>
+            <div class="review-callout"><b>接下来的判断</b><p>你已经能识别体验断点；下一步适合区分状态反馈、能力反馈与目标反馈。</p></div>
+          </article>
+        </section>
+      </section>
+    </main>
+    <script src="../00-设计系统/assets/mode-themes.js"></script>
+    <script>
+      applyCourseModeTheme('standard');
+      const stageMode = new URLSearchParams(location.search).get('state') === 'stage';
+      const stageReview = `<h2>阶段 Review：难度与掌握感如何推进</h2><p>本课在形成有效互动证据后提前结束，原始学习对话已冻结。本 Review 记录当前已建立的理解与尚待完成的教学闭环。</p><div class="stage-summary"><div><b>已建立的理解</b><p>你已经能区分“操作负担变高”和“判断变复杂”，并意识到难度必须给玩家可解释的反馈。</p></div><div><b>尚待验证的内容</b><p>还未通过具体玩家行为，验证挑战推进是否带来新的判断与掌握感。</p></div></div><h3>当前知识线索</h3><pre>难度与掌握感
+├── 操作负担：输入、速度与容错的压力
+├── 判断复杂度：玩家是否需要重新比较方案
+└── 可解释反馈：失败与成功是否说明下一步如何调整</pre><h3>学习表现</h3><div class="review-callout"><b>本次已经推进的部分</b><p>你没有把“变难”简单理解为数值提高，而是主动追问玩家能否理解失败原因。</p></div><div class="review-callout"><b>恢复学习后可以继续推进的部分</b><p>回到原始学习会话后，将继续用玩家行为证据判断挑战是否真正推动了下一次决策。</p></div><p class="stage-note">恢复学习不会新建会话：原始对话将解除冻结并继续。课节最终闭环后，此阶段 Review 会由同一课节记录中的最终 Review 覆盖。</p>`;
+      if (stageMode) {
+        document.title = 'Learning MORE · 阶段课节记录';
+        document.getElementById('archiveState').textContent = '● 阶段归档';
+        document.getElementById('recordStatus').textContent = '已放弃 · 课节记录';
+        document.getElementById('lessonTitle').textContent = '难度与掌握感如何推进';
+        document.getElementById('lessonMeta').textContent = '《从反馈到核心循环》· 原始会话已冻结 · 18 分钟';
+        document.getElementById('reviewTab').textContent = '阶段 Review';
+        document.getElementById('sessionIntro').textContent = '本次原始学习对话因提前结束而冻结；恢复学习后将解除冻结并继续同一会话。';
+        document.getElementById('originalSessionMeta').textContent = '2026/07/12 · 已冻结 · 18 分钟';
+        document.getElementById('supplementSession').hidden = true;
+        document.getElementById('reviewContent').innerHTML = stageReview;
+      }
+      const chatPanel = document.getElementById('chatPanel');
+      const reviewPanel = document.getElementById('reviewPanel');
+      document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
+        document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item === button));
+        chatPanel.classList.toggle('active', button.dataset.tab === 'chat');
+        reviewPanel.classList.toggle('active', button.dataset.tab === 'review');
+      }));
+      document.querySelectorAll('[data-session]').forEach((button) => button.addEventListener('click', () => {
+        document.querySelectorAll('[data-session]').forEach((item) => item.classList.toggle('active', item === button));
+        document.getElementById('original').hidden = button.dataset.session !== 'original';
+        document.getElementById('supplement').hidden = button.dataset.session !== 'supplement';
+      }));
+      if (new URLSearchParams(location.search).get('tab') === 'review') document.querySelector('[data-tab="review"]').click();
+    </script>
+  </body>
+</html>

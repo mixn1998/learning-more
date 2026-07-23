@@ -1,0 +1,276 @@
+:root {
+  --lm-font-product: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --lm-font-code: 'Cascadia Mono', Consolas, monospace;
+  --lm-ai-block-gap: 0.8em;
+  --lm-ai-section-gap: 1.35em;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: var(--lm-font-product);
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.lm-ai-content,
+.lm-ai-surface {
+  min-width: 0;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.lm-ai-content {
+  font-size: 15px;
+  line-height: 1.75;
+  font-kerning: normal;
+  letter-spacing: normal;
+  text-rendering: optimizelegibility;
+}
+
+.lm-ai-content :where(h1, h2, h3, h4, h5, h6) {
+  margin: var(--lm-ai-section-gap) 0 0.55em;
+  color: var(--lm-ink);
+}
+
+.lm-ai-content h1 {
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.lm-ai-content h2 {
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.lm-ai-content h3 {
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.lm-ai-content :where(h4, h5, h6) {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.lm-ai-content :where(p, ul, ol, blockquote, pre, table) {
+  margin: 0 0 var(--lm-ai-block-gap);
+}
+
+.lm-ai-content > :first-child {
+  margin-top: 0;
+}
+
+.lm-ai-content > :last-child {
+  margin-bottom: 0;
+}
+
+.lm-ai-content :where(ul, ol) {
+  padding-inline-start: 1.55em;
+}
+
+.lm-ai-content :where(li + li) {
+  margin-top: 0.35em;
+}
+
+.lm-ai-content blockquote {
+  padding: 0.55em 0.9em;
+  border-left: 3px solid var(--lm-accent);
+  border-radius: 0 var(--lm-radius-sm) var(--lm-radius-sm) 0;
+  background: var(--lm-tint);
+  color: color-mix(in srgb, var(--lm-ink) 78%, var(--lm-muted));
+}
+
+.lm-ai-table-wrap {
+  max-width: 100%;
+  margin: 0 0 var(--lm-ai-block-gap);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.lm-ai-content table {
+  min-width: 34rem;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lm-ai-content :where(th, td) {
+  padding: 0.55em 0.7em;
+  border: 1px solid var(--lm-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.lm-ai-content :where(code, pre, kbd, samp) {
+  font-family: var(--lm-font-code);
+  font-weight: 400;
+}
+
+.lm-ai-content code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--lm-paper-2);
+  font-size: 0.9em;
+}
+
+.lm-ai-content pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 1em;
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-md);
+  background: #f8f4ee;
+  line-height: 1.6;
+}
+
+.lm-ai-content pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.lm-ai-content [data-diagram-fallback='mermaid'] {
+  display: block;
+  white-space: pre;
+}
+
+.lm-ai-content .katex-display {
+  max-width: 100%;
+  margin: 0 0 var(--lm-ai-block-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.35em;
+}
+
+.lm-math-plot {
+  max-width: 100%;
+  margin: 1.1em 0;
+  overflow: hidden;
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-md);
+  background: color-mix(in srgb, var(--lm-paper) 96%, var(--lm-tint));
+}
+
+.lm-math-plot > figcaption {
+  padding: 0.9rem 1rem 0;
+  color: var(--lm-ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.lm-math-plot-description {
+  margin: 0.35rem 1rem 0.75rem;
+  color: var(--lm-muted);
+}
+
+.lm-math-plot-board.jxgbox {
+  position: relative;
+  width: calc(100% - 2rem);
+  height: clamp(20rem, 48vw, 32rem);
+  margin: 0.85rem 1rem 1rem;
+  overflow: hidden;
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-sm);
+  background: #fffdf9;
+  touch-action: none;
+}
+
+.lm-math-plot-board.is-3d {
+  height: clamp(24rem, 56vw, 38rem);
+}
+
+.lm-math-plot-board svg text {
+  cursor: default;
+  user-select: none;
+}
+
+.lm-math-plot-board .JXGtext {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: var(--lm-font-product);
+}
+
+.lm-math-plot-board .JXG_navigation {
+  position: absolute;
+  z-index: 2;
+  right: 0.55rem;
+  bottom: 0.45rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--lm-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 92%, var(--lm-tint));
+  font-size: 0.85rem;
+}
+
+.lm-math-plot-board .JXG_navigation_button {
+  color: var(--lm-muted);
+  cursor: pointer;
+}
+
+.lm-math-plot-summary {
+  margin: 0 1rem 1rem;
+  color: var(--lm-muted);
+  font-size: 0.9rem;
+}
+
+.lm-math-plot-summary summary,
+.lm-math-plot-fallback summary {
+  cursor: pointer;
+  color: var(--lm-ink);
+  font-weight: 600;
+}
+
+.lm-math-plot-summary ul {
+  margin: 0.55rem 0 0;
+  padding-inline-start: 1.4rem;
+}
+
+.lm-math-plot-loading,
+.lm-math-plot-fallback {
+  padding: 1rem;
+}
+
+.lm-math-plot-loading > figcaption,
+.lm-math-plot-fallback > figcaption {
+  padding: 0;
+}
+
+.lm-math-plot-loading p,
+.lm-math-plot-fallback p,
+.lm-math-plot-runtime-error {
+  margin: 0.45rem 0 0;
+  color: var(--lm-muted);
+}
+
+.lm-math-plot-runtime-fallback {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  margin: 0.85rem 1rem 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--lm-line);
+  border-radius: var(--lm-radius-sm);
+  background: var(--lm-paper-2);
+  text-align: center;
+}
+
+.lm-math-plot-fallback pre {
+  margin-top: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .lm-math-plot-board.jxgbox {
+    width: calc(100% - 1rem);
+    height: 21rem;
+    margin-inline: 0.5rem;
+  }
+
+  .lm-math-plot-board.is-3d {
+    height: 25rem;
+  }
+}

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Learning MORE · 正式课程学习会话</title><link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../00-设计系统/assets/base.css">
+  <link rel="stylesheet" href="../00-设计系统/assets/workspace.css">
+  <link rel="stylesheet" href="../00-设计系统/assets/learning.css">
+  <style>
+    .layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;margin-top:14px}.main{min-height:680px;display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}.head{padding:13px 17px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;background:var(--paper-2)}.stream{padding:25px;overflow:auto}.composer{padding:13px;border-top:1px solid var(--line);background:var(--paper-2)}.input{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px;border:1px solid var(--line);border-radius:11px;background:#fff}.input textarea{border:0;outline:0;resize:none;min-height:55px}.side{display:grid;gap:12px;align-content:start}.side section{padding:15px}.side h3{font-size:14px;line-height:1.4;margin:0 0 8px}.side p{font-size:11px;color:var(--muted);line-height:1.65}.learning-path{display:grid;gap:0;margin:12px 0 0;padding:0;list-style:none}.learning-path li{position:relative;display:grid;grid-template-columns:20px 1fr;gap:9px;min-height:42px;padding:0 0 10px}.learning-path li:last-child{min-height:20px;padding-bottom:0}.learning-path li:not(:last-child)::after{position:absolute;top:17px;bottom:0;left:8px;width:1px;background:var(--line);content:""}.learning-path .node{position:relative;z-index:1;display:grid;width:17px;height:17px;place-items:center;border:1px solid #cdbda9;border-radius:50%;background:#fff;color:transparent;font-size:10px}.learning-path b{display:block;font-size:12px;line-height:1.35}.learning-path small{display:block;margin-top:2px;color:var(--muted);font-size:10px;line-height:1.4}.learning-path .active .node{border:4px solid var(--tint);background:var(--accent);box-shadow:0 0 0 1px var(--accent)}.learning-path .active b{color:var(--accent-dark)}.learning-path .done .node{border-color:var(--accent);background:var(--accent);color:#fff}.learning-path .done .node::after{content:"✓"}.learning-path .pending{padding:0;border:0;border-radius:0;background:transparent;margin:0}.learning-path .pending b,.learning-path .pending small{color:#8e857b}.end{display:none;position:fixed;inset:0;z-index:80;background:rgba(44,38,32,.4);place-items:center;padding:18px}.end.open{display:grid}.end-card{width:min(650px,100%);padding:22px}.pending{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper-2);margin-top:9px}
+    @media(max-width:880px){.layout{grid-template-columns:1fr}.side{grid-template-columns:1fr 1fr}}
+    @media(max-width:600px){.side{grid-template-columns:1fr}.head{align-items:flex-start;gap:10px;flex-direction:column}.head .lm-actions{display:grid;grid-template-columns:1fr 1fr}.stream{padding:18px}}
+  </style>
+  <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+<script defer src="../00-设计系统/assets/sample-ui.js"></script></head>
+<body>
+  <header class="lm-topbar">
+    <div class="lm-brand"><strong>Learning MORE</strong><span>正式课程学习会话</span></div>
+    <div class="lm-runtime"><span class="lm-pill">● 接口 · Codex</span><span class="lm-pill success" id="timerStatus">● 正在计时 18:42</span></div>
+  </header>
+  <main class="lm-page">
+    <section class="lm-card lesson-hero">
+      <div><div class="lm-mode-badge">● 标准模式</div><h1>反馈不是奖励动画</h1><p>《从反馈到核心循环》· 模块一 · 大纲 v1</p></div>
+      <div class="lm-actions"><button class="lm-btn" id="pauseLearning">暂停学习</button><button class="lm-btn danger" id="endLesson">结束本课</button><a class="lm-btn" href="../02-课程创建与大纲/正式课程大纲.html">返回课程大纲</a></div>
+    </section>
+    <div class="layout">
+      <section class="lm-card main">
+        <header class="head"><strong>学习中 · 渐进式教学</strong><div class="lm-actions"><span class="lm-pill warning" id="generationStatus">正在生成 Markdown</span><button class="lm-btn" id="stopGeneration">停止生成</button></div></header>
+        <div class="stream">
+          <div class="learn-ai">回想你的平台跳跃原型：玩家在第几分钟开始觉得重复？你当时看到了什么行为证据？</div>
+          <div class="learn-user">大概第三分钟。玩家还在继续跳，但已经不再尝试收集边缘金币，动作变得很机械。</div>
+          <div class="learn-ai">这说明问题不只是内容数量少，而是玩家已经不需要重新判断。我们可以把体验断点拆成三个维度：行动是否变化、反馈是否带来新信息、目标是否继续推进。你觉得原型先在哪一层失效？</div>
+          <div class="learn-user">应该是反馈没有新信息。金币只是加分，没有改变玩家接下来怎么跳。</div>
+          <div class="learn-ai"><h2 style="font-size:18px">反馈的第一条判断</h2><p>反馈不是系统“回应了”，而是回应是否改变玩家对当前状态、能力或目标的理解。</p><div class="review-callout"><b>现在继续检验：</b>如果把金币改成临时提高跳跃高度，玩家的下一步路线判断会怎样变化？</div></div>
+        </div>
+        <div class="composer"><div class="input"><textarea id="learningInput" placeholder="回答问题、追问，或要求换一种解释方式……"></textarea><button class="lm-btn primary" id="sendLearning">发送</button></div></div>
+      </section>
+      <aside class="side">
+        <section class="lm-card"><h3>本课学习线索</h3><ol class="learning-path" aria-label="课节知识推进线索"><li class="active"><span class="node"></span><div><b>反馈层级</b><small>正在建立判断</small></div></li><li class="pending"><span class="node"></span><div><b>新信息</b><small>识别可用反馈</small></div></li><li class="pending"><span class="node"></span><div><b>行动选择</b><small>检验下一步变化</small></div></li><li class="pending"><span class="node"></span><div><b>核心循环</b><small>连接连续动机</small></div></li></ol></section>
+        
+        <section class="lm-card"><h3>实际学习时长</h3><strong id="elapsedTime">18 分 42 秒</strong></section>
+      </aside>
+    </div>
+  </main>
+  <div class="end" id="endModal" role="dialog" aria-modal="true" aria-labelledby="endTitle">
+    <section class="lm-card end-card">
+      <div class="lm-kicker">教学尚未闭环</div>
+      <h2 id="endTitle">现在结束将放弃本课</h2>
+      <p style="font-size:10px;color:var(--muted)">原始会话冻结并生成阶段 Review；之后仍可恢复同一会话。</p>
+      <div class="pending"><b>待完成</b><br><small>把状态、能力和目标反馈连接成可持续行动循环。</small></div>
+      <div class="pending"><b>待验证</b><br><small>用修改后的原型判断反馈是否改变下一步行为。</small></div>
+      <div class="lm-actions" style="justify-content:flex-end;margin-top:16px"><button class="lm-btn" id="continueLearning">继续学习</button><button class="lm-btn danger" id="confirmAbandon">确认放弃课节</button></div>
+    </section>
+  </div>
+  <script src="../00-设计系统/assets/mode-themes.js"></script>
+  <script>
+    applyCourseModeTheme('standard');
+    const pauseLearning = document.getElementById('pauseLearning');
+    const endLesson = document.getElementById('endLesson');
+    const endModal = document.getElementById('endModal');
+    const continueLearning = document.getElementById('continueLearning');
+    const stopGeneration = document.getElementById('stopGeneration');
+    const generationStatus = document.getElementById('generationStatus');
+    const learningInput = document.getElementById('learningInput');
+    const sendLearning = document.getElementById('sendLearning');
+    const confirmAbandon = document.getElementById('confirmAbandon');
+    const timerStatus = document.getElementById('timerStatus');
+    const elapsedTime = document.getElementById('elapsedTime');
+    const stream = document.querySelector('.stream');
+    let paused=false;
+    let elapsedSeconds=18*60+42;
+    let timer;
+    const startTimer=()=>{timer=setInterval(()=>{
+      if(paused||document.hidden)return;
+      elapsedSeconds+=1;
+      const minutes=Math.floor(elapsedSeconds/60),seconds=String(elapsedSeconds%60).padStart(2,'0');
+      elapsedTime.textContent=`${minutes} 分 ${seconds} 秒`;
+      timerStatus.textContent=`● 正在计时 ${minutes}:${seconds}`;
+    },1000)};
+    setTimeout(startTimer,5000);
+
+    endLesson.addEventListener('click', () => endModal.classList.add('open'));
+    continueLearning.addEventListener('click', () => endModal.classList.remove('open'));
+    pauseLearning.addEventListener('click', () => {
+      paused=!paused;
+      pauseLearning.textContent = paused ? '继续学习' : '暂停学习';
+      learningInput.disabled=paused;
+      sendLearning.disabled=paused;
+      timerStatus.textContent=paused?'● 学习已暂停':`● 正在计时 ${Math.floor(elapsedSeconds/60)}:${String(elapsedSeconds%60).padStart(2,'0')}`;
+      timerStatus.className=paused?'lm-pill warning':'lm-pill success';
+      SampleUI.showToast(paused?'学习已暂停':'已恢复学习',paused?'warning':'success');
+    });
+    stopGeneration.addEventListener('click', () => {
+      generationStatus.textContent = '已停止生成';
+      generationStatus.className = 'lm-pill readonly';
+      stopGeneration.disabled = true;
+      stopGeneration.textContent = '生成已停止';
+    });
+    async function sendMessage(){
+      const value=learningInput.value.trim();
+      if(!value){SampleUI.showToast('请输入你的回答或问题','warning');learningInput.focus();return}
+      const user=document.createElement('div');user.className='learn-user';user.textContent=value;stream.appendChild(user);learningInput.value='';
+      generationStatus.textContent='正在生成 Markdown';generationStatus.className='lm-pill warning';stopGeneration.disabled=false;stopGeneration.textContent='停止生成';
+      await SampleUI.runSimulation({button:sendLearning,busyText:'发送中…',successText:'回答已发送',delay:350});
+      const reply=document.createElement('div');reply.className='learn-ai';reply.textContent='你的回答提供了新的判断依据。接下来我会沿着这个证据继续讲解，并在需要确认理解的位置再与你互动。';stream.appendChild(reply);generationStatus.textContent='等待你的回应';generationStatus.className='lm-pill success';stream.scrollTop=stream.scrollHeight;
+    }
+    sendLearning.addEventListener('click',sendMessage);
+    learningInput.addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}});
+    confirmAbandon.addEventListener('click',async()=>{
+      await SampleUI.runSimulation({button:confirmAbandon,busyText:'正在归档…',successText:'本课已标记为已放弃',delay:650});
+      clearInterval(timer);
+      location.href='../02-课程创建与大纲/正式课程大纲.html';
+    });
+    document.addEventListener('keydown',(event)=>{if(event.key==='Escape')endModal.classList.remove('open')});
+  </script>
+</body>
+</html>

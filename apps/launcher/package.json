@@ -1,0 +1,12 @@
+{
+  "name": "@learning-more/launcher",
+  "version": "0.0.0-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "vitest run --root ../.. apps/launcher",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

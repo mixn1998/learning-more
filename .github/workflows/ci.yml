@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24.17.0
+  PNPM_VERSION: 10.34.3
+
+jobs:
+  quality:
+    name: PR quality and contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Frozen dependency graph
+        run: pnpm install --frozen-lockfile
+      - name: Format
+        run: pnpm format:check
+      - name: Lint
+        run: pnpm lint
+      - name: Type and shared contracts
+        run: pnpm typecheck
+      - name: Schemas
+        run: pnpm schema:check
+      - name: Architecture boundaries
+        run: pnpm architecture:check
+      - name: Unit and repository contract tests
+        run: pnpm test:ci
+      - name: Functional equivalence matrix
+        run: pnpm equivalence:check
+      - name: Build all workspaces
+        run: pnpm build
+      - name: License and vulnerability policy
+        run: pnpm supply-chain:check
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/tests/unit.json
+            artifacts/supply-chain/supply-chain-policy.json
+
+  main-integration:
+    name: Main HTTP, SSE, React, recovery smoke
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install browser runtime
+        run: pnpm exec playwright install --with-deps chromium
+      - name: React browser journeys
+        run: pnpm playwright:test
+      - name: Backup and restore integration smoke
+        run: pnpm --filter @learning-more/cli test
+      - name: Functional equivalence matrix
+        run: pnpm equivalence:check
+      - name: Upload integration reports and retained traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-reports-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            playwright-report/
+            test-results/
+
+  runtime-acceptance:
+    name: Windows Launcher, HTTP, SSE, and runtime recovery
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install browser runtime
+        run: pnpm exec playwright install chromium
+      - name: Launcher, HTTP, SSE, and recovery journeys
+        run: pnpm playwright:runtime
+      - name: Upload runtime reports and retained traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-acceptance-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            playwright-report/
+            test-results/
+
+  visual-acceptance:
+    name: HTML, React visual and accessibility acceptance
+    needs: quality
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Frozen dependency graph
+        run: pnpm install --frozen-lockfile
+      - name: Install browser runtime
+        run: pnpm exec playwright install chromium
+      - name: Audit all 29 HTML samples
+        run: pnpm ui-samples:verify
+      - name: Compare HTML and React baselines and run accessibility gate
+        run: pnpm visual:test
+      - name: Upload visual differences and retained traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-acceptance-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            artifacts/visual/
+            playwright-report/
+            test-results/

@@ -1,0 +1,127 @@
+.visual-design-system .demo {
+  margin-top: 14px;
+  padding: 20px;
+}
+
+.visual-design-system .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.visual-design-system .compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.visual-design-system .sample {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.visual-design-system .status {
+  padding: 12px;
+  border-left: 4px solid var(--status);
+  border-radius: 0 9px 9px 0;
+  background: var(--status-bg);
+}
+
+.visual-design-system .status b {
+  font-size: 13px;
+}
+
+.visual-design-system .status p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.visual-design-system .status-grid {
+  gap: 14px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.visual-design-system .tokens {
+  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 16px;
+}
+
+.visual-design-system .token {
+  padding: 18px;
+}
+
+.visual-design-system .token-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.visual-design-system .token h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.visual-design-system .token p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.visual-design-system .swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 13px;
+}
+
+.visual-design-system .swatch {
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.visual-design-system .levels {
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.visual-design-system .level-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.visual-design-system .level {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+
+.visual-design-system .level strong {
+  font-size: 13px;
+}
+
+.visual-design-system .level p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 800px) {
+  .visual-design-system .tokens,
+  .visual-design-system .level-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .visual-design-system .compare {
+    grid-template-columns: 1fr;
+  }
+}

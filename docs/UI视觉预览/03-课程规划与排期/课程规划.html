@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning MORE · 课程规划</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <style>
+      .hero {
+        padding: 24px 26px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+      .hero h1 {
+        margin: 6px 0 0;
+        font-size: 32px;
+        line-height: 1.3;
+      }
+      .planner-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 16px;
+        margin-top: 16px;
+        height: calc(100vh - 220px);
+        min-height: 540px;
+        align-items: stretch;
+      }
+      .days {
+        position: sticky;
+        top: 88px;
+        height: 100%;
+        padding: 16px;
+        display: grid;
+        grid-template-rows: auto repeat(7, minmax(0, 1fr));
+        gap: 8px;
+        overflow: hidden;
+      }
+      .days header {
+        padding: 2px 2px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .days header b {
+        font-size: 16px;
+      }
+      .day {
+        min-height: 0;
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: #fff;
+        color: var(--ink);
+        text-align: left;
+        cursor: pointer;
+        overflow: hidden;
+      }
+      .day:hover {
+        border-color: var(--accent);
+      }
+      .day.active {
+        border-color: var(--accent);
+        background: var(--tint);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+      }
+      .day small,
+      .day b {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1.3;
+      }
+      .day-date {
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+        margin-bottom: 5px;
+        white-space: nowrap;
+      }
+      .day span {
+        display: -webkit-box;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .main {
+        height: 100%;
+        padding: 20px;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
+      }
+      .main-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-end;
+      }
+      .main-head h2 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .main-head p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .filters {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 10px;
+        margin-top: 15px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper-2);
+      }
+      .lesson-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .lesson {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 13px 18px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+      }
+      .lesson h3 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.4;
+      }
+      .lesson-copy { min-width: 0; }
+      .lesson-meta {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px 9px;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .lesson-meta .lm-pill {
+        flex: 0 0 auto;
+        min-height: 24px;
+        padding: 3px 9px;
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      .lesson-meta .schedule-overdue {
+        border-color: #d9906b;
+        background: #fff1e9;
+        color: #9a4d2d;
+      }
+      .lesson-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+      .date-trigger {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        min-width: 168px;
+        min-height: 42px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .planned .date-trigger {
+        border-color: var(--accent);
+        color: var(--accent-dark);
+        background: var(--tint);
+      }
+      .overdue .date-trigger {
+        border-color: #d9906b;
+        color: #9a4d2d;
+        background: #fff1e9;
+      }
+      .date-popover {
+        position: fixed;
+        z-index: 80;
+        width: 282px;
+        padding: 12px;
+        border: 1px solid var(--line-strong);
+        border-radius: 12px;
+        background: var(--paper);
+        box-shadow: 0 18px 42px rgba(57, 42, 29, 0.22);
+      }
+      .date-popover[hidden] { display: none; }
+      .date-picker-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .date-picker-title { font-size: 14px; font-weight: 800; }
+      .date-picker-nav {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .date-weekdays,
+      .date-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+      .date-weekdays { margin-bottom: 4px; }
+      .date-weekdays span { color: var(--muted); font-size: 10px; line-height: 1.3; text-align: center; }
+      .date-cell {
+        min-width: 0;
+        height: 30px;
+        padding: 0;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .date-cell:hover:not(:disabled),
+      .date-cell:focus-visible { background: var(--tint); outline: none; }
+      .date-cell.is-selected { background: var(--accent); color: #fff; font-weight: 800; }
+      .date-cell.is-outside { color: #b7ada3; }
+      .date-cell:disabled { color: #d3cbc2; cursor: not-allowed; }
+      dialog {
+        width: min(660px, calc(100% - 28px));
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 17px;
+        background: var(--paper);
+        color: var(--ink);
+        box-shadow: 0 28px 70px rgba(57, 42, 29, 0.24);
+      }
+      dialog::backdrop {
+        background: rgba(44, 38, 32, 0.42);
+      }
+      .dialog-head,
+      .dialog-body,
+      .dialog-foot {
+        padding: 20px 22px;
+      }
+      .dialog-head {
+        border-bottom: 1px solid var(--line);
+      }
+      .dialog-head h2 {
+        margin: 6px 0 0;
+        font-size: 24px;
+      }
+      .dialog-body {
+        display: grid;
+        gap: 10px;
+      }
+      .knowledge-point {
+        padding: 13px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+      }
+      .knowledge-point b {
+        font-size: 14px;
+      }
+      .dialog-foot {
+        display: flex;
+        justify-content: flex-end;
+        gap: 9px;
+        border-top: 1px solid var(--line);
+        background: var(--paper-2);
+      }
+      @media (max-width: 1100px) and (min-width: 721px) {
+        .days {
+          padding: 10px;
+          gap: 5px;
+        }
+        .days header {
+          padding: 0 1px 5px;
+        }
+        .day {
+          padding: 5px 8px;
+        }
+        .day small {
+          font-size: 10px;
+          line-height: 1.3;
+        }
+        .day b {
+          margin: 1px 0 2px;
+          font-size: 12px;
+          line-height: 1.3;
+        }
+        .day span {
+          font-size: 10px;
+          line-height: 1.3;
+          -webkit-line-clamp: 1;
+        }
+      }
+      @media (max-width: 900px) {
+        .planner-layout {
+          grid-template-columns: 240px 1fr;
+        }
+        .filters {
+          grid-template-columns: 1fr;
+        }
+        .lesson {
+          grid-template-columns: 1fr;
+        }
+        .lesson-actions {
+          justify-content: flex-start;
+        }
+      }
+      @media (max-width: 720px) {
+        .hero {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .planner-layout {
+          display: block;
+          height: auto;
+          min-height: 0;
+        }
+        .days {
+          position: static;
+          height: auto;
+          margin-bottom: 12px;
+          grid-template-columns: repeat(2, 1fr);
+          grid-template-rows: auto;
+          overflow: visible;
+        }
+        .days header {
+          grid-column: 1/-1;
+        }
+        .day {
+          min-height: 104px;
+        }
+        .main {
+          height: auto;
+          overflow: visible;
+        }
+        .lesson-actions {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+        .date-trigger {
+          min-width: 0;
+        }
+        .dialog-foot {
+          flex-direction: column-reverse;
+        }
+        .dialog-foot .lm-btn {
+          width: 100%;
+        }
+      }
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar">
+      <div class="lm-brand"><strong>Learning MORE</strong><span>课程规划</span></div>
+      <div class="lm-runtime">
+        <span class="lm-pill" id="todayCount">今日待学 2</span
+        ><span class="lm-pill warning" id="overdueCount">已逾期 1</span
+        ><span class="lm-pill warning" id="unplannedCount">待规划 3</span>
+      </div>
+    </header>
+    <main class="lm-page">
+      <section class="lm-card hero">
+        <div>
+          <div class="lm-kicker">COURSE PLANNING</div>
+          <h1>安排课节学习日期</h1>
+        </div>
+        <div class="lm-actions">
+          <a class="lm-btn primary" href="计划流向导与管理.html">生成计划流</a
+          ><a class="lm-btn" href="../01-主页与全局导航/主页.html">返回课程表</a>
+        </div>
+      </section>
+
+      <div class="planner-layout">
+        <aside class="lm-card days" id="days">
+          <header><b>今日起 7 天</b></header>
+        </aside>
+        <section class="lm-card main">
+          <header class="main-head">
+            <div>
+              <h2>待规划与已安排课节</h2>
+              <p id="summary"></p>
+            </div>
+          </header>
+          <div class="filters">
+            <select class="lm-control" id="statusFilter">
+              <option value="">全部排期状态</option>
+              <option value="待规划">待规划</option>
+              <option value="已安排">已安排</option>
+              <option value="已逾期">已逾期</option>
+            </select>
+            <select class="lm-control" id="topicFilter">
+              <option value="">全部主题标签</option>
+              <option>游戏反馈</option>
+              <option>数据结构</option>
+              <option>原型验证</option>
+            </select>
+            <button class="lm-btn" id="clearFilter">清除筛选</button>
+          </div>
+          <div class="lesson-list" id="lessonList"></div>
+        </section>
+      </div>
+    </main>
+
+    <section class="date-popover" id="datePopover" hidden aria-label="选择学习日期">
+      <div class="date-picker-head">
+        <button class="date-picker-nav" type="button" id="datePickerPrev" aria-label="上一个月">‹</button>
+        <b class="date-picker-title" id="datePickerTitle"></b>
+        <button class="date-picker-nav" type="button" id="datePickerNext" aria-label="下一个月">›</button>
+      </div>
+      <div class="date-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+      <div class="date-grid" id="datePickerGrid"></div>
+    </section>
+
+    <dialog id="previewDialog">
+      <div class="dialog-head">
+        <div class="lm-kicker">核心知识点</div>
+        <h2 id="previewTitle"></h2>
+      </div>
+      <div class="dialog-body" id="previewPoints"></div>
+      <div class="dialog-foot"><button class="lm-btn" id="closePreview">关闭</button></div>
+    </dialog>
+
+    <script>
+      const lessons = [
+        {
+          id: 'l1',
+          title: '树为什么适合表达层级关系',
+          course: '数据结构入门',
+          topic: '数据结构',
+          lifecycle: 'not_started',
+          scheduledDate: '2026-07-10',
+          minutes: 28,
+          points: ['节点与边', '父子关系', '递归结构'],
+        },
+        {
+          id: 'l2',
+          title: '如何为原型建立验证指标',
+          course: '游戏设计能力',
+          topic: '原型验证',
+          lifecycle: 'not_started',
+          scheduledDate: '',
+          minutes: 18,
+          points: ['判断标准', '行为证据', '迭代条件'],
+        },
+        {
+          id: 'l3',
+          title: '核心循环与玩家动机',
+          course: '游戏设计能力',
+          topic: '游戏反馈',
+          lifecycle: 'not_started',
+          scheduledDate: '2026-07-13',
+          minutes: 20,
+          points: ['玩家行动', '系统反馈', '下一步欲望'],
+        },
+        {
+          id: 'l4',
+          title: '栈与队列如何约束操作顺序',
+          course: '数据结构入门',
+          topic: '数据结构',
+          lifecycle: 'not_started',
+          scheduledDate: '2026-07-14',
+          minutes: 26,
+          points: ['后进先出', '先进先出', '场景匹配'],
+        },
+        {
+          id: 'l5',
+          title: '反馈如何改变玩家下一步行动',
+          course: '游戏设计能力',
+          topic: '游戏反馈',
+          lifecycle: 'not_started',
+          scheduledDate: '2026-07-12',
+          minutes: 24,
+          points: ['状态反馈', '能力反馈', '目标反馈'],
+        },
+        {
+          id: 'l6',
+          title: '建立可验证的成功标准',
+          course: '游戏设计能力',
+          topic: '原型验证',
+          lifecycle: 'not_started',
+          scheduledDate: '2026-07-12',
+          minutes: 18,
+          points: ['观察指标', '测试任务', '迭代决策'],
+        },
+        {
+          id: 'l7',
+          title: '图如何表达多对多关系',
+          course: '数据结构入门',
+          topic: '数据结构',
+          lifecycle: 'not_started',
+          scheduledDate: '',
+          minutes: 31,
+          points: ['节点连接', '方向与权重', '遍历路径'],
+        },
+      ];
+      const dates = [
+        ['周日 · 今天', '07/12', '2026-07-12'],
+        ['周一', '07/13', '2026-07-13'],
+        ['周二', '07/14', '2026-07-14'],
+        ['周三', '07/15', '2026-07-15'],
+        ['周四', '07/16', '2026-07-16'],
+        ['周五', '07/17', '2026-07-17'],
+        ['周六', '07/18', '2026-07-18'],
+      ];
+      const today = '2026-07-12';
+      let selectedDate = today;
+      const days = document.getElementById('days');
+      const lessonList = document.getElementById('lessonList');
+      const summary = document.getElementById('summary');
+      const statusFilter = document.getElementById('statusFilter');
+      const topicFilter = document.getElementById('topicFilter');
+      const previewDialog = document.getElementById('previewDialog');
+      const datePopover = document.getElementById('datePopover');
+      const datePickerTitle = document.getElementById('datePickerTitle');
+      const datePickerGrid = document.getElementById('datePickerGrid');
+      const minScheduleDate = '2026-07-12';
+      let datePickerLessonId = null;
+      let datePickerMonth = new Date(2026, 6, 1);
+
+      function isSchedulable(lesson) {
+        return !['completed', 'abandoned'].includes(lesson.lifecycle);
+      }
+      function getScheduleStatus(lesson) {
+        if (!isSchedulable(lesson)) return 'excluded';
+        if (!lesson.scheduledDate) return '待规划';
+        return lesson.scheduledDate < today ? '已逾期' : '已安排';
+      }
+      function schedulableLessons() {
+        return lessons.filter(isSchedulable);
+      }
+
+      function renderDays() {
+        days.querySelectorAll('.day').forEach((node) => node.remove());
+        dates.forEach(([label, short, iso]) => {
+          const titles = schedulableLessons()
+            .filter((lesson) => lesson.scheduledDate === iso)
+            .map((lesson) => lesson.title);
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `day${selectedDate === iso ? ' active' : ''}`;
+          button.dataset.date = iso;
+          button.innerHTML = `<span class="day-date"><small>${label}</small><b>${short}</b></span><span>${titles.join(' · ') || '暂无安排'}</span>`;
+          button.addEventListener('click', () => {
+            selectedDate = iso;
+            statusFilter.value = '';
+            topicFilter.value = '';
+            renderDays();
+            renderLessons();
+          });
+          days.appendChild(button);
+        });
+      }
+
+      function visibleLessons() {
+        if (selectedDate) return schedulableLessons().filter((lesson) => lesson.scheduledDate === selectedDate);
+        return schedulableLessons().filter(
+          (lesson) =>
+            (!statusFilter.value || getScheduleStatus(lesson) === statusFilter.value) &&
+            (!topicFilter.value || lesson.topic === topicFilter.value),
+        );
+      }
+
+      function renderLessons() {
+        const items = visibleLessons();
+        summary.textContent = `${selectedDate || '当前筛选'} · ${items.length} 节`;
+        lessonList.innerHTML = items.length
+          ? items
+              .map(
+                (lesson) => {
+                  const scheduleStatus = getScheduleStatus(lesson);
+                  const isPlanned = scheduleStatus === '已安排';
+                  const isOverdue = scheduleStatus === '已逾期';
+                  return `
+        <article class="lesson${isPlanned ? ' planned' : ''}${isOverdue ? ' overdue' : ''}">
+          <div class="lesson-copy"><h3>${lesson.title}</h3><div class="lesson-meta"><span>《${lesson.course}》</span><span>预计 ${lesson.minutes} 分钟</span><span class="lm-pill${isOverdue ? ' schedule-overdue' : ''}">${scheduleStatus}</span><span class="lm-pill">${lesson.topic}</span></div></div>
+          <div class="lesson-actions"><button class="date-trigger" type="button" data-date-trigger="${lesson.id}">${lesson.scheduledDate || '点击安排学习日期'}</button>${lesson.scheduledDate ? `<button class="lm-btn" data-unschedule="${lesson.id}">取消排期</button>` : ''}<button class="lm-btn" data-preview="${lesson.id}">预览</button></div>
+        </article>`;
+                },
+              )
+              .join('')
+          : '<div class="lm-empty">当前没有符合条件的课节</div>';
+        lessonList
+          .querySelectorAll('[data-preview]')
+          .forEach((button) =>
+            button.addEventListener('click', () => openPreview(button.dataset.preview, button)),
+          );
+        lessonList
+          .querySelectorAll('[data-date-trigger]')
+          .forEach((button) =>
+            button.addEventListener('click', () => openDatePicker(button.dataset.dateTrigger, button)),
+          );
+        lessonList
+          .querySelectorAll('[data-unschedule]')
+          .forEach((button) =>
+            button.addEventListener('click', () => cancelLessonSchedule(button.dataset.unschedule)),
+          );
+        const candidates = schedulableLessons();
+        document.getElementById('unplannedCount').textContent =
+          `待规划 ${candidates.filter((lesson) => getScheduleStatus(lesson) === '待规划').length}`;
+        document.getElementById('overdueCount').textContent =
+          `已逾期 ${candidates.filter((lesson) => getScheduleStatus(lesson) === '已逾期').length}`;
+        document.getElementById('todayCount').textContent =
+          `今日待学 ${candidates.filter((lesson) => lesson.scheduledDate === today).length}`;
+      }
+
+      function openPreview(id, trigger) {
+        const lesson = lessons.find((item) => item.id === id);
+        document.getElementById('previewTitle').textContent = lesson.title;
+        document.getElementById('previewPoints').innerHTML = lesson.points
+          .map(
+            (point, index) =>
+              `<div class="knowledge-point"><b>${String(index + 1).padStart(2, '0')} · ${point}</b></div>`,
+          )
+          .join('');
+        SampleUI.openDialog(previewDialog, trigger);
+      }
+
+      function updateLessonDate(id, date) {
+        if (!date) return;
+        const lesson = lessons.find((item) => item.id === id);
+        lesson.scheduledDate = date;
+        selectedDate = date;
+        renderDays();
+        renderLessons();
+        SampleUI.showToast('学习日期已更新', 'success');
+      }
+
+      function toIsoDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      function renderDatePicker() {
+        const activeLesson = lessons.find((lesson) => lesson.id === datePickerLessonId);
+        const year = datePickerMonth.getFullYear();
+        const month = datePickerMonth.getMonth();
+        datePickerTitle.textContent = `${year} 年 ${month + 1} 月`;
+        const first = new Date(year, month, 1);
+        const start = new Date(year, month, 1 - first.getDay());
+        datePickerGrid.innerHTML = Array.from({ length: 42 }, (_, index) => {
+          const date = new Date(start);
+          date.setDate(start.getDate() + index);
+          const iso = toIsoDate(date);
+          const outside = date.getMonth() !== month;
+          const disabled = iso < minScheduleDate;
+          const selected = activeLesson?.scheduledDate === iso;
+          return `<button class="date-cell${outside ? ' is-outside' : ''}${selected ? ' is-selected' : ''}" type="button" data-date-cell="${iso}" ${disabled ? 'disabled' : ''}>${date.getDate()}</button>`;
+        }).join('');
+        datePickerGrid.querySelectorAll('[data-date-cell]').forEach((button) => {
+          button.addEventListener('click', () => {
+            updateLessonDate(datePickerLessonId, button.dataset.dateCell);
+            closeDatePicker();
+          });
+        });
+      }
+      function openDatePicker(id, trigger) {
+        datePickerLessonId = id;
+        const lesson = lessons.find((item) => item.id === id);
+        const baseDate = lesson.scheduledDate ? new Date(`${lesson.scheduledDate}T00:00:00`) : new Date(`${today}T00:00:00`);
+        datePickerMonth = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+        renderDatePicker();
+        datePopover.hidden = false;
+        datePopover.style.visibility = 'hidden';
+        const rect = trigger.getBoundingClientRect();
+        const popoverRect = datePopover.getBoundingClientRect();
+        const top = rect.top - popoverRect.height - 8 >= 8 ? rect.top - popoverRect.height - 8 : rect.bottom + 8;
+        const left = Math.max(8, Math.min(rect.right - popoverRect.width, window.innerWidth - popoverRect.width - 8));
+        datePopover.style.top = `${top}px`;
+        datePopover.style.left = `${left}px`;
+        datePopover.style.visibility = '';
+      }
+      function closeDatePicker() {
+        datePopover.hidden = true;
+        datePickerLessonId = null;
+      }
+      function cancelLessonSchedule(id) {
+        const lesson = lessons.find((item) => item.id === id);
+        lesson.scheduledDate = '';
+        renderDays();
+        renderLessons();
+        SampleUI.showToast('课节已回到待规划', 'success');
+      }
+
+      statusFilter.addEventListener('change', () => {
+        selectedDate = '';
+        renderDays();
+        renderLessons();
+      });
+      topicFilter.addEventListener('change', () => {
+        selectedDate = '';
+        renderDays();
+        renderLessons();
+      });
+      document.getElementById('clearFilter').addEventListener('click', () => {
+        selectedDate = '';
+        statusFilter.value = '';
+        topicFilter.value = '';
+        renderDays();
+        renderLessons();
+      });
+      document
+        .getElementById('closePreview')
+        .addEventListener('click', () => SampleUI.closeDialog(previewDialog));
+      document.getElementById('datePickerPrev').addEventListener('click', () => {
+        datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() - 1, 1);
+        renderDatePicker();
+      });
+      document.getElementById('datePickerNext').addEventListener('click', () => {
+        datePickerMonth = new Date(datePickerMonth.getFullYear(), datePickerMonth.getMonth() + 1, 1);
+        renderDatePicker();
+      });
+      document.addEventListener('pointerdown', (event) => {
+        if (!datePopover.hidden && !datePopover.contains(event.target) && !event.target.closest('[data-date-trigger]')) closeDatePicker();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeDatePicker();
+      });
+      renderDays();
+      renderLessons();
+    </script>
+  </body>
+</html>

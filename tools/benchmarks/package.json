@@ -1,0 +1,11 @@
+{
+  "name": "@learning-more/benchmarks",
+  "version": "0.0.0-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "benchmark": "node dist/run-all.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

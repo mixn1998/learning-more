@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning MORE · 上周学习回顾</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="../00-设计系统/assets/base.css" />
+    <style>
+      .hero {
+        padding: 20px 23px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+      }
+      .hero h1 {
+        margin: 6px 0 4px;
+        font-size: 30px;
+        line-height: 1.25;
+      }
+      .hero p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 270px minmax(0, 1fr);
+        gap: 14px;
+        margin-top: 14px;
+        height: calc(100vh - 220px);
+        min-height: 540px;
+        align-items: stretch;
+      }
+      .days {
+        padding: 14px;
+        display: grid;
+        grid-template-rows: auto repeat(7, minmax(0, 1fr));
+        gap: 8px;
+        height: 100%;
+        position: sticky;
+        top: 92px;
+        overflow: hidden;
+      }
+      .days header {
+        padding-bottom: 9px;
+        border-bottom: 1px solid var(--line);
+      }
+      .day {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        column-gap: 6px;
+        row-gap: 5px;
+        align-content: center;
+        min-height: 0;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        text-align: left;
+        cursor: pointer;
+        overflow: hidden;
+      }
+      .day.active {
+        border-color: var(--accent);
+        background: var(--tint);
+      }
+      .day small,
+      .day b {
+        grid-row: 1;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 650;
+        line-height: 1.35;
+      }
+      .day small { grid-column: 1; }
+      .day b {
+        grid-column: 2;
+        margin: 0;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .day span {
+        grid-column: 1 / -1;
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      .main {
+        height: 100%;
+        padding: 18px;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
+      }
+      .report {
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        overflow: hidden;
+      }
+      .report-head {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        padding: 14px;
+        border: 0;
+        background: var(--paper-2);
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .report-body {
+        display: none;
+        padding: 14px 16px 16px;
+      }
+      .report.open .report-body {
+        display: block;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+        margin-bottom: 14px;
+      }
+      .metric {
+        min-height: 72px;
+        padding: 10px 12px;
+        border-radius: 9px;
+        background: #f8f4ee;
+      }
+      .metric span {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .metric b {
+        display: block;
+        margin-top: 4px;
+        font-size: 18px;
+      }
+      .report-insights {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .report-insights section {
+        padding: 12px 13px;
+        border-left: 3px solid var(--accent);
+        border-radius: 0 9px 9px 0;
+        background: #fff;
+      }
+      .report-insights h3 {
+        margin: 0 0 6px;
+        font-size: 14px;
+        line-height: 1.35;
+      }
+      .report-insights p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
+      }
+      .filters {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 9px;
+        margin: 13px 0;
+      }
+      .list {
+        display: grid;
+        gap: 8px;
+        margin: 16px 6px 18px;
+      }
+      .main .lm-section-title {
+        margin: 26px 6px 0;
+        padding: 0 2px;
+      }
+      .main .lm-section-title h2 {
+        margin: 0 0 7px;
+      }
+      .main .lm-section-title p {
+        margin: 0;
+      }
+      .lesson {
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        text-align: left;
+        cursor: pointer;
+      }
+      .lesson b {
+        font-size: 13px;
+      }
+      .lesson p {
+        margin: 4px 0 0;
+        font-size: 11px;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+      @media (max-width: 1100px) and (min-width: 851px) {
+        .days {
+          padding: 10px;
+          gap: 5px;
+        }
+        .days header {
+          padding-bottom: 5px;
+        }
+        .day {
+          padding: 5px 8px;
+        }
+        .day small,
+        .day span {
+          font-size: 10px;
+          line-height: 1.35;
+        }
+        .day b {
+          margin: 1px 0 2px;
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .day span {
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          overflow: hidden;
+        }
+      }
+      @media (max-width: 850px) {
+        .layout {
+          display: block;
+          height: auto;
+          min-height: 0;
+        }
+        .days {
+          position: static;
+          height: auto;
+          margin-bottom: 12px;
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: auto;
+          overflow: visible;
+        }
+        .days header {
+          grid-column: 1/-1;
+        }
+        .day {
+          min-height: 96px;
+        }
+        .main {
+          height: auto;
+          overflow: visible;
+        }
+        .metrics,
+        .filters,
+        .report-insights {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+    <script defer src="../00-设计系统/assets/runtime-status.js"></script>
+    <script defer src="../00-设计系统/assets/sample-ui.js"></script>
+  </head>
+  <body>
+    <header class="lm-topbar">
+      <div class="lm-brand"><strong>Learning MORE</strong><span>上周学习回顾</span></div>
+      <div class="lm-runtime"><span class="lm-pill success">● 周报已生成</span></div>
+    </header>
+    <main class="lm-page">
+      <section class="lm-card hero">
+        <div>
+          <div class="lm-kicker">WEEKLY REFLECTION</div>
+          <h1>上周学习回顾</h1>
+          <p>2026/06/29 — 07/05 · 已完成 6 节课</p>
+        </div>
+        <a class="lm-btn" href="../01-主页与全局导航/主页.html">返回本周课程表</a>
+      </section>
+      <div class="layout">
+        <aside class="lm-card days" id="days">
+          <header><b>上周学习</b></header>
+        </aside>
+        <section class="lm-card main">
+          <section class="report" id="report">
+            <button class="report-head" id="toggle" aria-expanded="false">
+              <span>上周学习报告</span><span id="symbol">+</span>
+            </button>
+            <div class="report-body">
+              <div class="metrics">
+                <div class="metric"><span>完成课节</span><b>6</b></div>
+                <div class="metric"><span>学习时长</span><b>154 min</b></div>
+                <div class="metric"><span>活跃天数</span><b>5</b></div>
+              </div>
+              <div class="report-insights">
+                <section>
+                  <h3>AI 总结</h3>
+                  <p>
+                    你开始从“内容是否足够”转向“反馈是否改变下一步行动”，并能把同一判断迁移到游戏设计与数据结构学习中。
+                  </p>
+                </section>
+                <section>
+                  <h3>下周建议</h3>
+                  <p>继续围绕可观察行为建立判断标准，同时保留对结构约束的解释习惯。</p>
+                </section>
+              </div>
+            </div>
+          </section>
+          <div class="filters">
+            <select class="lm-control" id="domain">
+              <option value="">全部学科 / 领域</option>
+              <option>艺术与设计</option>
+              <option>计算机科学</option></select
+            ><select class="lm-control" id="topic">
+              <option value="">全部主题标签</option>
+              <option>游戏反馈</option>
+              <option>数据结构</option>
+            </select>
+          </div>
+          <div class="lm-section-title">
+            <div>
+              <h2>已完成课节</h2>
+              <p id="summary"></p>
+            </div>
+          </div>
+          <div class="list" id="list"></div>
+        </section>
+      </div>
+    </main>
+    <script>
+      const reviews = [
+        ['06/29', '核心反馈的设计约束', '艺术与设计', '游戏反馈'],
+        ['06/30', '数组为什么能够随机访问', '计算机科学', '数据结构'],
+        ['07/02', '链表如何改变插入与删除代价', '计算机科学', '数据结构'],
+        ['07/03', '核心循环与玩家动机', '艺术与设计', '游戏反馈'],
+        ['07/05', '反馈不是奖励动画', '艺术与设计', '游戏反馈'],
+      ];
+      const dates = [
+        ['周一', '06/29'],
+        ['周二', '06/30'],
+        ['周三', '07/01'],
+        ['周四', '07/02'],
+        ['周五', '07/03'],
+        ['周六', '07/04'],
+        ['周日', '07/05'],
+      ];
+      let selected = '';
+      days.innerHTML += dates
+        .map(
+          (d) =>
+            `<button class="day" data-date="${d[1]}"><small>${d[0]}</small><b>${d[1]}</b><span>${
+              reviews
+                .filter((x) => x[0] === d[1])
+                .map((x) => x[1])
+                .join(' · ') || '暂无学习'
+            }</span></button>`,
+        )
+        .join('');
+      function render() {
+        const items = reviews.filter((x) =>
+          selected
+            ? x[0] === selected
+            : (!domain.value || x[2] === domain.value) && (!topic.value || x[3] === topic.value),
+        );
+        summary.textContent = (selected || '上周全部') + ' · ' + items.length + ' 节';
+        list.innerHTML = items.length
+          ? items
+              .map(
+                (x) =>
+                  `<button class="lesson" onclick="location.href='课节记录.html'"><b>${x[1]}</b><p>${x[2]} · ${x[3]} · 点击查看课节记录</p></button>`,
+              )
+              .join('')
+          : '<div class="lm-empty">当前日期或筛选条件下没有已完成课节。</div>';
+      }
+      document.querySelectorAll('.day').forEach(
+        (b) =>
+          (b.onclick = () => {
+            selected = b.dataset.date;
+            domain.value = '';
+            topic.value = '';
+            document.querySelectorAll('.day').forEach((x) => x.classList.toggle('active', x === b));
+            render();
+          }),
+      );
+      [domain, topic].forEach(
+        (s) =>
+          (s.onchange = () => {
+            selected = '';
+            document.querySelectorAll('.day').forEach((x) => x.classList.remove('active'));
+            render();
+          }),
+      );
+      toggle.onclick = () => {
+        report.classList.toggle('open');
+        const isOpen = report.classList.contains('open');
+        symbol.textContent = isOpen ? '−' : '+';
+        toggle.setAttribute('aria-expanded', String(isOpen));
+      };
+      render();
+    </script>
+  </body>
+</html>

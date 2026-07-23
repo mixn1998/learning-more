@@ -1,0 +1,53 @@
+[data-course-mode='standard'] {
+  --lm-accent: #af6942;
+  --lm-accent-dark: #78452b;
+  --lm-tint: #f7ece5;
+}
+
+[data-course-mode='brainstorm'] {
+  --lm-accent: #d2a526;
+  --lm-accent-dark: #7c6216;
+  --lm-tint: #fff9e4;
+}
+
+[data-course-mode='argument_clash'] {
+  --lm-accent: #58a38f;
+  --lm-accent-dark: #326b5d;
+  --lm-tint: #edf8f4;
+}
+
+[data-course-mode='case_study'] {
+  --lm-accent: #cb8181;
+  --lm-accent-dark: #865151;
+  --lm-tint: #fff1f1;
+}
+
+[data-course-mode='business_insight'] {
+  --lm-accent: #9b7650;
+  --lm-accent-dark: #694b31;
+  --lm-tint: #f7f0e7;
+}
+
+[data-course-mode='process_decomposition'] {
+  --lm-accent: #6f9fa6;
+  --lm-accent-dark: #466d73;
+  --lm-tint: #edf6f7;
+}
+
+[data-course-mode='decision_analysis'] {
+  --lm-accent: #65a07d;
+  --lm-accent-dark: #416d55;
+  --lm-tint: #eef7f1;
+}
+
+[data-course-mode='cross_explore'] {
+  --lm-accent: #78a2e5;
+  --lm-accent-dark: #4b6fa9;
+  --lm-tint: #eff5ff;
+}
+
+[data-course-mode='reading_seminar'] {
+  --lm-accent: #9079c1;
+  --lm-accent-dark: #5f4d8b;
+  --lm-tint: #f5f1fd;
+}

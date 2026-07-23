@@ -1,0 +1,774 @@
+body:has(.runtime-center-workspace) .lm-app-header,
+body:has(.runtime-center-workspace) .lm-app-body > .lm-status-banner {
+  display: none;
+}
+
+body:has(.runtime-center-workspace) .lm-app-body,
+body:has(.runtime-center-workspace) .runtime-write-boundary {
+  min-height: 100vh;
+}
+
+.runtime-center-workspace {
+  min-height: 100vh;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #f3efe9;
+  color: #27313a;
+  box-shadow: none;
+}
+
+.runtime-center-workspace button,
+.runtime-center-workspace input,
+.runtime-center-workspace select {
+  font: inherit;
+}
+
+.runtime-center-workspace .rc-top {
+  height: 62px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e8dfd3;
+  background: #fffdf9;
+}
+
+.runtime-center-workspace .rc-brand strong {
+  display: block;
+  font-size: 16px;
+}
+.runtime-center-workspace .rc-brand {
+  --lm-brand-mark-size: 32px;
+}
+.runtime-center-workspace .rc-brand span {
+  color: #8a8178;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.runtime-center-workspace .rc-capsules {
+  display: flex;
+  gap: 8px;
+}
+
+.runtime-center-workspace .rc-capsule {
+  min-width: 170px;
+  height: 42px;
+  padding: 0 13px;
+  border: 1px solid #dccfbe;
+  border-radius: 999px;
+  background: #fffaf3;
+  color: #705e50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+  cursor: pointer;
+}
+
+.runtime-center-workspace .rc-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #8f887f;
+  box-shadow: 0 0 0 4px rgb(143 136 127 / 8%);
+}
+
+.runtime-center-workspace .rc-capsule.ok {
+  border-color: #cfe3d8;
+  background: #f0f7f3;
+  color: #436b58;
+}
+.runtime-center-workspace .rc-capsule.error {
+  border-color: #e7c5bf;
+  background: #fff3f1;
+  color: #984b42;
+}
+.runtime-center-workspace .rc-capsule.warn {
+  border-color: #ead4af;
+  background: #fff7e9;
+  color: #7e5a2e;
+}
+.runtime-center-workspace .rc-capsule.ok .rc-dot,
+.runtime-center-workspace .rc-dot.ok {
+  background: #4f856a;
+}
+.runtime-center-workspace .rc-capsule.error .rc-dot,
+.runtime-center-workspace .rc-dot.error {
+  background: #bd5d52;
+}
+.runtime-center-workspace .rc-capsule.warn .rc-dot,
+.runtime-center-workspace .rc-dot.warn {
+  background: #c7893e;
+  animation: rc-connection-pulse 1.2s ease-in-out infinite;
+}
+.runtime-center-workspace .rc-capsule small {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.runtime-center-workspace .rc-stage {
+  position: relative;
+  min-height: calc(100vh - 62px);
+  padding: 18px;
+  display: grid;
+  place-items: center;
+  background: #eee8e0;
+}
+
+.runtime-center-workspace .rc-page-bg {
+  position: absolute;
+  inset: 18px;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  opacity: 0.34;
+  filter: blur(0.5px);
+}
+
+.runtime-center-workspace .rc-ghost {
+  padding: 13px;
+  border: 1px solid #ddcfbd;
+  border-radius: 14px;
+  background: #fffdf9;
+}
+
+.runtime-center-workspace .rc-ghost-row {
+  height: 66px;
+  margin-top: 8px;
+  border: 1px solid #e5dace;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.runtime-center-workspace .rc-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(47 40 34 / 24%);
+}
+
+.runtime-center-workspace .rc-panel {
+  position: relative;
+  z-index: 2;
+  width: min(1030px, calc(100% - 30px));
+  height: min(780px, calc(100vh - 92px));
+  min-height: 680px;
+  margin: auto;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #dccab6;
+  border-radius: 18px;
+  background: #fffdf9;
+  box-shadow: 0 30px 80px rgb(57 42 29 / 26%);
+}
+
+.runtime-center-workspace .rc-head {
+  padding: 18px 21px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1px solid #e7ddd0;
+}
+
+.runtime-center-workspace .rc-kicker {
+  color: #a0643f;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.runtime-center-workspace .rc-head h1 {
+  margin: 6px 0 4px;
+  font-size: 28px;
+  line-height: 1.65;
+  letter-spacing: -0.025em;
+}
+
+.runtime-center-workspace .rc-head p {
+  margin: 0;
+  color: #83776b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.runtime-center-workspace .rc-close {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid #ded1c2;
+  border-radius: 9px;
+  background: #fff;
+  color: #776c61;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.65;
+  cursor: pointer;
+}
+
+.runtime-center-workspace .rc-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0 21px;
+  border-bottom: 1px solid #e7ddd0;
+  background: #faf5ee;
+}
+
+.runtime-center-workspace .rc-tab {
+  min-height: 42px;
+  padding: 13px 8px 11px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #81766c;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.65;
+  cursor: pointer;
+}
+
+.runtime-center-workspace .rc-tab.active {
+  border-bottom-color: #af6942;
+  background: #fffdf9;
+  color: #834a2c;
+}
+.runtime-center-workspace .rc-tab-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: #e9f3ed;
+  color: #4e735f;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-tab-badge.error {
+  background: #fae3df;
+  color: #974d44;
+}
+.runtime-center-workspace .rc-tab-badge.warn {
+  background: #fff0d5;
+  color: #895b24;
+}
+
+@keyframes rc-connection-pulse {
+  50% {
+    opacity: 0.45;
+    box-shadow: 0 0 0 5px rgb(199 137 62 / 16%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runtime-center-workspace .rc-capsule.warn .rc-dot,
+  .runtime-center-workspace .rc-dot.warn {
+    animation: none;
+  }
+}
+
+.runtime-center-workspace .rc-body {
+  padding: 18px 21px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.runtime-center-workspace .rc-view {
+  display: none;
+}
+.runtime-center-workspace .rc-view.active {
+  display: block;
+}
+
+.runtime-center-workspace .rc-status-hero {
+  padding: 15px 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid #dfd3c4;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.runtime-center-workspace .rc-status-main {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+}
+.runtime-center-workspace .rc-status-main .rc-dot {
+  margin-top: 5px;
+}
+.runtime-center-workspace .rc-status-main h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.runtime-center-workspace .rc-status-main p {
+  margin: 0;
+  color: #81756a;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.runtime-center-workspace .rc-status-meta {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 18px;
+  text-align: right;
+}
+.runtime-center-workspace .rc-status-meta span {
+  color: #8a7e73;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-status-meta b {
+  display: block;
+  margin-top: 3px;
+  color: #454c51;
+  font-size: 11px;
+}
+
+.runtime-center-workspace .rc-alert {
+  margin-top: 10px;
+  padding: 11px 13px;
+  border: 1px solid #ead4af;
+  border-radius: 10px;
+  background: #fff7e9;
+  color: #7e5a2e;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.runtime-center-workspace .rc-alert.error {
+  border-color: #e8c4be;
+  background: #fff1ef;
+  color: #8e4942;
+}
+.runtime-center-workspace .rc-alert.ok {
+  border-color: #cfe3d8;
+  background: #eff7f2;
+  color: #4d6f5e;
+}
+
+.runtime-center-workspace .rc-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 16px 0 9px;
+}
+.runtime-center-workspace .rc-section-head h2 {
+  margin: 0 0 3px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.runtime-center-workspace .rc-section-head p {
+  margin: 0;
+  color: #85796e;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.runtime-center-workspace .rc-mini-btn {
+  min-height: 38px;
+  padding: 1px 6px;
+  border: 0;
+  background: transparent;
+  color: #8b5434;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.65;
+  cursor: pointer;
+}
+
+.runtime-center-workspace .rc-providers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.runtime-center-workspace .rc-provider {
+  min-height: 136px;
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5d9cb;
+  border-radius: 11px;
+  background: #fff;
+  color: #27313a;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.65;
+  text-align: left;
+  cursor: pointer;
+}
+
+.runtime-center-workspace .rc-provider.active {
+  border-color: #b97851;
+  background: #fff8f1;
+  box-shadow: 0 0 0 3px rgb(185 120 81 / 7%);
+}
+.runtime-center-workspace .rc-provider-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.runtime-center-workspace .rc-provider h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.runtime-center-workspace .rc-state {
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: #eee9e3;
+  color: #756a61;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-state.ok {
+  background: #e9f3ed;
+  color: #4f755f;
+}
+.runtime-center-workspace .rc-state.warn {
+  background: #fff0dc;
+  color: #8a5a26;
+}
+.runtime-center-workspace .rc-provider p {
+  margin: 8px 0;
+  color: #82766b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.runtime-center-workspace .rc-provider small {
+  margin-top: auto;
+  color: #94887d;
+  font-size: 11px;
+}
+
+.runtime-center-workspace .rc-config {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid #e3d7c8;
+  border-radius: 11px;
+  background: #faf6f0;
+}
+.runtime-center-workspace .rc-config-head {
+  padding: 11px 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e6dbce;
+}
+.runtime-center-workspace .rc-config-head strong {
+  font-size: 14px;
+}
+.runtime-center-workspace .rc-config-head span {
+  color: #81766b;
+  font-size: 8px;
+}
+.runtime-center-workspace .rc-config-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  padding: 13px;
+}
+.runtime-center-workspace .rc-field {
+  padding: 10px;
+  border: 1px solid #e2d6c7;
+  border-radius: 9px;
+  background: #fff;
+}
+.runtime-center-workspace .rc-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.runtime-center-workspace .rc-field-note {
+  margin-left: 6px;
+  color: #88786a;
+  font-size: 10px;
+  font-weight: 600;
+}
+.runtime-center-workspace .rc-control {
+  width: 100%;
+  height: 42px;
+  padding: 0 9px;
+  box-sizing: border-box;
+  border: 1px solid #d8cab8;
+  border-radius: 7px;
+  background: #fffdf9;
+  color: #3d454b;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.runtime-center-workspace .rc-config-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.runtime-center-workspace .rc-btn {
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid #d9cbb8;
+  border-radius: 8px;
+  background: #fffdf9;
+  color: #454b50;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.65;
+  cursor: pointer;
+}
+
+.runtime-center-workspace .rc-btn.primary {
+  border-color: #af6942;
+  background: #af6942;
+  color: #fff;
+}
+.runtime-center-workspace .rc-btn.soft {
+  border-color: #dfc4ae;
+  background: #f6eee4;
+  color: #7e4b2f;
+}
+
+.runtime-center-workspace .rc-service-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+.runtime-center-workspace .rc-card {
+  padding: 14px;
+  border: 1px solid #e4d8ca;
+  border-radius: 11px;
+  background: #fff;
+}
+.runtime-center-workspace .rc-card h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.runtime-center-workspace .rc-card > p {
+  margin: 0;
+  color: #83776b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.runtime-center-workspace .rc-identity {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+  margin-top: 11px;
+}
+.runtime-center-workspace .rc-id-item {
+  padding: 9px;
+  border-radius: 8px;
+  background: #f8f3ed;
+}
+.runtime-center-workspace .rc-id-item span {
+  color: #8a7e73;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-id-item b {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-health-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+}
+.runtime-center-workspace .rc-health-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee4d9;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-health-row:last-child {
+  border: 0;
+}
+.runtime-center-workspace .rc-health-row span {
+  color: #7c7167;
+}
+
+.runtime-center-workspace .rc-heal {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid #e2d6c7;
+  border-radius: 11px;
+  background: #fff;
+}
+.runtime-center-workspace .rc-heal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.runtime-center-workspace .rc-heal-head h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.runtime-center-workspace .rc-heal-head p {
+  margin: 0;
+  color: #83776b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.runtime-center-workspace .rc-heal-status {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #eaf3ed;
+  color: #4f745f;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-heal-status.warn {
+  background: #fff0dc;
+  color: #875a28;
+}
+.runtime-center-workspace .rc-heal-status.error {
+  background: #fae3df;
+  color: #984c43;
+}
+.runtime-center-workspace .rc-heal-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  margin: 11px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.runtime-center-workspace .rc-heal-step {
+  position: relative;
+  padding: 10px;
+  border: 1px solid #e4d9cc;
+  border-radius: 9px;
+  background: #faf7f2;
+}
+.runtime-center-workspace .rc-heal-step strong {
+  display: block;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-heal-step span {
+  display: block;
+  margin-top: 4px;
+  color: #877b70;
+  font-size: 11px;
+}
+.runtime-center-workspace .rc-heal-step.done {
+  border-color: #cfe1d6;
+  background: #f1f7f3;
+}
+.runtime-center-workspace .rc-heal-step.active {
+  border-color: #dfb787;
+  background: #fff7eb;
+}
+.runtime-center-workspace .rc-heal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 11px;
+}
+.runtime-center-workspace .rc-log {
+  margin-top: 10px;
+  padding: 12px 13px;
+  border-radius: 10px;
+  background: #2f302e;
+  color: #e7e1d8;
+  font:
+    11px/1.65 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+}
+.runtime-center-workspace .rc-log .good {
+  color: #9fc9ad;
+}
+.runtime-center-workspace .rc-log .bad {
+  color: #e4a29b;
+}
+
+@media (max-width: 850px) {
+  .runtime-center-workspace .rc-panel {
+    width: calc(100% - 16px);
+  }
+  .runtime-center-workspace .rc-status-hero {
+    grid-template-columns: 1fr;
+  }
+  .runtime-center-workspace .rc-status-meta {
+    text-align: left;
+  }
+  .runtime-center-workspace .rc-providers {
+    grid-template-columns: 1fr 1fr;
+  }
+  .runtime-center-workspace .rc-provider:last-child {
+    grid-column: 1 / -1;
+  }
+  .runtime-center-workspace .rc-service-grid {
+    grid-template-columns: 1fr;
+  }
+  .runtime-center-workspace .rc-heal-steps {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 590px) {
+  .runtime-center-workspace .rc-top {
+    height: auto;
+    padding: 12px;
+    align-items: flex-start;
+  }
+  .runtime-center-workspace .rc-capsules {
+    flex-direction: column;
+  }
+  .runtime-center-workspace .rc-capsule {
+    min-width: 0;
+  }
+  .runtime-center-workspace .rc-stage {
+    min-height: calc(100vh - 62px);
+    padding: 8px;
+  }
+  .runtime-center-workspace .rc-panel {
+    width: 100%;
+    height: min(780px, calc(100vh - 92px));
+    min-height: 640px;
+    border-radius: 14px;
+  }
+  .runtime-center-workspace .rc-head {
+    padding: 14px;
+  }
+  .runtime-center-workspace .rc-tabs {
+    padding: 0 14px;
+  }
+  .runtime-center-workspace .rc-body {
+    padding: 14px;
+  }
+  .runtime-center-workspace .rc-status-meta {
+    grid-template-columns: 1fr 1fr;
+  }
+  .runtime-center-workspace .rc-providers,
+  .runtime-center-workspace .rc-config-body,
+  .runtime-center-workspace .rc-identity,
+  .runtime-center-workspace .rc-heal-steps {
+    grid-template-columns: 1fr;
+  }
+  .runtime-center-workspace .rc-provider:last-child,
+  .runtime-center-workspace .rc-config-actions {
+    grid-column: auto;
+  }
+  .runtime-center-workspace .rc-config-actions,
+  .runtime-center-workspace .rc-heal-actions {
+    display: grid;
+  }
+  .runtime-center-workspace .rc-btn {
+    width: 100%;
+  }
+}

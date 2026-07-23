@@ -1,0 +1,23 @@
+{
+  "name": "@learning-more/server",
+  "version": "0.0.0-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/bootstrap/main.ts",
+    "test": "corepack pnpm --filter @learning-more/contracts build && vitest run --root ../.. apps/server --maxWorkers=1",
+    "typecheck": "corepack pnpm --filter @learning-more/contracts build && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@learning-more/contracts": "workspace:*",
+    "fastify": "5.10.0",
+    "jsonrepair": "3.15.0",
+    "pdfjs-dist": "6.1.200",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "fast-check": "4.8.0"
+  }
+}
