@@ -64,8 +64,10 @@ async function fixture(
     agentDirective?: TeachingDirective;
     legacyRecoveredTaskSourceId?: string;
     recoveredTaskStatus?: GenerationTask['status'];
+    recoveredTaskMarkdown?: string;
     ledgerDirectiveSaveConflictsOnce?: boolean;
     agentReadError?: Error;
+    agentRecoverError?: Error;
   } = {},
 ) {
   const artifacts = new Map<string, string>([
@@ -191,7 +193,9 @@ async function fixture(
   let submittedTaskCount = 0;
   let assistantMessageCount = 0;
   const cancelledTaskIds: string[] = [];
+  const invalidatedTaskIds: string[] = [];
   const generationTasks = new Map<string, GenerationTask>();
+  let recoveredTaskStatus = options.recoveredTaskStatus ?? ('completed' as const);
   const observedMessageBatches: string[][] = [];
   let resolveAgentCompletion: ((value: Readonly<{ markdown: string }>) => void) | undefined;
   const deferredCompletion = options.deferredCompletion
@@ -236,13 +240,14 @@ async function fixture(
         {
           id: 'task_recovered',
           taskKey: 'teaching:task_recovered',
-          status: options.recoveredTaskStatus ?? ('completed' as const),
+          status: recoveredTaskStatus,
           createdAt: '2026-07-14T00:00:00.000Z',
           updatedAt: '2026-07-14T00:01:00.000Z',
           resourceVersion: 1,
           taskKind: 'interactive-teaching',
           taskGroup: 'interactive' as const,
           ownerRef: 'session_1',
+          draftMarkdown: options.recoveredTaskMarkdown ?? 'Recovered teaching explanation.',
           ...(options.legacyRecoveredTaskSourceId === undefined
             ? { requestRef: 'message_user_1' }
             : {
@@ -255,6 +260,14 @@ async function fixture(
       cancelledTaskIds.push(taskId);
       const current = generationTasks.get(taskId);
       if (current !== undefined) generationTasks.set(taskId, { ...current, status: 'cancelled' });
+    },
+    async invalidate(taskId, errorCode) {
+      invalidatedTaskIds.push(taskId);
+      if (taskId === 'task_recovered') recoveredTaskStatus = 'failed';
+      const current = generationTasks.get(taskId);
+      if (current !== undefined) {
+        generationTasks.set(taskId, { ...current, status: 'failed', errorCode });
+      }
     },
     async complete(_taskId, observer) {
       if (deferredCompletion !== undefined) return deferredCompletion;
@@ -281,6 +294,7 @@ async function fixture(
         : { markdown: 'Recovered teaching explanation.', directive: options.agentDirective };
     },
     async recover() {
+      if (options.agentRecoverError !== undefined) throw options.agentRecoverError;
       return {
         markdown: 'Recovered teaching explanation.',
         completionStatus: 'complete',
@@ -485,6 +499,7 @@ async function fixture(
     submittedContext: () => submittedContext,
     submittedRequestRef: () => submittedRequestRef,
     cancelledTaskIds,
+    invalidatedTaskIds,
     capturedReasoningObservations,
     capturedInteractionObservations,
     observedMessageBatches,
@@ -1403,6 +1418,96 @@ describe('InteractiveTeaching deep module', () => {
       expect.objectContaining({ id: 'message_user_1', completionStatus: 'complete' }),
       expect.objectContaining({ generationTaskId: 'task_recovered', completionStatus: 'complete' }),
     ]);
+  });
+
+  it('invalidates an unreadable completed task and clears its active session binding', async () => {
+    const { recoverSession, sessionModule, messageLog } = await fixture({
+      agentRecoverError: new Error('teaching_control_protocol_invalid'),
+    });
+    await sessionModule.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_1',
+        messageId: 'message_user_1',
+        contentArtifactRef: 'artifact:user:1',
+      },
+      { ...commandContext, commandId: 'invalid_user', expectedVersion: 1 },
+    );
+    await sessionModule.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_1',
+        taskId: 'task_recovered',
+        mode: 'recovery',
+      },
+      { ...commandContext, commandId: 'invalid_generation', expectedVersion: 2 },
+    );
+
+    await expect(
+      recoverSession({
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        context: commandContext,
+      }),
+    ).resolves.toBeUndefined();
+
+    const recoveredView = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_invalid_generation',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(recoveredView.learning.session?.activeGenerationTaskId).toBeUndefined();
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+    ]);
+  });
+
+  it('repairs a legacy completed task with no output before reading the session', async () => {
+    const { recoverSession, sessionModule, invalidatedTaskIds } = await fixture({
+      recoveredTaskMarkdown: '',
+    });
+    await sessionModule.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_1',
+        messageId: 'message_user_1',
+        contentArtifactRef: 'artifact:user:1',
+      },
+      { ...commandContext, commandId: 'empty_user', expectedVersion: 1 },
+    );
+    await sessionModule.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_1',
+        taskId: 'task_recovered',
+        mode: 'recovery',
+      },
+      { ...commandContext, commandId: 'empty_generation', expectedVersion: 2 },
+    );
+
+    await recoverSession({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: commandContext,
+    });
+
+    const recoveredView = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_empty_generation',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(recoveredView.learning.session?.activeGenerationTaskId).toBeUndefined();
+    expect(invalidatedTaskIds).toContain('task_recovered');
   });
 
   it('rebinds and commits an orphaned completed reply while the session remains paused', async () => {

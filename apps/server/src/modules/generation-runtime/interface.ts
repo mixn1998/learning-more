@@ -26,6 +26,7 @@ export interface GenerationRuntime {
   submit(request: GenerationRequest): Promise<GenerationTaskHandle>;
   runNext(): Promise<string | undefined>;
   cancel(taskId: string): Promise<GenerationTask>;
+  invalidate?(taskId: string, errorCode: string): Promise<GenerationTask>;
   get(taskId: string): Promise<GenerationTask>;
   listByOwner(ownerRef: string, taskKind?: string): Promise<readonly GenerationTask[]>;
   recoverExpiredLeases(): Promise<number>;
@@ -67,6 +68,7 @@ export interface GenerationExecution {
   awaitTerminal(taskId: string): Promise<GenerationTask>;
   stream(taskId: string, afterSequence: number): ReturnType<GenerationFrameLog['readAfter']>;
   cancel(taskId: string): Promise<GenerationTask>;
+  invalidate?(taskId: string, errorCode: string): Promise<GenerationTask>;
   recover(taskId: string): Promise<GenerationTask>;
   subscribe?(taskId: string, observer: (task: GenerationTask) => void): () => void;
 }

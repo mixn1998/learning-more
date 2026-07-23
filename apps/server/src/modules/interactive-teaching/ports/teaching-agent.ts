@@ -75,6 +75,7 @@ export interface TeachingAgent {
   submit(context: TeachingContextPackage, requestRef: string): Promise<{ taskId: string }>;
   listTasks(sessionId: string): Promise<readonly TeachingGenerationTask[]>;
   cancel(taskId: string): Promise<void>;
+  invalidate(taskId: string, errorCode: string): Promise<void>;
   complete(
     taskId: string,
     observer?: TeachingAgentCompletionObserver,

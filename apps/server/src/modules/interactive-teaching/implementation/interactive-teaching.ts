@@ -425,6 +425,13 @@ export function createInteractiveTeaching(options: {
             // Fall back to clearing the active task. The original generation failure stays primary.
           }
         }
+        if (!directiveValidated) {
+          try {
+            await options.agent.invalidate(accepted.taskId, 'teaching_output_invalid');
+          } catch {
+            // Session cleanup remains authoritative; reconciliation retries invalidation.
+          }
+        }
         if (!failedReplyCommitted) {
           try {
             await options.sessionModule.execute(
@@ -671,6 +678,34 @@ export function createInteractiveTeaching(options: {
     }
     let messages = await options.contextSources.listMessages(input.sessionId);
     let tasks = await options.agent.listTasks(input.sessionId);
+    const committedTaskIds = new Set(
+      messages.flatMap((message) =>
+        message.role === 'assistant' && message.generationTaskId !== undefined
+          ? [message.generationTaskId]
+          : [],
+      ),
+    );
+    const emptyCompletedTaskIds = tasks
+      .filter(
+        (task) =>
+          task.status === 'completed' &&
+          !committedTaskIds.has(task.id) &&
+          (task.draftMarkdown?.trim().length ?? 0) === 0,
+      )
+      .map((task) => task.id);
+    for (const taskId of emptyCompletedTaskIds) {
+      try {
+        await options.agent.invalidate(taskId, 'provider_empty_output');
+        await tryAppendFrame(taskId, 'task.failed', {
+          problem: failureProblem(taskId),
+        });
+      } catch {
+        // The reconciliation planner still refuses to bind an empty completed result.
+      }
+    }
+    if (emptyCompletedTaskIds.length > 0) {
+      tasks = await options.agent.listTasks(input.sessionId);
+    }
     await reconcileLatestCommittedDirective({
       courseId: input.courseId,
       lessonId: input.lessonId,
@@ -749,7 +784,24 @@ export function createInteractiveTeaching(options: {
     }
 
     await tryEnsureFrameTask(recoveringTaskId, 'running');
-    const recovered = await options.agent.recover(recoveringTaskId);
+    let recovered: Awaited<ReturnType<TeachingAgent['recover']>>;
+    try {
+      recovered = await options.agent.recover(recoveringTaskId);
+    } catch (error) {
+      if (plannedTask?.status !== 'completed') throw error;
+      await options.agent.invalidate(recoveringTaskId, 'teaching_output_invalid');
+      learning = await queryLearning();
+      if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
+        await options.sessionModule.execute(
+          { type: 'StopSessionGeneration', lessonId: input.lessonId, taskId: recoveringTaskId },
+          backgroundContext(input.context, `recover-invalid:${recoveringTaskId}`),
+        );
+      }
+      await tryAppendFrame(recoveringTaskId, 'task.failed', {
+        problem: failureProblem(recoveringTaskId),
+      });
+      return options.contextSources.listMessages(input.sessionId);
+    }
     if (recovered.completionStatus === 'failed') {
       learning = await queryLearning();
       if (learning.learning.session?.activeGenerationTaskId === recoveringTaskId) {
@@ -1461,6 +1513,15 @@ export function createInteractiveTeaching(options: {
     async recoverSession(input) {
       const messages = await reconcileGeneration(input);
       if (messages.length === 0 || !messages.some((message) => message.role === 'user')) return;
+      const latestMessage = messages.at(-1);
+      if (
+        latestMessage?.role !== 'assistant' ||
+        latestMessage.completionStatus !== 'complete'
+      ) {
+        await markObservationFailed(input.courseId, input.lessonId, input.sessionId);
+        await recoverEvidenceEffect(input);
+        return;
+      }
       let ledger = await options.ledgerRepository.get(input.sessionId);
       const observedThrough = ledger?.state.observedThroughMessageId;
       const lastMessage = messages.at(-1)?.messageId;

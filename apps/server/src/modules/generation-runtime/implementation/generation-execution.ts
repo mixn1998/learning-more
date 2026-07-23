@@ -64,6 +64,12 @@ export function createGenerationExecution(options: {
     stream: (taskId, afterSequence) => options.frameLog.readAfter(taskId, afterSequence),
     subscribe: (taskId, observer) => options.runtime.subscribe?.(taskId, observer) ?? (() => {}),
     cancel: (taskId) => options.runtime.cancel(taskId),
+    async invalidate(taskId, errorCode) {
+      if (options.runtime.invalidate === undefined) {
+        throw new Error('generation_invalidation_unavailable');
+      }
+      return options.runtime.invalidate(taskId, errorCode);
+    },
     async recover(taskId) {
       await options.runtime.recoverExpiredLeases();
       return awaitTerminal(taskId);

@@ -178,9 +178,12 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
 
   async function submit(request: GenerationRequest): Promise<GenerationTaskHandle> {
     for (const task of await allTasks()) {
+      const reusableCompletedResult =
+        task.status !== 'completed' || (task.draftMarkdown?.trim().length ?? 0) > 0;
       if (
         task.taskKey === request.taskKey &&
         task.inputSnapshotHash === request.inputSnapshotHash &&
+        reusableCompletedResult &&
         task.status !== 'failed' &&
         task.status !== 'cancelled' &&
         task.status !== 'timeout'
@@ -322,6 +325,13 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
             leaseExpiresAt: new Date(now().getTime() + 30_000).toISOString(),
           });
         }
+        if (!timedOut && !controller.signal.aborted && !emittedDelta) {
+          throw new ProviderExecutionError('Provider exited without producing output', {
+            retryable: true,
+            beforeFirstDelta: true,
+            code: 'provider_empty_output',
+          });
+        }
         current = await get(current.id);
         if (current.status === 'running') {
           current = await persist({
@@ -446,6 +456,24 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
         ...task,
         status: 'cancelled',
         errorCode: 'generation_cancelled',
+        updatedAt: now().toISOString(),
+      });
+    },
+    async invalidate(taskId, errorCode) {
+      controllers.get(taskId)?.abort();
+      const task = await get(taskId);
+      if (task.status === 'failed' && task.errorCode === errorCode) return task;
+      const { resultRef: _resultRef, ...withoutResult } = task;
+      void _resultRef;
+      return persist({
+        ...withoutResult,
+        status: 'failed',
+        errorCode,
+        attempts: (task.attempts ?? []).map((attempt, index, all) =>
+          index === all.length - 1 && attempt.status === 'completed'
+            ? { ...attempt, status: 'failed' as const, errorCode }
+            : attempt,
+        ),
         updatedAt: now().toISOString(),
       });
     },

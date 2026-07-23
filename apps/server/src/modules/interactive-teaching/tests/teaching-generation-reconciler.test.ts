@@ -22,6 +22,7 @@ function task(
     taskKind: 'interactive-teaching',
     taskGroup: 'interactive',
     ownerRef: 'session_1',
+    ...(status === 'completed' ? { draftMarkdown: 'Recovered teaching reply.' } : {}),
     ...(requestRef === undefined ? {} : { requestRef }),
   };
 }
@@ -129,6 +130,21 @@ describe('teaching generation reconciliation planning', () => {
         sessionId: 'session_1',
         activeTaskId: 'task_failed',
         tasks: [task('task_failed', 'failed', 'message_user_1')],
+        messages: [user('message_user_1')],
+      }),
+    ).toMatchObject({
+      action: 'terminal_binding_cleared',
+      clearActiveTask: true,
+      bindTask: false,
+    });
+  });
+
+  it('clears a legacy completed binding whose Provider produced no output', () => {
+    expect(
+      planTeachingGenerationReconciliation({
+        sessionId: 'session_1',
+        activeTaskId: 'task_empty',
+        tasks: [{ ...task('task_empty', 'completed', 'message_user_1'), draftMarkdown: '' }],
         messages: [user('message_user_1')],
       }),
     ).toMatchObject({

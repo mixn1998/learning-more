@@ -530,6 +530,126 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     });
   });
 
+  it('never completes a task when a Provider exits without emitting output', async () => {
+    const repositories = createInMemoryRepositories();
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [createMockProvider({ id: 'empty-provider', script: [] })],
+      nextId: () => 'task-empty-output',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    await runtime.submit({
+      taskKey: 'empty-output',
+      inputSnapshotHash: 'empty-output',
+      taskKind: 'interactive-teaching',
+      taskGroup: 'interactive',
+      ownerRef: 'session-empty-output',
+      providerId: 'empty-provider',
+      priority: 100,
+      prompt: 'Teach the lesson.',
+    });
+
+    await runtime.runNext();
+
+    await expect(runtime.get('task-empty-output')).resolves.toMatchObject({
+      status: 'failed',
+      errorCode: 'provider_empty_output',
+      draftMarkdown: '',
+      attempts: [
+        expect.objectContaining({
+          status: 'failed',
+          errorCode: 'provider_empty_output',
+          emittedDelta: false,
+        }),
+      ],
+    });
+  });
+
+  it('does not reuse a legacy completed task with an empty result', async () => {
+    const repositories = createInMemoryRepositories();
+    await repositories.generationTasks.save(
+      tx,
+      {
+        id: 'task-legacy-empty',
+        taskKey: 'legacy-empty',
+        status: 'completed',
+        createdAt: '2026-07-12T00:00:00.000Z',
+        updatedAt: '2026-07-12T00:01:00.000Z',
+        resourceVersion: 0,
+        inputSnapshotHash: 'legacy-empty',
+        taskKind: 'interactive-teaching',
+        taskGroup: 'interactive',
+        ownerRef: 'session-legacy-empty',
+        providerId: 'mock',
+        prompt: 'Teach the lesson.',
+        draftMarkdown: '',
+      },
+      0,
+    );
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [createMockProvider({ id: 'mock', script: [{ type: 'text', text: 'reply' }] })],
+      nextId: () => 'task-replacement',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+
+    await expect(
+      runtime.submit({
+        taskKey: 'legacy-empty',
+        inputSnapshotHash: 'legacy-empty',
+        taskKind: 'interactive-teaching',
+        taskGroup: 'interactive',
+        ownerRef: 'session-legacy-empty',
+        providerId: 'mock',
+        priority: 100,
+        prompt: 'Teach the lesson.',
+      }),
+    ).resolves.toEqual({ taskId: 'task-replacement' });
+  });
+
+  it('invalidates a completed task whose consumer rejects its output contract', async () => {
+    const repositories = createInMemoryRepositories();
+    const runtime = createGenerationRuntime({
+      repository: repositories.generationTasks,
+      unitOfWork,
+      providers: [
+        createMockProvider({
+          id: 'mock',
+          script: [{ type: 'text', text: 'malformed structured output' }],
+        }),
+      ],
+      nextId: () => 'task-invalid-output',
+      now: () => new Date('2026-07-13T00:00:00.000Z'),
+    });
+    await runtime.submit({
+      taskKey: 'invalid-output',
+      inputSnapshotHash: 'invalid-output',
+      taskKind: 'interactive-teaching',
+      taskGroup: 'interactive',
+      ownerRef: 'session-invalid-output',
+      providerId: 'mock',
+      priority: 100,
+      prompt: 'Teach the lesson.',
+    });
+    await runtime.runNext();
+
+    await runtime.invalidate?.('task-invalid-output', 'teaching_output_invalid');
+
+    await expect(runtime.get('task-invalid-output')).resolves.toMatchObject({
+      status: 'failed',
+      errorCode: 'teaching_output_invalid',
+      draftMarkdown: 'malformed structured output',
+      attempts: [
+        expect.objectContaining({
+          status: 'failed',
+          errorCode: 'teaching_output_invalid',
+        }),
+      ],
+    });
+  });
+
   it('continues a recoverably interrupted teaching reply with the same Provider', async () => {
     const repositories = createInMemoryRepositories();
     let invocation = 0;
