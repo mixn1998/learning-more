@@ -5,6 +5,7 @@ import { ScheduleViewResponseSchema, type LearningEventEnvelope } from '@learnin
 import type { PlanningRouteOptions } from '../../http/routes/planning.js';
 import { createPlanFlowService } from '../../modules/planning/implementation/plan-flow-service.js';
 import { createPlanningModule } from '../../modules/planning/implementation/planning-module.js';
+import { createScheduleIndex } from '../../modules/planning/implementation/schedule-index.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import {
@@ -41,11 +42,13 @@ export function createLocalPlanningRuntime(
 ): LocalPlanningRuntime {
   const scheduleRepository = createLocalFileScheduleRepository(input.dataRoot);
   const planFlowRepository = createLocalFilePlanFlowRepository(input.dataRoot);
+  const scheduleIndex = createScheduleIndex({
+    repository: scheduleRepository,
+    revision: () => input.readRevision.current(['schedule']),
+  });
 
   async function scheduleVersion(): Promise<number> {
-    let version = 0;
-    for await (const item of scheduleRepository.list()) version += item.resourceVersion;
-    return version;
+    return (await scheduleIndex.current()).resourceVersion;
   }
 
   async function currentLesson(lessonId: string) {
@@ -58,6 +61,7 @@ export function createLocalPlanningRuntime(
 
   const planning = createPlanningModule({
     repository: scheduleRepository,
+    scheduleIndex,
     unitOfWork: input.unitOfWork,
     async getLessonProgress(lessonId) {
       const lesson = await currentLesson(lessonId);
@@ -89,6 +93,7 @@ export function createLocalPlanningRuntime(
   const planFlows = createPlanFlowService({
     repository: planFlowRepository,
     scheduleRepository,
+    scheduleIndex,
     unitOfWork: input.unitOfWork,
     async assemblePreviewContext(previewInput) {
       const courses = [];
@@ -226,15 +231,36 @@ export function createLocalPlanningRuntime(
     },
   });
 
-  async function buildCurrentScheduleSnapshot() {
-    const courseLessonIds: string[] = [];
-    const courseLoad = (async () => {
+  let currentLessonIndex:
+    Readonly<{ revision: string; lessonIds: ReadonlySet<string> }> | undefined;
+  let currentLessonIndexBuild:
+    Readonly<{ revision: string; promise: Promise<ReadonlySet<string>> }> | undefined;
+
+  async function currentCourseLessonIds(): Promise<ReadonlySet<string>> {
+    const revision = input.readRevision.current(['catalog']);
+    if (currentLessonIndex?.revision === revision) return currentLessonIndex.lessonIds;
+    if (currentLessonIndexBuild?.revision === revision) return currentLessonIndexBuild.promise;
+    const promise = (async () => {
+      const lessonIds = new Set<string>();
       for await (const course of input.course.access.listCourses()) {
-        courseLessonIds.push(...course.lessonIds);
+        for (const lessonId of course.lessonIds) lessonIds.add(lessonId);
       }
-    })();
-    const [snapshot] = await Promise.all([planning.snapshot(), courseLoad]);
-    const currentLessonIds = new Set(courseLessonIds);
+      const currentRevision = input.readRevision.current(['catalog']);
+      if (currentRevision !== revision) return currentCourseLessonIds();
+      currentLessonIndex = { revision, lessonIds };
+      return lessonIds;
+    })().finally(() => {
+      if (currentLessonIndexBuild?.promise === promise) currentLessonIndexBuild = undefined;
+    });
+    currentLessonIndexBuild = { revision, promise };
+    return promise;
+  }
+
+  async function buildCurrentScheduleSnapshot() {
+    const [snapshot, currentLessonIds] = await Promise.all([
+      planning.snapshot(),
+      currentCourseLessonIds(),
+    ]);
     return {
       items: snapshot.items.filter((item) => currentLessonIds.has(item.lessonId)),
       resourceVersion: snapshot.resourceVersion,

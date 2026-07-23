@@ -12,6 +12,7 @@ import {
   validateTimeZone,
 } from '../model/schedule-item.js';
 import type { ScheduleRepository } from '../ports/schedule-repository.js';
+import type { ScheduleIndex } from './schedule-index.js';
 
 class PlanningError extends Error {
   constructor(
@@ -33,6 +34,7 @@ type ScheduleEvent = Readonly<{
 
 export function createPlanningModule(options: {
   repository: ScheduleRepository;
+  scheduleIndex?: ScheduleIndex;
   unitOfWork: UnitOfWork;
   getLessonProgress(
     lessonId: string,
@@ -42,6 +44,9 @@ export function createPlanningModule(options: {
   recordEvent?(event: ScheduleEvent, tx: TransactionContext): Promise<void>;
 }): PlanningModule {
   async function all(): Promise<ScheduleItem[]> {
+    if (options.scheduleIndex !== undefined) {
+      return [...(await options.scheduleIndex.current()).items];
+    }
     const items: ScheduleItem[] = [];
     for await (const item of options.repository.list()) items.push(item);
     return items.sort((left, right) =>
@@ -52,7 +57,11 @@ export function createPlanningModule(options: {
   }
 
   async function conflictIds(candidate: ScheduleItem): Promise<readonly string[]> {
-    return (await all())
+    const candidates =
+      options.scheduleIndex === undefined
+        ? await all()
+        : (await options.scheduleIndex.current()).forLesson(candidate.lessonId);
+    return candidates
       .filter(
         (item) =>
           item.id !== candidate.id &&
@@ -63,10 +72,17 @@ export function createPlanningModule(options: {
   }
 
   async function aggregateVersion(): Promise<number> {
+    if (options.scheduleIndex !== undefined) {
+      return (await options.scheduleIndex.current()).resourceVersion;
+    }
     return (await all()).reduce((total, item) => total + item.resourceVersion, 0);
   }
 
   async function snapshot() {
+    if (options.scheduleIndex !== undefined) {
+      const index = await options.scheduleIndex.current();
+      return { items: index.scheduled, resourceVersion: index.resourceVersion };
+    }
     const items = await all();
     return {
       items: items.filter((item) => item.status === 'scheduled'),
@@ -105,9 +121,10 @@ export function createPlanningModule(options: {
 
   return {
     async execute(command: PlanningCommand, context: CommandContext) {
-      const existingReceipt = (await all()).find((item) =>
-        item.processedCommandIds.includes(context.commandId),
-      );
+      const existingReceipt =
+        options.scheduleIndex === undefined
+          ? (await all()).find((item) => item.processedCommandIds.includes(context.commandId))
+          : (await options.scheduleIndex.current()).forCommand(context.commandId)[0];
       if (existingReceipt !== undefined) return { scheduleItem: existingReceipt };
 
       if (command.type === 'CreateScheduleItem') {
@@ -172,10 +189,11 @@ export function createPlanningModule(options: {
       };
     },
     async clear(scheduleItemIds: readonly string[], context: CommandContext) {
-      const items = await all();
-      const existingReceipt = items.filter((item) =>
-        item.processedCommandIds.includes(context.commandId),
-      );
+      const indexed = await options.scheduleIndex?.current();
+      const items = indexed?.items ?? (await all());
+      const existingReceipt =
+        indexed?.forCommand(context.commandId) ??
+        items.filter((item) => item.processedCommandIds.includes(context.commandId));
       if (existingReceipt.length > 0) {
         return { removedItems: existingReceipt, resourceVersion: await aggregateVersion() };
       }

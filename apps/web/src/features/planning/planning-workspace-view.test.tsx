@@ -89,6 +89,87 @@ function renderWorkspace(
 }
 
 describe('PlanningWorkspaceView date scheduling', () => {
+  it('keeps the current filters after scheduling one lesson', async () => {
+    const onCreate = vi.fn<WorkspaceProps['onCreate']>().mockResolvedValue(undefined);
+    render(
+      <PlanningWorkspaceView
+        anchorDate="2026-07-15"
+        courses={[{ ...courses[0]!, title: '数据结构', disciplineTag: '计算机科学' }]}
+        items={[]}
+        lessons={lessons}
+        onClear={async () => undefined}
+        onCreate={onCreate}
+        onGeneratePlanFlow={() => undefined}
+        onMove={async () => undefined}
+        onRemove={async () => undefined}
+        onReturn={() => undefined}
+      />,
+    );
+
+    const titleFilter = screen.getByLabelText('课程标题');
+    const statusFilter = screen.getByLabelText('排期状态');
+    const disciplineFilter = screen.getByLabelText('学科/领域');
+    fireEvent.change(titleFilter, { target: { value: '数据结构' } });
+    fireEvent.change(statusFilter, { target: { value: '待规划' } });
+    fireEvent.change(disciplineFilter, { target: { value: '计算机科学' } });
+
+    fireEvent.change(screen.getByLabelText('安排学习日期：未排期课节'), {
+      target: { value: '2026-07-16' },
+    });
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect(titleFilter).toHaveValue('数据结构');
+    expect(statusFilter).toHaveValue('待规划');
+    expect(disciplineFilter).toHaveValue('计算机科学');
+  });
+
+  it('filters lessons by course title without matching lesson titles', () => {
+    render(
+      <PlanningWorkspaceView
+        anchorDate="2026-07-15"
+        courses={[
+          { ...courses[0]!, title: '线性代数' },
+          {
+            courseId: 'course_02',
+            title: '数据结构',
+            status: 'active',
+            courseMode: 'standard',
+            outlineVersionId: 'outline_02',
+            resourceVersion: 1,
+          },
+        ]}
+        items={[]}
+        lessons={[
+          { ...lessons[0]!, title: '矩阵与映射' },
+          {
+            courseId: 'course_02',
+            lessonId: 'lesson_tree',
+            title: '线性表与树',
+            progress: 'not_started',
+            recommended: false,
+          },
+        ]}
+        onClear={async () => undefined}
+        onCreate={async () => undefined}
+        onGeneratePlanFlow={() => undefined}
+        onMove={async () => undefined}
+        onRemove={async () => undefined}
+        onReturn={() => undefined}
+      />,
+    );
+
+    const titleFilter = screen.getByLabelText('课程标题');
+    fireEvent.change(titleFilter, { target: { value: '线性代数' } });
+
+    expect(screen.getByRole('heading', { name: '矩阵与映射' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: '线性表与树' })).not.toBeInTheDocument();
+
+    fireEvent.change(titleFilter, { target: { value: '线性表' } });
+
+    expect(screen.queryByRole('heading', { name: '矩阵与映射' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '线性表与树' })).not.toBeInTheDocument();
+  });
+
   it('clears only the scheduled lessons in the current filtered result', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const onClear = vi.fn<WorkspaceProps['onClear']>().mockResolvedValue(undefined);

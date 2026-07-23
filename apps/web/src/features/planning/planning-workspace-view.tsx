@@ -87,6 +87,7 @@ export function PlanningWorkspaceView(props: {
   const [selectedDate, setSelectedDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [disciplineFilter, setDisciplineFilter] = useState('');
+  const [courseTitleFilter, setCourseTitleFilter] = useState('');
   const [previewTarget, setPreviewTarget] = useState<PlanningEntry>();
   const [pendingDates, setPendingDates] = useState<Readonly<Record<string, string>>>({});
   const [savingLessonIds, setSavingLessonIds] = useState<ReadonlySet<string>>(new Set());
@@ -129,31 +130,50 @@ export function PlanningWorkspaceView(props: {
   }, [props.courses, props.items, props.lessons, props.metadata]);
 
   const dates = useMemo(() => sevenDates(props.anchorDate), [props.anchorDate]);
-  const disciplines = [
-    ...new Set(
-      entries.flatMap((entry) =>
-        entry.metadata.disciplineTag === undefined ? [] : [entry.metadata.disciplineTag],
+  const disciplines = useMemo(
+    () => [
+      ...new Set(
+        entries.flatMap((entry) =>
+          entry.metadata.disciplineTag === undefined ? [] : [entry.metadata.disciplineTag],
+        ),
       ),
-    ),
-  ];
-  const visibleEntries = entries.filter((entry) => {
-    const scheduledDate =
-      entry.schedule === undefined ? undefined : localDate(entry.schedule.startAt);
-    if (selectedDate !== '' && scheduledDate !== selectedDate) return false;
-    const status =
-      scheduledDate === undefined
-        ? '待规划'
-        : scheduledDate < props.anchorDate
-          ? '已逾期'
-          : '已安排';
-    return (
-      (statusFilter === '' || statusFilter === status) &&
-      (disciplineFilter === '' || entry.metadata.disciplineTag === disciplineFilter)
-    );
-  });
+    ],
+    [entries],
+  );
+  const entriesByDate = useMemo(() => {
+    const result = new Map<string, PlanningEntry[]>();
+    for (const entry of entries) {
+      if (entry.schedule === undefined) continue;
+      const date = localDate(entry.schedule.startAt);
+      const bucket = result.get(date);
+      if (bucket === undefined) result.set(date, [entry]);
+      else bucket.push(entry);
+    }
+    return result;
+  }, [entries]);
+  const visibleEntries = useMemo(() => {
+    const normalizedCourseTitle = courseTitleFilter.trim().toLocaleLowerCase();
+    return entries.filter((entry) => {
+      const scheduledDate =
+        entry.schedule === undefined ? undefined : localDate(entry.schedule.startAt);
+      if (selectedDate !== '' && scheduledDate !== selectedDate) return false;
+      const status =
+        scheduledDate === undefined
+          ? '待规划'
+          : scheduledDate < props.anchorDate
+            ? '已逾期'
+            : '已安排';
+      return (
+        (statusFilter === '' || statusFilter === status) &&
+        (disciplineFilter === '' || entry.metadata.disciplineTag === disciplineFilter) &&
+        (normalizedCourseTitle === '' ||
+          entry.course?.title.toLocaleLowerCase().includes(normalizedCourseTitle) === true)
+      );
+    });
+  }, [courseTitleFilter, disciplineFilter, entries, props.anchorDate, selectedDate, statusFilter]);
   useEffect(() => {
     setVisibleLimit(60);
-  }, [disciplineFilter, entries.length, selectedDate, statusFilter]);
+  }, [courseTitleFilter, disciplineFilter, entries.length, selectedDate, statusFilter]);
   const renderedEntries = visibleEntries.slice(0, visibleLimit);
 
   async function saveSchedule(entry: PlanningEntry, date: string) {
@@ -181,8 +201,6 @@ export function PlanningWorkspaceView(props: {
       } else {
         await props.onMove(entry.schedule, { startAt, endAt });
       }
-      setStatusFilter('');
-      setDisciplineFilter('');
     } catch {
       setScheduleErrors((current) => ({
         ...current,
@@ -202,8 +220,10 @@ export function PlanningWorkspaceView(props: {
     }
   }
 
-  const visibleScheduleItemIds = visibleEntries.flatMap((entry) =>
-    entry.schedule === undefined ? [] : [entry.schedule.id],
+  const visibleScheduleItemIds = useMemo(
+    () =>
+      visibleEntries.flatMap((entry) => (entry.schedule === undefined ? [] : [entry.schedule.id])),
+    [visibleEntries],
   );
 
   async function clearVisibleSchedules() {
@@ -264,9 +284,7 @@ export function PlanningWorkspaceView(props: {
             <b>今日起 7 天</b>
           </header>
           {dates.map((date) => {
-            const dateEntries = entries.filter(
-              (entry) => entry.schedule !== undefined && localDate(entry.schedule.startAt) === date,
-            );
+            const dateEntries = entriesByDate.get(date) ?? [];
             return (
               <button
                 aria-pressed={selectedDate === date}
@@ -313,14 +331,19 @@ export function PlanningWorkspaceView(props: {
             </div>
           </header>
           <div className="planning-filters">
+            <input
+              aria-label="课程标题"
+              className="lm-control"
+              placeholder="按课程标题筛选"
+              type="search"
+              value={courseTitleFilter}
+              onChange={(event) => setCourseTitleFilter(event.target.value)}
+            />
             <select
               aria-label="排期状态"
               className="lm-control"
               value={statusFilter}
-              onChange={(event) => {
-                setSelectedDate('');
-                setStatusFilter(event.target.value);
-              }}
+              onChange={(event) => setStatusFilter(event.target.value)}
             >
               <option value="">全部排期状态</option>
               <option value="待规划">待规划</option>
@@ -331,10 +354,7 @@ export function PlanningWorkspaceView(props: {
               aria-label="学科/领域"
               className="lm-control"
               value={disciplineFilter}
-              onChange={(event) => {
-                setSelectedDate('');
-                setDisciplineFilter(event.target.value);
-              }}
+              onChange={(event) => setDisciplineFilter(event.target.value)}
             >
               <option value="">全部学科/领域</option>
               {disciplines.map((discipline) => (
@@ -348,6 +368,7 @@ export function PlanningWorkspaceView(props: {
                 setSelectedDate('');
                 setStatusFilter('');
                 setDisciplineFilter('');
+                setCourseTitleFilter('');
               }}
             >
               清除筛选
