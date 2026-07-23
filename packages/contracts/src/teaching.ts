@@ -129,6 +129,13 @@ export const TeachingKnowledgePointStateSchema = z.strictObject({
       }),
     )
     .optional(),
+  verificationStreak: z
+    .strictObject({
+      category: z.string().trim().min(1).max(500),
+      correctCount: z.number().int().min(1).max(2),
+      sourceMessageIds: z.array(IdentifierSchema).min(1).max(2),
+    })
+    .optional(),
   adaptiveDifficulty: z.enum(['normal', 'difficult']).optional(),
   depthPreference: z.enum(['default', 'condensed']).optional(),
 });

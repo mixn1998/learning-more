@@ -40,6 +40,9 @@ function machineControlContext(context: TeachingContextPackage): string {
       interactionStatus: point.interactionStatus,
       depthPreference: point.depthPreference,
       deepFollowUpCount: point.deepFollowUpCount,
+      ...(point.verificationStreak === undefined
+        ? {}
+        : { verificationStreak: point.verificationStreak }),
     })),
     ...(projection.nextKnowledgePoint === undefined
       ? {}
@@ -50,9 +53,13 @@ function machineControlContext(context: TeachingContextPackage): string {
       allTerminal: projection.allKnowledgePointsTerminal,
     },
     difficultySignals: [],
+    verificationSignals: [],
     ...(context.turnKind === 'opening' || currentUserMessageId === undefined
       ? {}
-      : { allowedDifficultySignalSourceMessageId: currentUserMessageId }),
+      : {
+          allowedDifficultySignalSourceMessageId: currentUserMessageId,
+          allowedVerificationSignalSourceMessageId: currentUserMessageId,
+        }),
     comprehensiveCheck: projection.comprehensiveCheck,
     closureInquiry: projection.closureInquiry,
     summaryStatus: projection.summaryStatus,
@@ -77,6 +84,9 @@ export function renderTeachingControlProtocol(context: TeachingContextPackage): 
     'comprehensiveCheck∈pending|learning|completed|skipped；跳过检测用 skipped。节点终态不得倒退；全部知识点终态后才能进入 comprehensive_check，检测终态后才能进入 discussion。',
     '综合检测 completed 或 skipped 后必须先进入 lessonPhase=discussion、closureInquiry=awaiting_confirmation；讨论答疑期间用户提出任何问题都必须保持该状态并继续答疑。',
     '只有用户在当前轮明确没有其他疑问且最终课程总结已经输出时，才能令 lessonPhase=ready_to_close、closureInquiry=confirmed_no_questions、summaryStatus=delivered。',
+    '若当前用户消息是在回答你上一轮主动提出的理解检测，必须通过 verificationSignals 上报本轮判断；每轮至多一项，包含 knowledgePointRef、当前用户 sourceMessageId、开放式 category 和 outcome=correct|incorrect|uncertain。category 表示被检验的理解类型，语义相同必须复用账本已有 category，不得换名规避计数。',
+    '同一 category 连续两次回答正确后，必须结束该类检验并实质推进：转入下一知识点；若已无知识点则进入综合检测。可见回复不得再次提出同类问题。服务端也会依据 verificationStreak 强制推进。',
+    '用户自主提问、表达观点或进行课程邻接探索不属于对主动检测的作答，不要上报 verificationSignals。回答错误或无法判断时应如实上报，正确连续次数会被重置。',
     `当前机器状态：${machineControlContext(context)}`,
   ].join('\n');
 }

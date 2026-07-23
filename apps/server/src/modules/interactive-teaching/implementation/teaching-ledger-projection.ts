@@ -11,6 +11,10 @@ type ProjectedKnowledgePoint = Readonly<{
   verification: 'not_observed' | 'supporting' | 'limiting' | 'mixed';
   adaptiveDifficulty: 'normal' | 'difficult';
   deepFollowUpCount: number;
+  verificationStreak?: Readonly<{
+    category: string;
+    correctCount: number;
+  }>;
 }>;
 
 export type TeachingLedgerProjection = Readonly<{
@@ -81,6 +85,14 @@ export function projectTeachingLedger(context: TeachingContextPackage): Teaching
       deepFollowUpCount: (point?.difficultySignals ?? []).filter(
         (signal) => signal.kind === 'request_deeper_explanation',
       ).length,
+      ...(point?.verificationStreak === undefined
+        ? {}
+        : {
+            verificationStreak: {
+              category: point.verificationStreak.category,
+              correctCount: point.verificationStreak.correctCount,
+            },
+          }),
     } satisfies ProjectedKnowledgePoint;
   });
   const completedOrSkippedCount = ordered.filter(

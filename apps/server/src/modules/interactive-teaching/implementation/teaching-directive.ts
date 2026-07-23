@@ -18,6 +18,13 @@ const KnowledgePointDirectiveSchema = z
     ...(point.depthPreference === undefined ? {} : { depthPreference: point.depthPreference }),
   }));
 
+const TeachingVerificationSignalSchema = z.strictObject({
+  knowledgePointRef: z.string().trim().min(1).max(2_000),
+  sourceMessageId: z.string().trim().min(1).max(500),
+  category: z.string().trim().min(1).max(500),
+  outcome: z.enum(['correct', 'incorrect', 'uncertain']),
+});
+
 const FullTeachingDirectiveSchema = z.strictObject({
   schemaVersion: z.literal(1),
   lessonPhase: z.enum([
@@ -44,6 +51,7 @@ const FullTeachingDirectiveSchema = z.strictObject({
       }),
     )
     .optional(),
+  verificationSignals: z.array(TeachingVerificationSignalSchema).max(1).optional(),
   comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),
   summaryStatus: z.enum(['pending', 'delivered']),
@@ -84,6 +92,7 @@ const SparseTeachingDirectiveSchema = z.strictObject({
       }),
     )
     .optional(),
+  verificationSignals: z.array(TeachingVerificationSignalSchema).max(1).optional(),
   comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']).optional(),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']).optional(),
   summaryStatus: z.enum(['pending', 'delivered']).optional(),
@@ -170,6 +179,7 @@ export function materializeTeachingDirective(
       };
     }),
     difficultySignals: parsed.difficultySignals ?? [],
+    verificationSignals: parsed.verificationSignals ?? [],
     comprehensiveCheck:
       parsed.comprehensiveCheck ?? normalizedComprehensive(state.comprehensiveCheck),
     closureInquiry: parsed.closureInquiry ?? state.closureInquiry ?? 'pending',
@@ -182,7 +192,10 @@ export function teachingDirectiveMatchesState(
   directiveInput: TeachingDirective,
 ): boolean {
   const state = normalizeTeachingControlState(stateInput);
-  const directive = materializeTeachingDirective(state, directiveInput);
+  const directive = enforceCorrectAnswerProgress(
+    state,
+    materializeTeachingDirective(state, directiveInput),
+  );
   const statePoints = state.knowledgePoints.map((point) => ({
     ref: point.ref,
     status: normalizedProgress(point.progress),
@@ -202,8 +215,15 @@ export function teachingDirectiveMatchesState(
         existing.sourceMessageId === signal.sourceMessageId && existing.kind === signal.kind,
     );
   });
+  const unappliedVerificationSignal = (directive.verificationSignals ?? []).some((signal) => {
+    const point = state.knowledgePoints.find(
+      (candidate) => candidate.ref === signal.knowledgePointRef,
+    );
+    return !point?.verificationStreak?.sourceMessageIds.includes(signal.sourceMessageId);
+  });
   return (
     !unappliedDifficultySignal &&
+    !unappliedVerificationSignal &&
     (state.lessonPhase ?? 'warmup') === directive.lessonPhase &&
     state.activeKnowledgePointRef === directive.activeKnowledgePointRef &&
     normalizedComprehensive(state.comprehensiveCheck) === directive.comprehensiveCheck &&
@@ -215,6 +235,83 @@ export function teachingDirectiveMatchesState(
 
 function invalid(code: string): never {
   throw new Error(code);
+}
+
+type VerificationSignal = NonNullable<FullTeachingDirective['verificationSignals']>[number];
+
+function normalizedVerificationCategory(category: string): string {
+  return category.normalize('NFKC').toLocaleLowerCase();
+}
+
+function verificationStreakAfter(
+  current: TeachingStateSnapshot['knowledgePoints'][number]['verificationStreak'],
+  signal: VerificationSignal,
+): TeachingStateSnapshot['knowledgePoints'][number]['verificationStreak'] {
+  if (signal.outcome !== 'correct') return undefined;
+  if (current?.sourceMessageIds.includes(signal.sourceMessageId) === true) return current;
+  if (
+    current !== undefined &&
+    normalizedVerificationCategory(current.category) ===
+      normalizedVerificationCategory(signal.category)
+  ) {
+    return {
+      category: current.category,
+      correctCount: Math.min(2, current.correctCount + 1) as 1 | 2,
+      sourceMessageIds: [...current.sourceMessageIds, signal.sourceMessageId].slice(-2),
+    };
+  }
+  return {
+    category: signal.category,
+    correctCount: 1,
+    sourceMessageIds: [signal.sourceMessageId],
+  };
+}
+
+function enforceCorrectAnswerProgress(
+  current: TeachingStateSnapshot,
+  directive: FullTeachingDirective,
+): FullTeachingDirective {
+  const signal = directive.verificationSignals?.[0];
+  if (signal?.outcome !== 'correct') return directive;
+  const point = current.knowledgePoints.find(
+    (candidate) => candidate.ref === signal.knowledgePointRef,
+  );
+  const streak = verificationStreakAfter(point?.verificationStreak, signal);
+  if (
+    streak?.correctCount !== 2 ||
+    directive.knowledgePoints.find((candidate) => candidate.ref === signal.knowledgePointRef)
+      ?.status !== 'learning'
+  ) {
+    return directive;
+  }
+
+  const completedPoints = directive.knowledgePoints.map((candidate) =>
+    candidate.ref === signal.knowledgePointRef
+      ? { ...candidate, status: 'completed' as const, interactionStatus: 'completed' as const }
+      : candidate,
+  );
+  const nextPoint = completedPoints.find(
+    (candidate) => candidate.status !== 'completed' && candidate.status !== 'skipped',
+  );
+  if (nextPoint === undefined) {
+    return {
+      ...directive,
+      lessonPhase: 'comprehensive_check',
+      activeKnowledgePointRef: undefined,
+      knowledgePoints: completedPoints,
+      comprehensiveCheck: 'learning',
+    };
+  }
+  return {
+    ...directive,
+    lessonPhase: 'knowledge_point',
+    activeKnowledgePointRef: nextPoint.ref,
+    knowledgePoints: completedPoints.map((candidate) =>
+      candidate.ref === nextPoint.ref
+        ? { ...candidate, status: 'learning' as const, interactionStatus: 'pending' as const }
+        : candidate,
+    ),
+  };
 }
 
 function closureStateMatchesPhase(directive: FullTeachingDirective): boolean {
@@ -241,7 +338,7 @@ export function applyTeachingDirective(
   validation?: Readonly<{ currentUserMessageId?: string }>,
 ): TeachingStateSnapshot {
   const current = normalizeTeachingControlState(currentInput);
-  const directive = materializeTeachingDirective(current, directiveInput);
+  let directive = materializeTeachingDirective(current, directiveInput);
   const expectedRefs = current.knowledgePoints.map((point) => point.ref);
   const incomingRefs = directive.knowledgePoints.map((point) => point.ref);
   if (
@@ -272,6 +369,22 @@ export function applyTeachingDirective(
   if (new Set(incomingSignalKeys).size !== incomingSignalKeys.length) {
     invalid('teaching_directive_difficulty_signal_duplicate');
   }
+
+  const incomingVerificationSignals = directive.verificationSignals ?? [];
+  if (
+    validation !== undefined &&
+    incomingVerificationSignals.some(
+      (signal) => signal.sourceMessageId !== validation.currentUserMessageId,
+    )
+  ) {
+    invalid('teaching_directive_verification_signal_source_mismatch');
+  }
+  if (
+    incomingVerificationSignals.some((signal) => !incomingRefs.includes(signal.knowledgePointRef))
+  ) {
+    invalid('teaching_directive_verification_signal_point_unknown');
+  }
+  directive = enforceCorrectAnswerProgress(current, directive);
 
   const currentByRef = new Map(current.knowledgePoints.map((point) => [point.ref, point]));
   for (const incoming of directive.knowledgePoints) {
@@ -399,13 +512,23 @@ export function applyTeachingDirective(
         }
         difficultySignals.push({ sourceMessageId: signal.sourceMessageId, kind: signal.kind });
       }
+      const verificationSignal = incomingVerificationSignals.find(
+        (candidate) => candidate.knowledgePointRef === point.ref,
+      );
+      const verificationStreak =
+        verificationSignal === undefined
+          ? point.verificationStreak
+          : verificationStreakAfter(point.verificationStreak, verificationSignal);
+      const { verificationStreak: _verificationStreak, ...pointWithoutVerificationStreak } = point;
+      void _verificationStreak;
       return {
-        ...point,
+        ...pointWithoutVerificationStreak,
         progress: incoming.status,
         interactionStatus: incoming.interactionStatus,
         difficultySignals,
         adaptiveDifficulty: difficultySignals.length >= 2 ? 'difficult' : 'normal',
         depthPreference: incoming.depthPreference ?? point.depthPreference ?? 'default',
+        ...(verificationStreak === undefined ? {} : { verificationStreak }),
       };
     }),
   };

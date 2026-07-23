@@ -26,6 +26,13 @@ type TeachingDifficultySignal = Readonly<{
   kind: 'answer_error' | 'misunderstanding' | 'not_understood' | 'request_deeper_explanation';
 }>;
 
+type TeachingVerificationSignal = Readonly<{
+  knowledgePointRef: string;
+  sourceMessageId: string;
+  category: string;
+  outcome: 'correct' | 'incorrect' | 'uncertain';
+}>;
+
 export type FullTeachingDirective = Readonly<{
   schemaVersion: 1;
   lessonPhase: TeachingLessonPhase;
@@ -37,6 +44,7 @@ export type FullTeachingDirective = Readonly<{
     depthPreference?: TeachingDepthPreference;
   }>[];
   difficultySignals?: readonly TeachingDifficultySignal[];
+  verificationSignals?: readonly TeachingVerificationSignal[];
   comprehensiveCheck: TeachingComprehensiveStatus;
   closureInquiry: TeachingClosureInquiry;
   summaryStatus: TeachingSummaryStatus;
@@ -53,6 +61,7 @@ export type SparseTeachingDirective = Readonly<{
     depthPreference?: TeachingDepthPreference;
   }>[];
   difficultySignals?: readonly TeachingDifficultySignal[];
+  verificationSignals?: readonly TeachingVerificationSignal[];
   comprehensiveCheck?: TeachingComprehensiveStatus;
   closureInquiry?: TeachingClosureInquiry;
   summaryStatus?: TeachingSummaryStatus;

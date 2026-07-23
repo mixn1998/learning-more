@@ -454,3 +454,133 @@ describe('teaching directive', () => {
     ).toThrowError('teaching_directive_difficulty_signal_source_mismatch');
   });
 });
+
+describe('teaching verification progress cap', () => {
+  it('forces progress after two consecutive correct answers in the same category', () => {
+    const first = applyTeachingDirective(
+      initial(),
+      {
+        schemaVersion: 2,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+        verificationSignals: [
+          {
+            knowledgePointRef: 'knowledge:kp_1',
+            sourceMessageId: 'message_1',
+            category: 'counterexample-construction',
+            outcome: 'correct',
+          },
+        ],
+      },
+      { currentUserMessageId: 'message_1' },
+    );
+
+    expect(first.knowledgePoints[0]?.verificationStreak).toEqual({
+      category: 'counterexample-construction',
+      correctCount: 1,
+      sourceMessageIds: ['message_1'],
+    });
+
+    const second = applyTeachingDirective(
+      first,
+      {
+        schemaVersion: 2,
+        lessonPhase: 'knowledge_point',
+        verificationSignals: [
+          {
+            knowledgePointRef: 'knowledge:kp_1',
+            sourceMessageId: 'message_2',
+            category: 'counterexample-construction',
+            outcome: 'correct',
+          },
+        ],
+      },
+      { currentUserMessageId: 'message_2' },
+    );
+
+    expect(second).toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      knowledgePoints: [
+        {
+          progress: 'completed',
+          interactionStatus: 'completed',
+          verificationStreak: {
+            category: 'counterexample-construction',
+            correctCount: 2,
+            sourceMessageIds: ['message_1', 'message_2'],
+          },
+        },
+        { progress: 'learning', interactionStatus: 'pending' },
+      ],
+    });
+  });
+
+  it('resets the streak when the verification category changes', () => {
+    const state = {
+      ...initial(),
+      lessonPhase: 'knowledge_point' as const,
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: initial().knowledgePoints.map((point, index) =>
+        index === 0
+          ? {
+              ...point,
+              progress: 'learning' as const,
+              verificationStreak: {
+                category: 'definition-recall',
+                correctCount: 1 as const,
+                sourceMessageIds: ['message_1'],
+              },
+            }
+          : point,
+      ),
+    };
+    const next = applyTeachingDirective(
+      state,
+      {
+        schemaVersion: 2,
+        lessonPhase: 'knowledge_point',
+        verificationSignals: [
+          {
+            knowledgePointRef: 'knowledge:kp_1',
+            sourceMessageId: 'message_2',
+            category: 'boundary-application',
+            outcome: 'correct',
+          },
+        ],
+      },
+      { currentUserMessageId: 'message_2' },
+    );
+
+    expect(next.activeKnowledgePointRef).toBe('knowledge:kp_1');
+    expect(next.knowledgePoints[0]?.verificationStreak).toEqual({
+      category: 'boundary-application',
+      correctCount: 1,
+      sourceMessageIds: ['message_2'],
+    });
+  });
+
+  it('rejects a verification signal attributed to another user message', () => {
+    expect(() =>
+      applyTeachingDirective(
+        initial(),
+        {
+          schemaVersion: 2,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'knowledge:kp_1',
+          knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+          verificationSignals: [
+            {
+              knowledgePointRef: 'knowledge:kp_1',
+              sourceMessageId: 'message_other',
+              category: 'definition-recall',
+              outcome: 'correct',
+            },
+          ],
+        },
+        { currentUserMessageId: 'message_current' },
+      ),
+    ).toThrowError('teaching_directive_verification_signal_source_mismatch');
+  });
+});
