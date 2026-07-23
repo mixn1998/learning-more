@@ -2,7 +2,7 @@
 
 > A local-first AI learning system that turns a topic into a structured course, guided study, review, planning, and long-term learning insight.
 
-Learning MORE 是我给自己做的一套深度学习工具，也还在持续迭代中。它不把 AI 当作一次性答案生成器，而是尝试把“想学一个主题”推进成一门可编辑的课程、一段有教学节奏的学习过程，以及之后仍能被追溯和修订的认知记录。
+Learning MORE 是我给自己做的一套深度学习工具，也还在持续迭代中。它不把 AI 当作一次性答案生成器，而是尝试把“想学一个主题”推进成一门可编辑的课程、一段有教学节奏的学习过程，以及之后仍能被追溯和修订的认知记录，也作为对“AI如何重塑人们的学习方式”的一种实验性质的个人探索。
 
 当前公开仓库是经过脱敏、移除原始 Git 历史的作品集快照。截图使用虚构课程和演示数据，不包含真实学习记录、本地运行数据或个人画像。
 
