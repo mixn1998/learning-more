@@ -142,13 +142,27 @@ export function createSessionModule(options: {
           token: options.nextLeaseToken(),
           now,
         });
+        const leaseWasReclaimed = acquired.lease !== current.writeLease;
+        if (leaseWasReclaimed) {
+          await options.unitOfWork.execute(
+            { transactionId: `tx_learning_${randomUUID()}` },
+            async (tx) => {
+              await options.repositories.save(
+                tx,
+                { ...current, writeLease: acquired.lease },
+                current.resourceVersion,
+              );
+            },
+          );
+        }
+        const resourceVersion = current.resourceVersion + (leaseWasReclaimed ? 1 : 0);
         const value: LearningSessionResult = {
           lessonId: current.lessonId,
           progress: current.learning.progress,
           ...(current.learning.session === undefined
             ? {}
             : { sessionId: current.learning.session.id }),
-          resourceVersion: current.resourceVersion,
+          resourceVersion,
           writable: acquired.writable,
           ...(acquired.writable ? { leaseToken: acquired.lease.token } : {}),
         };

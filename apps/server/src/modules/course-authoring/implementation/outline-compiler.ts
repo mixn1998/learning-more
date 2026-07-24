@@ -36,34 +36,89 @@ export type CandidateCompilationResult =
       issues: readonly { path: string; message: string }[];
     }>;
 
+interface CandidateBlock {
+  readonly metadata: string;
+  readonly body: string;
+}
+
+/**
+ * A provider can append a fresh response after a partial response when its
+ * transport reconnects. Keep the machine contract strict, but inspect every
+ * fenced block so a complete later response can recover that duplication.
+ */
+function candidateBlocks(markdown: string): readonly CandidateBlock[] {
+  const opening = '```learning-more-outline';
+  const blocks: CandidateBlock[] = [];
+  let searchFrom = 0;
+  while (true) {
+    const openingIndex = markdown.indexOf(opening, searchFrom);
+    if (openingIndex < 0) break;
+    const metadataStart = openingIndex + opening.length;
+    const lineEnd = markdown.indexOf('\n', metadataStart);
+    if (lineEnd < 0) break;
+    const closing = /\r?\n```\s*(?:\r?\n|$)/gu;
+    closing.lastIndex = lineEnd + 1;
+    const closingMatch = closing.exec(markdown);
+    if (closingMatch === null) {
+      searchFrom = metadataStart;
+      continue;
+    }
+    blocks.push({
+      metadata: markdown.slice(lineEnd + 1, closingMatch.index),
+      body: markdown.slice(closingMatch.index + closingMatch[0].length).trim(),
+    });
+    searchFrom = metadataStart;
+  }
+  return blocks;
+}
+
 export function compileCandidate(
   markdown: string,
   manifest: CandidateInputManifest,
 ): CandidateCompilationResult {
-  const match = /^```learning-more-outline\s*\r?\n([\s\S]*?)\r?\n```\s*\r?\n([\s\S]+)$/u.exec(
-    markdown,
-  );
-  if (match === null) {
+  const blocks = candidateBlocks(markdown);
+  if (blocks.length === 0) {
     return {
       valid: false,
       draftArtifactRef: manifest.draftArtifactRef,
       issues: [{ path: 'metadata', message: '缺少受限的大纲 metadata block' }],
     };
   }
+  let parsedOutline: ReturnType<typeof CandidateModelResponseSchema.parse>['outline'] | undefined;
+  let outlineMarkdown = '';
+  let parseIssue: { path: string; message: string } | undefined;
   try {
-    const parsedJson = JSON.parse(match[1] ?? '') as unknown;
-    const response = CandidateModelResponseSchema.safeParse(parsedJson);
-    if (!response.success) {
+    for (let index = blocks.length - 1; index >= 0; index -= 1) {
+      const block = blocks[index]!;
+      try {
+        const response = CandidateModelResponseSchema.safeParse(
+          JSON.parse(block.metadata) as unknown,
+        );
+        if (!response.success) {
+          parseIssue ??= {
+            path: response.error.issues[0]?.path.join('.') ?? 'metadata',
+            message: response.error.issues[0]?.message ?? 'metadata schema invalid',
+          };
+          continue;
+        }
+        parsedOutline = response.data.outline;
+        outlineMarkdown = block.body;
+        break;
+      } catch (error) {
+        parseIssue ??= {
+          path: 'metadata',
+          message: error instanceof Error ? error.message : 'JSON invalid',
+        };
+      }
+    }
+    if (parsedOutline === undefined) {
       return {
         valid: false,
         draftArtifactRef: manifest.draftArtifactRef,
-        issues: response.error.issues.map((issue) => ({
-          path: issue.path.join('.'),
-          message: issue.message,
-        })),
+        issues: [parseIssue ?? { path: 'metadata', message: 'candidate metadata invalid' }],
       };
     }
-    const parsed = response.data.outline;
+    const parsed = parsedOutline;
     const issues: { path: string; message: string }[] = [];
     const lessonIds = new Set<string>();
     for (const [index, lesson] of parsed.lessons.entries()) {
@@ -150,7 +205,6 @@ export function compileCandidate(
       visited.add(lessonId);
     }
     for (const lessonId of lessonIds) visit(lessonId);
-    const outlineMarkdown = (match[2] ?? '').trim();
     if (/<\/?[a-z][^>]*>/iu.test(outlineMarkdown)) {
       issues.push({ path: 'outlineMarkdown', message: 'Markdown 不允许包含 HTML' });
     }

@@ -12,6 +12,7 @@ import {
 } from '../model/schedule-item.js';
 import type { PlanFlowRepository } from '../ports/plan-flow-repository.js';
 import type { ScheduleRepository } from '../ports/schedule-repository.js';
+import type { ScheduleIndex } from './schedule-index.js';
 import { buildPlanSuggestions } from './plan-flow-scheduler.js';
 
 class PlanFlowError extends Error {
@@ -105,6 +106,7 @@ function localWeekdayAt(instant: string, timeZone: string): string {
 export function createPlanFlowService(options: {
   repository: PlanFlowRepository;
   scheduleRepository: ScheduleRepository;
+  scheduleIndex?: ScheduleIndex;
   unitOfWork: UnitOfWork;
   assemblePreviewContext(input: PreviewInput): Promise<PlanPreviewContext>;
   getScheduleVersion(): Promise<number>;
@@ -128,6 +130,22 @@ export function createPlanFlowService(options: {
     tx: TransactionContext,
   ) => Promise<void>;
 }) {
+  async function allScheduleItems(): Promise<readonly ScheduleItem[]> {
+    if (options.scheduleIndex !== undefined) {
+      return (await options.scheduleIndex.current()).items;
+    }
+    const items: ScheduleItem[] = [];
+    for await (const item of options.scheduleRepository.list()) items.push(item);
+    return items;
+  }
+
+  async function scheduledItems(): Promise<readonly ScheduleItem[]> {
+    if (options.scheduleIndex !== undefined) {
+      return (await options.scheduleIndex.current()).scheduled;
+    }
+    return (await allScheduleItems()).filter((item) => item.status === 'scheduled');
+  }
+
   async function assertLessonRefsPlannable(lessonIds: readonly string[]): Promise<void> {
     for (const lessonId of lessonIds) {
       if (!(await options.lessonIsPlannable(lessonId))) {
@@ -210,10 +228,9 @@ export function createPlanFlowService(options: {
       }
     }
 
-    const existing: ScheduleItem[] = [];
-    for await (const item of options.scheduleRepository.list()) {
-      if (item.status === 'scheduled' && !ignoredScheduleItemIds.has(item.id)) existing.push(item);
-    }
+    const existing = (await scheduledItems()).filter(
+      (item) => !ignoredScheduleItemIds.has(item.id),
+    );
     const suggestionLessonIds = new Set(suggestions.map((suggestion) => suggestion.lessonId));
     for (const courseId of flow.courseRefs) {
       const outlineOrder =
@@ -275,7 +292,12 @@ export function createPlanFlowService(options: {
   ): Promise<readonly string[]> {
     const lessonIds = new Set(suggestions.map((suggestion) => suggestion.lessonId));
     const conflicts: string[] = [];
-    for await (const item of options.scheduleRepository.list()) {
+    const index = await options.scheduleIndex?.current();
+    const candidates =
+      index === undefined
+        ? await scheduledItems()
+        : [...lessonIds].flatMap((lessonId) => index.forLesson(lessonId));
+    for (const item of candidates) {
       if (
         item.status === 'scheduled' &&
         !ignoredScheduleItemIds.has(item.id) &&
@@ -320,12 +342,9 @@ export function createPlanFlowService(options: {
       throw new PlanFlowError('plan_flow_undo_conflict');
     }
 
-    const activeOtherItems: ScheduleItem[] = [];
-    for await (const item of options.scheduleRepository.list()) {
-      if (item.status === 'scheduled' && !createdIds.has(item.id) && !beforeIds.has(item.id)) {
-        activeOtherItems.push(item);
-      }
-    }
+    const activeOtherItems = (await scheduledItems()).filter(
+      (item) => !createdIds.has(item.id) && !beforeIds.has(item.id),
+    );
     if (
       mutation.beforeScheduleItems.some((before) =>
         activeOtherItems.some((other) => before.lessonId === other.lessonId),

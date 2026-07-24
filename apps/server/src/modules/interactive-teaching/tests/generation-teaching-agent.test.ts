@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createGenerationTeachingAgent } from '../implementation/generation-teaching-agent.js';
 import { createTeachingState } from '../implementation/teaching-state-reducer.js';
+import { renderTeachingFlowPolicy } from '../implementation/teaching-flow-policy.js';
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
 
 function context(): TeachingContextPackage {
@@ -292,10 +293,15 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('knowledgePoints 仅列变化项');
     expect(fake.request()?.prompt).toContain('interactionStatus');
     expect(fake.request()?.prompt).toContain('difficultySignals');
+    expect(fake.request()?.prompt).toContain('verificationSignals');
+    expect(fake.request()?.prompt).toContain('同一 category 连续两次回答正确后');
     expect(fake.request()?.prompt).toContain('answer_error');
     expect(fake.request()?.prompt).toContain('延伸、脑洞或相邻探索不计');
     expect(fake.request()?.prompt).toContain(
       '"allowedDifficultySignalSourceMessageId":"message_current"',
+    );
+    expect(fake.request()?.prompt).toContain(
+      '"allowedVerificationSignalSourceMessageId":"message_current"',
     );
     expect(fake.request()?.prompt).toContain('knowledge:kp_1');
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
@@ -532,5 +538,22 @@ describe('GenerationTeachingAgent', () => {
 
     await expect(completing).rejects.toThrow('teaching_generation_cancelled');
     await expect(fake.value.get(accepted.taskId)).resolves.toMatchObject({ status: 'cancelled' });
+  });
+});
+
+describe('comprehensive check variety', () => {
+  it('requires a transfer task instead of paraphrasing classroom checks', () => {
+    const base = context();
+    const prompt = renderTeachingFlowPolicy({
+      ...base,
+      teachingState: {
+        ...base.teachingState,
+        lessonPhase: 'comprehensive_check',
+        comprehensiveCheck: 'learning',
+      },
+    });
+
+    expect(prompt).toContain('综合检测必须检验跨知识点迁移');
+    expect(prompt).toContain('不要沿用课堂原题的对象、数字、叙述骨架和问法');
   });
 });

@@ -1,7 +1,7 @@
 # Sanitization report
 
-- Reviewed: 2026-07-23
-- Publication mode: history-free root commit
+- Reviewed: 2026-07-24
+- Publication mode: sanitized public history; private development history excluded
 - Residual sensitive-pattern findings: 0
 - Runtime data, ignored local state, secrets, personal contact details, machine identifiers,
   source-machine paths, and internal publication plans are not included.

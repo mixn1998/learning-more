@@ -38,27 +38,28 @@ function fixture(
   let now = new Date('2026-07-13T00:00:00.000Z');
   const repositories = createInMemoryLearningSessionRepositories();
   const messageLog = createInMemoryMessageLog();
-  const module = createSessionModule({
-    repositories,
-    messageLog,
-    unitOfWork,
-    instanceId: 'instance_01',
-    nextSessionId: () => 'session_01',
-    nextIntervalId: (() => {
-      let value = 0;
-      return () => `interval_${++value}`;
-    })(),
-    nextLeaseToken: () => 'lease_01',
-    now: () => now,
-    ...(options.assertLessonWritable === undefined
-      ? {}
-      : { assertLessonWritable: options.assertLessonWritable }),
-    ...(options.assertLessonStartable === undefined
-      ? {}
-      : { assertLessonStartable: options.assertLessonStartable }),
-  });
+  let intervalValue = 0;
+  const createModule = (instanceId = 'instance_01') =>
+    createSessionModule({
+      repositories,
+      messageLog,
+      unitOfWork,
+      instanceId,
+      nextSessionId: () => 'session_01',
+      nextIntervalId: () => `interval_${++intervalValue}`,
+      nextLeaseToken: () => `lease_${instanceId}`,
+      now: () => now,
+      ...(options.assertLessonWritable === undefined
+        ? {}
+        : { assertLessonWritable: options.assertLessonWritable }),
+      ...(options.assertLessonStartable === undefined
+        ? {}
+        : { assertLessonStartable: options.assertLessonStartable }),
+    });
+  const module = createModule();
   return {
     module,
+    createModule,
     repositories,
     messageLog,
     advance(ms: number) {
@@ -658,6 +659,54 @@ describe('LearningSession module', () => {
     expect(second.value).toMatchObject({ sessionId: 'session_01', writable: false });
     await expect(repositories.get('lesson_01')).resolves.toMatchObject({
       learning: { session: { id: 'session_01' } },
+    });
+  });
+
+  it('automatically reclaims a write lease left by a replaced server instance', async () => {
+    const { module, createModule, repositories } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_old_instance', 'page_a'),
+    );
+
+    const replacement = createModule('instance_02');
+    const resumed = await replacement.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_replacement_instance', 'page_b'),
+    );
+
+    expect(resumed.value).toMatchObject({
+      sessionId: 'session_01',
+      writable: true,
+      resourceVersion: 2,
+      leaseToken: 'lease_instance_02',
+    });
+    await expect(repositories.get('lesson_01')).resolves.toMatchObject({
+      resourceVersion: 2,
+      writeLease: {
+        instanceId: 'instance_02',
+        pageInstanceId: 'page_b',
+        generation: 2,
+      },
+    });
+  });
+
+  it('refreshes the lease instance even when the browser page id survives the server restart', async () => {
+    const { module, createModule, repositories } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_old_instance_same_page', 'page_a'),
+    );
+
+    const replacement = createModule('instance_02');
+    const resumed = await replacement.execute(
+      { type: 'StartLesson', lessonId: 'lesson_01' },
+      context('start_replacement_same_page', 'page_a'),
+    );
+
+    expect(resumed.value).toMatchObject({ writable: true, resourceVersion: 2 });
+    await expect(repositories.get('lesson_01')).resolves.toMatchObject({
+      writeLease: { instanceId: 'instance_02', pageInstanceId: 'page_a', generation: 2 },
     });
   });
 

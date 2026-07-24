@@ -3,7 +3,10 @@ import type { TeachingAgent } from '../ports/teaching-agent.js';
 
 type GenerationTask = Awaited<ReturnType<TeachingAgent['listTasks']>>[number];
 
-const RECOVERABLE_STATUSES = new Set<GenerationTask['status']>(['queued', 'running', 'completed']);
+function isRecoverableTask(task: GenerationTask): boolean {
+  if (task.status === 'queued' || task.status === 'running') return true;
+  return task.status === 'completed' && (task.draftMarkdown?.trim().length ?? 0) > 0;
+}
 
 export type TeachingGenerationReconciliationPlan = Readonly<{
   action:
@@ -101,7 +104,7 @@ export function planTeachingGenerationReconciliation(input: {
   );
   const unansweredUsers = trailingEquivalentUnansweredUsers(input.messages);
   const recoverable = input.tasks
-    .filter((task) => RECOVERABLE_STATUSES.has(task.status) && !committedTaskIds.has(task.id))
+    .filter((task) => isRecoverableTask(task) && !committedTaskIds.has(task.id))
     .map((task) => ({
       task,
       sourceMessageId: sourceForTask({
@@ -132,7 +135,7 @@ export function planTeachingGenerationReconciliation(input: {
   const clearActiveTask =
     input.activeTaskId !== undefined &&
     (active === undefined ||
-      !RECOVERABLE_STATUSES.has(active.status) ||
+      !isRecoverableTask(active) ||
       committedTaskIds.has(input.activeTaskId) ||
       activeCandidate === undefined);
   const cancelTaskIds = recoverable

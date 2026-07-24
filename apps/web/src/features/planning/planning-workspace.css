@@ -125,7 +125,7 @@
 
 .planning-filters {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: minmax(180px, 1.15fr) 1fr 1fr auto;
   gap: 10px;
   margin-top: 15px;
   padding: 12px;

@@ -16,16 +16,32 @@ export function acquireSessionWriteLease(
     now: Date;
   },
 ): { lease: SessionWriteLease; writable: boolean } {
+  if (current !== undefined && current.instanceId !== request.instanceId) {
+    return {
+      writable: true,
+      lease: {
+        token: request.token,
+        pageInstanceId: request.pageInstanceId,
+        instanceId: request.instanceId,
+        generation: current.generation + 1,
+        heartbeatAt: request.now.toISOString(),
+        visibilityState: 'visible',
+      },
+    };
+  }
   if (current !== undefined && current.pageInstanceId !== request.pageInstanceId) {
     return { lease: current, writable: false };
+  }
+  if (current !== undefined) {
+    return { lease: current, writable: true };
   }
   return {
     writable: true,
     lease: {
-      token: current?.token ?? request.token,
+      token: request.token,
       pageInstanceId: request.pageInstanceId,
       instanceId: request.instanceId,
-      generation: current?.generation ?? 1,
+      generation: 1,
       heartbeatAt: request.now.toISOString(),
       visibilityState: 'visible',
     },

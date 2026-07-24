@@ -1,6 +1,8 @@
 # Security and privacy
 
-This repository is a sanitized, history-free snapshot of **Learning MORE**.
+This repository is a sanitized public snapshot of **Learning MORE**. Its public
+history contains only sanitized releases and excludes the private development
+history.
 
 ## Intentionally excluded
 
@@ -9,5 +11,5 @@ This repository is a sanitized, history-free snapshot of **Learning MORE**.
 - Provider configuration, environment files, credentials, keys, and certificates
 - Logs, caches, dependencies, build output, test artifacts, and temporary files
 
-Only committed product source, tests, documentation, and non-sensitive assets from source commit `34cf2fbb1c5af0c1b3160a623861c99dcb35843a` were considered for export.
+Only committed product source, tests, documentation, and non-sensitive assets from source commit `6659bbadd2308eecbb6d15f670813a81082c9652` were considered for export.
 Do not commit real user data or credentials to this repository.

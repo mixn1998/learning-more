@@ -116,6 +116,11 @@ export function createGenerationTeachingAgent(options: {
     async cancel(taskId) {
       await (options.execution ?? options.runtime).cancel(taskId);
     },
+    async invalidate(taskId, errorCode) {
+      const invalidator = options.execution?.invalidate ?? options.runtime.invalidate;
+      if (invalidator === undefined) throw new Error('generation_invalidation_unavailable');
+      await invalidator(taskId, errorCode);
+    },
     async complete(taskId, observer, signal) {
       const response = createTeachingResponseStream();
       let observedLength = 0;

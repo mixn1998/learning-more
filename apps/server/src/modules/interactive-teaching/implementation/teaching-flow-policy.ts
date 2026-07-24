@@ -46,5 +46,13 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
               : [
                   '本课教学流程已经完成。简短回应当前诉求，并提示学习者可点击“结束本课”生成最终 Review。',
                 ];
-  return `【当前教学阶段】\n${lines.join('\n')}`;
+  const supplementalLines =
+    phase === 'comprehensive_check'
+      ? [
+          '综合检测必须检验跨知识点迁移，而不是复述或近义改写课堂中已经问过的理解题。',
+          '优先重新组合两个以上知识点，并改变任务表征：可使用新情境决策、反例诊断、条件变化预测、比较取舍、解释陌生案例或开放式应用。不要沿用课堂原题的对象、数字、叙述骨架和问法。',
+          '综合检测只提出一个有整合价值的任务；若需要追问，应针对用户回答暴露的新缺口，不得回到课堂中已经连续答对的同类问题。',
+        ]
+      : [];
+  return `【当前教学阶段】\n${[...lines, ...supplementalLines].join('\n')}`;
 }
