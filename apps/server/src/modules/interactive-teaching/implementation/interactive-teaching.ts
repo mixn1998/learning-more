@@ -1567,7 +1567,10 @@ export function createInteractiveTeaching(options: {
             backgroundContext(context, `${context.commandId}:generation-discarded`),
           );
         } finally {
-          await stopping;
+          // Revising a user turn only needs the durable generation binding removed.
+          // Provider shutdown is best-effort cleanup; cancelledTaskIds prevents a late
+          // completion from committing after the replacement turn has already started.
+          void stopping.catch(() => undefined);
         }
         await tryAppendFrame(input.taskId, 'task.cancelled', {
           reason: 'user_revised_source_message',

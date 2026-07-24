@@ -68,6 +68,7 @@ async function fixture(
     ledgerDirectiveSaveConflictsOnce?: boolean;
     agentReadError?: Error;
     agentRecoverError?: Error;
+    stopNeverSettles?: boolean;
   } = {},
 ) {
   const artifacts = new Map<string, string>([
@@ -301,6 +302,9 @@ async function fixture(
       };
     },
     async stop() {
+      if (options.stopNeverSettles === true) {
+        return new Promise<never>(() => undefined);
+      }
       return { markdown: 'Partial', completionStatus: 'interrupted' };
     },
   };
@@ -960,6 +964,53 @@ describe('InteractiveTeaching deep module', () => {
       { type: 'GetLessonLearning', lessonId: 'lesson_1' },
       {
         correlationId: 'query_after_discard',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
+  });
+
+  it('releases a discarded turn without waiting for provider cancellation to settle', async () => {
+    const { module, sessionModule } = await fixture({
+      deferredCompletion: true,
+      stopNeverSettles: true,
+    });
+    const accepted = await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+
+    const outcome = await Promise.race([
+      module
+        .stopTurn(
+          {
+            sessionId: 'session_1',
+            taskId: accepted.taskId,
+            disposition: 'discard',
+          },
+          {
+            ...commandContext,
+            commandId: 'discard_without_provider_wait',
+            expectedVersion: accepted.resourceVersion,
+          },
+        )
+        .then(() => 'stopped' as const),
+      new Promise<'timed-out'>((resolve) => setTimeout(() => resolve('timed-out'), 10)),
+    ]);
+
+    expect(outcome).toBe('stopped');
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_after_fast_discard',
         actor: 'local-user',
         requestedAt: commandContext.requestedAt,
         receivedAt: commandContext.receivedAt,
