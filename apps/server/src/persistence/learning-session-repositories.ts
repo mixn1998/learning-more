@@ -34,6 +34,7 @@ export type LearningSessionRecord = Readonly<{
 
 export interface LearningSessionRepositories {
   get(lessonId: string): Promise<LearningSessionRecord | undefined>;
+  getBySessionId(sessionId: string): Promise<LearningSessionRecord | undefined>;
   save(
     tx: TransactionContext,
     record: LearningSessionRecord,
@@ -44,8 +45,13 @@ export interface LearningSessionRepositories {
 
 export function createInMemoryLearningSessionRepositories(): LearningSessionRepositories {
   const records = new Map<string, LearningSessionRecord>();
+  const lessonIdBySessionId = new Map<string, string>();
   return {
     get: async (lessonId) => structuredClone(records.get(lessonId)),
+    async getBySessionId(sessionId) {
+      const lessonId = lessonIdBySessionId.get(sessionId);
+      return lessonId === undefined ? undefined : structuredClone(records.get(lessonId));
+    },
     async save(_tx, record, expectedVersion) {
       const current = records.get(record.lessonId)?.resourceVersion ?? 0;
       if (current !== expectedVersion || record.resourceVersion !== expectedVersion) {
@@ -55,6 +61,8 @@ export function createInMemoryLearningSessionRepositories(): LearningSessionRepo
         record.lessonId,
         structuredClone({ ...record, resourceVersion: expectedVersion + 1 }),
       );
+      const sessionId = record.learning.session?.id;
+      if (sessionId !== undefined) lessonIdBySessionId.set(sessionId, record.lessonId);
     },
     async *list() {
       for (const key of [...records.keys()].sort()) yield structuredClone(records.get(key)!);
@@ -126,6 +134,9 @@ export function createLocalFileLearningSessionRepositories(
   dataRoot: DataRoot,
 ): LearningSessionRepositories {
   const paths = createStorePaths(dataRoot);
+  const lessonIdBySessionId = new Map<string, string>();
+  let sessionIndexComplete = false;
+  let sessionIndexBuild: Promise<void> | undefined;
   const repository: LearningSessionRepositories = {
     async get(lessonId) {
       try {
@@ -137,6 +148,27 @@ export function createLocalFileLearningSessionRepositories(
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
         throw error;
       }
+    },
+    async getBySessionId(sessionId) {
+      const readIndexed = async () => {
+        const lessonId = lessonIdBySessionId.get(sessionId);
+        if (lessonId === undefined) return undefined;
+        const record = await repository.get(lessonId);
+        if (record?.learning.session?.id === sessionId) return record;
+        lessonIdBySessionId.delete(sessionId);
+        return undefined;
+      };
+      const indexed = await readIndexed();
+      if (indexed !== undefined || sessionIndexComplete) return indexed;
+      sessionIndexBuild ??= (async () => {
+        for await (const _record of repository.list()) {
+          // list() fills the index before yielding its first record.
+        }
+      })().finally(() => {
+        sessionIndexBuild = undefined;
+      });
+      await sessionIndexBuild;
+      return readIndexed();
     },
     async save(tx, record, expectedVersion) {
       const currentVersion = (await repository.get(record.lessonId))?.resourceVersion ?? 0;
@@ -157,6 +189,8 @@ export function createLocalFileLearningSessionRepositories(
         contentSha256: checksumJson(data),
         data,
       });
+      const sessionId = record.learning.session?.id;
+      if (sessionId !== undefined) lessonIdBySessionId.set(sessionId, record.lessonId);
     },
     async *list() {
       const root = path.join(dataRoot.absolutePath, 'entities', 'lesson-progress');
@@ -168,6 +202,13 @@ export function createLocalFileLearningSessionRepositories(
         }
       }
       const records = await mapConcurrentOrdered(ids.sort(), (id) => repository.get(id));
+      for (const record of records) {
+        const sessionId = record?.learning.session?.id;
+        if (record !== undefined && sessionId !== undefined) {
+          lessonIdBySessionId.set(sessionId, record.lessonId);
+        }
+      }
+      sessionIndexComplete = true;
       for (const record of records) if (record !== undefined) yield record;
     },
   };

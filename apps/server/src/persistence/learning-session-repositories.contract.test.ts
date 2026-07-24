@@ -96,6 +96,11 @@ async function repositoryContract(
     intervals: [{ endReason: 'paused' }],
     writeLease: { pageInstanceId: 'page_01' },
   });
+  await expect(repositories.getBySessionId('session_01')).resolves.toMatchObject({
+    lessonId: 'lesson_01',
+    learning: { session: { id: 'session_01' } },
+  });
+  await expect(repositories.getBySessionId('session_missing')).resolves.toBeUndefined();
   await expect(
     unitOfWork.execute({ transactionId: 'tx_stale' }, (tx) => repositories.save(tx, record, 0)),
   ).rejects.toBeInstanceOf(RepositoryVersionConflictError);

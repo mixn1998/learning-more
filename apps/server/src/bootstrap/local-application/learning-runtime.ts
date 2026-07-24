@@ -276,13 +276,7 @@ export function createLocalLearningRuntime(
   }
 
   async function resolveSession(sessionId: string) {
-    let found;
-    for await (const record of learningRepositories.list()) {
-      if (record.learning.session?.id === sessionId) {
-        found = record;
-        break;
-      }
-    }
+    const found = await learningRepositories.getBySessionId(sessionId);
     if (found === undefined) {
       throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
     }
@@ -290,20 +284,12 @@ export function createLocalLearningRuntime(
     if (lesson === undefined) {
       throw Object.assign(new Error('not found'), { code: 'resource_not_found' });
     }
-    const messages = await messageLog.list(sessionId);
-    const completedReviewRefs: string[] = [];
-    for await (const record of learningRepositories.list()) {
-      if (record.finalReview !== undefined)
-        completedReviewRefs.push(record.finalReview.artifactRef);
-    }
     return {
       lessonId: found.lessonId,
       sessionId,
       courseId: lesson.courseId,
       lessonDefinitionId: lesson.id,
       outlineVersionId: lesson.outlineVersionId,
-      completedReviewRefs,
-      currentMessageRefs: messages.map((message) => message.contentArtifactRef),
       ...(found.writeLease?.pageInstanceId === undefined
         ? {}
         : { pageInstanceId: found.writeLease.pageInstanceId }),
