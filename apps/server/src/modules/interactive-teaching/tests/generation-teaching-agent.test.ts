@@ -255,7 +255,7 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).not.toContain('modeWeight');
     expect(fake.request()?.prompt).toContain('【已知学习背景】');
     expect(fake.request()?.prompt).toContain('【当前诉求｜用户原话】');
-    expect(fake.request()?.prompt).toContain('学习者正在回答课前热身');
+    expect(fake.request()?.prompt).toContain('学习者正在回应课前热身');
     expect(fake.request()?.prompt).toContain('本回合最多完成“Sample-space change.”');
     expect(fake.request()?.prompt).toContain(
       'Prefer concrete situations when they create a useful learning opportunity.',
@@ -263,7 +263,7 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('课程邻接探索');
     expect(fake.request()?.prompt).toContain('把选择权交给学习者');
     expect(fake.request()?.prompt).toContain(
-      '不要默认我已经理解；提供深入透彻的理解过程、更强的思维激活和思考密度。',
+      '不要默认用户理解，但也不要用频繁过密的互动中断教学推进',
     );
     const prompt = fake.request()?.prompt ?? '';
     expect(prompt).toContain('【教学方针（高优先级）】');
@@ -272,7 +272,7 @@ describe('GenerationTeachingAgent', () => {
     );
     expect(prompt).toContain('可以邀请学习者思考，但不强制其沿预设步骤');
     expect(prompt).toContain('优先沿其思考路径继续教学');
-    expect(prompt).toContain('语言表达、叙事节奏和互动方式应随课程目标');
+    expect(prompt).toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
     expect(prompt.match(/【教学方针（高优先级）】/gu)).toHaveLength(1);
     expect(prompt.indexOf('【教学方针（高优先级）】')).toBeLessThan(
       prompt.indexOf('【通用教学原则】'),
@@ -280,17 +280,16 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).not.toContain(
       '严谨应服务于理解推进；纠偏后沿知识逻辑自然前进，避免反复盘问相似细节。',
     );
-    expect(fake.request()?.prompt).toContain('不要播报正在检测、已经通过');
-    expect(fake.request()?.prompt).toContain('用一至两句小结当前知识点');
-    expect(fake.request()?.prompt).toContain('综合检测终态后先作跨知识点小结');
-    expect(fake.request()?.prompt).toContain('是否还有疑惑或其他讲解需求');
-    expect(fake.request()?.prompt).toContain('提问不要求机械复述');
-    expect(fake.request()?.prompt).toContain('一个综合问题覆盖当前知识点的核心结构');
-    expect(fake.request()?.prompt).toContain('定位概念、条件、边界、推理或迁移漏洞');
+    expect(fake.request()?.prompt).toContain('知识点提问是非强制互动邀请');
+    expect(fake.request()?.prompt).toContain('不得在同一轮直接完成');
+    expect(fake.request()?.prompt).toContain('综合应用只提供一次');
+    expect(fake.request()?.prompt).toContain('只有学习者明确没有疑问或无需继续讲解后');
+    expect(fake.request()?.prompt).toContain('互动邀请不要求机械复述');
+    expect(fake.request()?.prompt).toContain('情境应用、对比辨析、错误诊断');
     expect(fake.request()?.prompt).toContain('同一理解缺口最多追问一次');
     expect(fake.request()?.prompt).toContain('推动理解继续向前深化');
     expect(fake.request()?.prompt).toContain('每轮都以自然、易回应');
-    expect((fake.request()?.prompt ?? '').indexOf('提问不要求机械复述')).toBeLessThan(
+    expect((fake.request()?.prompt ?? '').indexOf('互动邀请不要求机械复述')).toBeLessThan(
       (fake.request()?.prompt ?? '').indexOf('每轮都以自然、易回应'),
     );
     expect(fake.request()?.prompt).toContain('该总结是唯一不再提问');
@@ -301,21 +300,19 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('控制 JSON 使用 schemaVersion=2');
     expect(fake.request()?.prompt).toContain('lessonPhase 每轮必须返回');
     expect(fake.request()?.prompt).toContain(
-      'warmup|knowledge_point|comprehensive_check|discussion|summary|ready_to_close',
+      'warmup|knowledge_point|comprehensive_application|discussion|summary|ready_to_close',
     );
     expect(fake.request()?.prompt).toContain('knowledgePoints 仅列变化项');
     expect(fake.request()?.prompt).toContain('interactionStatus');
     expect(fake.request()?.prompt).toContain('difficultySignals');
-    expect(fake.request()?.prompt).toContain('verificationSignals');
-    expect(fake.request()?.prompt).toContain('同一 category 连续两次回答正确后');
+    expect(fake.request()?.prompt).not.toContain('verificationSignals');
+    expect(fake.request()?.prompt).not.toContain('连续两次回答正确');
     expect(fake.request()?.prompt).toContain('answer_error');
     expect(fake.request()?.prompt).toContain('延伸、脑洞或相邻探索不计');
     expect(fake.request()?.prompt).toContain(
       '"allowedDifficultySignalSourceMessageId":"message_current"',
     );
-    expect(fake.request()?.prompt).toContain(
-      '"allowedVerificationSignalSourceMessageId":"message_current"',
-    );
+    expect(fake.request()?.prompt).toContain('"comprehensiveApplication":"pending"');
     expect(fake.request()?.prompt).toContain('knowledge:kp_1');
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
     expect(fake.request()?.prompt).not.toContain('off_scope');
@@ -586,12 +583,12 @@ describe('comprehensive check variety', () => {
       ...base,
       teachingState: {
         ...base.teachingState,
-        lessonPhase: 'comprehensive_check',
+        lessonPhase: 'comprehensive_application',
         comprehensiveCheck: 'learning',
       },
     });
 
-    expect(prompt).toContain('综合检测必须检验跨知识点迁移');
+    expect(prompt).toContain('综合应用要连接本课全部核心知识点');
     expect(prompt).toContain('不要沿用课堂原题的对象、数字、叙述骨架和问法');
   });
 });

@@ -41,7 +41,7 @@ export function reasoningEffortForTeachingTurn(
 
   if (context.turnKind === 'opening' || phase === 'warmup') return 'low';
   if (phase === 'summary' || phase === 'ready_to_close') return 'low';
-  if (phase === 'comprehensive_check' || phase === 'discussion') return 'medium';
+  if (phase === 'comprehensive_application' || phase === 'discussion') return 'medium';
   if (phase !== 'knowledge_point') return 'medium';
 
   const activeRef = state.activeKnowledgePointRef;

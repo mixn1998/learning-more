@@ -24,9 +24,9 @@ const OBSERVATION_CAPABILITY = [
   'promptSourceRef 必须引用发起关键互动的完整助手消息；outcome=pending|responded|skipped。responded 或 skipped 时 responseSourceRef 必须引用对应用户消息，pending 时不要填写 responseSourceRef。',
   '只使用以下枚举：scope.alignment=direct|supporting|adjacent|unclear|off_scope；kind=teaching_delivery|learner_demonstration|learner_misconception|learner_question|learner_intent|learner_reasoning_behavior|adjacent_exploration|open_loop。',
   'assessment=supports|limits|uncertain；explicitness=user_declared|ai_observed；elicitation=spontaneous|elicited|mixed|unknown；qualityFlags 只能使用 direct|complete|ambiguous。不要创造 aligned、current、explicit、teaching_clarification 等新值。',
-  '教学观察不判断知识点检测或综合检测是否通过，不决定知识点完成、课程阶段或课程闭环，也不要输出 progressionSignal。教学推进完全由教学智能体的隐藏结构化指令负责。',
+  '教学观察不判断知识点是否完成，也不决定课程阶段或课程闭环，不要输出 progressionSignal。教学推进完全由教学智能体的隐藏结构化指令负责。',
   'learner_demonstration、learner_misconception 和 assessment 只记录用户在会话中实际呈现的学习行为与证据，不得把 assessment 解释为前端进度或阶段门槛。',
-  '用户明确跳过知识点、知识点互动或综合检测时，记录为 learner_intent；用户提出且在完整历史结束时仍未被回答的相关疑问记录为 open_loop。open_loop 必须引用用户消息，绝不能把助手提出的问题记为 open_loop。已经在历史中得到回答的问题不要保留为 open_loop。',
+  '用户明确跳过知识点、知识点互动或综合应用时，记录为 learner_intent；用户提出且在完整历史结束时仍未被回答的相关疑问记录为 open_loop。open_loop 必须引用用户消息，绝不能把助手提出的问题记为 open_loop。已经在历史中得到回答的问题不要保留为 open_loop。',
   'learner_reasoning_behavior 的 elicitation 用 spontaneous、elicited、mixed 或 unknown，表示该行为是否由教学任务直接引出；它不改变行为事实本身。',
   '只返回 scope、entries 与 interactions 的 JSON 数据，不输出 Markdown 说明。',
 ].join('\n');
@@ -62,6 +62,8 @@ const explicitnessValues = new Set(['user_declared', 'ai_observed']);
 const elicitationValues = new Set(['spontaneous', 'elicited', 'mixed', 'unknown']);
 const progressionSignals = new Set([
   'skip_knowledge_point',
+  'complete_comprehensive_application',
+  'skip_comprehensive_application',
   'pass_comprehensive_check',
   'skip_comprehensive_check',
   'confirm_no_further_questions',

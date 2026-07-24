@@ -135,7 +135,7 @@ describe('GenerationTeachingObserver', () => {
     expect(request?.prompt).toContain(
       'interactionId 必须严格写成 interaction:<首次发起该互动的助手消息 ID>',
     );
-    expect(request?.prompt).toContain('教学观察不判断知识点检测或综合检测是否通过');
+    expect(request?.prompt).toContain('教学观察不判断知识点是否完成');
     expect(request?.prompt).toContain('不要输出 progressionSignal');
     expect(request?.prompt).toContain('open_loop 必须引用用户消息');
     expect(request?.prompt).toContain('绝不能把助手提出的问题记为 open_loop');

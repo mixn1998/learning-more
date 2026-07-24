@@ -8,7 +8,7 @@ type TeachingGenerationTask = Awaited<
 type TeachingLessonPhase =
   | 'warmup'
   | 'knowledge_point'
-  | 'comprehensive_check'
+  | 'comprehensive_application'
   | 'discussion'
   | 'summary'
   | 'ready_to_close';

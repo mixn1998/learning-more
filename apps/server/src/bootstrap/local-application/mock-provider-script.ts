@@ -315,7 +315,7 @@ function mockScript(
         status: string;
         interactionStatus: string;
       }>;
-      comprehensiveCheck?: string;
+      comprehensiveApplication?: string;
       closureInquiry?: string;
       summaryStatus?: string;
     };
@@ -345,7 +345,7 @@ function mockScript(
         : state.lessonPhase === 'knowledge_point'
           ? {
               schemaVersion: 2,
-              lessonPhase: 'comprehensive_check',
+              lessonPhase: 'comprehensive_application',
               activeKnowledgePointRef: null,
               ...(activePoint === undefined
                 ? {}
@@ -358,13 +358,13 @@ function mockScript(
                       },
                     ],
                   }),
-              comprehensiveCheck: 'learning',
+              comprehensiveApplication: 'learning',
             }
-          : state.lessonPhase === 'comprehensive_check'
+          : state.lessonPhase === 'comprehensive_application'
             ? {
                 schemaVersion: 2,
                 lessonPhase: 'discussion',
-                comprehensiveCheck: 'completed',
+                comprehensiveApplication: 'completed',
                 closureInquiry: 'awaiting_confirmation',
               }
             : state.lessonPhase === 'discussion'

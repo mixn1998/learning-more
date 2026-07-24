@@ -114,7 +114,7 @@ describe('reasoningEffortForTeachingTurn', () => {
   it('uses low for warmup and summary, medium for checks and discussion', () => {
     expect(reasoningEffortForTeachingTurn(context({ phase: 'warmup' }))).toBe('low');
     expect(reasoningEffortForTeachingTurn(context({ phase: 'summary' }))).toBe('low');
-    expect(reasoningEffortForTeachingTurn(context({ phase: 'comprehensive_check' }))).toBe(
+    expect(reasoningEffortForTeachingTurn(context({ phase: 'comprehensive_application' }))).toBe(
       'medium',
     );
     expect(reasoningEffortForTeachingTurn(context({ phase: 'discussion' }))).toBe('medium');

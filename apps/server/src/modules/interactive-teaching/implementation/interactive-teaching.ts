@@ -672,18 +672,12 @@ export function createInteractiveTeaching(options: {
       throw error;
     }
     if (result?.directive === undefined) return;
-    const currentUserMessageId = input.messages
-      .slice(0, latestAssistantIndex)
-      .findLast(
-        (message) => message.role === 'user' && message.completionStatus === 'complete',
-      )?.messageId;
     try {
       await applyCommittedDirective({
         courseId: input.courseId,
         lessonId: input.lessonId,
         sessionId: input.sessionId,
         directive: result.directive,
-        ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
       });
     } catch (error) {
       if (
@@ -753,7 +747,10 @@ export function createInteractiveTeaching(options: {
       options.frameLog?.readAfter !== undefined
     ) {
       try {
-        const terminalFrame = await options.frameLog.readAfter(activeTaskId, Number.MAX_SAFE_INTEGER);
+        const terminalFrame = await options.frameLog.readAfter(
+          activeTaskId,
+          Number.MAX_SAFE_INTEGER,
+        );
         if (
           terminalFrame.meta.state === 'failed' ||
           terminalFrame.meta.state === 'cancelled' ||
@@ -837,10 +834,7 @@ export function createInteractiveTeaching(options: {
           lessonId: input.lessonId,
           taskId: reconciledActiveTaskId,
         },
-        backgroundContext(
-          input.context,
-          `reconcile-clear:${reconciledActiveTaskId}`,
-        ),
+        backgroundContext(input.context, `reconcile-clear:${reconciledActiveTaskId}`),
       );
       learning = await queryLearning();
     }
@@ -1607,10 +1601,7 @@ export function createInteractiveTeaching(options: {
       const messages = await reconcileGeneration(input);
       if (messages.length === 0 || !messages.some((message) => message.role === 'user')) return;
       const latestMessage = messages.at(-1);
-      if (
-        latestMessage?.role !== 'assistant' ||
-        latestMessage.completionStatus !== 'complete'
-      ) {
+      if (latestMessage?.role !== 'assistant' || latestMessage.completionStatus !== 'complete') {
         await markObservationFailed(input.courseId, input.lessonId, input.sessionId);
         await recoverEvidenceEffect(input);
         return;

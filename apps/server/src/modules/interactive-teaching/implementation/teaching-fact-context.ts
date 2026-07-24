@@ -5,8 +5,6 @@ import { renderTeachingPersonalizationPrompt } from './teaching-personalization-
 
 const MAX_COURSE_RELATIONS = 8;
 const MAX_LOCAL_COURSE_GOALS = 3;
-const MAX_RELEVANT_REVIEWS = 3;
-const MAX_READING_EXCERPTS = 4;
 
 function section(title: string, values: readonly string[]): string | undefined {
   const content = values.map((value) => value.trim()).filter((value) => value.length > 0);
@@ -110,11 +108,6 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
           : '已返回主线';
     return `- ${branch.summary}（${status}）`;
   });
-  const learnerSignals = context.teachingState.recentLearnerSignals.map((signal) =>
-    signal.explicitness === 'user_declared'
-      ? `- 学习者明确表达：${signal.summary}`
-      : `- 待继续验证的观察：${signal.summary}`,
-  );
   const currentRequest = currentUserMessage(context);
   const opening = context.turnKind === 'opening';
   if (!opening && currentRequest.length === 0) throw new Error('current_teaching_request_missing');
@@ -137,18 +130,7 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
       context.teachingState.openLoops.map((loop) => `- ${loop.summary}`),
     ),
     section('课程邻接探索', branches),
-    section('近期学习者信号', learnerSignals),
     section('可用于个性化的背景', personalization),
-    section(
-      '相关 Review 摘要',
-      context.relevantFinalReviews.slice(0, MAX_RELEVANT_REVIEWS).map((review) => review.markdown),
-    ),
-    section(
-      '相关学习材料',
-      context.readingMaterialExcerpts
-        .slice(0, MAX_READING_EXCERPTS)
-        .map((material) => material.markdown),
-    ),
     section('此前真实对话', priorConversation(context)),
     ...(opening ? [] : [`【当前诉求｜用户原话】\n${currentRequest}`]),
   ]

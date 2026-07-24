@@ -124,7 +124,7 @@ describe('teaching directive', () => {
   it('distinguishes a skipped knowledge point from a skipped knowledge-point interaction', () => {
     const next = applyTeachingDirective(initial(), {
       schemaVersion: 1,
-      lessonPhase: 'comprehensive_check',
+      lessonPhase: 'comprehensive_application',
       knowledgePoints: [
         { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'skipped' },
         { ref: 'knowledge:kp_2', status: 'skipped', interactionStatus: 'skipped' },
@@ -215,7 +215,7 @@ describe('teaching directive', () => {
   it('accepts an atomic closure turn after the comprehensive check is completed', () => {
     const comprehensiveCheck = applyTeachingDirective(initial(), {
       schemaVersion: 1,
-      lessonPhase: 'comprehensive_check',
+      lessonPhase: 'comprehensive_application',
       knowledgePoints: [
         { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
         { ref: 'knowledge:kp_2', status: 'skipped', interactionStatus: 'skipped' },
@@ -455,132 +455,87 @@ describe('teaching directive', () => {
   });
 });
 
-describe('teaching verification progress cap', () => {
-  it('forces progress after two consecutive correct answers in the same category', () => {
-    const first = applyTeachingDirective(
-      initial(),
-      {
-        schemaVersion: 2,
-        lessonPhase: 'knowledge_point',
-        activeKnowledgePointRef: 'knowledge:kp_1',
-        knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
-        verificationSignals: [
-          {
-            knowledgePointRef: 'knowledge:kp_1',
-            sourceMessageId: 'message_1',
-            category: 'counterexample-construction',
-            outcome: 'correct',
-          },
-        ],
-      },
-      { currentUserMessageId: 'message_1' },
-    );
-
-    expect(first.knowledgePoints[0]?.verificationStreak).toEqual({
-      category: 'counterexample-construction',
-      correctCount: 1,
-      sourceMessageIds: ['message_1'],
-    });
-
-    const second = applyTeachingDirective(
-      first,
-      {
-        schemaVersion: 2,
-        lessonPhase: 'knowledge_point',
-        verificationSignals: [
-          {
-            knowledgePointRef: 'knowledge:kp_1',
-            sourceMessageId: 'message_2',
-            category: 'counterexample-construction',
-            outcome: 'correct',
-          },
-        ],
-      },
-      { currentUserMessageId: 'message_2' },
-    );
-
-    expect(second).toMatchObject({
-      lessonPhase: 'knowledge_point',
-      activeKnowledgePointRef: 'knowledge:kp_2',
-      knowledgePoints: [
-        {
-          progress: 'completed',
-          interactionStatus: 'completed',
-          verificationStreak: {
-            category: 'counterexample-construction',
-            correctCount: 2,
-            sourceMessageIds: ['message_1', 'message_2'],
-          },
-        },
-        { progress: 'learning', interactionStatus: 'pending' },
-      ],
-    });
-  });
-
-  it('resets the streak when the verification category changes', () => {
-    const state = {
-      ...initial(),
-      lessonPhase: 'knowledge_point' as const,
-      activeKnowledgePointRef: 'knowledge:kp_1',
-      knowledgePoints: initial().knowledgePoints.map((point, index) =>
-        index === 0
-          ? {
-              ...point,
-              progress: 'learning' as const,
-              verificationStreak: {
-                category: 'definition-recall',
-                correctCount: 1 as const,
-                sourceMessageIds: ['message_1'],
-              },
-            }
-          : point,
-      ),
-    };
-    const next = applyTeachingDirective(
-      state,
-      {
-        schemaVersion: 2,
-        lessonPhase: 'knowledge_point',
-        verificationSignals: [
-          {
-            knowledgePointRef: 'knowledge:kp_1',
-            sourceMessageId: 'message_2',
-            category: 'boundary-application',
-            outcome: 'correct',
-          },
-        ],
-      },
-      { currentUserMessageId: 'message_2' },
-    );
-
-    expect(next.activeKnowledgePointRef).toBe('knowledge:kp_1');
-    expect(next.knowledgePoints[0]?.verificationStreak).toEqual({
-      category: 'boundary-application',
-      correctCount: 1,
-      sourceMessageIds: ['message_2'],
-    });
-  });
-
-  it('rejects a verification signal attributed to another user message', () => {
+describe('teaching completion gate', () => {
+  it('rejects completing a point before it has entered learning', () => {
     expect(() =>
       applyTeachingDirective(
         initial(),
         {
           schemaVersion: 2,
           lessonPhase: 'knowledge_point',
-          activeKnowledgePointRef: 'knowledge:kp_1',
-          knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
-          verificationSignals: [
+          activeKnowledgePointRef: 'knowledge:kp_2',
+          knowledgePoints: [
+            {
+              ref: 'knowledge:kp_1',
+              status: 'completed',
+              interactionStatus: 'completed',
+            },
+            { ref: 'knowledge:kp_2', status: 'learning' },
+          ],
+        },
+        { currentUserMessageId: 'message_1' },
+      ),
+    ).toThrowError('teaching_directive_point_must_be_learning_before_completion');
+  });
+
+  it('rejects completion when the same turn reports a new understanding blocker', () => {
+    const learning = applyTeachingDirective(initial(), {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+    });
+
+    expect(() =>
+      applyTeachingDirective(
+        learning,
+        {
+          schemaVersion: 2,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'knowledge:kp_2',
+          knowledgePoints: [
+            {
+              ref: 'knowledge:kp_1',
+              status: 'completed',
+              interactionStatus: 'completed',
+            },
+            { ref: 'knowledge:kp_2', status: 'learning' },
+          ],
+          difficultySignals: [
             {
               knowledgePointRef: 'knowledge:kp_1',
-              sourceMessageId: 'message_other',
-              category: 'definition-recall',
-              outcome: 'correct',
+              sourceMessageId: 'message_1',
+              kind: 'misunderstanding',
             },
           ],
         },
-        { currentUserMessageId: 'message_current' },
+        { currentUserMessageId: 'message_1' },
       ),
-    ).toThrowError('teaching_directive_verification_signal_source_mismatch');
+    ).toThrowError('teaching_directive_point_blocked_by_new_difficulty');
+  });
+
+  it('accepts a legacy phase but normalizes it to comprehensive application', () => {
+    const learning = {
+      ...initial(),
+      lessonPhase: 'knowledge_point' as const,
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      knowledgePoints: initial().knowledgePoints.map((point) => ({
+        ...point,
+        progress: 'learning' as const,
+        interactionStatus: 'completed' as const,
+      })),
+    };
+    const next = applyTeachingDirective(learning, {
+      schemaVersion: 2,
+      lessonPhase: 'comprehensive_check',
+      activeKnowledgePointRef: null,
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'learning',
+    });
+
+    expect(next.lessonPhase).toBe('comprehensive_application');
   });
 });

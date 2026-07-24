@@ -11,10 +11,6 @@ type ProjectedKnowledgePoint = Readonly<{
   verification: 'not_observed' | 'supporting' | 'limiting' | 'mixed';
   adaptiveDifficulty: 'normal' | 'difficult';
   deepFollowUpCount: number;
-  verificationStreak?: Readonly<{
-    category: string;
-    correctCount: number;
-  }>;
 }>;
 
 export type TeachingLedgerProjection = Readonly<{
@@ -22,7 +18,7 @@ export type TeachingLedgerProjection = Readonly<{
   lessonPhase:
     | 'warmup'
     | 'knowledge_point'
-    | 'comprehensive_check'
+    | 'comprehensive_application'
     | 'discussion'
     | 'summary'
     | 'ready_to_close';
@@ -49,7 +45,7 @@ function currentUserRequest(context: TeachingContextPackage): string {
 }
 
 function endpointPhase(phase: TeachingLedgerProjection['lessonPhase']): boolean {
-  return ['comprehensive_check', 'discussion', 'summary', 'ready_to_close'].includes(phase);
+  return ['comprehensive_application', 'discussion', 'summary', 'ready_to_close'].includes(phase);
 }
 
 function normalizedProgress(
@@ -85,14 +81,6 @@ export function projectTeachingLedger(context: TeachingContextPackage): Teaching
       deepFollowUpCount: (point?.difficultySignals ?? []).filter(
         (signal) => signal.kind === 'request_deeper_explanation',
       ).length,
-      ...(point?.verificationStreak === undefined
-        ? {}
-        : {
-            verificationStreak: {
-              category: point.verificationStreak.category,
-              correctCount: point.verificationStreak.correctCount,
-            },
-          }),
     } satisfies ProjectedKnowledgePoint;
   });
   const completedOrSkippedCount = ordered.filter(

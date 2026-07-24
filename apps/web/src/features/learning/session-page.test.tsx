@@ -788,7 +788,7 @@ describe('learning SessionPage', () => {
     });
     render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
 
-    expect(await screen.findByText('跳过检测')).toBeInTheDocument();
+    expect(await screen.findByText('跳过综合应用')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
 
     expect(screen.getByText('教学已闭环')).toBeInTheDocument();

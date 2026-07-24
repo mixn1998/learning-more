@@ -102,7 +102,7 @@ describe('projectTeachingLedger', () => {
     expect(projectTeachingLedger(context('前面的知识点是什么意思')).mode).toBe('compact_full');
     expect(projectTeachingLedger(context('剩下的知识点全部跳过')).mode).toBe('compact_full');
     expect(
-      projectTeachingLedger(context('开始综合检测', 'comprehensive_check')).knowledgePoints,
+      projectTeachingLedger(context('开始综合应用', 'comprehensive_application')).knowledgePoints,
     ).toHaveLength(4);
   });
 

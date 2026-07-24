@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ReviewDocumentSchema } from './review-document.js';
+import { TeachingLessonPhaseSchema } from './teaching.js';
 
 const identifier = z.string().trim().min(1).max(200);
 const resourceVersion = z.number().int().nonnegative();
@@ -79,14 +80,7 @@ export const LessonTeachingProgressSchema = z.strictObject({
   ledgerVersion: z.number().int().nonnegative(),
   observationStatus: z.enum(['current', 'pending', 'failed']),
   teachingWeightStatus: z.enum(['pending', 'completed', 'failed']).optional(),
-  lessonPhase: z.enum([
-    'warmup',
-    'knowledge_point',
-    'comprehensive_check',
-    'discussion',
-    'summary',
-    'ready_to_close',
-  ]),
+  lessonPhase: TeachingLessonPhaseSchema,
   activeKnowledgePointRef: z.string().trim().min(1).max(2_000).optional(),
   comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),

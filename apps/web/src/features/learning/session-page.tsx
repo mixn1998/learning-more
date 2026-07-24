@@ -576,19 +576,19 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
       };
     }),
     {
-      title: '综合检测',
+      title: '综合应用',
       detail:
         completed || afterComprehensive
           ? teaching.comprehensiveCheck === 'skipped'
-            ? '跳过检测'
-            : '综合检测已完成'
-          : phase === 'comprehensive_check'
-            ? '正在连接本课全部知识点'
+            ? '跳过综合应用'
+            : '综合应用已完成'
+          : phase === 'comprehensive_application'
+            ? '正在进行跨知识点应用'
             : '等待逐项学习完成',
       state:
         completed || afterComprehensive
           ? ('done' as const)
-          : phase === 'comprehensive_check'
+          : phase === 'comprehensive_application'
             ? ('active' as const)
             : ('pending' as const),
     },
@@ -599,7 +599,7 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
           ? '已确认没有其他疑问'
           : phase === 'discussion'
             ? '可以继续追问本课内容'
-            : '等待综合检测完成',
+            : '等待综合应用完成',
       state:
         completed || ['summary', 'ready_to_close'].includes(phase)
           ? ('done' as const)

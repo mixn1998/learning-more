@@ -513,6 +513,36 @@ async function fixture(
   };
 }
 
+async function seedLearningKnowledgePoint(ledgerRepository: TeachingLedgerRepository) {
+  const initial = createTeachingState({
+    lessonId: 'lesson_1',
+    sessionId: 'session_1',
+    knowledgePointRefs: ['knowledge:kp_1'],
+  });
+  await ledgerRepository.save(
+    tx,
+    {
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      observations: [],
+      checkpoints: [],
+      state: {
+        ...initial,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        knowledgePoints: initial.knowledgePoints.map((point) => ({
+          ...point,
+          progress: 'learning',
+          interactionStatus: 'pending',
+        })),
+      },
+      resourceVersion: 0,
+    },
+    0,
+  );
+}
+
 describe('InteractiveTeaching deep module', () => {
   it('cancels a submitted task when session binding fails', async () => {
     const { module, cancelledTaskIds, submittedRequestRef } = await fixture({
@@ -1044,10 +1074,10 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('commits the teaching agent directive before observation and exposes its control state', async () => {
-    const { module, drainObservations } = await fixture({
+    const { module, drainObservations, ledgerRepository } = await fixture({
       agentDirective: {
         schemaVersion: 1,
-        lessonPhase: 'comprehensive_check',
+        lessonPhase: 'comprehensive_application',
         knowledgePoints: [
           {
             ref: 'knowledge:kp_1',
@@ -1060,6 +1090,7 @@ describe('InteractiveTeaching deep module', () => {
         summaryStatus: 'pending',
       },
     });
+    await seedLearningKnowledgePoint(ledgerRepository);
 
     await module.advanceTurn(
       {
@@ -1074,7 +1105,7 @@ describe('InteractiveTeaching deep module', () => {
     await drainObservations('session_1');
 
     await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
-      lessonPhase: 'comprehensive_check',
+      lessonPhase: 'comprehensive_application',
       knowledgePoints: [{ progress: 'completed', interactionStatus: 'skipped' }],
     });
   });
@@ -1235,7 +1266,7 @@ describe('InteractiveTeaching deep module', () => {
   it('replays the latest hidden teaching directive during read reconciliation', async () => {
     const directive: TeachingDirective = {
       schemaVersion: 1,
-      lessonPhase: 'comprehensive_check',
+      lessonPhase: 'comprehensive_application',
       knowledgePoints: [
         { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
       ],
@@ -1246,6 +1277,7 @@ describe('InteractiveTeaching deep module', () => {
     const { module, drainObservations, reconcileGeneration, ledgerRepository } = await fixture({
       agentDirective: directive,
     });
+    await seedLearningKnowledgePoint(ledgerRepository);
     await module.advanceTurn(
       {
         courseId: 'course_1',
@@ -1279,7 +1311,7 @@ describe('InteractiveTeaching deep module', () => {
     });
 
     await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
-      lessonPhase: 'comprehensive_check',
+      lessonPhase: 'comprehensive_application',
       comprehensiveCheck: 'learning',
       knowledgePoints: [{ progress: 'completed', interactionStatus: 'completed' }],
     });

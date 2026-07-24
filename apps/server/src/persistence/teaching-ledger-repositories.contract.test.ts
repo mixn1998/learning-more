@@ -171,7 +171,7 @@ function contract(
         }),
         {
           schemaVersion: 1,
-          lessonPhase: 'comprehensive_check',
+          lessonPhase: 'comprehensive_application',
           knowledgePoints: [],
           comprehensiveCheck: 'learning',
           closureInquiry: 'pending',
@@ -197,7 +197,7 @@ function contract(
       );
 
       await expect(repository.get('session_1')).resolves.toMatchObject({
-        state: { lessonPhase: 'comprehensive_check', comprehensiveCheck: 'learning' },
+        state: { lessonPhase: 'comprehensive_application', comprehensiveCheck: 'learning' },
       });
     });
   });

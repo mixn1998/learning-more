@@ -25,16 +25,21 @@ const TeachingVerificationSignalSchema = z.strictObject({
   outcome: z.enum(['correct', 'incorrect', 'uncertain']),
 });
 
-const FullTeachingDirectiveSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  lessonPhase: z.enum([
+const TeachingLessonPhaseSchema = z.preprocess(
+  (value) => (value === 'comprehensive_check' ? 'comprehensive_application' : value),
+  z.enum([
     'warmup',
     'knowledge_point',
-    'comprehensive_check',
+    'comprehensive_application',
     'discussion',
     'summary',
     'ready_to_close',
   ]),
+);
+
+const FullTeachingDirectiveSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  lessonPhase: TeachingLessonPhaseSchema,
   activeKnowledgePointRef: z.string().trim().min(1).max(2_000).optional(),
   knowledgePoints: z.array(KnowledgePointDirectiveSchema),
   difficultySignals: z
@@ -64,39 +69,40 @@ const SparseKnowledgePointDirectiveSchema = z.strictObject({
   depthPreference: z.enum(['default', 'condensed']).optional(),
 });
 
-const SparseTeachingDirectiveSchema = z.strictObject({
-  schemaVersion: z.literal(2),
-  lessonPhase: z
-    .enum([
-      'warmup',
-      'knowledge_point',
-      'comprehensive_check',
-      'discussion',
-      'summary',
-      'ready_to_close',
-    ])
-    .optional(),
-  activeKnowledgePointRef: z.string().trim().min(1).max(2_000).nullable().optional(),
-  knowledgePoints: z.array(SparseKnowledgePointDirectiveSchema).optional(),
-  difficultySignals: z
-    .array(
-      z.strictObject({
-        knowledgePointRef: z.string().trim().min(1).max(2_000),
-        sourceMessageId: z.string().trim().min(1).max(500),
-        kind: z.enum([
-          'answer_error',
-          'misunderstanding',
-          'not_understood',
-          'request_deeper_explanation',
-        ]),
-      }),
-    )
-    .optional(),
-  verificationSignals: z.array(TeachingVerificationSignalSchema).max(1).optional(),
-  comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']).optional(),
-  closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']).optional(),
-  summaryStatus: z.enum(['pending', 'delivered']).optional(),
-});
+const SparseTeachingDirectiveSchema = z
+  .strictObject({
+    schemaVersion: z.literal(2),
+    lessonPhase: TeachingLessonPhaseSchema.optional(),
+    activeKnowledgePointRef: z.string().trim().min(1).max(2_000).nullable().optional(),
+    knowledgePoints: z.array(SparseKnowledgePointDirectiveSchema).optional(),
+    difficultySignals: z
+      .array(
+        z.strictObject({
+          knowledgePointRef: z.string().trim().min(1).max(2_000),
+          sourceMessageId: z.string().trim().min(1).max(500),
+          kind: z.enum([
+            'answer_error',
+            'misunderstanding',
+            'not_understood',
+            'request_deeper_explanation',
+          ]),
+        }),
+      )
+      .optional(),
+    verificationSignals: z.array(TeachingVerificationSignalSchema).max(1).optional(),
+    comprehensiveApplication: z.enum(['pending', 'learning', 'completed', 'skipped']).optional(),
+    comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']).optional(),
+    closureInquiry: z
+      .enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions'])
+      .optional(),
+    summaryStatus: z.enum(['pending', 'delivered']).optional(),
+  })
+  .transform(({ comprehensiveApplication, comprehensiveCheck, ...directive }) => ({
+    ...directive,
+    ...((comprehensiveApplication ?? comprehensiveCheck) === undefined
+      ? {}
+      : { comprehensiveCheck: comprehensiveApplication ?? comprehensiveCheck }),
+  }));
 
 export const TeachingDirectiveSchema = z.union([
   FullTeachingDirectiveSchema,
@@ -122,8 +128,13 @@ function normalizedComprehensive(
 }
 
 export function normalizeTeachingControlState(state: TeachingStateSnapshot): TeachingStateSnapshot {
+  const lessonPhase =
+    (state.lessonPhase as string | undefined) === 'comprehensive_check'
+      ? 'comprehensive_application'
+      : state.lessonPhase;
   return {
     ...state,
+    lessonPhase,
     comprehensiveCheck: normalizedComprehensive(state.comprehensiveCheck),
     knowledgePoints: state.knowledgePoints.map((point) => ({
       ...point,
@@ -147,7 +158,12 @@ export function materializeTeachingDirective(
 ): FullTeachingDirective {
   const state = normalizeTeachingControlState(stateInput);
   const parsed = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
-  if (parsed.schemaVersion === 1) return parsed;
+  if (parsed.schemaVersion === 1) {
+    return {
+      ...parsed,
+      verificationSignals: [],
+    };
+  }
 
   const updates = parsed.knowledgePoints ?? [];
   const updateRefs = updates.map((point) => point.ref);
@@ -179,7 +195,7 @@ export function materializeTeachingDirective(
       };
     }),
     difficultySignals: parsed.difficultySignals ?? [],
-    verificationSignals: parsed.verificationSignals ?? [],
+    verificationSignals: [],
     comprehensiveCheck:
       parsed.comprehensiveCheck ?? normalizedComprehensive(state.comprehensiveCheck),
     closureInquiry: parsed.closureInquiry ?? state.closureInquiry ?? 'pending',
@@ -192,10 +208,7 @@ export function teachingDirectiveMatchesState(
   directiveInput: TeachingDirective,
 ): boolean {
   const state = normalizeTeachingControlState(stateInput);
-  const directive = enforceCorrectAnswerProgress(
-    state,
-    materializeTeachingDirective(state, directiveInput),
-  );
+  const directive = materializeTeachingDirective(state, directiveInput);
   const statePoints = state.knowledgePoints.map((point) => ({
     ref: point.ref,
     status: normalizedProgress(point.progress),
@@ -215,15 +228,8 @@ export function teachingDirectiveMatchesState(
         existing.sourceMessageId === signal.sourceMessageId && existing.kind === signal.kind,
     );
   });
-  const unappliedVerificationSignal = (directive.verificationSignals ?? []).some((signal) => {
-    const point = state.knowledgePoints.find(
-      (candidate) => candidate.ref === signal.knowledgePointRef,
-    );
-    return !point?.verificationStreak?.sourceMessageIds.includes(signal.sourceMessageId);
-  });
   return (
     !unappliedDifficultySignal &&
-    !unappliedVerificationSignal &&
     (state.lessonPhase ?? 'warmup') === directive.lessonPhase &&
     state.activeKnowledgePointRef === directive.activeKnowledgePointRef &&
     normalizedComprehensive(state.comprehensiveCheck) === directive.comprehensiveCheck &&
@@ -237,88 +243,11 @@ function invalid(code: string): never {
   throw new Error(code);
 }
 
-type VerificationSignal = NonNullable<FullTeachingDirective['verificationSignals']>[number];
-
-function normalizedVerificationCategory(category: string): string {
-  return category.normalize('NFKC').toLocaleLowerCase();
-}
-
-function verificationStreakAfter(
-  current: TeachingStateSnapshot['knowledgePoints'][number]['verificationStreak'],
-  signal: VerificationSignal,
-): TeachingStateSnapshot['knowledgePoints'][number]['verificationStreak'] {
-  if (signal.outcome !== 'correct') return undefined;
-  if (current?.sourceMessageIds.includes(signal.sourceMessageId) === true) return current;
-  if (
-    current !== undefined &&
-    normalizedVerificationCategory(current.category) ===
-      normalizedVerificationCategory(signal.category)
-  ) {
-    return {
-      category: current.category,
-      correctCount: Math.min(2, current.correctCount + 1) as 1 | 2,
-      sourceMessageIds: [...current.sourceMessageIds, signal.sourceMessageId].slice(-2),
-    };
-  }
-  return {
-    category: signal.category,
-    correctCount: 1,
-    sourceMessageIds: [signal.sourceMessageId],
-  };
-}
-
-function enforceCorrectAnswerProgress(
-  current: TeachingStateSnapshot,
-  directive: FullTeachingDirective,
-): FullTeachingDirective {
-  const signal = directive.verificationSignals?.[0];
-  if (signal?.outcome !== 'correct') return directive;
-  const point = current.knowledgePoints.find(
-    (candidate) => candidate.ref === signal.knowledgePointRef,
-  );
-  const streak = verificationStreakAfter(point?.verificationStreak, signal);
-  if (
-    streak?.correctCount !== 2 ||
-    directive.knowledgePoints.find((candidate) => candidate.ref === signal.knowledgePointRef)
-      ?.status !== 'learning'
-  ) {
-    return directive;
-  }
-
-  const completedPoints = directive.knowledgePoints.map((candidate) =>
-    candidate.ref === signal.knowledgePointRef
-      ? { ...candidate, status: 'completed' as const, interactionStatus: 'completed' as const }
-      : candidate,
-  );
-  const nextPoint = completedPoints.find(
-    (candidate) => candidate.status !== 'completed' && candidate.status !== 'skipped',
-  );
-  if (nextPoint === undefined) {
-    return {
-      ...directive,
-      lessonPhase: 'comprehensive_check',
-      activeKnowledgePointRef: undefined,
-      knowledgePoints: completedPoints,
-      comprehensiveCheck: 'learning',
-    };
-  }
-  return {
-    ...directive,
-    lessonPhase: 'knowledge_point',
-    activeKnowledgePointRef: nextPoint.ref,
-    knowledgePoints: completedPoints.map((candidate) =>
-      candidate.ref === nextPoint.ref
-        ? { ...candidate, status: 'learning' as const, interactionStatus: 'pending' as const }
-        : candidate,
-    ),
-  };
-}
-
 function closureStateMatchesPhase(directive: FullTeachingDirective): boolean {
   const expected = {
     warmup: ['pending', 'pending'],
     knowledge_point: ['pending', 'pending'],
-    comprehensive_check: ['pending', 'pending'],
+    comprehensive_application: ['pending', 'pending'],
     discussion: ['awaiting_confirmation', 'pending'],
     summary: ['confirmed_no_questions', 'pending'],
     ready_to_close: ['confirmed_no_questions', 'delivered'],
@@ -338,7 +267,7 @@ export function applyTeachingDirective(
   validation?: Readonly<{ currentUserMessageId?: string }>,
 ): TeachingStateSnapshot {
   const current = normalizeTeachingControlState(currentInput);
-  let directive = materializeTeachingDirective(current, directiveInput);
+  const directive = materializeTeachingDirective(current, directiveInput);
   const expectedRefs = current.knowledgePoints.map((point) => point.ref);
   const incomingRefs = directive.knowledgePoints.map((point) => point.ref);
   if (
@@ -370,22 +299,6 @@ export function applyTeachingDirective(
     invalid('teaching_directive_difficulty_signal_duplicate');
   }
 
-  const incomingVerificationSignals = directive.verificationSignals ?? [];
-  if (
-    validation !== undefined &&
-    incomingVerificationSignals.some(
-      (signal) => signal.sourceMessageId !== validation.currentUserMessageId,
-    )
-  ) {
-    invalid('teaching_directive_verification_signal_source_mismatch');
-  }
-  if (
-    incomingVerificationSignals.some((signal) => !incomingRefs.includes(signal.knowledgePointRef))
-  ) {
-    invalid('teaching_directive_verification_signal_point_unknown');
-  }
-  directive = enforceCorrectAnswerProgress(current, directive);
-
   const currentByRef = new Map(current.knowledgePoints.map((point) => [point.ref, point]));
   for (const incoming of directive.knowledgePoints) {
     const previous = normalizedProgress(currentByRef.get(incoming.ref)?.progress);
@@ -401,12 +314,38 @@ export function applyTeachingDirective(
     if (incoming.status === 'skipped' && incoming.interactionStatus !== 'skipped') {
       invalid('teaching_directive_skipped_point_interaction_mismatch');
     }
+    if (
+      validation !== undefined &&
+      incoming.status === 'completed' &&
+      previous !== 'learning' &&
+      previous !== 'completed'
+    ) {
+      invalid('teaching_directive_point_must_be_learning_before_completion');
+    }
+    if (
+      incoming.status === 'completed' &&
+      incomingDifficultySignals.some(
+        (signal) =>
+          signal.knowledgePointRef === incoming.ref &&
+          ['answer_error', 'misunderstanding', 'not_understood'].includes(signal.kind),
+      )
+    ) {
+      invalid('teaching_directive_point_blocked_by_new_difficulty');
+    }
+    if (
+      incoming.status === 'completed' &&
+      current.openLoops.some(
+        (loop) => loop.knowledgePointRefs.includes(incoming.ref) && loop.sourceRefs.length > 0,
+      )
+    ) {
+      invalid('teaching_directive_point_blocked_by_open_loop');
+    }
   }
 
   const phaseOrder = [
     'warmup',
     'knowledge_point',
-    'comprehensive_check',
+    'comprehensive_application',
     'discussion',
     'summary',
     'ready_to_close',
@@ -420,7 +359,7 @@ export function applyTeachingDirective(
     (point) => point.status === 'completed' || point.status === 'skipped',
   );
   if (
-    ['comprehensive_check', 'discussion', 'summary', 'ready_to_close'].includes(
+    ['comprehensive_application', 'discussion', 'summary', 'ready_to_close'].includes(
       directive.lessonPhase,
     ) &&
     !settled
@@ -476,7 +415,7 @@ export function applyTeachingDirective(
     directive.lessonPhase === 'ready_to_close';
   if (
     attemptsClosure &&
-    currentPhase !== 'comprehensive_check' &&
+    currentPhase !== 'comprehensive_application' &&
     currentPhase !== 'discussion' &&
     currentPhase !== 'summary' &&
     currentPhase !== 'ready_to_close'
@@ -512,23 +451,13 @@ export function applyTeachingDirective(
         }
         difficultySignals.push({ sourceMessageId: signal.sourceMessageId, kind: signal.kind });
       }
-      const verificationSignal = incomingVerificationSignals.find(
-        (candidate) => candidate.knowledgePointRef === point.ref,
-      );
-      const verificationStreak =
-        verificationSignal === undefined
-          ? point.verificationStreak
-          : verificationStreakAfter(point.verificationStreak, verificationSignal);
-      const { verificationStreak: _verificationStreak, ...pointWithoutVerificationStreak } = point;
-      void _verificationStreak;
       return {
-        ...pointWithoutVerificationStreak,
+        ...point,
         progress: incoming.status,
         interactionStatus: incoming.interactionStatus,
         difficultySignals,
         adaptiveDifficulty: difficultySignals.length >= 2 ? 'difficult' : 'normal',
         depthPreference: incoming.depthPreference ?? point.depthPreference ?? 'default',
-        ...(verificationStreak === undefined ? {} : { verificationStreak }),
       };
     }),
   };

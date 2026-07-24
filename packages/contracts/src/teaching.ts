@@ -4,6 +4,18 @@ const IdentifierSchema = z.string().trim().min(1).max(500);
 const SourceRefSchema = z.string().trim().min(1).max(2_000);
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
+export const TeachingLessonPhaseSchema = z.preprocess(
+  (value) => (value === 'comprehensive_check' ? 'comprehensive_application' : value),
+  z.enum([
+    'warmup',
+    'knowledge_point',
+    'comprehensive_application',
+    'discussion',
+    'summary',
+    'ready_to_close',
+  ]),
+);
+
 export const TeachingScopeAlignmentSchema = z.enum([
   'direct',
   'supporting',
@@ -54,6 +66,8 @@ export const TeachingObservationEntrySchema = z.strictObject({
   progressionSignal: z
     .enum([
       'skip_knowledge_point',
+      'complete_comprehensive_application',
+      'skip_comprehensive_application',
       'pass_comprehensive_check',
       'skip_comprehensive_check',
       'confirm_no_further_questions',
@@ -173,16 +187,7 @@ export const TeachingStateSnapshotSchema = z.strictObject({
   observationStatus: z.enum(['current', 'pending', 'failed']),
   scopeStatus: z.enum(['aligned', 'needs_return']),
   evidenceCheckpoint: z.boolean(),
-  lessonPhase: z
-    .enum([
-      'warmup',
-      'knowledge_point',
-      'comprehensive_check',
-      'discussion',
-      'summary',
-      'ready_to_close',
-    ])
-    .optional(),
+  lessonPhase: TeachingLessonPhaseSchema.optional(),
   activeKnowledgePointRef: SourceRefSchema.optional(),
   comprehensiveCheck: z
     .enum(['pending', 'learning', 'completed', 'skipped', 'checking', 'passed'])
