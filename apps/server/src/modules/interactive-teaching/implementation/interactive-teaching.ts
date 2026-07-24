@@ -161,6 +161,17 @@ export function createInteractiveTeaching(options: {
       commandContext: CommandContext;
     }>
   >();
+  const cancelledTaskIds = new Set<string>();
+
+  function isCurrentTask(taskId: string): boolean {
+    return taskContext.has(taskId) && !cancelledTaskIds.has(taskId);
+  }
+
+  function assertCurrentTask(taskId: string): void {
+    if (!isCurrentTask(taskId)) {
+      throw new Error('teaching_generation_superseded');
+    }
+  }
 
   async function tryEnsureFrameTask(
     taskId: string,
@@ -387,6 +398,7 @@ export function createInteractiveTeaching(options: {
           ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
         });
         directiveValidated = true;
+        assertCurrentTask(accepted.taskId);
         if (!result.markdown.startsWith(streamedMarkdown)) {
           throw new Error('teaching_stream_reply_mismatch');
         }
@@ -399,6 +411,7 @@ export function createInteractiveTeaching(options: {
           if (appended) streamedMarkdown += remainingMarkdown;
           else streamProjectionAvailable = false;
         }
+        assertCurrentTask(accepted.taskId);
         await options.assistantArtifacts.save({
           artifactRef,
           markdown: result.markdown,
@@ -410,8 +423,10 @@ export function createInteractiveTeaching(options: {
           sessionId: input.sessionId,
           directive: result.directive,
           ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+          isCurrent: () => isCurrentTask(accepted.taskId),
         });
         directiveApplied = true;
+        assertCurrentTask(accepted.taskId);
         await options.sessionModule.execute(
           {
             type: 'CommitAssistantMessage',
@@ -449,6 +464,7 @@ export function createInteractiveTeaching(options: {
         }
       } catch (error) {
         taskContext.delete(accepted.taskId);
+        if (cancelledTaskIds.has(accepted.taskId)) return;
         if (replyCommitted) {
           try {
             await markObservationFailed(input.courseId, input.lessonId, input.sessionId);
@@ -519,6 +535,8 @@ export function createInteractiveTeaching(options: {
               : failureProblem(accepted.taskId),
         });
         throw error;
+      } finally {
+        cancelledTaskIds.delete(accepted.taskId);
       }
     })();
     track(input.sessionId, completion);
@@ -583,8 +601,10 @@ export function createInteractiveTeaching(options: {
     sessionId: string;
     directive?: TeachingDirective | undefined;
     currentUserMessageId?: string;
+    isCurrent?: () => boolean;
   }): Promise<void> {
     if (input.directive === undefined) return;
+    if (input.isCurrent?.() === false) throw new Error('teaching_generation_superseded');
     const facts = await options.contextSources.getCourseAndLesson({
       courseId: input.courseId,
       lessonId: input.lessonId,
@@ -592,6 +612,7 @@ export function createInteractiveTeaching(options: {
     const knowledgePointRefs = facts.lesson.coreKnowledgePoints.map((point) => point.ref);
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (input.isCurrent?.() === false) throw new Error('teaching_generation_superseded');
       const current = await options.ledgerRepository.get(input.sessionId);
       if (
         current !== undefined &&
@@ -616,8 +637,11 @@ export function createInteractiveTeaching(options: {
           : { currentUserMessageId: input.currentUserMessageId },
       );
       try {
-        await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) =>
-          options.ledgerRepository.save(
+        await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) => {
+          if (input.isCurrent?.() === false) {
+            throw new Error('teaching_generation_superseded');
+          }
+          return options.ledgerRepository.save(
             tx,
             {
               courseId: input.courseId,
@@ -629,8 +653,8 @@ export function createInteractiveTeaching(options: {
               resourceVersion: current?.resourceVersion ?? 0,
             },
             current?.resourceVersion ?? 0,
-          ),
-        );
+          );
+        });
         return;
       } catch (error) {
         if (!(error instanceof RepositoryVersionConflictError) || attempt === maxAttempts) {
@@ -1302,7 +1326,11 @@ export function createInteractiveTeaching(options: {
       const activeTaskId = learning.learning.session?.activeGenerationTaskId;
       if (activeTaskId !== undefined) {
         await module.stopTurn(
-          { sessionId: input.sessionId, taskId: activeTaskId },
+          {
+            sessionId: input.sessionId,
+            taskId: activeTaskId,
+            disposition: 'discard',
+          },
           { ...context, expectedVersion: learning.resourceVersion },
         );
         learning = await options.sessionModule.query(
@@ -1323,9 +1351,7 @@ export function createInteractiveTeaching(options: {
       if (
         replacedTail.length === 0 ||
         replacedTail[0]?.role !== 'user' ||
-        replacedTail
-          .slice(1)
-          .some((message) => message.role === 'user' || message.completionStatus === 'complete')
+        replacedTail.slice(1).some((message) => message.role === 'user')
       ) {
         throw Object.assign(new Error('teaching_turn_not_revisable'), {
           code: 'session_conflict',
@@ -1494,8 +1520,33 @@ export function createInteractiveTeaching(options: {
         };
       }
       if (owner.sessionId !== input.sessionId) throw new Error('teaching_task_not_found');
-      const result = await options.agent.stop(input.taskId);
+      cancelledTaskIds.add(input.taskId);
       taskContext.delete(input.taskId);
+      const stopping = options.agent.stop(input.taskId);
+      if (input.disposition === 'discard') {
+        let stopped;
+        try {
+          stopped = await options.sessionModule.execute(
+            {
+              type: 'StopSessionGeneration',
+              lessonId: owner.lessonId,
+              taskId: input.taskId,
+            },
+            backgroundContext(context, `${context.commandId}:generation-discarded`),
+          );
+        } finally {
+          await stopping;
+        }
+        await tryAppendFrame(input.taskId, 'task.cancelled', {
+          reason: 'user_revised_source_message',
+        });
+        return {
+          taskId: input.taskId,
+          completionStatus: 'interrupted',
+          resourceVersion: stopped.value.resourceVersion,
+        };
+      }
+      const result = await stopping;
       const assistantMessageId = options.nextAssistantMessageId();
       const artifactRef = `assistant-message:${assistantMessageId}`;
       await options.assistantArtifacts.save({

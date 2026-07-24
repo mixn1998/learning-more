@@ -342,7 +342,9 @@ describe('learning SessionPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '重新编辑' }));
 
     await waitFor(() =>
-      expect(stop).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'task_01' })),
+      expect(stop).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'task_01', disposition: 'discard' }),
+      ),
     );
     const inlineEditor = await screen.findByRole('textbox', { name: '编辑消息' });
     expect(inlineEditor).toHaveValue('原始问题');
@@ -405,7 +407,11 @@ describe('learning SessionPage', () => {
 
     await waitFor(() =>
       expect(stop).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: 'session_01', taskId: 'task_01' }),
+        expect.objectContaining({
+          sessionId: 'session_01',
+          taskId: 'task_01',
+          disposition: 'discard',
+        }),
       ),
     );
     expect(stream).not.toHaveBeenCalled();

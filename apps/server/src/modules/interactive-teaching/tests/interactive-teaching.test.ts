@@ -919,6 +919,99 @@ describe('InteractiveTeaching deep module', () => {
     ]);
   });
 
+  it('discards a cancelled turn before a late completion can update the transcript', async () => {
+    const { module, drainObservations, messageLog, resolveAgentCompletion, sessionModule } =
+      await fixture({ deferredCompletion: true });
+    const accepted = await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+
+    const stopped = await module.stopTurn(
+      {
+        sessionId: 'session_1',
+        taskId: accepted.taskId,
+        disposition: 'discard',
+      },
+      {
+        ...commandContext,
+        commandId: 'discard_active_turn',
+        expectedVersion: accepted.resourceVersion,
+      },
+    );
+    resolveAgentCompletion('This late reply must not be committed.');
+    await drainObservations('session_1');
+
+    expect(stopped).toMatchObject({
+      taskId: accepted.taskId,
+      completionStatus: 'interrupted',
+    });
+    expect(stopped).not.toHaveProperty('assistantMessageId');
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+    ]);
+    const view = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_after_discard',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    expect(view.learning.session?.activeGenerationTaskId).toBeUndefined();
+  });
+
+  it('replaces the latest completed assistant reply when its user message is revised', async () => {
+    const { module, drainObservations, messageLog } = await fixture();
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    const revised = await module.reviseTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        replacedUserMessageId: 'message_user_1',
+        userMessageId: 'message_user_2',
+        userContentArtifactRef: 'artifact:user:2',
+      },
+      {
+        ...commandContext,
+        commandId: 'revise_completed_turn',
+        idempotencyKey: 'revise_completed_turn',
+        expectedVersion: 3,
+      },
+    );
+    expect(revised.taskId).toBe('task_2');
+    await drainObservations('session_1');
+
+    await expect(messageLog.list('session_1')).resolves.toEqual([
+      expect.objectContaining({ id: 'message_user_2', role: 'user' }),
+      expect.objectContaining({
+        id: 'message_ai_2',
+        role: 'assistant',
+        generationTaskId: 'task_2',
+        completionStatus: 'complete',
+      }),
+    ]);
+  });
+
   it.each(['failed', 'cancelled', 'timeout'] as const)(
     'clears a %s durable task binding during read reconciliation',
     async (status) => {

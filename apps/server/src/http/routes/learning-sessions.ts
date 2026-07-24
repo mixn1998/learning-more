@@ -549,12 +549,15 @@ export async function registerLearningSessionRoutes(
           {
             sessionId: request.params.sessionId,
             taskId: body.taskId,
+            ...(body.disposition === undefined ? {} : { disposition: body.disposition }),
           },
           context,
         );
         const response = GenerationStoppedResponseSchema.parse({
           taskId: result.taskId,
-          draftArtifactRef: result.draftArtifactRef,
+          ...(result.draftArtifactRef === undefined
+            ? {}
+            : { draftArtifactRef: result.draftArtifactRef }),
           resourceVersion: result.resourceVersion,
         });
         return reply.header('etag', `"${response.resourceVersion}"`).code(200).send(response);

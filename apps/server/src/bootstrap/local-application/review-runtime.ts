@@ -463,7 +463,7 @@ export function createLocalReviewRuntime(
         const provisionalSnapshotHash = createHash('sha256')
           .update(JSON.stringify({ sessionId, sourceMessageIds }))
           .digest('hex');
-        let closure = await lessonClosures.begin({
+        const closure = await lessonClosures.begin({
           lessonId,
           sessionId,
           sourceSessionIds: [sessionId],
@@ -472,13 +472,6 @@ export function createLocalReviewRuntime(
           endIntent: body.endIntent,
           expectedSessionVersion: current.resourceVersion,
         });
-        if (closure.state === 'open') {
-          closure = await prepareLessonClosureSnapshot(closure, context);
-          closure = await lessonClosures.retry(
-            closure.transactionId,
-            `initial_${closure.transactionId}`,
-          );
-        }
         const completed = await sessionModule.execute(
           { type: 'CompleteLessonPendingReview', lessonId },
           {

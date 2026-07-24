@@ -116,7 +116,11 @@ type Action =
     }>
   | Readonly<{ type: 'delta'; markdown: string }>
   | Readonly<{ type: 'completed' }>
-  | Readonly<{ type: 'stopped'; draftArtifactRef: string; resourceVersion: number }>
+  | Readonly<{
+      type: 'stopped';
+      draftArtifactRef?: string | undefined;
+      resourceVersion: number;
+    }>
   | Readonly<{ type: 'transferred'; resourceVersion: number }>
   | Readonly<{
       type: 'progress';
@@ -650,6 +654,7 @@ export function SessionPage(props: {
     | undefined
   >(undefined);
   const generationAttempt = useRef(0);
+  const editCancellation = useRef<Promise<void> | undefined>(undefined);
   const generationStartTimeouts = useRef(new Set<number>());
   const teachingRefreshes = useRef(new Set<string>());
   const [navigationError, setNavigationError] = useState<string>();
@@ -1021,6 +1026,7 @@ export function SessionPage(props: {
               sessionId: state.sessionId!,
               taskId: task.taskId,
               resourceVersion,
+              disposition: 'discard',
             }),
           task.resourceVersion,
         );
@@ -1118,7 +1124,6 @@ export function SessionPage(props: {
       if (state.sessionId === undefined) return;
       setNavigationError(undefined);
       const taskId = state.taskId;
-      const cancellationPending = state.phase === 'generating';
       generationAttempt.current += 1;
       inFlight.current.delete('send');
       inFlight.current.delete('retry-generation');
@@ -1128,29 +1133,38 @@ export function SessionPage(props: {
         targetMessageId: state.revisingMessageId ?? messageId,
         markdown,
         resourceVersion: state.resourceVersion,
-        cancellationPending,
+        cancellationPending: false,
       });
       if (taskId === undefined) return;
+      const cancellation = (async () => {
+        try {
+          const stopped = await withLatestSessionVersion((latestVersion) =>
+            api.stop({
+              sessionId: state.sessionId!,
+              taskId,
+              resourceVersion: latestVersion,
+              disposition: 'discard',
+            }),
+          );
+          dispatch({
+            type: 'edit-generation-synchronized',
+            localMessageId: messageId,
+            resourceVersion: stopped.resourceVersion,
+            requestAccepted: true,
+          });
+        } catch {
+          const reconciled = await reconcileFailedStop({
+            localMessageId: messageId,
+            requestAccepted: true,
+          });
+          if (!reconciled) setNavigationError(GENERATION_STOP_ERROR);
+        }
+      })();
+      editCancellation.current = cancellation;
       try {
-        const stopped = await withLatestSessionVersion((latestVersion) =>
-          api.stop({
-            sessionId: state.sessionId!,
-            taskId,
-            resourceVersion: latestVersion,
-          }),
-        );
-        dispatch({
-          type: 'edit-generation-synchronized',
-          localMessageId: messageId,
-          resourceVersion: stopped.resourceVersion,
-          requestAccepted: true,
-        });
-      } catch {
-        const reconciled = await reconcileFailedStop({
-          localMessageId: messageId,
-          requestAccepted: true,
-        });
-        if (!reconciled) setNavigationError(GENERATION_STOP_ERROR);
+        await cancellation;
+      } finally {
+        if (editCancellation.current === cancellation) editCancellation.current = undefined;
       }
     });
 
@@ -1160,11 +1174,11 @@ export function SessionPage(props: {
         state.sessionId === undefined ||
         state.editingMessageId === undefined ||
         state.editingTargetMessageId === undefined ||
-        state.editingCancellationPending ||
         state.editingDraft.trim() === ''
       ) {
         return;
       }
+      await editCancellation.current;
       const content = state.editingDraft.trim();
       const targetMessageId = state.editingTargetMessageId;
       const isUnacceptedLocalMessage =

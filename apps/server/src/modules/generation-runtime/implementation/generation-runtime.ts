@@ -57,6 +57,8 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     options.providers.map((provider) => [provider.describe().id, provider]),
   );
   const controllers = new Map<string, AbortController>();
+  const cancellationRequested = new Set<string>();
+  const taskMutationBarriers = new Map<string, Promise<void>>();
   const nextId = options.nextId ?? (() => `task_${randomUUID()}`);
   const now = options.now ?? (() => new Date());
   const taskTimeoutMs = options.taskTimeoutMs ?? 20 * 60 * 1_000;
@@ -116,7 +118,48 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     }
   }
 
+  async function project(task: GenerationTask): Promise<GenerationTask> {
+    (await indexedTasks()).set(task.id, task);
+    publish(task);
+    return task;
+  }
+
+  async function mutatePersistedTask(
+    taskId: string,
+    transition: (task: GenerationTask) => GenerationTask | undefined,
+  ): Promise<GenerationTask> {
+    const previous = taskMutationBarriers.get(taskId) ?? Promise.resolve();
+    let release!: () => void;
+    const currentBarrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queuedBarrier = previous.then(() => currentBarrier);
+    taskMutationBarriers.set(taskId, queuedBarrier);
+    await previous;
+    try {
+      const durable = await options.repository.get(taskId);
+      if (durable === undefined) throw new Error('GENERATION_TASK_NOT_FOUND');
+      const projected = (await indexedTasks()).get(taskId);
+      const source =
+        projected === undefined
+          ? durable
+          : {
+              ...projected,
+              resourceVersion: durable.resourceVersion,
+            };
+      const next = transition(source);
+      return next === undefined ? project(source) : persist(next);
+    } finally {
+      release();
+      if (taskMutationBarriers.get(taskId) === queuedBarrier) {
+        taskMutationBarriers.delete(taskId);
+      }
+    }
+  }
+
   async function get(taskId: string): Promise<GenerationTask> {
+    const projected = (await indexedTasks()).get(taskId);
+    if (projected !== undefined) return projected;
     const task = await options.repository.get(taskId);
     if (task === undefined) throw new Error('GENERATION_TASK_NOT_FOUND');
     return task;
@@ -320,7 +363,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           if (controller.signal.aborted) break;
           emittedDelta = true;
           const deltaAt = now().toISOString();
-          current = await persist({
+          current = await project({
             ...current,
             draftMarkdown: `${current.draftMarkdown ?? ''}${delta.text}`,
             ...(current.firstDeltaAt === undefined ? { firstDeltaAt: deltaAt } : {}),
@@ -338,14 +381,16 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
             code: 'provider_empty_output',
           });
         }
-        current = await get(current.id);
-        if (current.status === 'running') {
-          current = await persist({
-            ...current,
+        current = await mutatePersistedTask(current.id, (latest) => {
+          if (latest.status !== 'running' || (!timedOut && cancellationRequested.has(latest.id))) {
+            return undefined;
+          }
+          return {
+            ...latest,
             status: timedOut ? 'timeout' : 'completed',
-            ...(timedOut ? {} : { resultRef: `generation-task:${current.id}:draft` }),
+            ...(timedOut ? {} : { resultRef: `generation-task:${latest.id}:draft` }),
             ...(timedOut ? { errorCode: 'generation_timeout' } : {}),
-            attempts: (current.attempts ?? []).map((attempt, index, all) =>
+            attempts: (latest.attempts ?? []).map((attempt, index, all) =>
               index === all.length - 1
                 ? {
                     ...attempt,
@@ -356,8 +401,8 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
                 : attempt,
             ),
             updatedAt: now().toISOString(),
-          });
-        }
+          };
+        });
         break;
       } catch (error) {
         current = await get(current.id);
@@ -420,6 +465,7 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       } finally {
         clearTimeout(timeout);
         controllers.delete(current.id);
+        cancellationRequested.delete(current.id);
       }
     }
     return current.id;
@@ -455,14 +501,16 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
       );
     },
     async cancel(taskId) {
+      cancellationRequested.add(taskId);
       controllers.get(taskId)?.abort();
-      const task = await get(taskId);
-      if (task.status !== 'running' && task.status !== 'queued') return task;
-      return persist({
-        ...task,
-        status: 'cancelled',
-        errorCode: 'generation_cancelled',
-        updatedAt: now().toISOString(),
+      return mutatePersistedTask(taskId, (task) => {
+        if (task.status !== 'running' && task.status !== 'queued') return undefined;
+        return {
+          ...task,
+          status: 'cancelled',
+          errorCode: 'generation_cancelled',
+          updatedAt: now().toISOString(),
+        };
       });
     },
     async invalidate(taskId, errorCode) {

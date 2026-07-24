@@ -84,7 +84,8 @@ export interface LearningClient {
     sessionId: string;
     taskId: string;
     resourceVersion: number;
-  }): Promise<{ taskId: string; draftArtifactRef: string; resourceVersion: number }>;
+    disposition?: 'preserve' | 'discard';
+  }): Promise<{ taskId: string; draftArtifactRef?: string | undefined; resourceVersion: number }>;
   pause(sessionId: string, resourceVersion: number): Promise<LearningSessionCommandView>;
   resume(sessionId: string, resourceVersion: number): Promise<LearningSessionCommandView>;
   transferLease(sessionId: string, resourceVersion: number): Promise<LearningSessionCommandView>;
@@ -224,7 +225,10 @@ export const learningClient: LearningClient = {
     commandRequest(
       `/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/generation-stops`,
       {
-        body: { taskId: input.taskId },
+        body: {
+          taskId: input.taskId,
+          ...(input.disposition === undefined ? {} : { disposition: input.disposition }),
+        },
         schema: GenerationStoppedResponseSchema,
         resourceVersion: input.resourceVersion,
       },

@@ -744,6 +744,108 @@ describe('local CourseAuthoring application', () => {
     await local.close();
   }, 60_000);
 
+  it('accepts lesson completion before background Review preparation', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-closure-acceptance-'));
+    roots.push(directory);
+    const local = await createLocalApplication({
+      dataRoot: directory,
+      csrfToken: 'test-csrf',
+      lessonClosureReconcileIntervalMs: 60_000,
+    });
+    const dataRoot = DataRoot.create(directory);
+    const unitOfWork = createUnitOfWork({ dataRoot });
+    await unitOfWork.execute({ transactionId: 'tx_seed_closure_acceptance' }, async (tx) => {
+      await local.courseRepositories.courses.save(
+        tx,
+        {
+          id: 'course_closure_acceptance',
+          title: 'Closure acceptance course',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_closure_acceptance',
+          lessonIds: ['lesson_closure_acceptance'],
+          recommendedLessonId: 'lesson_closure_acceptance',
+          status: 'active',
+          createdAt: '2026-07-24T00:00:00.000Z',
+          resourceVersion: 0,
+        },
+        0,
+      );
+      await local.courseRepositories.lessons.save(
+        tx,
+        {
+          id: 'lesson_closure_acceptance',
+          courseId: 'course_closure_acceptance',
+          outlineVersionId: 'outline_closure_acceptance',
+          semanticKey: 'closure-acceptance',
+          title: 'Closure acceptance lesson',
+          objective: 'Complete before Review preparation',
+          coreKnowledgePoints: [],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: [],
+          resourceVersion: 0,
+        },
+        0,
+      );
+    });
+    const module = local.serverDependencies.learningSession!.module;
+    const context = {
+      correlationId: 'correlation_closure_acceptance',
+      idempotencyKey: 'closure_acceptance',
+      actor: 'local-user' as const,
+      requestedAt: '2026-07-24T00:00:00.000Z',
+      receivedAt: '2026-07-24T00:00:00.000Z',
+      pageInstanceId: 'page_01',
+    };
+    const started = await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_closure_acceptance' },
+      { ...context, commandId: 'start_closure_acceptance' },
+    );
+    const sessionId = started.value.sessionId!;
+    await module.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_closure_acceptance',
+        messageId: 'message_closure_acceptance',
+        contentArtifactRef: 'artifact_closure_acceptance',
+      },
+      {
+        ...context,
+        commandId: 'append_closure_acceptance',
+        expectedVersion: started.value.resourceVersion,
+      },
+    );
+    const app = await buildApp(local.serverDependencies);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/lessons/lesson_closure_acceptance/closures',
+      headers: {
+        ...baseHeaders,
+        'idempotency-key': 'finish_closure_acceptance',
+        'if-match': '"2"',
+      },
+      payload: {
+        sessionId,
+        endIntent: 'complete_lesson',
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(202);
+    expect(response.json()).toMatchObject({
+      lessonId: 'lesson_closure_acceptance',
+      progress: 'completed',
+      state: 'open',
+      generationTaskId: 'pending',
+    });
+    await expect(
+      createLocalFileLearningSessionRepositories(dataRoot).get('lesson_closure_acceptance'),
+    ).resolves.toMatchObject({ learning: { progress: 'completed' } });
+
+    await app.close();
+    await local.close();
+  });
+
   it('reconciles a persisted committing lesson closure without restarting the local service', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-recovery-'));
     roots.push(directory);

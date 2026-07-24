@@ -42,12 +42,13 @@ export type TeachingTurnAccepted = Readonly<{
 export type StopTeachingTurn = Readonly<{
   sessionId: string;
   taskId: string;
+  disposition?: 'preserve' | 'discard';
 }>;
 
 export type TeachingTurnStopped = Readonly<{
   taskId: string;
-  assistantMessageId: string;
-  draftArtifactRef: string;
+  assistantMessageId?: string;
+  draftArtifactRef?: string;
   completionStatus: 'interrupted';
   resourceVersion: number;
 }>;
