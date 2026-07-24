@@ -1160,7 +1160,7 @@ describe('InteractiveTeaching deep module', () => {
     ]);
   });
 
-  it('rebuilds each teaching observation from the complete session history', async () => {
+  it('builds each teaching observation from only the latest completed teaching turn', async () => {
     const { module, drainObservations, observedMessageBatches, capturedInteractionObservations } =
       await fixture();
     await module.advanceTurn(
@@ -1193,14 +1193,9 @@ describe('InteractiveTeaching deep module', () => {
 
     expect(observedMessageBatches).toEqual([
       ['message_user_1', 'message_ai_1'],
-      ['message_ai_1', 'message_user_2', 'message_ai_2'],
+      ['message_user_2', 'message_ai_2'],
     ]);
     expect(capturedInteractionObservations.at(-1)?.interactions).toEqual([
-      expect.objectContaining({
-        interactionId: 'interaction:message_ai_1',
-        outcome: 'responded',
-        responseSourceRef: 'message:message_user_2',
-      }),
       expect.objectContaining({
         interactionId: 'interaction:message_ai_2',
         outcome: 'pending',

@@ -123,7 +123,7 @@ export function createGenerationTeachingAgent(options: {
     },
     async complete(taskId, observer, signal) {
       const response = createTeachingResponseStream();
-      let observedLength = 0;
+      let observedDraft = '';
       let terminalSettled = false;
       const pending: Awaited<ReturnType<GenerationRuntime['get']>>[] = [];
       let wake: (() => void) | undefined;
@@ -160,10 +160,12 @@ export function createGenerationTeachingAgent(options: {
       );
       const consume = async (draftMarkdown: string | undefined) => {
         const current = draftMarkdown ?? '';
-        if (current.length < observedLength) throw new Error('teaching_generation_draft_rewound');
-        if (current.length === observedLength) return;
-        const events = response.push(current.slice(observedLength));
-        observedLength = current.length;
+        if (current === observedDraft || observedDraft.startsWith(current)) return;
+        if (!current.startsWith(observedDraft)) {
+          throw new Error('teaching_generation_draft_rewritten');
+        }
+        const events = response.push(current.slice(observedDraft.length));
+        observedDraft = current;
         await publish(events, observer);
       };
       try {
