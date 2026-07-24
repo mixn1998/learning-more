@@ -80,13 +80,23 @@ export function createLocalCourseRuntime(
   const planFlowRepository = createLocalFilePlanFlowRepository(input.dataRoot);
   const teachingWeightRepository = createLocalFileTeachingWeightRepository(input.dataRoot);
   const learningSessionRepositories = createLocalFileLearningSessionRepositories(input.dataRoot);
+  const listCurrentLessons = async function* (courseId: string) {
+    const course = await courseRepositories.courses.get(courseId);
+    if (course === undefined) return;
+    const lessons = await Promise.all(
+      course.lessonIds.map((lessonId) => courseRepositories.lessons.get(lessonId)),
+    );
+    for (const lesson of lessons) {
+      if (lesson !== undefined && lesson.courseId === courseId) yield lesson;
+    }
+  };
   const isLessonCompleted = async (lessonId: string) =>
     (await learningSessionRepositories.get(lessonId))?.learning.progress === 'completed';
   const listCompletedLessonOutlineContexts = async (courseId: string) => {
     const course = await courseRepositories.courses.get(courseId);
     if (course === undefined) return [];
     const lessons = [];
-    for await (const lesson of courseRepositories.lessons.listByCourse(courseId)) {
+    for await (const lesson of listCurrentLessons(courseId)) {
       if (await isLessonCompleted(lesson.id)) lessons.push(lesson);
     }
     const activeOrder = new Map(course.lessonIds.map((lessonId, index) => [lessonId, index]));
@@ -344,7 +354,7 @@ export function createLocalCourseRuntime(
       getTeachingWeightMetadata: (outlineVersionId) => teachingWeights.get(outlineVersionId),
       listCourses: listCoursesWithOutlineTitle,
       listAllLessons: () => courseRepositories.lessons.list(),
-      listLessons: (courseId) => courseRepositories.lessons.listByCourse(courseId),
+      listLessons: listCurrentLessons,
       listDraftSessions: () => authoringRepositories.outlineSessions.list(),
       saveCourse: (tx, course, expectedVersion) =>
         courseRepositories.courses.save(tx, course, expectedVersion),
