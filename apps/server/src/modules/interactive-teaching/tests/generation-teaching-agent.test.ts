@@ -268,8 +268,11 @@ describe('GenerationTeachingAgent', () => {
     const prompt = fake.request()?.prompt ?? '';
     expect(prompt).toContain('【教学方针（高优先级）】');
     expect(prompt).toContain(
-      '以开放式的思辨研讨为核心教学原则，不预设任何阅读理解式的标准答案（严禁设计阅读理解式的课堂互动）。提问设计和纠偏都应服务于用户的理解推进，纠偏后沿知识逻辑自然前进，而不是在原地打圈。',
+      '以开放、可回应且服务于理解推进的互动教学为核心，不预设任何阅读理解式的标准答案（严禁设计阅读理解式的课堂互动）。',
     );
+    expect(prompt).toContain('可以邀请学习者思考，但不强制其沿预设步骤');
+    expect(prompt).toContain('优先沿其思考路径继续教学');
+    expect(prompt).toContain('语言表达、叙事节奏和互动方式应随课程目标');
     expect(prompt.match(/【教学方针（高优先级）】/gu)).toHaveLength(1);
     expect(prompt.indexOf('【教学方针（高优先级）】')).toBeLessThan(
       prompt.indexOf('【通用教学原则】'),
@@ -282,9 +285,10 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('综合检测终态后先作跨知识点小结');
     expect(fake.request()?.prompt).toContain('是否还有疑惑或其他讲解需求');
     expect(fake.request()?.prompt).toContain('提问不要求机械复述');
+    expect(fake.request()?.prompt).toContain('一个综合问题覆盖当前知识点的核心结构');
     expect(fake.request()?.prompt).toContain('定位概念、条件、边界、推理或迁移漏洞');
-    expect(fake.request()?.prompt).toContain('据此补讲或换支架');
-    expect(fake.request()?.prompt).toContain('再用新问题验证');
+    expect(fake.request()?.prompt).toContain('同一理解缺口最多追问一次');
+    expect(fake.request()?.prompt).toContain('推动理解继续向前深化');
     expect(fake.request()?.prompt).toContain('每轮都以自然、易回应');
     expect((fake.request()?.prompt ?? '').indexOf('提问不要求机械复述')).toBeLessThan(
       (fake.request()?.prompt ?? '').indexOf('每轮都以自然、易回应'),

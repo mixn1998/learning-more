@@ -74,13 +74,15 @@ describe('teaching depth policy', () => {
     expect(rendered).not.toContain('典型误区');
   });
 
-  it('expands fixed key points with boundaries, counterexamples, misconceptions and dense interaction', () => {
+  it('expands fixed key points without turning depth into repeated detail interrogation', () => {
     const rendered = renderTeachingDepthPolicy(context({ fixedImportance: 'key' }));
     expect(rendered).toContain('【教学深模块｜重点】');
     expect(rendered).toContain('边界和适用条件');
     expect(rendered).toContain('反例');
     expect(rendered).toContain('典型误区');
-    expect(rendered).toContain('多轮互动');
+    expect(rendered).toContain('综合问题');
+    expect(rendered).toContain('最多追问一次');
+    expect(rendered).not.toContain('多轮互动');
   });
 
   it('combines fixed importance and adaptive difficulty without losing either strategy', () => {
@@ -91,6 +93,7 @@ describe('teaching depth policy', () => {
     expect(rendered).toContain('边界和适用条件');
     expect(rendered).toContain('学习者已经出现的错误、误解、不解或深入讲解需求');
     expect(rendered).toContain('更换例子、类比、反例、图形或推理路径');
+    expect(rendered).toContain('推进到更深一层理解');
   });
 
   it('downgrades a fixed key point for the current session when the learner requests brevity', () => {
