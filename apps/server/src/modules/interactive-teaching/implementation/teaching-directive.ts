@@ -155,9 +155,56 @@ export function normalizeTeachingControlState(state: TeachingStateSnapshot): Tea
 export function materializeTeachingDirective(
   stateInput: TeachingStateSnapshot,
   directiveInput: unknown,
+  validation?: Readonly<{ currentUserMessageId?: string }>,
 ): FullTeachingDirective {
   const state = normalizeTeachingControlState(stateInput);
-  const parsed = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
+  const parsedInput = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
+  const knowledgeRefByAlias = new Map(
+    state.knowledgePoints.map((point, index) => [`K${index + 1}`, point.ref]),
+  );
+  const resolveKnowledgeRef = (ref: string) => knowledgeRefByAlias.get(ref) ?? ref;
+  const resolveSourceMessageId = (sourceMessageId: string) =>
+    sourceMessageId === 'U1' && validation?.currentUserMessageId !== undefined
+      ? validation.currentUserMessageId
+      : sourceMessageId;
+  const parsed: TeachingDirective =
+    parsedInput.schemaVersion === 1
+      ? parsedInput
+      : {
+          ...parsedInput,
+          ...(parsedInput.activeKnowledgePointRef === undefined ||
+          parsedInput.activeKnowledgePointRef === null
+            ? {}
+            : {
+                activeKnowledgePointRef: resolveKnowledgeRef(parsedInput.activeKnowledgePointRef),
+              }),
+          ...(parsedInput.knowledgePoints === undefined
+            ? {}
+            : {
+                knowledgePoints: parsedInput.knowledgePoints.map((point) => ({
+                  ...point,
+                  ref: resolveKnowledgeRef(point.ref),
+                })),
+              }),
+          ...(parsedInput.difficultySignals === undefined
+            ? {}
+            : {
+                difficultySignals: parsedInput.difficultySignals.map((signal) => ({
+                  ...signal,
+                  knowledgePointRef: resolveKnowledgeRef(signal.knowledgePointRef),
+                  sourceMessageId: resolveSourceMessageId(signal.sourceMessageId),
+                })),
+              }),
+          ...(parsedInput.verificationSignals === undefined
+            ? {}
+            : {
+                verificationSignals: parsedInput.verificationSignals.map((signal) => ({
+                  ...signal,
+                  knowledgePointRef: resolveKnowledgeRef(signal.knowledgePointRef),
+                  sourceMessageId: resolveSourceMessageId(signal.sourceMessageId),
+                })),
+              }),
+        };
   if (parsed.schemaVersion === 1) {
     return {
       ...parsed,
@@ -206,9 +253,10 @@ export function materializeTeachingDirective(
 export function teachingDirectiveMatchesState(
   stateInput: TeachingStateSnapshot,
   directiveInput: TeachingDirective,
+  validation?: Readonly<{ currentUserMessageId?: string }>,
 ): boolean {
   const state = normalizeTeachingControlState(stateInput);
-  const directive = materializeTeachingDirective(state, directiveInput);
+  const directive = materializeTeachingDirective(state, directiveInput, validation);
   const statePoints = state.knowledgePoints.map((point) => ({
     ref: point.ref,
     status: normalizedProgress(point.progress),
@@ -264,10 +312,13 @@ function closureStateMatchesPhase(directive: FullTeachingDirective): boolean {
 export function applyTeachingDirective(
   currentInput: TeachingStateSnapshot,
   directiveInput: unknown,
-  validation?: Readonly<{ currentUserMessageId?: string }>,
+  validation?: Readonly<{
+    currentUserMessageId?: string;
+    enforceCurrentTurn?: boolean;
+  }>,
 ): TeachingStateSnapshot {
   const current = normalizeTeachingControlState(currentInput);
-  const directive = materializeTeachingDirective(current, directiveInput);
+  const directive = materializeTeachingDirective(current, directiveInput, validation);
   const expectedRefs = current.knowledgePoints.map((point) => point.ref);
   const incomingRefs = directive.knowledgePoints.map((point) => point.ref);
   if (
@@ -280,6 +331,7 @@ export function applyTeachingDirective(
 
   const incomingDifficultySignals = directive.difficultySignals ?? [];
   if (
+    validation?.enforceCurrentTurn !== false &&
     validation !== undefined &&
     incomingDifficultySignals.some(
       (signal) => signal.sourceMessageId !== validation.currentUserMessageId,
@@ -315,6 +367,7 @@ export function applyTeachingDirective(
       invalid('teaching_directive_skipped_point_interaction_mismatch');
     }
     if (
+      validation?.enforceCurrentTurn !== false &&
       validation !== undefined &&
       incoming.status === 'completed' &&
       previous !== 'learning' &&

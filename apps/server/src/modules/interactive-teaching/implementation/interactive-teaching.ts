@@ -359,6 +359,7 @@ export function createInteractiveTeaching(options: {
       const artifactRef = `assistant-message:${assistantMessageId}`;
       let streamedMarkdown = '';
       let completedReplyMarkdown: string | undefined;
+      let artifactSave: Promise<void> | undefined;
       let directiveValidated = false;
       let directiveApplied = false;
       let generationTerminalPublished = false;
@@ -382,6 +383,12 @@ export function createInteractiveTeaching(options: {
           },
           onReplyCompleted(markdown) {
             completedReplyMarkdown = markdown;
+            artifactSave ??= options.assistantArtifacts.save({
+              artifactRef,
+              markdown,
+              completionStatus: 'complete',
+            });
+            void artifactSave.catch(() => undefined);
           },
         });
         completedReplyMarkdown = result.markdown;
@@ -412,16 +419,18 @@ export function createInteractiveTeaching(options: {
           else streamProjectionAvailable = false;
         }
         assertCurrentTask(accepted.taskId);
-        await options.assistantArtifacts.save({
-          artifactRef,
-          markdown: result.markdown,
-          completionStatus: 'complete',
-        });
+        await (artifactSave ??
+          options.assistantArtifacts.save({
+            artifactRef,
+            markdown: result.markdown,
+            completionStatus: 'complete',
+          }));
         await applyCommittedDirective({
           courseId: input.courseId,
           lessonId: input.lessonId,
           sessionId: input.sessionId,
           directive: result.directive,
+          knowledgePointRefs: input.assembled.lesson.coreKnowledgePoints.map((point) => point.ref),
           ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
           isCurrent: () => isCurrentTask(accepted.taskId),
         });
@@ -600,16 +609,21 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     directive?: TeachingDirective | undefined;
+    knowledgePointRefs?: readonly string[];
     currentUserMessageId?: string;
+    enforceCurrentTurn?: boolean;
     isCurrent?: () => boolean;
   }): Promise<void> {
     if (input.directive === undefined) return;
     if (input.isCurrent?.() === false) throw new Error('teaching_generation_superseded');
-    const facts = await options.contextSources.getCourseAndLesson({
-      courseId: input.courseId,
-      lessonId: input.lessonId,
-    });
-    const knowledgePointRefs = facts.lesson.coreKnowledgePoints.map((point) => point.ref);
+    const knowledgePointRefs =
+      input.knowledgePointRefs ??
+      (
+        await options.contextSources.getCourseAndLesson({
+          courseId: input.courseId,
+          lessonId: input.lessonId,
+        })
+      ).lesson.coreKnowledgePoints.map((point) => point.ref);
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       if (input.isCurrent?.() === false) throw new Error('teaching_generation_superseded');
@@ -628,13 +642,26 @@ export function createInteractiveTeaching(options: {
               knowledgePointRefs,
             })
           : alignTeachingState(current.state, knowledgePointRefs);
-      if (teachingDirectiveMatchesState(base, input.directive)) return;
+      if (
+        teachingDirectiveMatchesState(
+          base,
+          input.directive,
+          input.currentUserMessageId === undefined
+            ? undefined
+            : { currentUserMessageId: input.currentUserMessageId },
+        )
+      ) {
+        return;
+      }
       const nextState = applyTeachingDirective(
         base,
         input.directive,
         input.currentUserMessageId === undefined
           ? undefined
-          : { currentUserMessageId: input.currentUserMessageId },
+          : {
+              currentUserMessageId: input.currentUserMessageId,
+              enforceCurrentTurn: input.enforceCurrentTurn ?? true,
+            },
       );
       try {
         await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) => {
@@ -683,6 +710,9 @@ export function createInteractiveTeaching(options: {
     if (taskId === undefined) return;
     const task = input.tasks.find((candidate) => candidate.id === taskId);
     if (task?.status !== 'completed') return;
+    const currentUserMessageId = input.messages
+      .slice(0, latestAssistantIndex)
+      .findLast((message) => message.role === 'user')?.messageId;
     let result: Awaited<ReturnType<TeachingAgent['read']>>;
     try {
       result = await options.agent.read(taskId);
@@ -702,6 +732,8 @@ export function createInteractiveTeaching(options: {
         lessonId: input.lessonId,
         sessionId: input.sessionId,
         directive: result.directive,
+        ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
+        enforceCurrentTurn: false,
       });
     } catch (error) {
       if (

@@ -309,11 +309,10 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).not.toContain('连续两次回答正确');
     expect(fake.request()?.prompt).toContain('answer_error');
     expect(fake.request()?.prompt).toContain('延伸、脑洞或相邻探索不计');
-    expect(fake.request()?.prompt).toContain(
-      '"allowedDifficultySignalSourceMessageId":"message_current"',
-    );
+    expect(fake.request()?.prompt).toContain('"allowedDifficultySignalSourceMessageId":"U1"');
     expect(fake.request()?.prompt).toContain('"comprehensiveApplication":"pending"');
-    expect(fake.request()?.prompt).toContain('knowledge:kp_1');
+    expect(fake.request()?.prompt).toContain('"ref":"K1"');
+    expect(fake.request()?.prompt).not.toContain('knowledge:kp_1');
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
     expect(fake.request()?.prompt).not.toContain('off_scope');
     expect(fake.request()?.prompt?.match(/Explain this systematically\./gu)).toHaveLength(1);

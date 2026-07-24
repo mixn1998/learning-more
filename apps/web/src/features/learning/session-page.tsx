@@ -710,7 +710,6 @@ export function SessionPage(props: {
   ) => {
     hydrate(initialSnapshot);
     const needsTeachingRefresh = (snapshot: Awaited<ReturnType<LearningClient['getSession']>>) =>
-      snapshot.teachingProgress?.observationStatus === 'pending' ||
       snapshot.teachingProgress?.teachingWeightStatus === 'pending';
     if (needsTeachingRefresh(initialSnapshot) && !teachingRefreshes.current.has(sessionId)) {
       teachingRefreshes.current.add(sessionId);

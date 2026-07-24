@@ -1107,7 +1107,7 @@ describe('learning SessionPage', () => {
     expect(screen.getByText('待讲解')).toBeInTheDocument();
   });
 
-  it('refreshes the visible learning path when pending teaching observation becomes current', async () => {
+  it('does not poll the full session while background teaching observation is pending', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const getSession = vi
       .fn()
@@ -1185,8 +1185,9 @@ describe('learning SessionPage', () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
 
-    await waitFor(() => expect(screen.getByText('体验目标').closest('li')).toHaveClass('active'));
-    expect(screen.getByText('玩家幻想').closest('li')).toHaveClass('done');
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('玩家幻想').closest('li')).toHaveClass('active');
+    expect(screen.getByText('体验目标').closest('li')).toHaveClass('pending');
   });
 
   it('refreshes preset emphasis when background teaching weights become ready', async () => {
@@ -1488,7 +1489,7 @@ describe('learning SessionPage', () => {
     expect(stream).toHaveBeenCalledWith('task_running_01', expect.any(Function));
   });
 
-  it('keeps streamed Markdown visible while teaching progress is refreshed', async () => {
+  it('keeps streamed Markdown visible without polling for background observation', async () => {
     vi.useFakeTimers();
     let listener:
       | ((event: { type: string; data: { markdown?: string; resultRef?: string } }) => void)
@@ -1535,7 +1536,7 @@ describe('learning SessionPage', () => {
       await Promise.resolve();
     });
 
-    expect(getSession).toHaveBeenCalledTimes(2);
+    expect(getSession).toHaveBeenCalledTimes(1);
     expect(screen.getByText('First streamed paragraph.')).toBeInTheDocument();
 
     act(() => listener?.({ type: 'message.delta', data: { markdown: ' Second paragraph.' } }));
@@ -1546,7 +1547,7 @@ describe('learning SessionPage', () => {
       await Promise.resolve();
     });
 
-    expect(getSession).toHaveBeenCalledTimes(3);
+    expect(getSession).toHaveBeenCalledTimes(1);
     expect(screen.getByText('First streamed paragraph. Second paragraph.')).toBeInTheDocument();
   });
 });

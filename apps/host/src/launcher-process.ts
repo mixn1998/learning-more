@@ -167,7 +167,7 @@ export async function startOrAdoptLauncher(options: {
 
 export async function waitForLauncherReady(
   expectedBuildId?: string,
-  timeoutMs = 90_000,
+  timeoutMs = 5 * 60_000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

@@ -33,6 +33,38 @@ describe('teaching directive', () => {
     });
   });
 
+  it('maps compact machine references back to authoritative ledger and message identifiers', () => {
+    const next = applyTeachingDirective(
+      initial(),
+      {
+        schemaVersion: 2,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'K1',
+        knowledgePoints: [{ ref: 'K1', status: 'learning' }],
+        difficultySignals: [
+          {
+            knowledgePointRef: 'K1',
+            sourceMessageId: 'U1',
+            kind: 'request_deeper_explanation',
+          },
+        ],
+      },
+      { currentUserMessageId: 'message_current' },
+    );
+
+    expect(next.activeKnowledgePointRef).toBe('knowledge:kp_1');
+    expect(next.knowledgePoints[0]).toMatchObject({
+      ref: 'knowledge:kp_1',
+      progress: 'learning',
+      difficultySignals: [
+        {
+          sourceMessageId: 'message_current',
+          kind: 'request_deeper_explanation',
+        },
+      ],
+    });
+  });
+
   it('applies a sparse completion without requiring unchanged knowledge points', () => {
     const learning = applyTeachingDirective(initial(), {
       schemaVersion: 2,

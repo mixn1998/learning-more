@@ -23,6 +23,10 @@ export function normalizeTerminalTeachingControl(raw: string): string {
 
 function machineControlContext(context: TeachingContextPackage): string {
   const projection = projectTeachingLedger(context);
+  const knowledgeAliasByRef = new Map(
+    context.lesson.coreKnowledgePoints.map((point, index) => [point.ref, `K${index + 1}`]),
+  );
+  const knowledgeAlias = (ref: string) => knowledgeAliasByRef.get(ref) ?? ref;
   const currentUserMessageId = context.recentMessages.findLast(
     (message) => message.role === 'user' && message.completionStatus === 'complete',
   )?.messageId;
@@ -32,9 +36,9 @@ function machineControlContext(context: TeachingContextPackage): string {
     projectionMode: projection.mode,
     ...(projection.activeKnowledgePointRef === undefined
       ? {}
-      : { activeKnowledgePointRef: projection.activeKnowledgePointRef }),
+      : { activeKnowledgePointRef: knowledgeAlias(projection.activeKnowledgePointRef) }),
     knowledgePoints: projection.knowledgePoints.map((point) => ({
-      ref: point.ref,
+      ref: knowledgeAlias(point.ref),
       title: point.title,
       status: point.status,
       interactionStatus: point.interactionStatus,
@@ -43,7 +47,12 @@ function machineControlContext(context: TeachingContextPackage): string {
     })),
     ...(projection.nextKnowledgePoint === undefined
       ? {}
-      : { nextKnowledgePoint: projection.nextKnowledgePoint }),
+      : {
+          nextKnowledgePoint: {
+            ref: knowledgeAlias(projection.nextKnowledgePoint.ref),
+            title: projection.nextKnowledgePoint.title,
+          },
+        }),
     progress: {
       completedOrSkipped: projection.completedOrSkippedCount,
       total: projection.totalKnowledgePointCount,
@@ -53,7 +62,7 @@ function machineControlContext(context: TeachingContextPackage): string {
     ...(context.turnKind === 'opening' || currentUserMessageId === undefined
       ? {}
       : {
-          allowedDifficultySignalSourceMessageId: currentUserMessageId,
+          allowedDifficultySignalSourceMessageId: 'U1',
         }),
     comprehensiveApplication: projection.comprehensiveCheck,
     closureInquiry: projection.closureInquiry,
@@ -62,7 +71,12 @@ function machineControlContext(context: TeachingContextPackage): string {
 }
 
 export function renderTeachingControlProtocol(context: TeachingContextPackage): string {
+  const compactReferenceProtocol = [
+    '知识点引用只使用当前机器状态中的 K1、K2 等短编号；不要复制或创造内部知识点长标识。',
+    'difficultySignals.sourceMessageId 只使用当前机器状态允许的 U1；服务端会确定性映射回真实消息。',
+  ].join('\n');
   return [
+    compactReferenceProtocol,
     '【机器控制协议｜不得展示给学习者】',
     '严格输出两个区块：先给学习者可见回复，再给隐藏控制 JSON：',
     `${REPLY_START}{仅供学习者阅读的 Markdown}${REPLY_END}`,
