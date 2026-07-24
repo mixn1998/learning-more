@@ -254,6 +254,9 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain('课程邻接探索');
     expect(fake.request()?.prompt).toContain('把选择权交给学习者');
     expect(fake.request()?.prompt).toContain(
+      '教学语言应随教学目标与互动形式自然调整；游戏化课程应有代入感和行动感，避免僵硬的教科书式表达，但不得牺牲概念准确性或强行堆砌游戏术语。',
+    );
+    expect(fake.request()?.prompt).toContain(
       '不要默认我已经理解；提供深入透彻的理解过程、更强的思维激活和思考密度。',
     );
     const prompt = fake.request()?.prompt ?? '';
