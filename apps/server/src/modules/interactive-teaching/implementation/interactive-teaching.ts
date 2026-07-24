@@ -19,6 +19,7 @@ import type {
 import type { TeachingAgent } from '../ports/teaching-agent.js';
 import type { TeachingDirective } from '../ports/teaching-agent.js';
 import type {
+  MaterializedTeachingMessage,
   TeachingContextAssembler,
   TeachingContextSources,
 } from '../ports/teaching-context-sources.js';
@@ -56,6 +57,23 @@ function topicRef(title: string): string {
     .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
     .replace(/^-|-$/gu, '');
   return `course-topic:${slug.length === 0 ? sha256(title).slice(0, 12) : slug}`;
+}
+
+function latestTeachingTurn(messages: readonly MaterializedTeachingMessage[]) {
+  let assistantIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'assistant') {
+      assistantIndex = index;
+      break;
+    }
+  }
+  if (assistantIndex < 0) return [];
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      return messages.slice(index, assistantIndex + 1);
+    }
+  }
+  return messages.slice(assistantIndex, assistantIndex + 1);
 }
 
 function backgroundContext(context: CommandContext, commandId: string): CommandContext {
@@ -98,7 +116,8 @@ export function createInteractiveTeaching(options: {
   interactionSink?: TeachingInteractionSink;
   ledgerRepository: TeachingLedgerRepository;
   unitOfWork: UnitOfWork;
-  frameLog?: Pick<GenerationFrameLog, 'ensureTask' | 'append'>;
+  frameLog?: Pick<GenerationFrameLog, 'ensureTask' | 'append'> &
+    Partial<Pick<GenerationFrameLog, 'readAfter'>>;
   assistantArtifacts: {
     save(input: {
       artifactRef: string;
@@ -165,6 +184,67 @@ export function createInteractiveTeaching(options: {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async function clearFailedGeneration(input: {
+    courseId: string;
+    lessonId: string;
+    sessionId: string;
+    taskId: string;
+    context: CommandContext;
+    errorCode: string;
+    invalidateCompleted: boolean;
+  }): Promise<void> {
+    try {
+      const task = (await options.agent.listTasks(input.sessionId)).find(
+        (candidate) => candidate.id === input.taskId,
+      );
+      if (
+        task !== undefined &&
+        (task.status === 'queued' ||
+          task.status === 'running' ||
+          (input.invalidateCompleted && task.status === 'completed'))
+      ) {
+        try {
+          await options.agent.invalidate(input.taskId, input.errorCode);
+        } catch {
+          await options.agent.cancel(input.taskId);
+        }
+      }
+    } catch {
+      // Session cleanup below is still required when task projection repair fails.
+    }
+    try {
+      const latest = await options.sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: input.lessonId },
+        {
+          correlationId: input.context.correlationId,
+          actor: input.context.actor,
+          requestedAt: input.context.requestedAt,
+          receivedAt: input.context.receivedAt,
+        },
+      );
+      if (
+        latest.learning.session?.id === input.sessionId &&
+        latest.learning.session.activeGenerationTaskId === input.taskId
+      ) {
+        await options.sessionModule.execute(
+          {
+            type: 'StopSessionGeneration',
+            lessonId: input.lessonId,
+            taskId: input.taskId,
+          },
+          backgroundContext(input.context, `${input.context.commandId}:clear-failed-generation`),
+        );
+      }
+    } catch {
+      // Session reads reconcile the durable terminal task/frame state on the next request.
+    }
+    try {
+      await markObservationFailed(input.courseId, input.lessonId, input.sessionId);
+    } catch {
+      // Observation state is secondary to releasing the generation/session binding.
     }
   }
 
@@ -382,7 +462,6 @@ export function createInteractiveTeaching(options: {
           }
           throw error;
         }
-        let failedReplyCommitted = false;
         const failedReplyMarkdown = completedReplyMarkdown ?? streamedMarkdown;
         const failedReplyStatus = completedReplyMarkdown === undefined ? 'interrupted' : 'complete';
         if (failedReplyMarkdown.length > 0 && (!directiveValidated || directiveApplied)) {
@@ -404,7 +483,6 @@ export function createInteractiveTeaching(options: {
               },
               backgroundContext(input.context, `${input.context.commandId}:assistant-recovered`),
             );
-            failedReplyCommitted = true;
             if (failedReplyStatus === 'complete') {
               await tryAppendFrame(accepted.taskId, 'message.completed', {
                 messageId: assistantMessageId,
@@ -425,27 +503,15 @@ export function createInteractiveTeaching(options: {
             // Fall back to clearing the active task. The original generation failure stays primary.
           }
         }
-        if (!directiveValidated) {
-          try {
-            await options.agent.invalidate(accepted.taskId, 'teaching_output_invalid');
-          } catch {
-            // Session cleanup remains authoritative; reconciliation retries invalidation.
-          }
-        }
-        if (!failedReplyCommitted) {
-          try {
-            await options.sessionModule.execute(
-              {
-                type: 'StopSessionGeneration',
-                lessonId: input.lessonId,
-                taskId: accepted.taskId,
-              },
-              backgroundContext(input.context, `${input.context.commandId}:assistant-failed`),
-            );
-          } catch {
-            // The terminal stream event must still be emitted if session cleanup needs recovery.
-          }
-        }
+        await clearFailedGeneration({
+          courseId: input.courseId,
+          lessonId: input.lessonId,
+          sessionId: input.sessionId,
+          taskId: accepted.taskId,
+          context: input.context,
+          errorCode: directiveValidated ? 'teaching_generation_failed' : 'teaching_output_invalid',
+          invalidateCompleted: !directiveValidated,
+        });
         await tryAppendFrame(accepted.taskId, 'task.failed', {
           problem:
             failedReplyStatus === 'complete' && !directiveValidated
@@ -678,6 +744,37 @@ export function createInteractiveTeaching(options: {
     }
     let messages = await options.contextSources.listMessages(input.sessionId);
     let tasks = await options.agent.listTasks(input.sessionId);
+    const activeTaskId = learning.learning.session.activeGenerationTaskId;
+    const activeTask = tasks.find((task) => task.id === activeTaskId);
+    if (
+      activeTaskId !== undefined &&
+      activeTask !== undefined &&
+      (activeTask.status === 'queued' || activeTask.status === 'running') &&
+      options.frameLog?.readAfter !== undefined
+    ) {
+      try {
+        const terminalFrame = await options.frameLog.readAfter(activeTaskId, Number.MAX_SAFE_INTEGER);
+        if (
+          terminalFrame.meta.state === 'failed' ||
+          terminalFrame.meta.state === 'cancelled' ||
+          terminalFrame.meta.state === 'timeout'
+        ) {
+          await clearFailedGeneration({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+            sessionId: input.sessionId,
+            taskId: activeTaskId,
+            context: input.context,
+            errorCode: `teaching_frame_${terminalFrame.meta.state}`,
+            invalidateCompleted: false,
+          });
+          learning = await queryLearning();
+          tasks = await options.agent.listTasks(input.sessionId);
+        }
+      } catch {
+        // A missing stream projection is not a task failure; entity reconciliation continues below.
+      }
+    }
     const committedTaskIds = new Set(
       messages.flatMap((message) =>
         message.role === 'assistant' && message.generationTaskId !== undefined
@@ -713,11 +810,10 @@ export function createInteractiveTeaching(options: {
       messages,
       tasks,
     });
+    const reconciledActiveTaskId = learning.learning.session?.activeGenerationTaskId;
     let plan = planTeachingGenerationReconciliation({
       sessionId: input.sessionId,
-      ...(learning.learning.session.activeGenerationTaskId === undefined
-        ? {}
-        : { activeTaskId: learning.learning.session.activeGenerationTaskId }),
+      ...(reconciledActiveTaskId === undefined ? {} : { activeTaskId: reconciledActiveTaskId }),
       tasks,
       messages,
     });
@@ -734,16 +830,16 @@ export function createInteractiveTeaching(options: {
       }
     }
 
-    if (plan.clearActiveTask && learning.learning.session.activeGenerationTaskId !== undefined) {
+    if (plan.clearActiveTask && reconciledActiveTaskId !== undefined) {
       await options.sessionModule.execute(
         {
           type: 'StopSessionGeneration',
           lessonId: input.lessonId,
-          taskId: learning.learning.session.activeGenerationTaskId,
+          taskId: reconciledActiveTaskId,
         },
         backgroundContext(
           input.context,
-          `reconcile-clear:${learning.learning.session.activeGenerationTaskId}`,
+          `reconcile-clear:${reconciledActiveTaskId}`,
         ),
       );
       learning = await queryLearning();
@@ -948,17 +1044,7 @@ export function createInteractiveTeaching(options: {
             facts.lesson.coreKnowledgePoints.map((point) => point.ref),
           );
     const allMessages = await options.contextSources.listMessages(input.sessionId);
-    const interactionBackfillRequired = current?.observations.some(
-      (observation) => observation.status === 'active' && observation.interactions === undefined,
-    );
-    const observedThroughIndex =
-      interactionBackfillRequired === true || previousState.observedThroughMessageId === undefined
-        ? -1
-        : allMessages.findIndex(
-            (message) => message.messageId === previousState.observedThroughMessageId,
-          );
-    const messages =
-      observedThroughIndex < 0 ? allMessages : allMessages.slice(observedThroughIndex);
+    const messages = latestTeachingTurn(allMessages);
     if (messages.length === 0) return;
     const sourceSnapshotHash = sha256(
       JSON.stringify(
@@ -970,9 +1056,16 @@ export function createInteractiveTeaching(options: {
         })),
       ),
     );
-    const courseRelationRefs = [
+    const allCourseRelationRefs = [
       ...facts.course.lessonMap.map((lesson) => topicRef(lesson.title)),
       ...facts.course.lessonMap.map((lesson) => `lesson:${lesson.lessonId}`),
+    ];
+    const observationRelations = facts.course.lessonMap.filter(
+      (lesson) => lesson.relation === 'current' || lesson.relation === 'prerequisite',
+    );
+    const courseRelationRefs = [
+      ...observationRelations.map((lesson) => topicRef(lesson.title)),
+      ...observationRelations.map((lesson) => `lesson:${lesson.lessonId}`),
     ];
     const observation = await options.observer.observe({
       lessonId: input.lessonId,
@@ -990,7 +1083,7 @@ export function createInteractiveTeaching(options: {
       sessionId: input.sessionId,
       sourceSnapshotHash,
       knowledgePointRefs: facts.lesson.coreKnowledgePoints.map((point) => point.ref),
-      courseRelationRefs,
+      courseRelationRefs: allCourseRelationRefs,
       existingEntryRefs:
         current?.observations
           .filter((candidate) => candidate.status === 'active')

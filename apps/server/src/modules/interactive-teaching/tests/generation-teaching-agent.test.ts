@@ -68,6 +68,7 @@ function runtime(
   options: {
     includeKnowledgePointTitles?: boolean;
     streamChunks?: readonly string[];
+    emitStalePrefixSnapshot?: boolean;
     transientRunningReadFailures?: number;
     waitForCancellation?: boolean;
   } = {},
@@ -122,10 +123,18 @@ function runtime(
       if (options.streamChunks !== undefined) {
         task = { ...task, status: 'running', draftMarkdown: '' };
         for (const subscriber of subscribers) subscriber(task);
+        let previousSnapshot: GenerationTask | undefined;
         for (const chunk of options.streamChunks) {
           await new Promise((resolve) => setTimeout(resolve, 70));
+          previousSnapshot = task;
           task = { ...task, draftMarkdown: `${task.draftMarkdown ?? ''}${chunk}` };
           for (const subscriber of subscribers) subscriber(task);
+          if (
+            options.emitStalePrefixSnapshot === true &&
+            previousSnapshot.draftMarkdown !== task.draftMarkdown
+          ) {
+            for (const subscriber of subscribers) subscriber(previousSnapshot);
+          }
         }
       }
       task = {
@@ -443,6 +452,31 @@ describe('GenerationTeachingAgent', () => {
       'directive',
     ]);
     expect(fake.getCount()).toBeLessThanOrEqual(3);
+  });
+
+  it('ignores stale prefix snapshots delivered after newer streaming snapshots', async () => {
+    const control = `<learning-more-control>${JSON.stringify(runtime().directive)}</learning-more-control>`;
+    const fake = runtime({
+      streamChunks: [
+        '<learning-more-reply>A durable streamed reply.',
+        ` A second sentence.</learning-more-reply>${control}`,
+      ],
+      emitStalePrefixSnapshot: true,
+    });
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+    await agent.submit(context(), 'message_user_stale_snapshot');
+    const observed: string[] = [];
+
+    await expect(
+      agent.complete('task_1', {
+        onReplyDelta(markdown) {
+          observed.push(markdown);
+        },
+      }),
+    ).resolves.toMatchObject({
+      markdown: 'A durable streamed reply. A second sentence.',
+    });
+    expect(observed.join('')).toBe('A durable streamed reply. A second sentence.');
   });
 
   it('treats a transient missing task projection as in-flight instead of failed', async () => {
