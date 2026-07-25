@@ -6,6 +6,7 @@ import type { HomeDashboardView } from '@learning-more/contracts';
 import { HomePage } from './features/home/home-page.js';
 import { AppShell } from './layouts/app-shell.js';
 import type { AuthoringLocationState } from './state/authoring-start-intent.js';
+import { scheduleSnapshotCache } from './state/dashboard-query-caches.js';
 import { homeDashboardCache } from './state/home-dashboard-cache.js';
 import { useRuntimeState } from './state/version-guard.js';
 
@@ -118,6 +119,10 @@ function HomeRoute() {
           state: { authoringStartIntent } satisfies AuthoringLocationState,
         })
       }
+      onScheduleChanged={() => {
+        void homeDashboardCache.revalidate().catch(() => undefined);
+        void scheduleSnapshotCache.revalidate().catch(() => undefined);
+      }}
       {...(dashboard === undefined
         ? {}
         : {

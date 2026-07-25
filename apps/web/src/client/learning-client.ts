@@ -68,13 +68,13 @@ export interface LearningClient {
     sessionId: string;
     markdown: string;
     resourceVersion: number;
-  }): Promise<{ taskId: string; resourceVersion: number; userMessageId?: string | undefined }>;
+  }): Promise<{ taskId: string; resourceVersion: number; userMessageId: string }>;
   reviseMessage(input: {
     sessionId: string;
     messageId: string;
     markdown: string;
     resourceVersion: number;
-  }): Promise<{ taskId: string; resourceVersion: number; userMessageId?: string | undefined }>;
+  }): Promise<{ taskId: string; resourceVersion: number; userMessageId: string }>;
   retryGeneration(
     sessionId: string,
     resourceVersion: number,
@@ -197,21 +197,30 @@ export const learningClient: LearningClient = {
       })
     ).data;
   },
-  sendMessage: (input) =>
-    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/messages`, {
-      body: { markdown: input.markdown },
-      schema: GenerationTaskAcceptedResponseSchema,
-      resourceVersion: input.resourceVersion,
-    }),
-  reviseMessage: (input) =>
-    commandRequest(
+  sendMessage: async (input) => {
+    const accepted = await commandRequest(
+      `/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/messages`,
+      {
+        body: { markdown: input.markdown },
+        schema: GenerationTaskAcceptedResponseSchema,
+        resourceVersion: input.resourceVersion,
+      },
+    );
+    if (accepted.userMessageId === undefined) throw new Error('user_message_id_missing');
+    return { ...accepted, userMessageId: accepted.userMessageId };
+  },
+  reviseMessage: async (input) => {
+    const accepted = await commandRequest(
       `/api/v1/lesson-sessions/${encodeURIComponent(input.sessionId)}/messages/${encodeURIComponent(input.messageId)}/revisions`,
       {
         body: { markdown: input.markdown },
         schema: GenerationTaskAcceptedResponseSchema,
         resourceVersion: input.resourceVersion,
       },
-    ),
+    );
+    if (accepted.userMessageId === undefined) throw new Error('user_message_id_missing');
+    return { ...accepted, userMessageId: accepted.userMessageId };
+  },
   retryGeneration: (sessionId, resourceVersion) =>
     commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/generation-retries`, {
       body: {},

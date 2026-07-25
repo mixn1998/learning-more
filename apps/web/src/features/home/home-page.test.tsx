@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CourseAuthoringClient } from '../../client/course-authoring-client.js';
+import type { PlanningClient } from '../../client/planning-client.js';
 import { HomePage, selectContinueTarget } from './home-page.js';
 
 function client(
@@ -27,6 +28,24 @@ function client(
     reviseOutline: vi.fn(),
     getOutlineVersion: vi.fn(),
     uploadMaterial: vi.fn(),
+    ...overrides,
+  };
+}
+
+function planningApi(overrides: Partial<PlanningClient> = {}): PlanningClient {
+  return {
+    getSchedule: vi.fn().mockResolvedValue({ items: [], resourceVersion: 0 }),
+    getPlanningContext: vi.fn(),
+    clearSchedule: vi.fn(),
+    createSchedule: vi.fn(),
+    moveSchedule: vi.fn(),
+    resizeSchedule: vi.fn(),
+    setScheduleLock: vi.fn(),
+    removeSchedule: vi.fn(),
+    requestPreview: vi.fn(),
+    confirmPlanFlow: vi.fn(),
+    getPlanFlow: vi.fn(),
+    managePlanFlow: vi.fn(),
     ...overrides,
   };
 }
@@ -76,6 +95,7 @@ describe('home page', () => {
   });
 
   it('shows completion only in the home timetable and today agenda', () => {
+    const navigate = vi.fn();
     const { container } = render(
       <HomePage
         client={client()}
@@ -130,7 +150,7 @@ describe('home page', () => {
           },
         ]}
         now={new Date('2026-07-18T08:00:00+08:00')}
-        onNavigate={() => undefined}
+        onNavigate={navigate}
       />,
     );
 
@@ -140,12 +160,20 @@ describe('home page', () => {
 
     const agenda = screen.getByRole('heading', { name: /今日学习/ }).closest('section');
     expect(agenda).not.toBeNull();
-    expect(within(agenda!).getByRole('button', { name: /Completed lesson/ })).toHaveTextContent(
-      '已完成',
-    );
-    expect(within(agenda!).getByRole('button', { name: /Pending lesson/ })).toHaveTextContent(
-      '待学习',
-    );
+    expect(
+      within(agenda!)
+        .getByRole('button', { name: /Completed lesson/ })
+        .closest('article'),
+    ).toHaveTextContent('已完成');
+    expect(
+      within(agenda!)
+        .getByRole('button', { name: /Pending lesson/ })
+        .closest('article'),
+    ).toHaveTextContent('待学习');
+    fireEvent.click(within(agenda!).getByRole('button', { name: /Completed lesson/ }));
+    expect(navigate).toHaveBeenLastCalledWith('/courses/course_01/lessons/lesson_done/record');
+    fireEvent.click(within(agenda!).getByRole('button', { name: /Pending lesson/ }));
+    expect(navigate).toHaveBeenLastCalledWith('/courses/course_01/lessons/lesson_pending');
 
     fireEvent.click(screen.getByRole('button', { name: /Tomorrow lesson/ }));
     const futureAgenda = screen.getByRole('heading', { name: /学习安排/ }).closest('section');
@@ -214,6 +242,170 @@ describe('home page', () => {
     );
 
     expect(screen.getByText('今日待学 1 节，逾期 0 节，待规划 0 节')).toBeVisible();
+  });
+
+  it('labels past lessons as completed, abandoned, or overdue', () => {
+    render(
+      <HomePage
+        client={client()}
+        courses={[{ courseId: 'course_01', title: 'Course' }]}
+        lessons={[
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_done',
+            title: 'Past completed',
+            progress: 'completed',
+          },
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_abandoned',
+            title: 'Past abandoned',
+            progress: 'abandoned',
+          },
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_overdue',
+            title: 'Past overdue',
+            progress: 'not_started',
+          },
+        ]}
+        schedule={[
+          {
+            scheduleItemId: 'schedule_done',
+            courseId: 'course_01',
+            lessonId: 'lesson_done',
+            startAt: '2026-07-17T09:00:00+08:00',
+            endAt: '2026-07-17T10:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+          {
+            scheduleItemId: 'schedule_abandoned',
+            courseId: 'course_01',
+            lessonId: 'lesson_abandoned',
+            startAt: '2026-07-17T10:00:00+08:00',
+            endAt: '2026-07-17T11:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+          {
+            scheduleItemId: 'schedule_overdue',
+            courseId: 'course_01',
+            lessonId: 'lesson_overdue',
+            startAt: '2026-07-17T11:00:00+08:00',
+            endAt: '2026-07-17T12:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+        ]}
+        now={new Date('2026-07-18T08:00:00+08:00')}
+        onNavigate={() => undefined}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Past completed.*Past abandoned.*Past overdue/ }),
+    );
+    const pastAgenda = screen
+      .getByRole('heading', { name: '2026-07-17 · 学习安排' })
+      .closest('section');
+    expect(pastAgenda).not.toBeNull();
+    expect(
+      within(pastAgenda!)
+        .getByRole('button', { name: /Past completed/ })
+        .closest('article'),
+    ).toHaveTextContent('已完成');
+    expect(
+      within(pastAgenda!)
+        .getByRole('button', { name: /Past abandoned/ })
+        .closest('article'),
+    ).toHaveTextContent('已放弃');
+    const overdueArticle = within(pastAgenda!)
+      .getByRole('button', { name: /Past overdue/ })
+      .closest('article');
+    expect(overdueArticle).toHaveTextContent('已逾期');
+    const rescheduleButton = within(pastAgenda!).getByRole('button', { name: '重新排期' });
+    expect(rescheduleButton.previousElementSibling).toHaveTextContent('已逾期');
+  });
+
+  it('quickly reschedules an overdue lesson with the latest authoritative version', async () => {
+    const currentItem = {
+      id: 'schedule_overdue',
+      courseId: 'course_01',
+      lessonId: 'lesson_overdue',
+      startAt: '2026-07-17T09:00:00+08:00',
+      endAt: '2026-07-17T10:00:00+08:00',
+      timezoneAtCreation: 'Asia/Shanghai',
+      source: 'manual' as const,
+      locked: false,
+      status: 'scheduled' as const,
+      createdAt: '2026-07-10T00:00:00.000Z',
+      updatedAt: '2026-07-10T00:00:00.000Z',
+      processedCommandIds: [],
+      resourceVersion: 4,
+    };
+    const movedItem = {
+      ...currentItem,
+      startAt: '2026-07-20T09:00:00+08:00',
+      endAt: '2026-07-20T02:00:00.000Z',
+      resourceVersion: 5,
+    };
+    const moveSchedule = vi.fn().mockResolvedValue({ scheduleItem: movedItem });
+    const onScheduleChanged = vi.fn();
+    render(
+      <HomePage
+        client={client()}
+        courses={[{ courseId: 'course_01', title: 'Course' }]}
+        lessons={[
+          {
+            courseId: 'course_01',
+            lessonId: 'lesson_overdue',
+            title: 'Past overdue',
+            progress: 'not_started',
+          },
+        ]}
+        now={new Date('2026-07-18T08:00:00+08:00')}
+        planningApi={planningApi({
+          getSchedule: vi.fn().mockResolvedValue({ items: [currentItem], resourceVersion: 9 }),
+          moveSchedule,
+        })}
+        schedule={[
+          {
+            scheduleItemId: 'schedule_overdue',
+            courseId: 'course_01',
+            lessonId: 'lesson_overdue',
+            startAt: '2026-07-17T09:00:00+08:00',
+            endAt: '2026-07-17T10:00:00+08:00',
+            source: 'manual',
+            locked: false,
+          },
+        ]}
+        onNavigate={() => undefined}
+        onScheduleChanged={onScheduleChanged}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Past overdue/ }));
+    fireEvent.click(screen.getByRole('button', { name: '重新排期' }));
+    fireEvent.change(screen.getByLabelText('重新安排“Past overdue”的日期'), {
+      target: { value: '2026-07-20' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '确认' }));
+
+    await waitFor(() => expect(moveSchedule).toHaveBeenCalledOnce());
+    expect(moveSchedule).toHaveBeenCalledWith(
+      'schedule_overdue',
+      4,
+      '2026-07-20T09:00:00+08:00',
+      '2026-07-20T02:00:00.000Z',
+      expect.any(Object),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('已重新排期至 2026-07-20');
+    expect(screen.getByText('当天暂无课程安排')).toBeVisible();
+    expect(onScheduleChanged).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument(), {
+      timeout: 3_000,
+    });
   });
 
   it('deletes a draft directly from its draft card without resuming it', async () => {

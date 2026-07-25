@@ -143,6 +143,77 @@ export function createReviewEvidence(
       const observationIds = new Set(
         checkpoint.observationRefs.map((ref) => ref.replace(/^observation:/u, '')),
       );
+      const checkpointMessages = messages.filter((message) =>
+        checkpoint.sourceMessageIds.includes(message.messageId),
+      );
+      const classroomSummarySourceMessageId =
+        checkpoint.teachingState.reviewProjection?.classroomSummarySourceMessageId ??
+        (checkpoint.teachingState.summaryStatus === 'delivered'
+          ? checkpointMessages.findLast(
+              (message) => message.role === 'assistant' && message.completionStatus === 'complete',
+            )?.messageId
+          : undefined);
+      const classroomSummary =
+        classroomSummarySourceMessageId === undefined
+          ? undefined
+          : checkpointMessages.find(
+              (message) => message.messageId === classroomSummarySourceMessageId,
+            );
+      const completedAssistantMessages = checkpointMessages.filter(
+        (message) => message.role === 'assistant' && message.completionStatus === 'complete',
+      );
+      const storedProjection = checkpoint.teachingState.reviewProjection;
+      const comprehensiveApplicationStartSourceMessageId =
+        storedProjection?.comprehensiveApplicationStartSourceMessageId;
+      const comprehensiveSynthesisSourceMessageId =
+        storedProjection?.comprehensiveSynthesisSourceMessageId ??
+        storedProjection?.methodologyInsight?.sourceMessageId;
+      const comprehensiveStartIndex =
+        comprehensiveApplicationStartSourceMessageId === undefined
+          ? -1
+          : checkpointMessages.findIndex(
+              (message) => message.messageId === comprehensiveApplicationStartSourceMessageId,
+            );
+      const comprehensiveEndIndex =
+        comprehensiveSynthesisSourceMessageId === undefined
+          ? -1
+          : checkpointMessages.findIndex(
+              (message) => message.messageId === comprehensiveSynthesisSourceMessageId,
+            );
+      const comprehensiveSegment =
+        comprehensiveStartIndex >= 0 && comprehensiveEndIndex >= comprehensiveStartIndex
+          ? checkpointMessages
+              .slice(comprehensiveStartIndex, comprehensiveEndIndex + 1)
+              .filter(
+                (message) =>
+                  message.role === 'assistant' &&
+                  message.completionStatus === 'complete' &&
+                  message.messageId !== classroomSummarySourceMessageId &&
+                  message.markdown.trim() !== '',
+              )
+          : [];
+      const comprehensiveSynthesis =
+        comprehensiveSegment.length > 0
+          ? {
+              messageId:
+                comprehensiveSynthesisSourceMessageId ??
+                comprehensiveSegment.at(-1)?.messageId ??
+                comprehensiveSegment[0]!.messageId,
+              markdown: comprehensiveSegment
+                .map(
+                  (message, index) => `【综合应用片段 ${index + 1}】\n${message.markdown.trim()}`,
+                )
+                .join('\n\n'),
+            }
+          : comprehensiveSynthesisSourceMessageId === undefined
+            ? completedAssistantMessages
+                .filter((message) => message.messageId !== classroomSummarySourceMessageId)
+                .findLast((message) =>
+                  /(?:综合应用|可以带走的一句话|方法论启示|迁移方法)/u.test(message.markdown),
+                )
+            : checkpointMessages.find(
+                (message) => message.messageId === comprehensiveSynthesisSourceMessageId,
+              );
       return {
         kind,
         checkpoint,
@@ -156,9 +227,23 @@ export function createReviewEvidence(
         observations: ledger.observations.filter((observation) =>
           observationIds.has(observation.observationId),
         ),
-        messages: messages.filter((message) =>
-          checkpoint.sourceMessageIds.includes(message.messageId),
-        ),
+        messages: checkpointMessages,
+        ...(classroomSummary === undefined || classroomSummary.markdown.trim() === ''
+          ? {}
+          : {
+              classroomSummary: {
+                sourceMessageId: classroomSummary.messageId,
+                markdown: classroomSummary.markdown,
+              },
+            }),
+        ...(comprehensiveSynthesis === undefined || comprehensiveSynthesis.markdown.trim() === ''
+          ? {}
+          : {
+              comprehensiveSynthesis: {
+                sourceMessageId: comprehensiveSynthesis.messageId,
+                markdown: comprehensiveSynthesis.markdown,
+              },
+            }),
         ...(facts.course.playIntent === undefined ? {} : { reviewLens: facts.course.playIntent }),
       } as const;
     },

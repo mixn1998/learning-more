@@ -194,6 +194,24 @@ export const TeachingStateSnapshotSchema = z.strictObject({
     .optional(),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']).optional(),
   summaryStatus: z.enum(['pending', 'delivered']).optional(),
+  reviewProjection: z
+    .strictObject({
+      methodologyInsight: z
+        .strictObject({
+          markdown: z
+            .string()
+            .trim()
+            .min(1)
+            .max(240)
+            .refine((value) => !/[\r\n]/u.test(value)),
+          sourceMessageId: IdentifierSchema,
+        })
+        .optional(),
+      comprehensiveApplicationStartSourceMessageId: IdentifierSchema.optional(),
+      comprehensiveSynthesisSourceMessageId: IdentifierSchema.optional(),
+      classroomSummarySourceMessageId: IdentifierSchema.optional(),
+    })
+    .optional(),
   knowledgePoints: z.array(TeachingKnowledgePointStateSchema),
   openLoops: z.array(TeachingOpenLoopSchema),
   explorationBranches: z.array(TeachingExplorationBranchSchema),

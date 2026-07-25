@@ -163,8 +163,9 @@ describe('history statistics projection', () => {
       { label: '增长与营销', percent: 86, hours: '1.0h' },
       { label: '产品与设计', percent: 43, hours: '0.5h' },
     ]);
-    expect(snapshot.bars).toHaveLength(12);
-    expect(snapshot.bars.filter((height) => height > 0)).toHaveLength(2);
+    expect(snapshot.weeklyTrend).toHaveLength(12);
+    expect(snapshot.weeklyTrend.filter((week) => week.height > 0)).toHaveLength(2);
+    expect(snapshot.weeklyTrend.filter((week) => week.lessonCount > 0)).toHaveLength(2);
   });
 
   it('uses the authoritative aggregate for all-time closed courses but range facts for a custom window', () => {

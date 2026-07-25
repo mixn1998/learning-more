@@ -34,8 +34,9 @@ describe('GenerationReviewWriter', () => {
               markdown: '样本空间 → 条件事件 → 新的分母',
               evidenceRefs: ['message:message_user_1'],
             },
-            methodologyInsight: '先确认参照总体是否改变，再决定原来的计算方式能否继续使用。',
-            coreInsight: '分母变化不是技巧，而是参照总体已经改变。',
+            methodologyInsight:
+              '先确认当前约束改变了哪些可行路径，再比较不同路径会把结果推向哪里。',
+            coreInsight: '条件会改变判断所依赖的参照总体，因此概率计算必须先确定当前样本空间。',
             performance: [
               { title: '你做得很好的地方', markdown: '主动追问了分母为什么变化。' },
               { title: '接下来的判断', markdown: '继续检验不同条件下参照总体的变化。' },
@@ -143,23 +144,44 @@ describe('GenerationReviewWriter', () => {
             sourceRef: 'message:message_ai_1',
           },
         ],
+        classroomSummary: {
+          sourceMessageId: 'message_ai_1',
+          markdown:
+            '本课学习完成。你已经掌握了条件概率。今后可以继续练习。\n\n条件会改变判断所依赖的参照总体。',
+        },
+        comprehensiveSynthesis: {
+          sourceMessageId: 'message_ai_1',
+          markdown:
+            '你没有直接回答综合应用。把关系合起来看：先确认约束改变了哪些可行路径，再比较结果。',
+        },
         reviewLens: '自然关注情境信息使用、约束意识和迁移边界。',
       },
       'initial',
     );
 
     await expect(writer.complete(accepted.taskId)).resolves.toMatchObject({
-      markdown: expect.stringContaining('条件概率的参照系'),
-      document: { kind: 'lesson-final', schemaVersion: 1 },
+      markdown: '',
+      lessonFinalAnalysis: { kind: 'lesson-final', schemaVersion: 1 },
     });
     expect(request?.prompt).toContain('【本课责任】');
     expect(request?.prompt).toContain('【必要的学习者原话证据】');
     expect(request?.prompt).toContain('课程邻接探索');
     expect(request?.prompt).toContain('没有实际邻接探索时省略该模块');
     expect(request?.prompt).toContain('knowledgeMap 只负责把本课知识点串成关系图式');
+    expect(request?.prompt).toContain('coreInsight 必须返回');
     expect(request?.prompt).toContain('methodologyInsight');
-    expect(request?.prompt).toContain('一句方法论启示');
-    expect(request?.prompt).toContain('coreInsight 只回答两件事');
+    expect(request?.prompt).toContain('本课学习完成。你已经掌握了条件概率');
+    expect(request?.prompt).toContain('你没有直接回答综合应用');
+    expect(request?.prompt).toContain('用户没有直接回答或明确跳过综合应用');
+    expect(request?.prompt).toContain('不得据此声称用户已经掌握');
+    expect(request?.prompt).toMatch(/移除完成宣布、用户评价、掌握判断.*未来学习建议/u);
+    expect(request?.prompt).toContain('语义过滤，而不是截取或轻度改写原文');
+    expect(request?.prompt).toContain('动态保留完成理解所必需的总结结构');
+    expect(request?.prompt).toContain('不得套用固定框架');
+    expect(request?.prompt).toContain('保留承载语义的 Markdown 格式');
+    expect(request?.prompt).toContain('加粗、分段、编号层级、列表、引用块、代码或公式');
+    expect(request?.prompt).toContain('不得为了简短而删除');
+    expect(request?.prompt).not.toContain('只保留能改变理解或行动的最小充分表达');
     expect(request?.prompt).toContain('performance 在后端继续完整记录');
     expect(request?.prompt).toContain('自然关注情境信息使用、约束意识和迁移边界。');
     expect(request?.prompt).not.toContain('observationCompleteness');
@@ -172,6 +194,43 @@ describe('GenerationReviewWriter', () => {
     expect(request?.prompt).toContain('"kind":"lesson-final"');
     expect(request?.prompt).not.toContain('templateRef');
     expect(request?.prompt).not.toMatch(/玩法专属章节|必须按/u);
+  });
+
+  it('accepts semantic distillation fields in the final Review contract', async () => {
+    const task: GenerationTask = {
+      id: 'task_review_semantic',
+      taskKey: 'review-semantic',
+      status: 'completed',
+      createdAt: '2026-07-25T00:00:00.000Z',
+      updatedAt: '2026-07-25T00:00:00.000Z',
+      resourceVersion: 0,
+      taskKind: 'final-review',
+      draftMarkdown: JSON.stringify({
+        schemaVersion: 1,
+        kind: 'lesson-final',
+        title: '本课 Review',
+        knowledgeMap: { title: '知识图谱', markdown: '约束 → 路径 → 结果' },
+        methodologyInsight: '先识别约束改变了哪些路径，再判断结果如何变化。',
+        coreInsight: '本课建立了约束、行动路径与结果之间的关系。',
+        performance: [{ title: '已形成', markdown: '能够识别关键约束。' }],
+      }),
+    };
+    const runtime = {
+      async get() {
+        return task;
+      },
+      async runNext() {
+        return task.id;
+      },
+    } as unknown as GenerationRuntime;
+    const writer = createGenerationReviewWriter({ runtime, providerId: 'mock' });
+
+    await expect(writer.complete(task.id)).resolves.toMatchObject({
+      lessonFinalAnalysis: {
+        coreInsight: '本课建立了约束、行动路径与结果之间的关系。',
+        methodologyInsight: '先识别约束改变了哪些路径，再判断结果如何变化。',
+      },
+    });
   });
 
   it('refuses to generate from an incomplete checkpoint', async () => {

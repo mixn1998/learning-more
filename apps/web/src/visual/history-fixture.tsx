@@ -109,6 +109,22 @@ const statisticsBase = {
   interactionSkipped: 11,
 } as const;
 
+function weeklyTrendFromHeights(heights: readonly number[]) {
+  const anchor = Date.UTC(2026, 3, 27);
+  const dateLabel = (offset: number) =>
+    new Date(anchor + offset * 86_400_000).toISOString().slice(5, 10).replace('-', '/');
+  return heights.map((height, index) => {
+    const offset = index * 7;
+    return {
+      startDate: dateLabel(offset),
+      endDate: dateLabel(offset + 6),
+      durationMinutes: height * 3,
+      lessonCount: height === 0 ? 0 : 2 + (index % 5),
+      height,
+    };
+  });
+}
+
 const statisticsSnapshots: Readonly<Record<HistoryStatisticsRange, HistoryStatisticsSnapshot>> = {
   '30d': {
     ...statisticsBase,
@@ -118,7 +134,7 @@ const statisticsSnapshots: Readonly<Record<HistoryStatisticsRange, HistoryStatis
     activeDays: 16,
     courseCount: 5,
     abandonedCourseCount: 0,
-    bars: [22, 38, 31, 48, 42, 61, 53, 72, 64, 81, 58, 69],
+    weeklyTrend: weeklyTrendFromHeights([22, 38, 31, 48, 42, 61, 53, 72, 64, 81, 58, 69]),
   },
   year: {
     ...statisticsBase,
@@ -128,7 +144,7 @@ const statisticsSnapshots: Readonly<Record<HistoryStatisticsRange, HistoryStatis
     activeDays: 31,
     courseCount: 12,
     abandonedCourseCount: 2,
-    bars: [32, 52, 42, 67, 58, 76, 45, 83, 71, 91, 64, 78],
+    weeklyTrend: weeklyTrendFromHeights([32, 52, 42, 67, 58, 76, 45, 83, 71, 91, 64, 78]),
   },
   all: {
     ...statisticsBase,
@@ -138,7 +154,7 @@ const statisticsSnapshots: Readonly<Record<HistoryStatisticsRange, HistoryStatis
     activeDays: 74,
     courseCount: 24,
     abandonedCourseCount: 4,
-    bars: [49, 58, 64, 55, 72, 68, 81, 76, 88, 83, 94, 89],
+    weeklyTrend: weeklyTrendFromHeights([49, 58, 64, 55, 72, 68, 81, 76, 88, 83, 94, 89]),
   },
   custom: {
     ...statisticsBase,
@@ -148,7 +164,7 @@ const statisticsSnapshots: Readonly<Record<HistoryStatisticsRange, HistoryStatis
     activeDays: 12,
     courseCount: 4,
     abandonedCourseCount: 0,
-    bars: [18, 24, 36, 31, 43, 57, 48, 62, 55, 69, 61, 73],
+    weeklyTrend: weeklyTrendFromHeights([18, 24, 36, 31, 43, 57, 48, 62, 55, 69, 61, 73]),
   },
 };
 

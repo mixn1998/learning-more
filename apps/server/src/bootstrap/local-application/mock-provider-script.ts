@@ -375,10 +375,16 @@ function mockScript(
                   summaryStatus: 'delivered',
                 }
               : { schemaVersion: 2, lessonPhase: state.lessonPhase ?? 'ready_to_close' };
+    const reply =
+      state.lessonPhase === 'comprehensive_application' && currentUserTurn
+        ? '综合应用反馈已经完成。\n\n先确认发生变化的关键条件，再修正原有判断。\n\n对本课是否还有疑惑或其他讲解需求？'
+        : state.lessonPhase === 'discussion' && currentUserTurn
+          ? '# 本课总结\n\n本课沿着条件变化与判断修正的关系完成了课堂总结。'
+          : '我们从你刚才的问题继续，先把条件变化与判断修正之间的关系讲清。你会先检查哪个条件发生了变化，为什么？';
     return [
       {
         type: 'text',
-        text: `<learning-more-reply>我们从你刚才的问题继续，先把条件变化与判断修正之间的关系讲清。你会先检查哪个条件发生了变化，为什么？</learning-more-reply><learning-more-control>${JSON.stringify(nextState)}</learning-more-control>`,
+        text: `<learning-more-reply>${reply}</learning-more-reply><learning-more-control>${JSON.stringify(nextState)}</learning-more-control>`,
       },
     ];
   }
@@ -430,8 +436,8 @@ function mockScript(
           kind: 'lesson-final',
           title: '本课学习回看',
           knowledgeMap: { title: '知识图谱', markdown: '本课知识线索已依据冻结证据整理。' },
-          methodologyInsight: '先把判断连接到可观察证据，再决定结论能否迁移到新情境。',
-          coreInsight: '把本课中的关键判断连接到可观察的学习证据。',
+          methodologyInsight: '先识别会改变关系的关键条件，再判断结论如何随之变化。',
+          coreInsight: '本课建立了关键条件、知识关系与判断结果之间的联系。',
           performance: [
             { title: '已经推进的部分', markdown: '学习者已完成本课要求的主要互动。' },
             { title: '下一步判断', markdown: '后续可继续检验理解能否迁移到新情境。' },

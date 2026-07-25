@@ -208,6 +208,60 @@ describe('learning SessionPage', () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a repeated optimistic user message as a distinct new turn', async () => {
+    const sendMessage = vi.fn(() => new Promise<never>(() => undefined));
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 1,
+      learning: { progress: 'in_progress', session: { state: 'active' } },
+      messages: [
+        { id: 'message_old_user', role: 'user', markdown: '没有了' },
+        { id: 'message_old_assistant', role: 'assistant', markdown: '我们继续。' },
+      ],
+    });
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession, sendMessage })} />);
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: '没有了' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(screen.getAllByText('没有了')).toHaveLength(2);
+    expect(screen.getByRole('status', { name: 'AI 回复状态' })).toHaveTextContent('正在思考中');
+  });
+
+  it('keeps the optimistic user message when an old terminal snapshot arrives first', async () => {
+    const oldSnapshot = {
+      resourceVersion: 1,
+      learning: { progress: 'in_progress' as const, session: { state: 'active' as const } },
+      messages: [
+        { id: 'message_old_user', role: 'user' as const, markdown: '旧问题' },
+        { id: 'message_old_assistant', role: 'assistant' as const, markdown: '旧回答' },
+      ],
+    };
+    const getSession = vi.fn().mockResolvedValue(oldSnapshot);
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({
+          getSession,
+          sendMessage: vi.fn().mockResolvedValue({
+            taskId: 'task_new',
+            resourceVersion: 2,
+            userMessageId: 'message_new_user',
+          }),
+          stream: vi.fn().mockResolvedValue(undefined),
+        })}
+      />,
+    );
+
+    const input = await screen.findByLabelText('学习输入');
+    fireEvent.change(input, { target: { value: '唯一的新问题' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    await waitFor(() => expect(getSession).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('唯一的新问题')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'AI 回复状态' })).toHaveTextContent('正在思考中');
+  });
+
   it('does not fail a newly sent turn when its first stream frame is delayed', async () => {
     vi.useFakeTimers();
     const stream = vi.fn(() => new Promise<never>(() => undefined));
@@ -463,7 +517,9 @@ describe('learning SessionPage', () => {
       .mockResolvedValue({ taskId: 'task_retry_01', resourceVersion: 5 });
     const stream = vi
       .fn()
-      .mockRejectedValueOnce(new Error('generation failed'))
+      .mockImplementationOnce(async (_taskId, onEvent) => {
+        onEvent({ type: 'task.failed', data: { code: 'provider_failed' } });
+      })
       .mockResolvedValueOnce(undefined);
     const api = client({
       sendMessage: vi.fn().mockResolvedValue({
@@ -481,7 +537,7 @@ describe('learning SessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
     fireEvent.click(await screen.findByRole('button', { name: '重新生成' }));
 
-    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 1));
+    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 3));
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -586,12 +642,14 @@ describe('learning SessionPage', () => {
     const interruptedReply = await screen.findByText('接下来比较两个量词：');
     const interruptedMessage = interruptedReply.closest('article');
     expect(interruptedMessage).not.toBeNull();
-    const regenerate = within(interruptedMessage!).getByRole('button', { name: '重新生成' });
+    const regenerate = await waitFor(() =>
+      within(interruptedMessage!).getByRole('button', { name: '重新生成' }),
+    );
     expect(regenerate.querySelector('svg.chat-retry-icon')).not.toBeNull();
     expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
 
     fireEvent.click(regenerate);
-    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 1));
+    await waitFor(() => expect(retryGeneration).toHaveBeenCalledWith('session_01', 3));
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -603,7 +661,7 @@ describe('learning SessionPage', () => {
         learning: { progress: 'in_progress', session: { state: 'active' } },
         messages: [],
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         resourceVersion: 4,
         learning: { progress: 'in_progress', session: { state: 'active' } },
         messages: [{ id: 'message_user_01', role: 'user', markdown: '请解释函数变换' }],
@@ -624,12 +682,16 @@ describe('learning SessionPage', () => {
 
     const input = await screen.findByLabelText('学习输入');
     fireEvent.change(input, { target: { value: '请解释函数变换' } });
+    vi.useFakeTimers();
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
 
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
     expect(
-      (await screen.findByRole('button', { name: '重新生成' })).querySelector(
-        'svg.chat-retry-icon',
-      ),
+      screen.getByRole('button', { name: '重新生成' }).querySelector('svg.chat-retry-icon'),
     ).not.toBeNull();
     expect(screen.getAllByRole('article', { name: '你的消息' })).toHaveLength(1);
   });

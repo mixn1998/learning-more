@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
 
 import {
+  ReviewTextBlockSchema,
   ReviewDocumentSchema,
   reviewDocumentToMarkdown,
   type ReviewDocument,
   type TeachingCheckpointSnapshot,
   type TeachingObservation,
 } from '@learning-more/contracts';
+import { z } from 'zod';
 
 import type { GenerationRuntime } from '../../generation-runtime/interface.js';
 import type { GenerationExecution } from '../../generation-runtime/interface.js';
@@ -17,8 +19,14 @@ const REVIEW_CAPABILITY = [
   '根据完整、冻结且可追溯的教学证据生成学习者可见 Review。',
   '先忠实覆盖本课知识责任、实际教学、学习者证据、未解决项与教学支线；支线不能冒充本课覆盖或未来课节完成。',
   'knowledgeMap 只负责把本课知识点串成关系图式：优先输出一条主链，必要时最多补两条分支链；使用“节点 → 节点”表达，不在 knowledgeMap 中重复正文解释。',
-  'lesson-final 必须提供 methodologyInsight：只用一句方法论启示归纳本课核心内容，使学习者能带到新情境中使用；不要复述具体知识点，不要换行，不要写成多句。',
-  'lesson-final 的 coreInsight 只回答两件事：本课要解决什么问题，以及用什么核心思想或方法解决。先用一小段界定问题，再用一小段说明方法；必要时用三至五个短要点解释方法组成，最后用一句话收束。不要在 coreInsight 重复知识图谱、学习过程流水账或后续建议。',
+  'lesson-final 同时承担两项边界清晰的工作：知识图谱与学习表现来自冻结证据；核心思想与本课方法论启示只对指定课堂来源做语义收束，不得直接复制整段课堂文本。',
+  'coreInsight 必须返回。它应对最终课堂总结做语义提炼，并动态保留完成理解所必需的总结结构；结构可以随课程内容表现为概念关系、因果链、判断框架、操作步骤、条件对比、推理过程、适用边界或其他必要形式。允许保留必要段落、列表与层次，不得套用固定框架。',
+  'coreInsight 必须保留承载语义的 Markdown 格式，包括原总结中有助于理解的加粗、分段、编号层级、列表、引用块、代码或公式；不要把清晰的关系链、分项解释和结论段改写成连续的大段正文。只移除不承载知识结构的装饰性格式，不要求逐字复制全部原文。',
+  'methodologyInsight 可选且最多一句。它应从综合应用所连接的知识关系中提炼可迁移的方法、判断原则或技巧；不要复述知识点清单，不要使用“把本课合起来看”“本课真正值得保留的是”等引导语。',
+  '对 coreInsight 和 methodologyInsight 都执行语义过滤，而不是截取或轻度改写原文：移除完成宣布、用户评价、掌握判断、互动复盘、鼓励、未来学习建议、课程流程说明和不承载知识含义的过渡语；只合并真正同义的重复表述，不得把互相支撑的不同层次误判为重复。',
+  'coreInsight 应在不损失必要总结结构、关键关系、推理链和边界条件的前提下使用清晰紧凑的表达；不得为了简短而删除完成理解所需要的信息，也不得强制压缩成一句话。methodologyInsight 仍负责一句高度凝练、可迁移的方法或技巧，不承担完整总结职责。',
+  '综合应用来源包含从任务提出到纠偏或收束的完整片段。提炼 methodologyInsight 时优先保留其中最具体、最能迁移的关系或技巧；后出现的流程过渡只提供语境，不因位置更晚而自动覆盖更具体的收束。',
+  '用户没有直接回答或明确跳过综合应用时，仍可依据综合应用任务、AI 的纠偏或关系收束、最终课堂总结提炼方法论；但不得据此声称用户已经掌握、通过或形成了相应能力。来源不足以形成真实方法论时省略 methodologyInsight。',
   'performance 在后端继续完整记录可追溯表现与待验证项；每个条目的标题必须明确表示“已形成/做得好”或“尚待验证/接下来”，以便前端归并为两个阅读区块。',
   '如果本课对话确实涉及有价值但不属于本课主线的课程邻接探索，可在 additionalSections 中保留一个附加模块，标题以“课程邻接探索：”开头，并明确它不替代本课责任；没有实际邻接探索时省略该模块，不要为了凑结构生成。',
   '可选互动关注只改变叙事关注重心，不筛除证据、不决定完成度，也不规定章节和表达形式。',
@@ -35,7 +43,7 @@ const COURSE_REVIEW_CAPABILITY = [
 function outputContract(kind: ReviewDocument['kind']): string {
   const fields =
     kind === 'lesson-final'
-      ? 'title, knowledgeMap:{title,markdown,evidenceRefs?}, methodologyInsight, coreInsight, performance:[{title,markdown,evidenceRefs?}], additionalSections?'
+      ? 'title, knowledgeMap:{title,markdown,evidenceRefs?}, coreInsight, methodologyInsight?, performance:[{title,markdown,evidenceRefs?}], additionalSections?'
       : kind === 'lesson-stage'
         ? 'title, lead, establishedUnderstanding:[{title,markdown,evidenceRefs?}], pendingValidation:[{title,markdown,evidenceRefs?}], knowledgeMap:{title,markdown,evidenceRefs?}, performance:[{title,markdown,evidenceRefs?}], continuationNotice, additionalSections?'
         : 'title, lead?, knowledgeThreads:[{title,markdown,evidenceRefs?}], strengths:[{title,markdown,evidenceRefs?}], development:[{title,markdown,evidenceRefs?}], boundaries:[{title,markdown,evidenceRefs?}], extensions:[{title,markdown,evidenceRefs?}], sourceCoverage?, additionalSections?';
@@ -59,6 +67,14 @@ export type ReviewEvidencePack = Readonly<{
   }>;
   observations: readonly TeachingObservation[];
   messages: readonly MaterializedTeachingMessage[];
+  classroomSummary?: Readonly<{
+    sourceMessageId: string;
+    markdown: string;
+  }>;
+  comprehensiveSynthesis?: Readonly<{
+    sourceMessageId: string;
+    markdown: string;
+  }>;
   reviewLens?: string;
 }>;
 
@@ -151,6 +167,12 @@ function renderLessonReviewEvidence(pack: ReviewEvidencePack): string {
       ),
     ),
     section('必要的学习者原话证据', dialogue),
+    pack.kind !== 'final' || pack.classroomSummary === undefined
+      ? undefined
+      : `【最终课堂总结·仅供语义收束】\n${pack.classroomSummary.markdown.trim()}`,
+    pack.kind !== 'final' || pack.comprehensiveSynthesis === undefined
+      ? undefined
+      : `【综合应用关系收束·用户回答可为空】\n${pack.comprehensiveSynthesis.markdown.trim()}`,
     pack.reviewLens === undefined ? undefined : `【本次 Review 关注】\n${pack.reviewLens.trim()}`,
   ]
     .filter((value): value is string => value !== undefined)
@@ -192,8 +214,28 @@ export interface GenerationReviewWriter {
     markdown: string;
     contentSha256: string;
     document?: ReviewDocument;
+    lessonFinalAnalysis?: LessonFinalReviewAnalysis;
   }>;
 }
+
+const LessonFinalReviewAnalysisSchema = z.looseObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal('lesson-final'),
+  title: z.string().trim().min(1),
+  knowledgeMap: ReviewTextBlockSchema,
+  methodologyInsight: z
+    .string()
+    .trim()
+    .min(1)
+    .max(240)
+    .refine((value) => !/[\r\n]/u.test(value))
+    .optional(),
+  coreInsight: z.string().trim().min(1),
+  performance: z.array(ReviewTextBlockSchema).min(1),
+  additionalSections: z.array(ReviewTextBlockSchema).optional(),
+});
+
+export type LessonFinalReviewAnalysis = Readonly<z.infer<typeof LessonFinalReviewAnalysisSchema>>;
 
 function expectedDocumentKind(taskKind: string | undefined): ReviewDocument['kind'] | undefined {
   return taskKind === 'final-review'
@@ -218,6 +260,25 @@ function parseDocument(raw: string, taskKind: string | undefined): ReviewDocumen
 }
 
 function generatedResult(raw: string, taskKind: string | undefined) {
+  if (taskKind === 'final-review') {
+    const trimmed = raw.trim();
+    const first = trimmed.indexOf('{');
+    const last = trimmed.lastIndexOf('}');
+    const lessonFinalAnalysis =
+      first < 0 || last <= first
+        ? undefined
+        : LessonFinalReviewAnalysisSchema.safeParse(
+            parseJsonWithSyntaxRepair(trimmed.slice(first, last + 1)),
+          );
+    if (lessonFinalAnalysis === undefined || !lessonFinalAnalysis.success) {
+      throw new Error('review_output_contract_invalid');
+    }
+    return {
+      markdown: '',
+      contentSha256: sha256(trimmed),
+      lessonFinalAnalysis: lessonFinalAnalysis.data,
+    };
+  }
   const document = parseDocument(raw, taskKind);
   if (expectedDocumentKind(taskKind) !== undefined && document === undefined) {
     throw new Error('review_output_contract_invalid');

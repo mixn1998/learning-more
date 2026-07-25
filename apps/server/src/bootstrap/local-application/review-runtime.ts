@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import type { CommandContext } from '@learning-more/contracts';
+import {
+  LessonFinalReviewDocumentSchema,
+  reviewDocumentToMarkdown,
+  type CommandContext,
+} from '@learning-more/contracts';
 
 import type { ReviewClosureRouteOptions } from '../../http/routes/review-closure.js';
 import { closeCourse as closeCourseAggregate } from '../../modules/course-authoring/implementation/close-course.js';
@@ -326,25 +330,40 @@ export function createLocalReviewRuntime(
         if (current.state === 'generating' || current.state === 'generating-failed') {
           stage = 'finalizing';
           const generated = await reviewWriter.complete(current.generationTaskId);
+          if (generated.lessonFinalAnalysis === undefined) {
+            throw new Error('lesson_review_analysis_missing');
+          }
+          const evidence = await reviewEvidence.build(
+            'final',
+            current.sessionId,
+            current.messageRangeChecksum,
+          );
+          if (evidence.classroomSummary === undefined) {
+            throw new Error('lesson_review_classroom_summary_missing');
+          }
+          const composed = LessonFinalReviewDocumentSchema.parse(generated.lessonFinalAnalysis);
           const document = reviewEvidence.normalizeRefs(
-            generated.document,
+            composed,
             'lesson-final',
             current.sourceMessageIds,
           );
-          const artifactRef = `lesson_review_${reviewIdForLesson(current.lessonId)}_${generated.contentSha256.slice(0, 16)}`;
+          if (document === undefined) throw new Error('lesson_review_document_missing');
+          const markdown = reviewDocumentToMarkdown(document);
+          const contentSha256 = createHash('sha256').update(markdown, 'utf8').digest('hex');
+          const artifactRef = `lesson_review_${reviewIdForLesson(current.lessonId)}_${contentSha256.slice(0, 16)}`;
           await input.artifactStore.finalize({
             artifactId: artifactRef,
             kind: 'lesson-final-review',
-            content: generated.markdown,
+            content: markdown,
             immutable: true,
           });
           current = await lessonClosures.markReviewReady(current.transactionId, {
             artifactRef,
-            markdown: generated.markdown,
+            markdown,
             sourceSessionIds: current.sourceSessionIds,
             messageRangeChecksum: current.messageRangeChecksum,
-            contentSha256: generated.contentSha256,
-            ...(document === undefined ? {} : { document }),
+            contentSha256,
+            document,
           });
         }
         stage = 'committing';

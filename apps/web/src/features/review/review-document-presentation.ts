@@ -48,21 +48,6 @@ function methodologyInsightText(markdown: string): string | undefined {
   return value === '' ? undefined : value;
 }
 
-function methodologyInsightFromCoreInsight(coreInsight: string): string | undefined {
-  const paragraphs = coreInsight
-    .split(/\r?\n\s*\r?\n/u)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
-  const preferred = paragraphs.find((paragraph) =>
-    /^(?:核心方法|解决方法|可以先|检查这条链时)/u.test(paragraph),
-  );
-  const candidate = preferred ?? paragraphs[0];
-  if (candidate === undefined) return undefined;
-  const normalized = candidate.replace(/^(?:核心方法|解决方法)是[：:]?\s*/u, '').trim();
-  const withoutList = normalized.split(/\s+[-*+]\s+/u)[0]?.trim() ?? normalized;
-  return methodologyInsightText(withoutList);
-}
-
 function methodologyInsightFromLegacyMarkdown(markdown: string | undefined): string | undefined {
   if (markdown === undefined) return undefined;
   const lines = markdown.split(/\r?\n/u);
@@ -89,11 +74,7 @@ function projectMethodologyInsight(input: ReviewPresentationInput): string | und
   );
   const fromBlock =
     legacyBlock === undefined ? undefined : methodologyInsightText(legacyBlock.markdown);
-  return (
-    fromBlock ??
-    methodologyInsightFromLegacyMarkdown(input.legacyMarkdown) ??
-    methodologyInsightFromCoreInsight(input.coreInsight)
-  );
+  return fromBlock ?? methodologyInsightFromLegacyMarkdown(input.legacyMarkdown);
 }
 
 function markdownUnits(markdown: string): string[] {
@@ -152,29 +133,7 @@ function knowledgeMapNodes(markdown: string): readonly string[] {
 }
 
 function projectCoreInsight(markdown: string): string {
-  if (markdown.trim().length <= 1_200) return markdown.trim();
-  const blocks = markdown
-    .split(/\r?\n\s*\r?\n/u)
-    .map((block) => block.trim())
-    .filter((block) => block !== '');
-  const opening = blocks.filter((block) => !/^[-*+]\s+/u.test(block)).slice(0, 2);
-  const list = blocks.find((block) => /^[-*+]\s+/u.test(block));
-  const listProjection =
-    list === undefined
-      ? undefined
-      : list
-          .split(/\r?\n/u)
-          .filter((line) => /^[-*+]\s+/u.test(line.trim()))
-          .slice(0, 4)
-          .join('\n');
-  const conclusion = blocks.find(
-    (block, index) => index >= 2 && /^(?:因此|所以|核心结论|由此)/u.test(block),
-  );
-  return unique([
-    ...opening,
-    listProjection ?? '',
-    conclusion === undefined ? '' : conciseSentence(conclusion, 320),
-  ]).join('\n\n');
+  return markdown.trim();
 }
 
 function compactBlocks(

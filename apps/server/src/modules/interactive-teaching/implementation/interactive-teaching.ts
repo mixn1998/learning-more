@@ -5,6 +5,7 @@ import type {
   CommandContext,
   TeachingCheckpointSnapshot,
   TeachingObservation,
+  TeachingStateSnapshot,
 } from '@learning-more/contracts';
 
 import type { UnitOfWork } from '../../../persistence/unit-of-work.js';
@@ -80,6 +81,78 @@ function backgroundContext(context: CommandContext, commandId: string): CommandC
   const { expectedVersion: _expectedVersion, ...withoutVersion } = context;
   void _expectedVersion;
   return { ...withoutVersion, commandId, idempotencyKey: commandId };
+}
+
+function projectLessonReviewSources(
+  previous: TeachingStateSnapshot,
+  nextControlState: TeachingStateSnapshot,
+  input: Readonly<{
+    assistantMessageId?: string;
+    assistantMarkdown?: string;
+  }>,
+): TeachingStateSnapshot {
+  const currentProjection = previous.reviewProjection;
+  let comprehensiveApplicationStartSourceMessageId =
+    currentProjection?.comprehensiveApplicationStartSourceMessageId;
+  let comprehensiveSynthesisSourceMessageId =
+    currentProjection?.comprehensiveSynthesisSourceMessageId ??
+    currentProjection?.methodologyInsight?.sourceMessageId;
+  let classroomSummarySourceMessageId = currentProjection?.classroomSummarySourceMessageId;
+  let changed = false;
+
+  const nextComprehensive = nextControlState.comprehensiveCheck ?? 'pending';
+  if (
+    nextControlState.lessonPhase === 'comprehensive_application' &&
+    nextComprehensive === 'learning' &&
+    input.assistantMessageId !== undefined &&
+    comprehensiveApplicationStartSourceMessageId === undefined
+  ) {
+    comprehensiveApplicationStartSourceMessageId = input.assistantMessageId;
+    changed = true;
+  }
+
+  if (
+    nextControlState.lessonPhase === 'discussion' &&
+    (nextComprehensive === 'completed' || nextComprehensive === 'skipped') &&
+    input.assistantMessageId !== undefined
+  ) {
+    if (comprehensiveApplicationStartSourceMessageId === undefined) {
+      comprehensiveApplicationStartSourceMessageId = input.assistantMessageId;
+      changed = true;
+    }
+    if (comprehensiveSynthesisSourceMessageId !== input.assistantMessageId) {
+      comprehensiveSynthesisSourceMessageId = input.assistantMessageId;
+      changed = true;
+    }
+  }
+
+  if (
+    nextControlState.lessonPhase === 'ready_to_close' &&
+    nextControlState.summaryStatus === 'delivered' &&
+    input.assistantMessageId !== undefined &&
+    classroomSummarySourceMessageId !== input.assistantMessageId
+  ) {
+    classroomSummarySourceMessageId = input.assistantMessageId;
+    changed = true;
+  }
+
+  if (!changed) return nextControlState;
+  return {
+    ...nextControlState,
+    ...(nextControlState === previous ? { ledgerVersion: previous.ledgerVersion + 1 } : {}),
+    reviewProjection: {
+      ...(currentProjection?.methodologyInsight === undefined
+        ? {}
+        : { methodologyInsight: currentProjection.methodologyInsight }),
+      ...(comprehensiveApplicationStartSourceMessageId === undefined
+        ? {}
+        : { comprehensiveApplicationStartSourceMessageId }),
+      ...(comprehensiveSynthesisSourceMessageId === undefined
+        ? {}
+        : { comprehensiveSynthesisSourceMessageId }),
+      ...(classroomSummarySourceMessageId === undefined ? {} : { classroomSummarySourceMessageId }),
+    },
+  };
 }
 
 function failureProblem(taskId: string): ApplicationProblem {
@@ -430,6 +503,8 @@ export function createInteractiveTeaching(options: {
           lessonId: input.lessonId,
           sessionId: input.sessionId,
           directive: result.directive,
+          assistantMessageId,
+          assistantMarkdown: result.markdown,
           knowledgePointRefs: input.assembled.lesson.coreKnowledgePoints.map((point) => point.ref),
           ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
           isCurrent: () => isCurrentTask(accepted.taskId),
@@ -609,6 +684,8 @@ export function createInteractiveTeaching(options: {
     lessonId: string;
     sessionId: string;
     directive?: TeachingDirective | undefined;
+    assistantMessageId?: string;
+    assistantMarkdown?: string;
     knowledgePointRefs?: readonly string[];
     currentUserMessageId?: string;
     enforceCurrentTurn?: boolean;
@@ -642,27 +719,29 @@ export function createInteractiveTeaching(options: {
               knowledgePointRefs,
             })
           : alignTeachingState(current.state, knowledgePointRefs);
-      if (
-        teachingDirectiveMatchesState(
-          base,
-          input.directive,
-          input.currentUserMessageId === undefined
-            ? undefined
-            : { currentUserMessageId: input.currentUserMessageId },
-        )
-      ) {
-        return;
-      }
-      const nextState = applyTeachingDirective(
+      const directiveAlreadyApplied = teachingDirectiveMatchesState(
         base,
         input.directive,
         input.currentUserMessageId === undefined
           ? undefined
-          : {
-              currentUserMessageId: input.currentUserMessageId,
-              enforceCurrentTurn: input.enforceCurrentTurn ?? true,
-            },
+          : { currentUserMessageId: input.currentUserMessageId },
       );
+      const nextControlState = directiveAlreadyApplied
+        ? base
+        : applyTeachingDirective(
+            base,
+            input.directive,
+            input.currentUserMessageId === undefined
+              ? undefined
+              : {
+                  currentUserMessageId: input.currentUserMessageId,
+                  enforceCurrentTurn: input.enforceCurrentTurn ?? true,
+                },
+          );
+      const nextState = projectLessonReviewSources(base, nextControlState, input);
+      if (directiveAlreadyApplied && nextState === base) {
+        return;
+      }
       try {
         await options.unitOfWork.execute({ transactionId: options.nextTransactionId() }, (tx) => {
           if (input.isCurrent?.() === false) {
@@ -732,6 +811,10 @@ export function createInteractiveTeaching(options: {
         lessonId: input.lessonId,
         sessionId: input.sessionId,
         directive: result.directive,
+        assistantMarkdown: result.markdown,
+        ...(latestAssistant?.messageId === undefined
+          ? {}
+          : { assistantMessageId: latestAssistant.messageId }),
         ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
         enforceCurrentTurn: false,
       });
@@ -975,6 +1058,8 @@ export function createInteractiveTeaching(options: {
         lessonId: input.lessonId,
         sessionId: input.sessionId,
         directive: recovered.directive,
+        assistantMessageId: alreadyCommitted.messageId,
+        assistantMarkdown: recovered.markdown,
         ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
       });
       learning = await queryLearning();
@@ -1042,6 +1127,8 @@ export function createInteractiveTeaching(options: {
       lessonId: input.lessonId,
       sessionId: input.sessionId,
       directive: recovered.directive,
+      assistantMessageId,
+      assistantMarkdown: recovered.markdown,
       ...(sourceMessageId === undefined ? {} : { currentUserMessageId: sourceMessageId }),
     });
     await options.sessionModule.execute(

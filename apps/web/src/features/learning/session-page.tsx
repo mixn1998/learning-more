@@ -185,6 +185,29 @@ function hasUnansweredUserMessage(messages: readonly SessionMessageView[] | unde
   return latestUserMessage !== undefined && !hasAssistantResponse(messages);
 }
 
+function hasGenerationResponse(
+  messages: readonly SessionMessageView[] | undefined,
+  taskId: string,
+  userMessageId?: string,
+): boolean {
+  if (messages === undefined) return false;
+  const userIndex =
+    userMessageId === undefined
+      ? messages.findLastIndex((message) => message.role === 'user')
+      : messages.findIndex((message) => message.role === 'user' && message.id === userMessageId);
+  if (userIndex < 0) return false;
+  return messages
+    .slice(userIndex + 1)
+    .some(
+      (message) =>
+        message.role === 'assistant' &&
+        (message.generationTaskId === taskId ||
+          (message.generationTaskId === undefined && userMessageId !== undefined)) &&
+        message.completionStatus !== 'interrupted' &&
+        message.markdown.trim() !== '',
+    );
+}
+
 function lessonClosureFailureMessage(error: unknown): string {
   const code =
     typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
@@ -205,13 +228,17 @@ async function consumeGenerationStream(
   taskId: string,
   onEvent: Parameters<LearningClient['stream']>[1],
   timeoutIds: Set<number>,
-): Promise<'terminal' | 'stalled'> {
+): Promise<'completed' | 'failed' | 'cancelled' | 'closed' | 'stalled'> {
+  let terminalOutcome: 'completed' | 'failed' | 'cancelled' | undefined;
   const stream = api.stream(taskId, (event) => {
+    if (event.type === 'task.completed') terminalOutcome = 'completed';
+    else if (event.type === 'task.failed') terminalOutcome = 'failed';
+    else if (event.type === 'task.cancelled') terminalOutcome = 'cancelled';
     onEvent(event);
   });
   let timeoutId: number | undefined;
   const firstOutcome = await Promise.race([
-    stream.then(() => 'terminal' as const),
+    stream.then(() => terminalOutcome ?? ('closed' as const)),
     new Promise<'stalled'>((resolve) => {
       timeoutId = window.setTimeout(() => resolve('stalled'), GENERATION_RECONCILIATION_DELAY_MS);
       timeoutIds.add(timeoutId);
@@ -226,7 +253,7 @@ async function consumeGenerationStream(
     void stream.catch(() => undefined);
     return 'stalled';
   }
-  return 'terminal';
+  return firstOutcome;
 }
 
 function reducer(state: State, action: Action): State {
@@ -264,11 +291,11 @@ function reducer(state: State, action: Action): State {
     return { ...state, opening: false, openingError: false, phase: 'ready' };
   }
   if (action.type === 'hydrated') {
+    if (action.resourceVersion < state.resourceVersion) return state;
     const pendingUserPersisted =
       state.pendingUserMessage !== undefined &&
       action.messages?.some(
-        (message) =>
-          message.role === 'user' && message.markdown === state.pendingUserMessage?.markdown,
+        (message) => message.role === 'user' && message.id === state.pendingUserMessage?.id,
       );
     const streamedReplyCommitted =
       state.taskId !== undefined &&
@@ -466,7 +493,6 @@ function reducer(state: State, action: Action): State {
       openingError: false,
       phase: state.draftArtifactRef === undefined ? 'ready' : 'stopped',
       assistantPending: false,
-      ...(state.draftArtifactRef === undefined ? { pendingUserMessage: undefined } : {}),
       taskId: undefined,
     };
   if (action.type === 'stopped') {
@@ -734,6 +760,8 @@ export function SessionPage(props: {
     taskId: string;
     attempt: number;
     responseKind: 'opening' | 'turn';
+    userMessageId?: string;
+    streamOutcome?: Awaited<ReturnType<typeof consumeGenerationStream>>;
   }): Promise<
     | {
         status: 'completed' | 'failed';
@@ -741,6 +769,7 @@ export function SessionPage(props: {
       }
     | { status: 'cancelled' }
   > => {
+    let terminalProjectionMisses = 0;
     while (generationAttempt.current === input.attempt) {
       let snapshot: Awaited<ReturnType<LearningClient['getSession']>>;
       try {
@@ -755,11 +784,42 @@ export function SessionPage(props: {
           ? snapshot.messages?.some(
               (message) => message.role === 'assistant' && message.markdown.trim() !== '',
             ) === true
-          : hasAssistantResponse(snapshot.messages);
+          : hasGenerationResponse(snapshot.messages, input.taskId, input.userMessageId);
       const activeTaskId = snapshot.learning.session?.activeGenerationTaskId;
       if (activeTaskId === undefined) {
-        hydrateAndRefreshTeachingProgress(input.sessionId, snapshot);
-        return { status: responsePersisted ? 'completed' : 'failed', snapshot };
+        if (responsePersisted) {
+          hydrateAndRefreshTeachingProgress(input.sessionId, snapshot);
+          return { status: 'completed', snapshot };
+        }
+        if (input.streamOutcome === 'failed' || input.streamOutcome === 'cancelled') {
+          if (
+            input.userMessageId !== undefined &&
+            snapshot.messages?.some(
+              (message) => message.role === 'user' && message.id === input.userMessageId,
+            )
+          ) {
+            hydrateAndRefreshTeachingProgress(input.sessionId, snapshot);
+          }
+          return { status: 'failed', snapshot };
+        }
+        terminalProjectionMisses += 1;
+        const maximumProjectionMisses =
+          input.responseKind === 'opening'
+            ? 1
+            : Math.ceil(GENERATION_RECONCILIATION_DELAY_MS / GENERATION_PROJECTION_POLL_MS);
+        if (terminalProjectionMisses >= maximumProjectionMisses) {
+          if (
+            input.userMessageId !== undefined &&
+            snapshot.messages?.some(
+              (message) => message.role === 'user' && message.id === input.userMessageId,
+            )
+          ) {
+            hydrateAndRefreshTeachingProgress(input.sessionId, snapshot);
+          }
+          return { status: 'failed', snapshot };
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, GENERATION_PROJECTION_POLL_MS));
+        continue;
       }
 
       if (activeTaskId !== input.taskId) {
@@ -767,6 +827,7 @@ export function SessionPage(props: {
         await new Promise((resolve) => window.setTimeout(resolve, GENERATION_PROJECTION_POLL_MS));
         continue;
       }
+      terminalProjectionMisses = 0;
       await new Promise((resolve) => window.setTimeout(resolve, GENERATION_PROJECTION_POLL_MS));
     }
     return { status: 'cancelled' };
@@ -794,13 +855,18 @@ export function SessionPage(props: {
       const activeTaskId = snapshot.learning.session?.activeGenerationTaskId;
       if (activeTaskId !== undefined) {
         const attempt = generationAttempt.current;
+        const unansweredUserMessage = hasUnansweredUserMessage(snapshot.messages);
+        const unansweredUserMessageId = unansweredUserMessage
+          ? snapshot.messages?.findLast((message) => message.role === 'user')?.id
+          : undefined;
         dispatch({
           type: 'generating',
           taskId: activeTaskId,
           resourceVersion: snapshot.resourceVersion,
         });
+        let streamOutcome: Awaited<ReturnType<typeof consumeGenerationStream>> | undefined;
         try {
-          await consumeGenerationStream(
+          streamOutcome = await consumeGenerationStream(
             api,
             activeTaskId,
             (event) => {
@@ -819,7 +885,11 @@ export function SessionPage(props: {
           sessionId: started.sessionId,
           taskId: activeTaskId,
           attempt,
-          responseKind: hasUnansweredUserMessage(snapshot.messages) ? 'turn' : 'opening',
+          responseKind: unansweredUserMessage ? 'turn' : 'opening',
+          ...(streamOutcome === undefined ? {} : { streamOutcome }),
+          ...(unansweredUserMessageId === undefined
+            ? {}
+            : { userMessageId: unansweredUserMessageId }),
         });
         if (cancelled) return;
         if (outcome.status === 'failed') {
@@ -922,8 +992,9 @@ export function SessionPage(props: {
           taskId: opening.taskId,
           resourceVersion: opening.resourceVersion,
         });
+        let streamOutcome: Awaited<ReturnType<typeof consumeGenerationStream>> | undefined;
         try {
-          await consumeGenerationStream(
+          streamOutcome = await consumeGenerationStream(
             api,
             opening.taskId,
             (event) => {
@@ -941,6 +1012,7 @@ export function SessionPage(props: {
           taskId: opening.taskId,
           attempt,
           responseKind: 'opening',
+          ...(streamOutcome === undefined ? {} : { streamOutcome }),
         });
         if (outcome.status === 'cancelled') return;
         if (outcome.status === 'failed') {
@@ -1012,7 +1084,11 @@ export function SessionPage(props: {
   };
 
   const finishMessageTask = async (
-    task: Awaited<ReturnType<LearningClient['sendMessage']>>,
+    task: Readonly<{
+      taskId: string;
+      resourceVersion: number;
+      userMessageId?: string;
+    }>,
     content: string,
     attempt: number,
     localMessageId: string,
@@ -1052,8 +1128,9 @@ export function SessionPage(props: {
       resourceVersion: task.resourceVersion,
       ...(task.userMessageId === undefined ? {} : { userMessageId: task.userMessageId }),
     });
+    let streamOutcome: Awaited<ReturnType<typeof consumeGenerationStream>> | undefined;
     try {
-      await consumeGenerationStream(
+      streamOutcome = await consumeGenerationStream(
         api,
         task.taskId,
         (event) => {
@@ -1068,11 +1145,15 @@ export function SessionPage(props: {
       // Stream transport is advisory; the persisted task binding remains authoritative.
     }
     if (generationAttempt.current !== attempt) return;
+    const userMessageId =
+      task.userMessageId ?? (localMessageId.startsWith('local-') ? undefined : localMessageId);
     const outcome = await convergeGenerationProjection({
       sessionId: state.sessionId!,
       taskId: task.taskId,
       attempt,
       responseKind: 'turn',
+      ...(streamOutcome === undefined ? {} : { streamOutcome }),
+      ...(userMessageId === undefined ? {} : { userMessageId }),
     });
     if (outcome.status === 'failed') {
       dispatch({ type: 'send-failed', content, requestAccepted: true });
@@ -1489,10 +1570,7 @@ export function SessionPage(props: {
   const pendingUserAlreadyRendered =
     pendingUserMessage !== undefined &&
     state.messages.some(
-      (message) =>
-        message.role === 'user' &&
-        (message.id === pendingUserMessage.id ||
-          message.markdown.trim() === pendingUserMessage.markdown.trim()),
+      (message) => message.role === 'user' && message.id === pendingUserMessage.id,
     );
   const messages = [
     ...visibleStoredMessages.map((message) => ({

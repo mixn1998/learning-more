@@ -11,6 +11,14 @@ import './history-statistics-workspace.css';
 
 export type HistoryStatisticsRange = '30d' | 'year' | 'all' | 'custom';
 
+export type HistoryStatisticsWeek = Readonly<{
+  startDate: string;
+  endDate: string;
+  durationMinutes: number;
+  lessonCount: number;
+  height: number;
+}>;
+
 export type HistoryStatisticsSnapshot = Readonly<{
   hours: string;
   completedLessons: number;
@@ -20,7 +28,7 @@ export type HistoryStatisticsSnapshot = Readonly<{
   abandonedCourseCount: number;
   currentStreakDays: number;
   longestStreakDays: number;
-  bars: readonly number[];
+  weeklyTrend: readonly HistoryStatisticsWeek[];
   disciplines: readonly Readonly<{ label: string; percent: number; hours: string }>[];
   interactionResponseRate: number;
   interactionSkipped: number;
@@ -67,7 +75,11 @@ export function HistoryStatisticsWorkspace(props: {
   const [mode, setMode] = useState('');
   const [sort, setSort] = useState<'recent' | 'oldest' | 'duration'>('recent');
   const [showAllDisciplines, setShowAllDisciplines] = useState(false);
+  const [hoveredWeek, setHoveredWeek] = useState<number>();
+  const [focusedWeek, setFocusedWeek] = useState<number>();
+  const [pinnedWeek, setPinnedWeek] = useState<number>();
   const snapshot = props.getSnapshot(range, custom);
+  const visibleWeek = hoveredWeek ?? focusedWeek ?? pinnedWeek;
   const visibleDisciplines = showAllDisciplines
     ? snapshot.disciplines
     : snapshot.disciplines.slice(0, DISCIPLINE_PREVIEW_LIMIT);
@@ -199,16 +211,51 @@ export function HistoryStatisticsWorkspace(props: {
                 <small>过去 12 周</small>
               </div>
               <div aria-label="过去十二周实际学习时长" className="history-stat-chart">
-                {snapshot.bars.map((height, index) => (
-                  <div
-                    className="history-stat-bar-day"
-                    key={index}
-                    style={{ '--h': `${height}%` } as React.CSSProperties}
-                  >
-                    <i />
-                    <span>{index + 1}周</span>
-                  </div>
-                ))}
+                {snapshot.weeklyTrend.map((week, index) => {
+                  const tooltipId = `history-stat-week-tooltip-${index}`;
+                  const isVisible = visibleWeek === index;
+                  const duration =
+                    week.durationMinutes < 60
+                      ? `${week.durationMinutes} 分钟`
+                      : `${Math.floor(week.durationMinutes / 60)} 小时${
+                          week.durationMinutes % 60 === 0
+                            ? ''
+                            : ` ${week.durationMinutes % 60} 分钟`
+                        }`;
+                  const accessibleLabel = `第 ${index + 1} 周，${week.startDate} 至 ${
+                    week.endDate
+                  }，学习 ${duration}，完成 ${week.lessonCount} 节课`;
+                  return (
+                    <button
+                      aria-describedby={isVisible ? tooltipId : undefined}
+                      aria-label={accessibleLabel}
+                      aria-pressed={pinnedWeek === index}
+                      className={`history-stat-bar-day${pinnedWeek === index ? ' pinned' : ''}`}
+                      key={index}
+                      onBlur={() => setFocusedWeek(undefined)}
+                      onClick={() =>
+                        setPinnedWeek((current) => (current === index ? undefined : index))
+                      }
+                      onFocus={() => setFocusedWeek(index)}
+                      onMouseEnter={() => setHoveredWeek(index)}
+                      onMouseLeave={() => setHoveredWeek(undefined)}
+                      style={{ '--h': `${week.height}%` } as React.CSSProperties}
+                      type="button"
+                    >
+                      <i aria-hidden="true" />
+                      <span>{index + 1}周</span>
+                      {isVisible ? (
+                        <span className="history-stat-week-tooltip" id={tooltipId} role="tooltip">
+                          <b>
+                            {week.startDate} – {week.endDate}
+                          </b>
+                          <span>学习时长：{duration}</span>
+                          <span>课节数量：{week.lessonCount} 节</span>
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             </article>
             <div className="history-stat-stack">
@@ -241,24 +288,6 @@ export function HistoryStatisticsWorkspace(props: {
                     {showAllDisciplines ? '收起' : `查看全部 ${snapshot.disciplines.length} 个学科`}
                   </button>
                 ) : null}
-              </article>
-              <article className="history-stat-panel">
-                <div className="history-stat-panel-head">
-                  <div>
-                    <h3>学习参与事实</h3>
-                    <p>只展示结构化关键互动事件</p>
-                  </div>
-                </div>
-                <div className="history-stat-facts">
-                  <div className="history-stat-fact">
-                    <b>{snapshot.interactionResponseRate}%</b>
-                    <span>关键互动回应率</span>
-                  </div>
-                  <div className="history-stat-fact">
-                    <b>{snapshot.interactionSkipped}</b>
-                    <span>跳过互动</span>
-                  </div>
-                </div>
               </article>
             </div>
           </div>

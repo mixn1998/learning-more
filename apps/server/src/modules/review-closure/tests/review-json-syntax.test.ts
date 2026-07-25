@@ -24,6 +24,14 @@ describe('parseJsonWithSyntaxRepair', () => {
     });
   });
 
+  it('repairs unescaped TeX backslashes inside JSON strings', () => {
+    const source = String.raw`{"coreInsight":"\[\lim_{x\to a} f(x)=L\]"}`;
+
+    expect(parseJsonWithSyntaxRepair(source)).toEqual({
+      coreInsight: String.raw`\[\lim_{x\to a} f(x)=L\]`,
+    });
+  });
+
   it('does not merge ambiguous or duplicate fragments', () => {
     const source = '{"kind":"lesson-final"},"kind":"course-final"}';
     expect(parseJsonWithSyntaxRepair(source)).not.toEqual({ kind: 'course-final' });

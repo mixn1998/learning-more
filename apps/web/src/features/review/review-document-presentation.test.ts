@@ -69,27 +69,43 @@ describe('lesson Review presentation projection', () => {
     expect(projection.performance).toHaveLength(2);
   });
 
-  it('keeps core insight at problem-and-method granularity', () => {
+  it('preserves the complete semantic Markdown structure of core insight', () => {
+    const coreInsight = [
+      '先识别**关键约束**，再判断它改变了哪些行动路径。',
+      '',
+      '> 危机压力 → 资源需求 → 控制瓶颈 → 行动结果',
+      '',
+      '1. **还原情境**',
+      '   1. 找出行动者与目标。',
+      '   2. 区分资源、制度和时间边界。',
+      '2. **比较路径**',
+      '   - 检查哪条路径仍然可行。',
+      '   - 用 `result = action(constraint)` 表达依赖关系。',
+      '',
+      '$$',
+      'R = f(C, T)',
+      '$$',
+      '',
+      '因此，结论必须随约束变化重新判断。',
+      '',
+      '补充边界说明。'.repeat(180),
+    ].join('\n');
     const projection = projectLessonReviewDocument({
-      knowledgeMap: { title: '线索', markdown: '问题 → 方法 → 结论' },
-      coreInsight: [
-        '本课要解决的问题是如何判断多个选项是否构成真正的决策。',
-        '核心方法是先检查选项在当前情境中是否具有不同结果。',
-        '- 比较机会成本。\n- 检查关键阈值。\n- 检查信息条件。\n- 检查风险后果。\n- 这是应被裁掉的第五项。',
-        '因此，表面选项数量不等于有效选择空间。',
-        '这一段是后端继续保留、但前端不再铺开的扩展分析。'.repeat(80),
-      ].join('\n\n'),
+      knowledgeMap: { title: '线索', markdown: '约束 → 路径 → 结果' },
+      coreInsight,
       performance: [
-        { title: '你做得好的地方', markdown: '检查了条件。' },
-        { title: '接下来的判断', markdown: '继续验证。' },
+        { title: '你做得好的地方', markdown: '识别了关键约束。' },
+        { title: '接下来的判断', markdown: '继续比较约束变化。' },
       ],
     });
 
-    expect(projection.coreInsight).toContain('本课要解决的问题');
-    expect(projection.coreInsight).toContain('核心方法');
-    expect(projection.coreInsight).toContain('因此');
-    expect(projection.coreInsight).not.toContain('第五项');
-    expect(projection.coreInsight).not.toContain('扩展分析扩展分析');
+    expect(coreInsight.length).toBeGreaterThan(1_200);
+    expect(projection.coreInsight).toBe(coreInsight);
+    expect(projection.coreInsight).toContain('**关键约束**');
+    expect(projection.coreInsight).toContain('> 危机压力 → 资源需求 → 控制瓶颈 → 行动结果');
+    expect(projection.coreInsight).toContain('   1. 找出行动者与目标。');
+    expect(projection.coreInsight).toContain('`result = action(constraint)`');
+    expect(projection.coreInsight).toContain('R = f(C, T)');
   });
 
   it('keeps only evidence-backed adjacent exploration as an optional module', () => {

@@ -161,8 +161,9 @@ export function createLocalFileLearningSessionRepositories(
       const indexed = await readIndexed();
       if (indexed !== undefined || sessionIndexComplete) return indexed;
       sessionIndexBuild ??= (async () => {
-        for await (const _record of repository.list()) {
+        for await (const record of repository.list()) {
           // list() fills the index before yielding its first record.
+          void record;
         }
       })().finally(() => {
         sessionIndexBuild = undefined;

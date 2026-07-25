@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
 import type { CourseMode } from '@learning-more/contracts';
 import { Button, ContentState, Dialog } from '@learning-more/ui';
@@ -7,9 +7,11 @@ import {
   courseAuthoringClient,
   type CourseAuthoringClient,
 } from '../../client/course-authoring-client.js';
+import { planningClient, type PlanningClient } from '../../client/planning-client.js';
 import type { CourseModeDefinition } from '../../course-mode-registry.js';
 import type { AuthoringStartIntent } from '../../state/authoring-start-intent.js';
 import { getPageInstanceId } from '../../state/page-instance.js';
+import { useCommandAttempts } from '../../state/use-command-attempt.js';
 import { useCourseModeTheme } from '../../use-course-mode-theme.js';
 import { CourseModeSelector } from '../course-authoring/course-mode-selector.js';
 import { CourseCatalogFilters, filterCourseCatalog } from '../course/course-catalog-filters.js';
@@ -119,6 +121,42 @@ function isPendingSchedule(
   return progress !== 'completed' && progress !== 'abandoned';
 }
 
+type AgendaStatus = 'completed' | 'abandoned' | 'overdue' | 'pending';
+
+function agendaStatus(
+  item: HomeScheduleItem,
+  lessons: readonly HomeLessonCandidate[],
+  dateKey: string,
+  todayKey: string,
+): AgendaStatus | undefined {
+  const progress = scheduleLesson(item, lessons)?.progress;
+  if (progress === 'completed') return 'completed';
+  if (progress === 'abandoned') return 'abandoned';
+  if (dateKey < todayKey) return 'overdue';
+  if (dateKey === todayKey) return 'pending';
+  return undefined;
+}
+
+const agendaStatusLabels: Readonly<Record<AgendaStatus, string>> = {
+  completed: '已完成',
+  abandoned: '已放弃',
+  overdue: '已逾期',
+  pending: '待学习',
+};
+
+function moveIntervalToDate(
+  item: HomeScheduleItem,
+  nextDate: string,
+): Readonly<{ startAt: string; endAt: string }> {
+  const duration = new Date(item.endAt).getTime() - new Date(item.startAt).getTime();
+  const timeWithOffset = item.startAt.match(/T(.+)$/)?.[1] ?? '09:00:00+08:00';
+  const startAt = `${nextDate}T${timeWithOffset}`;
+  return {
+    startAt,
+    endAt: new Date(new Date(startAt).getTime() + duration).toISOString(),
+  };
+}
+
 function Prompt(props: {
   readonly mode: CourseModeDefinition;
   readonly topic: string;
@@ -185,7 +223,9 @@ function Prompt(props: {
 
 export function HomePage(props: {
   readonly client?: CourseAuthoringClient;
+  readonly planningApi?: PlanningClient;
   readonly onNavigate: (path: string) => void;
+  readonly onScheduleChanged?: (() => void | Promise<void>) | undefined;
   readonly onStartAuthoring?: ((intent: AuthoringStartIntent) => void) | undefined;
   readonly lessons?: readonly HomeLessonCandidate[];
   readonly draftSessions?: readonly HomeDraft[];
@@ -197,6 +237,8 @@ export function HomePage(props: {
   readonly now?: Date;
 }) {
   const api = props.client ?? courseAuthoringClient;
+  const scheduleApi = props.planningApi ?? planningClient;
+  const commands = useCommandAttempts();
   const pageInstanceId = useMemo(getPageInstanceId, []);
   const now = props.now ?? new Date();
   const todayKey = localDateKey(now);
@@ -213,6 +255,14 @@ export function HomePage(props: {
   const [deletedDraftIds, setDeletedDraftIds] = useState<ReadonlySet<string>>(() => new Set());
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string>();
+  const [scheduleOverrides, setScheduleOverrides] = useState<
+    Readonly<Record<string, HomeScheduleItem>>
+  >({});
+  const [rescheduleItemId, setRescheduleItemId] = useState<string>();
+  const [rescheduleDate, setRescheduleDate] = useState(todayKey);
+  const [rescheduleBusy, setRescheduleBusy] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState<string>();
+  const [rescheduleNotice, setRescheduleNotice] = useState<string>();
   const materialInputRef = useRef<HTMLInputElement>(null);
   const topicInputRef = useRef<HTMLInputElement>(null);
   const lessons = props.lessons ?? [];
@@ -224,9 +274,9 @@ export function HomePage(props: {
     discipline: chooserDiscipline,
     courseMode: chooserMode,
   });
-  const schedule = [...(props.schedule ?? [])].sort((left, right) =>
-    left.startAt.localeCompare(right.startAt),
-  );
+  const schedule = (props.schedule ?? [])
+    .map((item) => scheduleOverrides[item.scheduleItemId] ?? item)
+    .sort((left, right) => left.startAt.localeCompare(right.startAt));
   const selectedMode = useCourseModeTheme(mode);
   const week = Array.from({ length: 7 }, (_, index) => addDays(weekAnchor, index));
   const weekEnd = week.at(-1)!;
@@ -244,6 +294,19 @@ export function HomePage(props: {
     (lesson) => lesson.progress === 'not_started' && !scheduledLessons.has(lesson.lessonId),
   ).length;
   const canContinue = courses.length > 0;
+
+  useEffect(() => {
+    const availableIds = new Set((props.schedule ?? []).map((item) => item.scheduleItemId));
+    setScheduleOverrides((current) =>
+      Object.fromEntries(Object.entries(current).filter(([id]) => availableIds.has(id))),
+    );
+  }, [props.schedule]);
+
+  useEffect(() => {
+    if (rescheduleNotice === undefined) return undefined;
+    const timeoutId = window.setTimeout(() => setRescheduleNotice(undefined), 2_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [rescheduleNotice]);
 
   const create = () => {
     const normalizedTopic = topic.trim();
@@ -280,6 +343,49 @@ export function HomePage(props: {
       setDeleteError('删除失败，草稿仍然保留，请稍后重试。');
     } finally {
       setDeleteBusy(false);
+    }
+  };
+
+  const reschedule = async (item: HomeScheduleItem) => {
+    if (rescheduleBusy || rescheduleDate < todayKey) return;
+    setRescheduleBusy(true);
+    setRescheduleError(undefined);
+    setRescheduleNotice(undefined);
+    try {
+      const snapshot = await scheduleApi.getSchedule();
+      const authoritative = snapshot.items.find(
+        (candidate) => candidate.id === item.scheduleItemId,
+      );
+      if (authoritative === undefined) {
+        throw new Error('schedule_not_found');
+      }
+      const interval = moveIntervalToDate(item, rescheduleDate);
+      const commandKey = `home-reschedule:${authoritative.id}:${authoritative.resourceVersion}:${interval.startAt}`;
+      const moved = await scheduleApi.moveSchedule(
+        authoritative.id,
+        authoritative.resourceVersion,
+        interval.startAt,
+        interval.endAt,
+        commands.attemptFor(commandKey),
+      );
+      commands.complete(commandKey);
+      const next: HomeScheduleItem = {
+        scheduleItemId: moved.scheduleItem.id,
+        courseId: moved.scheduleItem.courseId,
+        lessonId: moved.scheduleItem.lessonId,
+        startAt: moved.scheduleItem.startAt,
+        endAt: moved.scheduleItem.endAt,
+        source: moved.scheduleItem.source,
+        locked: moved.scheduleItem.locked ?? false,
+      };
+      setScheduleOverrides((current) => ({ ...current, [next.scheduleItemId]: next }));
+      setRescheduleItemId(undefined);
+      setRescheduleNotice(`已重新排期至 ${rescheduleDate}`);
+      void Promise.resolve(props.onScheduleChanged?.()).catch(() => undefined);
+    } catch {
+      setRescheduleError('重新排期失败，请重试。');
+    } finally {
+      setRescheduleBusy(false);
     }
   };
 
@@ -349,6 +455,7 @@ export function HomePage(props: {
                 onClick={() => {
                   setWeekAnchor(startOfWeek(now));
                   setSelectedDate(todayKey);
+                  setRescheduleNotice(undefined);
                 }}
               >
                 返回当周
@@ -399,7 +506,10 @@ export function HomePage(props: {
                     .filter(Boolean)
                     .join(' ')}
                   type="button"
-                  onClick={() => setSelectedDate(dateKey)}
+                  onClick={() => {
+                    setSelectedDate(dateKey);
+                    setRescheduleNotice(undefined);
+                  }}
                 >
                   <span className="day-meta">
                     <small>
@@ -435,53 +545,151 @@ export function HomePage(props: {
             <h3>
               {selectedDate} · {selectedDate === todayKey ? '今日学习' : '学习安排'}
             </h3>
+            {rescheduleNotice === undefined ? null : (
+              <p className="agenda-feedback agenda-feedback--success" role="status">
+                {rescheduleNotice}
+              </p>
+            )}
             <div className="agenda-list">
               {selectedItems.length === 0 ? (
                 <p>当天暂无课程安排</p>
               ) : (
-                selectedItems.map((item) => (
-                  <button
-                    key={item.scheduleItemId}
-                    className="agenda-item"
-                    type="button"
-                    onClick={() =>
-                      props.onNavigate(`/courses/${item.courseId}/lessons/${item.lessonId}`)
-                    }
-                  >
-                    <b className="agenda-item__title">
-                      {scheduleTitle(item, lessons)}
-                      {selectedDate === todayKey ? (
-                        <span
-                          className={[
-                            'agenda-item__status',
-                            scheduleLesson(item, lessons)?.progress === 'completed'
-                              ? 'agenda-item__status--completed'
-                              : undefined,
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        >
-                          {scheduleLesson(item, lessons)?.progress === 'completed'
-                            ? '已完成'
-                            : '待学习'}
+                selectedItems.map((item) => {
+                  const status = agendaStatus(item, lessons, selectedDate, todayKey);
+                  const title = scheduleTitle(item, lessons);
+                  const isRescheduling = rescheduleItemId === item.scheduleItemId;
+                  return (
+                    <article
+                      key={item.scheduleItemId}
+                      className={[
+                        'agenda-item',
+                        isRescheduling ? 'agenda-item--rescheduling' : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
+                      <div className="agenda-item__main">
+                        <div className="agenda-item__heading">
+                          <button
+                            className="agenda-item__lesson-link"
+                            type="button"
+                            onClick={() =>
+                              props.onNavigate(
+                                `/courses/${item.courseId}/lessons/${item.lessonId}${
+                                  status === 'completed' ? '/record' : ''
+                                }`,
+                              )
+                            }
+                          >
+                            <b>{title}</b>
+                          </button>
+                          {status === undefined ? null : (
+                            <span
+                              className={[
+                                'agenda-item__status',
+                                `agenda-item__status--${status}`,
+                              ].join(' ')}
+                            >
+                              {agendaStatusLabels[status]}
+                            </span>
+                          )}
+                          {status !== 'overdue' || isRescheduling ? null : (
+                            <Button
+                              className="agenda-item__reschedule-trigger"
+                              disabled={rescheduleBusy}
+                              type="button"
+                              onClick={() => {
+                                setRescheduleItemId(item.scheduleItemId);
+                                setRescheduleDate(todayKey);
+                                setRescheduleError(undefined);
+                                setRescheduleNotice(undefined);
+                              }}
+                            >
+                              <svg
+                                aria-hidden="true"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v4.5M11 20H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2" />
+                                <path d="M14.5 15.5a3.5 3.5 0 1 0 1-2.45M15.5 10.5v3h-3" />
+                              </svg>
+                              <span>重新排期</span>
+                            </Button>
+                          )}
+                        </div>
+                        <span className="agenda-item__meta">
+                          {courses.find((course) => course.courseId === item.courseId)?.title ??
+                            item.courseId}{' '}
+                          ·{' '}
+                          {Math.max(
+                            1,
+                            Math.round(
+                              (new Date(item.endAt).getTime() - new Date(item.startAt).getTime()) /
+                                60_000,
+                            ),
+                          )}{' '}
+                          分钟 →
                         </span>
-                      ) : null}
-                    </b>
-                    <span className="agenda-item__meta">
-                      {courses.find((course) => course.courseId === item.courseId)?.title ??
-                        item.courseId}{' '}
-                      ·{' '}
-                      {Math.max(
-                        1,
-                        Math.round(
-                          (new Date(item.endAt).getTime() - new Date(item.startAt).getTime()) /
-                            60_000,
-                        ),
-                      )}{' '}
-                      分钟 →
-                    </span>
-                  </button>
-                ))
+                      </div>
+                      {status !== 'overdue' || !isRescheduling ? null : (
+                        <div className="agenda-item__reschedule">
+                          <label>
+                            <span>新日期</span>
+                            <input
+                              aria-label={`重新安排“${title}”的日期`}
+                              min={todayKey}
+                              type="date"
+                              value={rescheduleDate}
+                              onChange={(event) => setRescheduleDate(event.currentTarget.value)}
+                            />
+                          </label>
+                          <Button
+                            className="agenda-item__reschedule-action agenda-item__reschedule-action--confirm"
+                            disabled={rescheduleBusy || rescheduleDate < todayKey}
+                            type="button"
+                            variant="primary"
+                            onClick={() => void reschedule(item)}
+                          >
+                            <svg
+                              aria-hidden="true"
+                              fill="none"
+                              viewBox="0 0 20 20"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path d="m5 10 3 3 7-7" />
+                            </svg>
+                            <span>{rescheduleBusy ? '保存中…' : '确认'}</span>
+                          </Button>
+                          <Button
+                            className="agenda-item__reschedule-action agenda-item__reschedule-action--cancel"
+                            disabled={rescheduleBusy}
+                            type="button"
+                            onClick={() => {
+                              setRescheduleItemId(undefined);
+                              setRescheduleError(undefined);
+                            }}
+                          >
+                            <svg
+                              aria-hidden="true"
+                              fill="none"
+                              viewBox="0 0 20 20"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path d="m6 6 8 8M14 6l-8 8" />
+                            </svg>
+                            <span>取消</span>
+                          </Button>
+                          {rescheduleError === undefined ? null : (
+                            <span className="agenda-item__reschedule-error" role="alert">
+                              {rescheduleError}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
               )}
             </div>
           </section>

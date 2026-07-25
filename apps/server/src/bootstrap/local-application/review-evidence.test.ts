@@ -173,4 +173,122 @@ describe('review evidence', () => {
       'message_user_retry',
     ]);
   });
+
+  it('materializes the classroom summary and comprehensive synthesis for semantic distillation', async () => {
+    const sourceSnapshotHash = 'c'.repeat(64);
+    const teachingState = {
+      schemaVersion: 1 as const,
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      ledgerVersion: 3,
+      sourceSnapshotHash,
+      observationStatus: 'current' as const,
+      scopeStatus: 'aligned' as const,
+      evidenceCheckpoint: true,
+      lessonPhase: 'ready_to_close' as const,
+      comprehensiveCheck: 'completed' as const,
+      closureInquiry: 'confirmed_no_questions' as const,
+      summaryStatus: 'delivered' as const,
+      reviewProjection: {
+        comprehensiveApplicationStartSourceMessageId: 'message_comprehensive_start',
+        comprehensiveSynthesisSourceMessageId: 'message_comprehensive_end',
+        classroomSummarySourceMessageId: 'message_summary',
+      },
+      knowledgePoints: [],
+      openLoops: [],
+      explorationBranches: [],
+      recentLearnerSignals: [],
+    };
+    const checkpoint = {
+      checkpointId: 'checkpoint_1',
+      reason: 'lesson_closure' as const,
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      teachingState,
+      observationRefs: [],
+      sourceMessageIds: [
+        'message_comprehensive_start',
+        'message_comprehensive_end',
+        'message_summary',
+      ],
+      sourceSnapshotHash,
+      observationCompleteness: 'complete' as const,
+      retentionDecision: 'preserve' as const,
+      frozenAt: '2026-07-25T00:00:00.000Z',
+    };
+    const learning = {
+      access: {
+        teachingContextSources: {
+          getCourseAndLesson: vi.fn().mockResolvedValue({
+            course: { courseId: 'course_1', title: 'Course' },
+            lesson: {
+              lessonId: 'lesson_1',
+              title: 'Lesson',
+              objective: 'Objective',
+              coreKnowledgePoints: [],
+            },
+          }),
+        },
+        getTeachingLedger: vi.fn().mockResolvedValue({
+          courseId: 'course_1',
+          lessonId: 'lesson_1',
+          sessionId: 'session_1',
+          observations: [],
+          checkpoints: [checkpoint],
+          state: teachingState,
+          resourceVersion: 3,
+        }),
+        listMessages: vi.fn().mockResolvedValue([
+          {
+            id: 'message_comprehensive_start',
+            role: 'assistant',
+            createdAt: '2026-07-25T00:00:00.000Z',
+            contentArtifactRef: 'artifact_comprehensive_start',
+            completionStatus: 'complete',
+          },
+          {
+            id: 'message_comprehensive_end',
+            role: 'assistant',
+            createdAt: '2026-07-25T00:00:30.000Z',
+            contentArtifactRef: 'artifact_comprehensive_end',
+            completionStatus: 'complete',
+          },
+          {
+            id: 'message_summary',
+            role: 'assistant',
+            createdAt: '2026-07-25T00:01:00.000Z',
+            contentArtifactRef: 'artifact_summary',
+            completionStatus: 'complete',
+          },
+        ]),
+      },
+    } as unknown as Pick<LocalLearningRuntime, 'access'>;
+    const evidence = createReviewEvidence(learning, {
+      read: vi.fn(async (artifactId: string) => ({
+        artifactId,
+        kind: 'message',
+        contentSha256: 'd'.repeat(64),
+        immutable: true,
+        content:
+          artifactId === 'artifact_summary'
+            ? '# 本课总结\n\n这是课堂总结原文。'
+            : artifactId === 'artifact_comprehensive_start'
+              ? '综合应用任务：比较资源、组织和时点之间的关系。'
+              : '关系收束：先找出会改变结果的瓶颈，再判断当前权力中心。',
+      })),
+      readDraft: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const pack = await evidence.build('final', 'session_1', sourceSnapshotHash);
+
+    expect(pack.classroomSummary).toEqual({
+      sourceMessageId: 'message_summary',
+      markdown: '# 本课总结\n\n这是课堂总结原文。',
+    });
+    expect(pack.comprehensiveSynthesis).toEqual({
+      sourceMessageId: 'message_comprehensive_end',
+      markdown:
+        '【综合应用片段 1】\n综合应用任务：比较资源、组织和时点之间的关系。\n\n【综合应用片段 2】\n关系收束：先找出会改变结果的瓶颈，再判断当前权力中心。',
+    });
+  });
 });

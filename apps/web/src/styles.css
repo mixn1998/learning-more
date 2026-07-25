@@ -430,28 +430,56 @@
 }
 
 .agenda-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 14px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: #fff;
   color: var(--ink);
-  font: inherit;
+  text-align: left;
+}
+
+.agenda-item__main {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+}
+
+.agenda-item__heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agenda-item__lesson-link {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
 }
 
-.agenda-item b {
+.agenda-item__lesson-link b {
   font-size: 12px;
 }
 
-.agenda-item__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.agenda-item__lesson-link:hover {
+  color: var(--accent-dark);
+}
+
+.agenda-item__lesson-link:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 3px;
 }
 
 .agenda-item .agenda-item__status {
@@ -472,9 +500,144 @@
   background: color-mix(in srgb, #e7f3ed 72%, #fff);
 }
 
+.agenda-item .agenda-item__status--abandoned {
+  border-color: color-mix(in srgb, #8a8177 32%, var(--line));
+  color: #6f675f;
+  background: color-mix(in srgb, #eeeae5 75%, #fff);
+}
+
+.agenda-item .agenda-item__status--overdue {
+  border-color: color-mix(in srgb, #b65a4f 36%, var(--line));
+  color: #9c443b;
+  background: color-mix(in srgb, #f8e8e5 78%, #fff);
+}
+
 .agenda-item__meta {
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: 11px;
+}
+
+.agenda-item__reschedule {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.agenda-item--rescheduling .agenda-item__reschedule {
+  padding: 0 12px 12px;
+}
+
+.agenda-item__reschedule label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.agenda-item__reschedule input {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.agenda-item__reschedule-trigger.lm-button,
+.agenda-item__reschedule-action.lm-button {
+  display: inline-flex;
+  min-height: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: none;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.agenda-item__reschedule-trigger.lm-button {
+  border-color: color-mix(in srgb, #b65a4f 30%, var(--line));
+  background: color-mix(in srgb, #f8e8e5 58%, #fff);
+  color: #93463e;
+}
+
+.agenda-item__reschedule-trigger.lm-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #a64b42 48%, var(--line));
+  background: color-mix(in srgb, #f4dcd8 72%, #fff);
+  box-shadow: 0 5px 12px rgb(126 65 55 / 12%);
+  transform: translateY(-1px);
+}
+
+.agenda-item__reschedule-action--confirm.lm-button {
+  border-color: #a65445;
+  background: #a65445;
+  color: #fff;
+}
+
+.agenda-item__reschedule-action--confirm.lm-button:hover:not(:disabled) {
+  border-color: #904236;
+  background: #904236;
+  box-shadow: 0 5px 12px rgb(126 65 55 / 16%);
+  transform: translateY(-1px);
+}
+
+.agenda-item__reschedule-action--cancel.lm-button {
+  border-color: color-mix(in srgb, #8a8177 32%, var(--line));
+  background: #fff;
+  color: #5f5851;
+}
+
+.agenda-item__reschedule-action--cancel.lm-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #725f51 45%, var(--line));
+  background: var(--paper-2);
+  transform: translateY(-1px);
+}
+
+.agenda-item__reschedule-trigger svg,
+.agenda-item__reschedule-action svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agenda-item__reschedule-trigger.lm-button:focus-visible,
+.agenda-item__reschedule-action.lm-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 46%, transparent);
+  outline-offset: 2px;
+}
+
+.agenda-item__reschedule-error {
+  align-self: center;
+  color: #a3483f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.agenda-feedback {
+  margin: 0 0 9px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.agenda-feedback--success {
+  color: #356d59;
+  background: color-mix(in srgb, #e7f3ed 72%, #fff);
 }
 
 .course-chooser {
@@ -708,6 +871,23 @@
 
   .week-tools .lm-btn {
     flex: 0 0 auto;
+  }
+
+  .agenda-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agenda-item__main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .agenda-item__reschedule {
+    padding: 0 12px 12px;
+  }
+
+  .agenda-item__reschedule label {
+    flex: 1 1 auto;
   }
 }
 
@@ -1016,6 +1196,8 @@ button:not(
   .mode-card,
   .day,
   .agenda-item,
+  .agenda-item__main,
+  .agenda-item__lesson-link,
   .planning-day,
   .planning-date-trigger,
   .pf-btn,
@@ -1056,6 +1238,8 @@ button:not(
     .mode-card,
     .day,
     .agenda-item,
+    .agenda-item__main,
+    .agenda-item__lesson-link,
     .planning-day,
     .planning-date-trigger,
     .pf-btn,

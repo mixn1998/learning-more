@@ -154,16 +154,28 @@ export function buildStatisticsSnapshot(input: {
   const end = dateFromLocal(selectedBounds.end);
   const start = new Date(end.getTime() - 83 * DAY_MS);
   const rawBars = Array.from({ length: 12 }, () => 0);
+  const weeklyLessonCounts = Array.from({ length: 12 }, () => 0);
   for (const day of hasDailyProjection ? projectedDaily : selectedDays) {
     const index = Math.floor(
       (dateFromLocal(day.localDate).getTime() - start.getTime()) / (7 * DAY_MS),
     );
-    if (index >= 0 && index < rawBars.length) rawBars[index]! += day.actualSeconds;
+    if (index < 0 || index >= rawBars.length) continue;
+    rawBars[index]! += day.actualSeconds;
+    weeklyLessonCounts[index]! +=
+      'completedLessonCount' in day ? day.completedLessonCount : day.completedLessonIds.length;
   }
   const maxBar = Math.max(...rawBars, 1);
-  const bars = rawBars.map((value) =>
-    value === 0 ? 0 : Math.max(8, Math.round((value / maxBar) * 94)),
-  );
+  const weeklyTrend = rawBars.map((value, index) => {
+    const weekStart = new Date(start.getTime() + index * 7 * DAY_MS);
+    const weekEnd = new Date(weekStart.getTime() + 6 * DAY_MS);
+    return {
+      startDate: isoDate(weekStart).slice(5).replace('-', '/'),
+      endDate: isoDate(weekEnd).slice(5).replace('-', '/'),
+      durationMinutes: Math.round(value / 60),
+      lessonCount: weeklyLessonCounts[index]!,
+      height: value === 0 ? 0 : Math.max(8, Math.round((value / maxBar) * 94)),
+    };
+  });
 
   const secondsByDiscipline = new Map<string, number>();
   for (const day of projectedDaily) {
@@ -216,7 +228,7 @@ export function buildStatisticsSnapshot(input: {
     abandonedCourseCount: abandonedCourseIds.size,
     currentStreakDays: input.statistics.currentStreakDays,
     longestStreakDays: input.statistics.longestStreakDays,
-    bars,
+    weeklyTrend,
     disciplines,
     interactionResponseRate: prompted === 0 ? 0 : Math.round((responded / prompted) * 100),
     interactionSkipped: skipped,

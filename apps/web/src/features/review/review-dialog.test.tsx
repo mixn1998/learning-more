@@ -61,7 +61,8 @@ describe('ReviewDialog', () => {
           title: '第一讲总结：判断何时发生反转',
           knowledgeMap: { title: '决策线索', markdown: '情境 → 阈值 → 选择' },
           methodologyInsight: '先找会改变结果的阈值，再比较跨过阈值前后的选择。',
-          coreInsight: '答案取决于是否跨过会改变结果的边界。',
+          coreInsight:
+            '**判断主线：** 情境 → 阈值 → 选择\n\n1. 先识别当前情境。\n2. 再检查是否跨过阈值。\n\n> 答案取决于是否跨过会改变结果的边界。',
           performance: [
             { title: '你做得很好的地方', markdown: '主动检查了规则前提。' },
             { title: '接下来的判断', markdown: '在新情境中独立定位阈值。' },
@@ -82,11 +83,18 @@ describe('ReviewDialog', () => {
     expect(headings.indexOf('本课方法论启示')).toBeGreaterThan(headings.indexOf('知识图谱'));
     expect(headings.indexOf('本课方法论启示')).toBeLessThan(headings.indexOf('核心思想'));
     expect(screen.getByText('先找会改变结果的阈值，再比较跨过阈值前后的选择。')).toBeVisible();
+    expect(screen.getByText('判断主线：').tagName).toBe('STRONG');
+    expect(
+      screen.getByRole('heading', { name: '核心思想' }).closest('section')?.querySelectorAll('li'),
+    ).toHaveLength(2);
+    expect(document.querySelector('.lesson-final-review-document blockquote')).toHaveTextContent(
+      '答案取决于是否跨过会改变结果的边界。',
+    );
     expect(screen.getByText('主动检查了规则前提。')).toBeVisible();
     expect(screen.queryByText('AI 接口 · Codex')).not.toBeInTheDocument();
   });
 
-  it('projects a methodology insight from historical core insight when the field is absent', () => {
+  it('does not fabricate a methodology insight from core insight when the field is absent', () => {
     render(
       <ReviewDialog
         document={{
@@ -103,8 +111,8 @@ describe('ReviewDialog', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '本课方法论启示' })).toBeVisible();
-    expect(screen.getByText('先确认判断条件，再决定结论能否迁移。')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: '本课方法论启示' })).not.toBeInTheDocument();
+    expect(screen.getByText('核心方法是先确认判断条件，再决定结论能否迁移。')).toBeVisible();
   });
 
   it('projects a legacy methodology insight block into the shared module', () => {
