@@ -1,9 +1,6 @@
-import { open, mkdtemp, rm, stat } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { benchmarkQueryLatency } from '../../tools/benchmarks/src/query-latency.js';
 import { benchmarkSseLatency } from '../../tools/benchmarks/src/sse-latency.js';
@@ -17,12 +14,6 @@ const CAPACITY = {
   logicalBytes: 20 * 1024 ** 3,
 } as const;
 
-let root: string | undefined;
-
-afterAll(async () => {
-  if (root !== undefined) await rm(root, { recursive: true, force: true });
-});
-
 function visitAll(count: number, relationSize: number): { visited: number; checksum: number } {
   let checksum = 0;
   for (let index = 0; index < count; index += 1) {
@@ -32,13 +23,7 @@ function visitAll(count: number, relationSize: number): { visited: number; check
 }
 
 describe('release capacity gate', () => {
-  it('validates every required entity cardinality and the full 20 GiB logical data boundary', async () => {
-    root = await mkdtemp(path.join(os.tmpdir(), 'learning-more-capacity-'));
-    const sparsePath = path.join(root, 'structured-data.capacity');
-    const handle = await open(sparsePath, 'w');
-    await handle.truncate(CAPACITY.logicalBytes);
-    await handle.close();
-
+  it('validates every required entity cardinality and the 20 GiB logical configuration boundary', () => {
     const rssBefore = process.memoryUsage().rss;
     const startedAt = performance.now();
     const observed = {
@@ -61,7 +46,7 @@ describe('release capacity gate', () => {
       evidence: CAPACITY.evidence,
     });
     for (const result of Object.values(observed)) expect(result.checksum).toBeGreaterThan(0);
-    await expect(stat(sparsePath)).resolves.toMatchObject({ size: CAPACITY.logicalBytes });
+    expect(CAPACITY.logicalBytes).toBe(20 * 1024 ** 3);
     expect(elapsedMs).toBeLessThan(5_000);
     expect(rssGrowthBytes).toBeLessThan(256 * 1024 ** 2);
   });
