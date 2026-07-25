@@ -24,14 +24,22 @@ describe('discipline taxonomy projection', () => {
       projectDisciplineLabel({
         disciplineTag: '社会科学',
         title: '周游列国：政治制度如何形成',
-        topicTags: ['比较政治学', '国家能力', '历史制度主义'],
+        topicTags: ['比较政治学', '国家能力', '历史制度主义', '战争财政'],
       }),
     ).toBe('政治');
     expect(
       projectDisciplineLabel({
         disciplineTag: '社会科学',
         title: '强耦合世界中的解释',
-        topicTags: ['历史学解释', '社会学解释', '社会关系', '群体差异'],
+        topicTags: [
+          '历史学解释',
+          '社会学解释',
+          '制度形成',
+          '社会关系',
+          '群体差异',
+          '组织执行',
+          '社会再生产',
+        ],
       }),
     ).toBe('社会');
   });
