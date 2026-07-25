@@ -27,8 +27,8 @@ export function createHomeRouteOptions(
 ): HomeRouteOptions {
   const snapshot = createSummarySnapshot({
     dataRoot: input.dataRoot,
-    name: 'home-dashboard-v2',
-    schemaVersion: 2,
+    name: 'home-dashboard-v3',
+    schemaVersion: 3,
     sourceRevision: () => input.readRevision.current(['catalog', 'learning', 'schedule']),
     parse: (value) => HomeDashboardResponseSchema.parse(value),
     build: buildHome,
