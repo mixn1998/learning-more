@@ -272,6 +272,10 @@ describe('GenerationTeachingAgent', () => {
     );
     expect(prompt).toContain('可以邀请学习者思考，但不强制其沿预设步骤');
     expect(prompt).toContain('优先沿其思考路径继续教学');
+    expect(prompt).toContain(
+      '下一教学动作已经明确时，不要用“接下来看看”“下一步将讲”“也可以先”之类的话预告或列出分支',
+    );
+    expect(prompt).toContain('直接进入下一段讲解、示例或互动');
     expect(prompt).toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
     expect(prompt.match(/【教学方针（高优先级）】/gu)).toHaveLength(1);
     expect(prompt.indexOf('【教学方针（高优先级）】')).toBeLessThan(
