@@ -60,7 +60,14 @@ describe('candidate output protocol', () => {
     expect(prompt).toContain('What is its concise summary?');
     expect(prompt).toContain('keywords or core knowledge points');
     expect(prompt).toContain('outline.lessons[].title');
-    expect(prompt).toContain('disciplineTag must be one broad academic or domain category');
+    expect(prompt).toContain(
+      'disciplineTag must be one recognizable academic discipline or domain at the most specific stable level supported by the course',
+    );
+    expect(prompt).toContain('政治、经济、社会、心理、历史、法律');
+    expect(prompt).toContain(
+      'Use a broader umbrella category only when the course genuinely spans multiple disciplines or cannot be classified reliably.',
+    );
+    expect(prompt).not.toContain('Do not use a detailed course topic, subfield');
     expect(prompt).toContain('**课程摘要：**');
     expect(prompt).toContain('50–100 Chinese characters');
     expect(prompt).toContain('choose the module count, lesson count');

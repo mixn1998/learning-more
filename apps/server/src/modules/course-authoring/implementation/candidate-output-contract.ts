@@ -102,7 +102,7 @@ export function buildCandidateGenerationPrompt(input: CandidatePromptInput): str
     'This section defines interface syntax only. It does not constrain the teaching ideas, structure, tone, examples, or Markdown body.',
     'Return exactly one `learning-more-outline` fenced JSON block first, followed by a natural Markdown course outline.',
     'The JSON object must contain exactly the response envelope shown below. Replace example values with this course. Every lesson must appear in exactly one module. Use only source references listed below. Do not return session identifiers, course mode, topic, source permissions, task state, or other server context as output fields.',
-    'disciplineTag must be one broad academic or domain category, such as 数学、商业、计算机科学、语言、艺术 or 自然科学. Do not use a detailed course topic, subfield, learning path, or combined description.',
+    'disciplineTag must be one recognizable academic discipline or domain at the most specific stable level supported by the course, such as 数学、计算机科学、政治、经济、社会、心理、历史、法律、语言、艺术 or 商业与管理. Prefer a concrete discipline such as 政治 or 经济 over an umbrella label such as 社会科学 when the course clearly belongs to that discipline. Use a broader umbrella category only when the course genuinely spans multiple disciplines or cannot be classified reliably. Do not use a course title, learning path, or combined description as the disciplineTag.',
     'Topic tags are descriptive metadata rather than a fixed-size teaching format; preserve all relevant concepts you identify.',
     '```learning-more-outline',
     JSON.stringify(candidateModelResponseExample),
