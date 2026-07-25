@@ -180,9 +180,7 @@ export function buildStatisticsSnapshot(input: {
       (courseId === undefined ? undefined : courseDiscipline.get(courseId)) ?? '未分类领域';
     secondsByDiscipline.set(label, (secondsByDiscipline.get(label) ?? 0) + secondsOf(entry));
   }
-  const ranked = [...secondsByDiscipline.entries()]
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 4);
+  const ranked = [...secondsByDiscipline.entries()].sort((left, right) => right[1] - left[1]);
   const topSeconds = Math.max(ranked[0]?.[1] ?? 0, 1);
   const disciplines =
     ranked.length === 0

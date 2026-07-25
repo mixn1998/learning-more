@@ -274,4 +274,59 @@ describe('history statistics projection', () => {
       buildStatisticsCourses({ dashboard: legacyDashboard, entries: legacyEntries })[0]?.domain,
     ).toBe('经济');
   });
+
+  it('keeps every discipline in the sorted statistics projection', () => {
+    const courses: HomeDashboardView['courses'] = Array.from({ length: 10 }, (_, index) => ({
+      courseId: `course_${index + 1}`,
+      title: `课程 ${index + 1}`,
+      status: 'active',
+      courseMode: 'standard',
+      outlineVersionId: `outline_${index + 1}`,
+      disciplineTag: `领域 ${index + 1}`,
+      resourceVersion: 1,
+    }));
+    const actualSecondsByCourse = Object.fromEntries(
+      courses.map((course, index) => [course.courseId, (10 - index) * 600]),
+    );
+    const manyDisciplineStatistics: StatisticsResponse = {
+      ...statistics,
+      daily: [
+        {
+          localDate: '2026-07-14',
+          actualSeconds: Object.values(actualSecondsByCourse).reduce(
+            (sum, seconds) => sum + seconds,
+            0,
+          ),
+          completedLessonCount: 10,
+          closedCourseIds: [],
+          abandonedCourseIds: [],
+          interactionPromptedCount: 0,
+          interactionRespondedCount: 0,
+          interactionSkippedCount: 0,
+          actualSecondsByCourse,
+        },
+      ],
+    };
+
+    const snapshot = buildStatisticsSnapshot({
+      range: '30d',
+      custom: { start: '2026-01-01', end: '2026-01-31' },
+      today: '2026-07-14',
+      statistics: manyDisciplineStatistics,
+      days: [],
+      entries: [],
+      dashboard: {
+        generatedAt: dashboard.generatedAt,
+        draftSessions: [],
+        courses,
+        lessons: [],
+        schedule: [],
+      },
+    });
+
+    expect(snapshot.disciplines).toHaveLength(10);
+    expect(snapshot.disciplines.map((item) => item.label)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `领域 ${index + 1}`),
+    );
+  });
 });

@@ -42,6 +42,8 @@ export type HistoryStatisticsCourse = Readonly<{
 
 type DateRange = Readonly<{ start: string; end: string }>;
 
+const DISCIPLINE_PREVIEW_LIMIT = 8;
+
 export function HistoryStatisticsWorkspace(props: {
   readonly getSnapshot: (
     range: HistoryStatisticsRange,
@@ -64,7 +66,12 @@ export function HistoryStatisticsWorkspace(props: {
   const [domain, setDomain] = useState('');
   const [mode, setMode] = useState('');
   const [sort, setSort] = useState<'recent' | 'oldest' | 'duration'>('recent');
+  const [showAllDisciplines, setShowAllDisciplines] = useState(false);
   const snapshot = props.getSnapshot(range, custom);
+  const visibleDisciplines = showAllDisciplines
+    ? snapshot.disciplines
+    : snapshot.disciplines.slice(0, DISCIPLINE_PREVIEW_LIMIT);
+  const hasHiddenDisciplines = snapshot.disciplines.length > DISCIPLINE_PREVIEW_LIMIT;
   const domains = [...new Set(props.courses.map((course) => course.domain))];
   const modes = [...new Set(props.courses.map((course) => course.mode))];
   const visibleCourses = useMemo(() => {
@@ -212,8 +219,8 @@ export function HistoryStatisticsWorkspace(props: {
                     <p>按实际学习时长排序</p>
                   </div>
                 </div>
-                <div className="history-stat-rank-list">
-                  {snapshot.disciplines.map((item) => (
+                <div className="history-stat-rank-list" id="history-stat-discipline-list">
+                  {visibleDisciplines.map((item) => (
                     <div className="history-stat-rank" key={item.label}>
                       <b>{item.label}</b>
                       <div className="history-stat-track">
@@ -223,6 +230,17 @@ export function HistoryStatisticsWorkspace(props: {
                     </div>
                   ))}
                 </div>
+                {hasHiddenDisciplines ? (
+                  <button
+                    aria-controls="history-stat-discipline-list"
+                    aria-expanded={showAllDisciplines}
+                    className="history-stat-discipline-toggle"
+                    onClick={() => setShowAllDisciplines((current) => !current)}
+                    type="button"
+                  >
+                    {showAllDisciplines ? '收起' : `查看全部 ${snapshot.disciplines.length} 个学科`}
+                  </button>
+                ) : null}
               </article>
               <article className="history-stat-panel">
                 <div className="history-stat-panel-head">
