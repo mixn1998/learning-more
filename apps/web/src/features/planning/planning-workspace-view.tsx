@@ -116,7 +116,10 @@ export function PlanningWorkspaceView(props: {
             estimatedMinutes:
               props.metadata?.[lesson.lessonId]?.estimatedMinutes ?? lesson.estimatedMinutes ?? 45,
             objective: props.metadata?.[lesson.lessonId]?.objective ?? lesson.objective,
-            disciplineTag: toBroadDisciplineLabel(course?.disciplineTag),
+            disciplineTag: toBroadDisciplineLabel(course?.disciplineTag, {
+              title: course?.title,
+              topicTags: course?.topicTags,
+            }),
             topicTags: [
               ...new Set([
                 ...(course?.topicTags ?? []),

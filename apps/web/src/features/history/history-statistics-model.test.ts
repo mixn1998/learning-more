@@ -227,4 +227,51 @@ describe('history statistics projection', () => {
       },
     ]);
   });
+
+  it('regroups historical learning time under the current refined discipline', () => {
+    const legacyDashboard: HomeDashboardView = {
+      ...dashboard,
+      courses: [
+        {
+          ...dashboard.courses[0]!,
+          title: '问题驱动的经济分析',
+          disciplineTag: '社会科学',
+          topicTags: ['经济分析方法', '宏观经济波动'],
+        },
+      ],
+      lessons: [dashboard.lessons[0]!],
+    };
+    const legacyDays: readonly CalendarDay[] = [
+      {
+        localDate: '2026-07-14',
+        actualSeconds: 3_600,
+        completedLessonIds: ['lesson_a1'],
+        completions: [],
+      },
+    ];
+    const legacyEntries: readonly HistoryEntry[] = [
+      fact(
+        'legacy-economics-completion',
+        'LessonCompletedFact',
+        '2026-07-14T04:00:00.000Z',
+        { courseId: 'course_a', lessonId: 'lesson_a1' },
+        { actualSeconds: 3_600 },
+      ),
+    ];
+
+    const snapshot = buildStatisticsSnapshot({
+      range: '30d',
+      custom: { start: '2026-01-01', end: '2026-01-31' },
+      today: '2026-07-14',
+      statistics,
+      days: legacyDays,
+      entries: legacyEntries,
+      dashboard: legacyDashboard,
+    });
+
+    expect(snapshot.disciplines).toEqual([{ label: '经济', percent: 86, hours: '1.0h' }]);
+    expect(
+      buildStatisticsCourses({ dashboard: legacyDashboard, entries: legacyEntries })[0]?.domain,
+    ).toBe('经济');
+  });
 });

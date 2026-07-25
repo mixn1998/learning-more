@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 
-import type { CommandMetadata, LearningEventEnvelope } from '@learning-more/contracts';
+import {
+  projectDisciplineLabel,
+  type CommandMetadata,
+  type LearningEventEnvelope,
+} from '@learning-more/contracts';
 
 import type { CourseAuthoringRepositories } from '../../../persistence/course-authoring-repositories.js';
 import type { Outbox } from '../../../persistence/outbox.js';
@@ -176,7 +180,11 @@ export async function confirmCourse(
           courseId: command.courseId,
           sourceCandidateVersionId: candidate.id,
           outlineMarkdown: candidate.candidate.outlineMarkdown,
-          disciplineTag: candidate.candidate.disciplineTag,
+          disciplineTag:
+            projectDisciplineLabel({
+              disciplineTag: candidate.candidate.disciplineTag,
+              topicTags: candidate.candidate.topicTags,
+            }) ?? candidate.candidate.disciplineTag,
           topicTags: candidate.candidate.topicTags,
           createdAt,
           resourceVersion: 0,

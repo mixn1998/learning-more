@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { projectDisciplineLabel } from '@learning-more/contracts';
+
 import type { LearningFactsRouteOptions } from '../../http/routes/learning-facts.js';
 import { createWeeklyReportCoordinator } from '../../modules/learning-facts/implementation/weekly-report-coordinator.js';
 import { createWeeklyReportScheduler } from '../../modules/learning-facts/implementation/weekly-report-scheduler.js';
@@ -13,14 +15,6 @@ import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import type { LocalGenerationRuntime } from './generation-runtime.js';
 import type { LocalLearningRuntime } from './learning-runtime.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
-
-function broadDiscipline(value: string | undefined): string {
-  const normalized = value?.trim();
-  if (!normalized) return '未分类领域';
-  if (/(?:商业|创业|business|entrepreneur)/iu.test(normalized)) return '商业';
-  if (/(?:数学|mathematics?|calculus)/iu.test(normalized)) return '数学';
-  return normalized;
-}
 
 function oneSentence(value: string | undefined, fallback: string): string {
   const normalized = (value?.trim() || fallback)
@@ -76,7 +70,12 @@ export function createLocalInsightsRuntime(
       const learning = await input.learning.access.getRecord(lessonId);
       return {
         title: lesson.title,
-        disciplineTag: broadDiscipline(outline?.disciplineTag),
+        disciplineTag:
+          projectDisciplineLabel({
+            disciplineTag: outline?.disciplineTag,
+            title: course?.title,
+            topicTags: outline?.topicTags,
+          }) ?? '未分类领域',
         summary: oneSentence(reviewCoreInsight(learning?.finalReview?.document), lesson.objective),
       };
     },

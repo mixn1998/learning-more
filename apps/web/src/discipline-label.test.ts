@@ -13,4 +13,13 @@ describe('toBroadDisciplineLabel', () => {
     expect(toBroadDisciplineLabel('产品设计')).toBe('产品设计');
     expect(toBroadDisciplineLabel(undefined)).toBeUndefined();
   });
+
+  it('refines a historical social-science label from course evidence', () => {
+    expect(
+      toBroadDisciplineLabel('社会科学', {
+        title: '周游列国：政治制度如何形成',
+        topicTags: ['比较政治学', '国家能力'],
+      }),
+    ).toBe('政治');
+  });
 });

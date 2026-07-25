@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { projectDisciplineLabel } from '@learning-more/contracts';
+
 import type { CompiledCandidate } from '../ports/candidate-version-repository.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
 import type { LessonDefinition } from '../model/lesson-definition.js';
@@ -217,7 +219,11 @@ export async function reviseCourseOutline(
           courseId: command.courseId,
           sourceCandidateVersionId: command.sourceCandidateVersionId,
           outlineMarkdown: command.candidate.outlineMarkdown,
-          disciplineTag: command.candidate.disciplineTag,
+          disciplineTag:
+            projectDisciplineLabel({
+              disciplineTag: command.candidate.disciplineTag,
+              topicTags: command.candidate.topicTags,
+            }) ?? command.candidate.disciplineTag,
           topicTags: command.candidate.topicTags,
           createdAt,
           resourceVersion: 0,

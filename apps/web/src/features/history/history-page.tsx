@@ -319,9 +319,12 @@ export function HistoryPage(props: {
           lessonId,
           title: lesson?.title || lessonId,
           domain:
-            toBroadDisciplineLabel(
-              courseId === undefined ? undefined : courseById.get(courseId)?.disciplineTag,
-            ) ?? '未分类领域',
+            courseId === undefined
+              ? '未分类领域'
+              : (toBroadDisciplineLabel(courseById.get(courseId)?.disciplineTag, {
+                  title: courseById.get(courseId)?.title,
+                  topicTags: courseById.get(courseId)?.topicTags,
+                }) ?? '未分类领域'),
           minutes: Math.max(0, Math.round(completion.actualSeconds / 60)),
         };
       }),
@@ -373,7 +376,10 @@ export function HistoryPage(props: {
           ...(courseId === undefined ? {} : { courseId }),
           title: lesson?.title || fact.lessonId,
           domain:
-            toBroadDisciplineLabel(fact.disciplineTag ?? course?.disciplineTag) ?? '未分类领域',
+            toBroadDisciplineLabel(course?.disciplineTag ?? fact.disciplineTag, {
+              title: course?.title,
+              topicTags: course?.topicTags,
+            }) ?? '未分类领域',
           topic: fact.topicTags[0] ?? lesson?.title ?? '未分类主题',
         },
       ];

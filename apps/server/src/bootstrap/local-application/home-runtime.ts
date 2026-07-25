@@ -7,7 +7,7 @@ import type { LocalPlanningRuntime } from './planning-runtime.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import type { ReadRevisionTracker } from '../../persistence/read-revision.js';
 import { createSummarySnapshot } from '../../persistence/summary-snapshot.js';
-import { HomeDashboardResponseSchema } from '@learning-more/contracts';
+import { HomeDashboardResponseSchema, projectDisciplineLabel } from '@learning-more/contracts';
 
 async function collect<T>(source: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -27,8 +27,8 @@ export function createHomeRouteOptions(
 ): HomeRouteOptions {
   const snapshot = createSummarySnapshot({
     dataRoot: input.dataRoot,
-    name: 'home-dashboard-v1',
-    schemaVersion: 1,
+    name: 'home-dashboard-v2',
+    schemaVersion: 2,
     sourceRevision: () => input.readRevision.current(['catalog', 'learning', 'schedule']),
     parse: (value) => HomeDashboardResponseSchema.parse(value),
     build: buildHome,
@@ -110,7 +110,14 @@ export function createHomeRouteOptions(
             outlineVersionId: course.outlineVersionId,
             ...(confirmedOutline?.disciplineTag === undefined
               ? {}
-              : { disciplineTag: confirmedOutline.disciplineTag }),
+              : {
+                  disciplineTag:
+                    projectDisciplineLabel({
+                      disciplineTag: confirmedOutline.disciplineTag,
+                      title: course.title,
+                      topicTags: confirmedOutline.topicTags,
+                    }) ?? confirmedOutline.disciplineTag,
+                }),
             topicTags: [...(confirmedOutline?.topicTags ?? [])],
             resourceVersion: course.resourceVersion,
           },

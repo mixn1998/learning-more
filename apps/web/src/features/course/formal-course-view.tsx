@@ -57,7 +57,10 @@ export function FormalCourseView(props: {
   const [titleError, setTitleError] = useState<string>();
   const mode = courseModeDefinition(course.courseMode);
   const disciplineLabel =
-    toBroadDisciplineLabel(props.currentOutline?.disciplineTag) ?? mode.shortLabel;
+    toBroadDisciplineLabel(props.currentOutline?.disciplineTag, {
+      title: course.title,
+      topicTags: props.currentOutline?.topicTags,
+    }) ?? mode.shortLabel;
   useCourseModeTheme(course.courseMode);
 
   const lessons = course.lessons ?? [];

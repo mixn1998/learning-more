@@ -1,9 +1,8 @@
-export function toBroadDisciplineLabel(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  if (!normalized) return undefined;
+import { projectDisciplineLabel, type DisciplineProjectionInput } from '@learning-more/contracts';
 
-  if (/(?:商业|创业|business|entrepreneur)/iu.test(normalized)) return '商业';
-  if (/(?:数学|mathematics?|calculus)/iu.test(normalized)) return '数学';
-
-  return normalized;
+export function toBroadDisciplineLabel(
+  value: string | undefined,
+  context: Omit<DisciplineProjectionInput, 'disciplineTag'> = {},
+): string | undefined {
+  return projectDisciplineLabel({ ...context, disciplineTag: value });
 }

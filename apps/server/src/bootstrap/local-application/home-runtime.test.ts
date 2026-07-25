@@ -19,7 +19,7 @@ describe('home runtime query', () => {
     const getRecord = vi.fn();
     const course = {
       id: 'course_01',
-      title: 'Course',
+      title: '周游列国：政治制度如何形成',
       status: 'active' as const,
       courseMode: 'standard' as const,
       outlineVersionId: 'outline_01',
@@ -48,7 +48,10 @@ describe('home runtime query', () => {
               };
             }
           },
-          getOutlineVersion: async () => ({ disciplineTag: '数学', topicTags: [] }),
+          getOutlineVersion: async () => ({
+            disciplineTag: '社会科学',
+            topicTags: ['比较政治学', '国家能力'],
+          }),
           getLesson,
         },
       } as unknown as LocalCourseRuntime,
@@ -68,5 +71,6 @@ describe('home runtime query', () => {
     expect(getLesson).not.toHaveBeenCalled();
     expect(getRecord).not.toHaveBeenCalled();
     expect(view.value.lessons.map((lesson) => lesson.lessonId)).toEqual(lessonIds);
+    expect(view.value.courses[0]?.disciplineTag).toBe('政治');
   });
 });

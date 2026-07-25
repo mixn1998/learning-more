@@ -105,7 +105,10 @@ export function buildStatisticsSnapshot(input: {
   const courseDiscipline = new Map(
     input.dashboard?.courses.map((course) => [
       course.courseId,
-      toBroadDisciplineLabel(course.disciplineTag) ?? '未分类领域',
+      toBroadDisciplineLabel(course.disciplineTag, {
+        title: course.title,
+        topicTags: course.topicTags,
+      }) ?? '未分类领域',
     ]) ?? [],
   );
   const completedCourseIds = new Set<string>();
@@ -254,7 +257,11 @@ export function buildStatisticsCourses(input: {
     return {
       courseId: course.courseId,
       title: course.title,
-      domain: toBroadDisciplineLabel(course.disciplineTag) ?? '未分类领域',
+      domain:
+        toBroadDisciplineLabel(course.disciplineTag, {
+          title: course.title,
+          topicTags: course.topicTags,
+        }) ?? '未分类领域',
       topics:
         lessons
           .slice(0, 3)

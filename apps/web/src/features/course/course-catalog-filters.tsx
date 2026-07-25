@@ -8,6 +8,8 @@ import './course-catalog-filters.css';
 export type FilterableCourse = Readonly<{
   courseMode?: CourseMode | undefined;
   disciplineTag?: string | undefined;
+  title?: string | undefined;
+  topicTags?: readonly string[] | undefined;
 }>;
 
 export type CourseCatalogFilter = Readonly<{
@@ -17,7 +19,15 @@ export type CourseCatalogFilter = Readonly<{
 
 export function courseCatalogFilterOptions(courses: readonly FilterableCourse[]) {
   const disciplines = [
-    ...new Set(courses.flatMap((course) => toBroadDisciplineLabel(course.disciplineTag) ?? [])),
+    ...new Set(
+      courses.flatMap(
+        (course) =>
+          toBroadDisciplineLabel(course.disciplineTag, {
+            title: course.title,
+            topicTags: course.topicTags,
+          }) ?? [],
+      ),
+    ),
   ].sort((left, right) => left.localeCompare(right, 'zh-CN'));
   const availableModes = new Set(courses.flatMap((course) => course.courseMode ?? []));
   return {
@@ -31,7 +41,10 @@ export function filterCourseCatalog<T extends FilterableCourse>(
   filter: CourseCatalogFilter,
 ): readonly T[] {
   return courses.filter((course) => {
-    const discipline = toBroadDisciplineLabel(course.disciplineTag);
+    const discipline = toBroadDisciplineLabel(course.disciplineTag, {
+      title: course.title,
+      topicTags: course.topicTags,
+    });
     return (
       (filter.discipline === '' || discipline === filter.discipline) &&
       (filter.courseMode === '' || course.courseMode === filter.courseMode)

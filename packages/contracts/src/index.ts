@@ -2,6 +2,7 @@ export * from './commands.js';
 export * from './ai-runtime.js';
 export * from './course-authoring.js';
 export * from './data-keys.js';
+export * from './discipline-taxonomy.js';
 export * from './errors.js';
 export * from './events.js';
 export * from './generation.js';
