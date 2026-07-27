@@ -1,3 +1,5 @@
+import type { LessonKnowledgeStructure } from '@learning-more/contracts';
+
 export interface LessonDefinition {
   readonly id: string;
   readonly courseId: string;
@@ -6,6 +8,7 @@ export interface LessonDefinition {
   readonly title: string;
   readonly objective: string;
   readonly coreKnowledgePoints: readonly string[];
+  readonly knowledgeStructure: LessonKnowledgeStructure;
   readonly prerequisiteLessonIds: readonly string[];
   readonly estimatedMinutes: number;
   readonly sourceRefs: readonly string[];

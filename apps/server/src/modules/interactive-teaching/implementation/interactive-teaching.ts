@@ -130,7 +130,7 @@ function projectLessonReviewSources(
     nextControlState.lessonPhase === 'ready_to_close' &&
     nextControlState.summaryStatus === 'delivered' &&
     input.assistantMessageId !== undefined &&
-    classroomSummarySourceMessageId !== input.assistantMessageId
+    classroomSummarySourceMessageId === undefined
   ) {
     classroomSummarySourceMessageId = input.assistantMessageId;
     changed = true;
@@ -232,6 +232,7 @@ export function createInteractiveTeaching(options: {
       lessonId: string;
       sessionId: string;
       commandContext: CommandContext;
+      knowledgePointRef?: string;
     }>
   >();
   const cancelledTaskIds = new Set<string>();
@@ -343,12 +344,15 @@ export function createInteractiveTeaching(options: {
     mode: 'new-turn' | 'retry';
   }): Promise<TeachingTurnAccepted> {
     const currentUserMessageId =
-      input.assembled.turnKind === 'opening'
+      input.assembled.turnKind !== undefined
         ? undefined
         : input.assembled.recentMessages.findLast(
             (message) => message.role === 'user' && message.completionStatus === 'complete',
           )?.messageId;
-    const requestRef = currentUserMessageId ?? `opening:${input.sessionId}`;
+    const requestRef =
+      currentUserMessageId ??
+      `${input.assembled.turnKind === 'continuation' ? 'continuation' : 'opening'}:${input.sessionId}`;
+    const messageKnowledgePointRef = input.assembled.teachingState.activeKnowledgePointRef;
     const accepted = await options.agent.submit(input.assembled, requestRef);
     let startedResourceVersion: number;
     try {
@@ -425,6 +429,9 @@ export function createInteractiveTeaching(options: {
       lessonId: input.lessonId,
       sessionId: input.sessionId,
       commandContext: input.context,
+      ...(messageKnowledgePointRef === undefined
+        ? {}
+        : { knowledgePointRef: messageKnowledgePointRef }),
     });
     const completion = (async () => {
       let replyCommitted = false;
@@ -519,6 +526,9 @@ export function createInteractiveTeaching(options: {
             messageId: assistantMessageId,
             contentArtifactRef: artifactRef,
             generationTaskId: accepted.taskId,
+            ...(messageKnowledgePointRef === undefined
+              ? {}
+              : { knowledgePointRef: messageKnowledgePointRef }),
             completionStatus: 'complete',
           },
           backgroundContext(input.context, `${input.context.commandId}:assistant-complete`),
@@ -579,6 +589,9 @@ export function createInteractiveTeaching(options: {
                 messageId: assistantMessageId,
                 contentArtifactRef: artifactRef,
                 generationTaskId: accepted.taskId,
+                ...(messageKnowledgePointRef === undefined
+                  ? {}
+                  : { knowledgePointRef: messageKnowledgePointRef }),
                 completionStatus: failedReplyStatus,
               },
               backgroundContext(input.context, `${input.context.commandId}:assistant-recovered`),
@@ -1099,6 +1112,8 @@ export function createInteractiveTeaching(options: {
     const sourceMessageId = plan.sourceMessageId?.startsWith('opening:')
       ? undefined
       : plan.sourceMessageId;
+    const recoveredKnowledgePointRef = (await options.ledgerRepository.get(input.sessionId))?.state
+      .activeKnowledgePointRef;
     await validateDirective({
       courseId: input.courseId,
       lessonId: input.lessonId,
@@ -1139,6 +1154,9 @@ export function createInteractiveTeaching(options: {
         messageId: assistantMessageId,
         contentArtifactRef: artifactRef,
         generationTaskId: recoveringTaskId,
+        ...(recoveredKnowledgePointRef === undefined
+          ? {}
+          : { knowledgePointRef: recoveredKnowledgePointRef }),
         completionStatus: recovered.completionStatus,
       },
       backgroundContext(input.context, `recover-assistant:${recoveringTaskId}`),
@@ -1432,6 +1450,62 @@ export function createInteractiveTeaching(options: {
         mode: 'new-turn',
       });
     },
+    async continueTurn(input, context) {
+      const learning = await options.sessionModule.query(
+        { type: 'GetLessonLearning', lessonId: input.lessonId },
+        {
+          correlationId: context.correlationId,
+          actor: context.actor,
+          requestedAt: context.requestedAt,
+          receivedAt: context.receivedAt,
+        },
+      );
+      const activeTaskId = learning.learning.session?.activeGenerationTaskId;
+      if (activeTaskId !== undefined) {
+        return { taskId: activeTaskId, resourceVersion: learning.resourceVersion };
+      }
+      if (
+        learning.learning.session?.id !== input.sessionId ||
+        learning.learning.session.state !== 'active'
+      ) {
+        throw Object.assign(new Error('teaching_session_not_active'), {
+          code: 'session_conflict',
+        });
+      }
+      while ((background.get(input.sessionId)?.size ?? 0) > 0) {
+        await Promise.all([...(background.get(input.sessionId) ?? [])]);
+      }
+      await observationQueue.drain(input.sessionId);
+      const state = await initialState(input.courseId, input.lessonId, input.sessionId);
+      if (state.turnHandoff !== 'offer_continue' || state.lessonPhase === 'ready_to_close') {
+        throw Object.assign(new Error('teaching_continuation_not_offered'), {
+          code: 'session_conflict',
+        });
+      }
+      const messages = await options.contextSources.listMessages(input.sessionId);
+      const latest = messages.at(-1);
+      if (latest?.role !== 'assistant' || latest.completionStatus !== 'complete') {
+        throw Object.assign(new Error('teaching_continuation_anchor_missing'), {
+          code: 'session_conflict',
+        });
+      }
+      const assembled = await options.contextAssembler.assemble({
+        courseId: input.courseId,
+        lessonId: input.lessonId,
+        sessionId: input.sessionId,
+        turnKind: 'continuation',
+        teachingState: state,
+        unobservedMessageIds: [],
+      });
+      return scheduleGeneration({
+        ...input,
+        context,
+        assembled,
+        expectedVersion: learning.resourceVersion,
+        observe: false,
+        mode: 'new-turn',
+      });
+    },
     async reviseTurn(input, context) {
       let learning = await options.sessionModule.query(
         { type: 'GetLessonLearning', lessonId: input.lessonId },
@@ -1671,6 +1745,9 @@ export function createInteractiveTeaching(options: {
       const result = await stopping;
       const assistantMessageId = options.nextAssistantMessageId();
       const artifactRef = `assistant-message:${assistantMessageId}`;
+      const stoppedKnowledgePointRef =
+        owner.knowledgePointRef ??
+        (await options.ledgerRepository.get(owner.sessionId))?.state.activeKnowledgePointRef;
       await options.assistantArtifacts.save({
         artifactRef,
         markdown: result.markdown,
@@ -1684,6 +1761,9 @@ export function createInteractiveTeaching(options: {
           messageId: assistantMessageId,
           contentArtifactRef: artifactRef,
           generationTaskId: input.taskId,
+          ...(stoppedKnowledgePointRef === undefined
+            ? {}
+            : { knowledgePointRef: stoppedKnowledgePointRef }),
           completionStatus: 'interrupted',
         },
         backgroundContext(context, `${context.commandId}:assistant-interrupted`),

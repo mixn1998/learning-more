@@ -35,6 +35,9 @@ function fixture(overrides: Partial<Parameters<typeof registerLearningSessionRou
       reviseTurn: vi.fn().mockResolvedValue({ taskId: 'task_revision_01', resourceVersion: 3 }),
       retryTurn: vi.fn().mockResolvedValue({ taskId: 'task_retry_01', resourceVersion: 3 }),
       openLesson: vi.fn().mockResolvedValue({ taskId: 'task_opening_01', resourceVersion: 2 }),
+      continueTurn: vi
+        .fn()
+        .mockResolvedValue({ taskId: 'task_continuation_01', resourceVersion: 3 }),
       stopTurn: vi.fn().mockResolvedValue({
         taskId: 'task_01',
         draftArtifactRef: 'draft_task_01',
@@ -144,6 +147,25 @@ describe('LearningSession HTTP contract', () => {
       expect.objectContaining({ expectedVersion: 1 }),
     );
     expect(options.saveUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('continues teaching without creating a learner message', async () => {
+    const { app, options } = fixture();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/lesson-sessions/session_01/continuations',
+      headers: { ...headers, 'if-match': '"2"' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ taskId: 'task_continuation_01', resourceVersion: 3 });
+    expect(options.teaching.continueTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ courseId: 'course_01', lessonId: 'lesson_01' }),
+      expect.objectContaining({ expectedVersion: 2 }),
+    );
+    expect(options.saveUserMessage).not.toHaveBeenCalled();
+    expect(options.teaching.advanceTurn).not.toHaveBeenCalled();
   });
 
   it('persists a user message then returns its single generation task', async () => {
@@ -282,10 +304,12 @@ describe('LearningSession HTTP contract', () => {
       listSessionMessages: vi.fn().mockResolvedValue([
         {
           id: 'message_01',
-          role: 'user',
+          role: 'assistant',
           createdAt: '2026-07-13T00:00:00.000Z',
           contentArtifactRef: 'artifact_01',
           completionStatus: 'complete',
+          generationTaskId: 'task_01',
+          knowledgePointRef: 'knowledge:kp_2',
         },
       ]),
       loadArtifactMarkdown: vi.fn().mockResolvedValue('Why?'),
@@ -326,7 +350,15 @@ describe('LearningSession HTTP contract', () => {
 
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json()).toMatchObject({
-      messages: [{ id: 'message_01', markdown: 'Why?', completionStatus: 'complete' }],
+      messages: [
+        {
+          id: 'message_01',
+          markdown: 'Why?',
+          completionStatus: 'complete',
+          generationTaskId: 'task_01',
+          knowledgePointRef: 'knowledge:kp_2',
+        },
+      ],
       closurePreparation: {
         sessionId: 'session_01',
         sourceMessageIds: ['message_01'],

@@ -19,15 +19,15 @@ const REVIEW_CAPABILITY = [
   '根据完整、冻结且可追溯的教学证据生成学习者可见 Review。',
   '先忠实覆盖本课知识责任、实际教学、学习者证据、未解决项与教学支线；支线不能冒充本课覆盖或未来课节完成。',
   'knowledgeMap 只负责把本课知识点串成关系图式：优先输出一条主链，必要时最多补两条分支链；使用“节点 → 节点”表达，不在 knowledgeMap 中重复正文解释。',
-  'lesson-final 同时承担两项边界清晰的工作：知识图谱与学习表现来自冻结证据；核心思想与本课方法论启示只对指定课堂来源做语义收束，不得直接复制整段课堂文本。',
-  'coreInsight 必须返回。它应对最终课堂总结做语义提炼，并动态保留完成理解所必需的总结结构；结构可以随课程内容表现为概念关系、因果链、判断框架、操作步骤、条件对比、推理过程、适用边界或其他必要形式。允许保留必要段落、列表与层次，不得套用固定框架。',
-  'coreInsight 必须保留承载语义的 Markdown 格式，包括原总结中有助于理解的加粗、分段、编号层级、列表、引用块、代码或公式；不要把清晰的关系链、分项解释和结论段改写成连续的大段正文。只移除不承载知识结构的装饰性格式，不要求逐字复制全部原文。',
+  'lesson-final 同时承担两项边界清晰的工作：知识图谱与学习表现来自冻结证据；核心思想仅以【最终课堂总结·仅供语义收束】中的知识性内容为来源；本课方法论启示只对指定的综合应用来源做语义收束。',
+  'coreInsight 必须返回。它应从最终课堂总结中筛选有效知识语义，并动态保留完成理解所必需的总结结构；结构可以随课程内容表现为概念关系、因果链、判断框架、操作步骤、条件对比、推理过程、适用边界或其他必要形式。允许保留必要段落、列表与层次，不得套用固定框架。有效知识内容允许原样保留，不要求改写。',
+  'coreInsight 必须保留承载语义的 Markdown 格式，包括原总结中有助于理解的加粗、分段、编号层级、列表、引用块、代码或公式；不要把清晰的关系链、分项解释和结论段改写成连续的大段正文。只移除不承载知识结构的装饰性格式，不新增原总结没有的事实、案例、解释或结构。',
   'methodologyInsight 可选且最多一句。它应从综合应用所连接的知识关系中提炼可迁移的方法、判断原则或技巧；不要复述知识点清单，不要使用“把本课合起来看”“本课真正值得保留的是”等引导语。',
-  '对 coreInsight 和 methodologyInsight 都执行语义过滤，而不是截取或轻度改写原文：移除完成宣布、用户评价、掌握判断、互动复盘、鼓励、未来学习建议、课程流程说明和不承载知识含义的过渡语；只合并真正同义的重复表述，不得把互相支撑的不同层次误判为重复。',
+  'coreInsight 只做来源内筛选：移除完成宣布、用户评价、掌握判断、互动复盘、鼓励、未来学习建议、课程流程说明和不承载知识含义的过渡语；保留其余有效内容的原有措辞、顺序和结构，只合并真正同义的重复表述，不得把互相支撑的不同层次误判为重复。不得从教学与学习证据、学习者原话、学习表现或 Review 关注中向 coreInsight 补充内容。',
   'coreInsight 应在不损失必要总结结构、关键关系、推理链和边界条件的前提下使用清晰紧凑的表达；不得为了简短而删除完成理解所需要的信息，也不得强制压缩成一句话。methodologyInsight 仍负责一句高度凝练、可迁移的方法或技巧，不承担完整总结职责。',
   '综合应用来源包含从任务提出到纠偏或收束的完整片段。提炼 methodologyInsight 时优先保留其中最具体、最能迁移的关系或技巧；后出现的流程过渡只提供语境，不因位置更晚而自动覆盖更具体的收束。',
   '用户没有直接回答或明确跳过综合应用时，仍可依据综合应用任务、AI 的纠偏或关系收束、最终课堂总结提炼方法论；但不得据此声称用户已经掌握、通过或形成了相应能力。来源不足以形成真实方法论时省略 methodologyInsight。',
-  'performance 在后端继续完整记录可追溯表现与待验证项；每个条目的标题必须明确表示“已形成/做得好”或“尚待验证/接下来”，以便前端归并为两个阅读区块。',
+  'performance 在后端继续完整记录可追溯表现与待验证项；每个条目的标题必须明确表示“已形成/做得好”或“尚待验证/接下来”，以便前端归并为两个阅读区块。每个条目的用户可见 markdown 必须统一使用第二人称“你”，不得以“学习者”或“用户”称呼当前学习者；每个条目必须是语义完整的表达，不得留下“你将”等缺少后续内容的残句。',
   '如果本课对话确实涉及有价值但不属于本课主线的课程邻接探索，可在 additionalSections 中保留一个附加模块，标题以“课程邻接探索：”开头，并明确它不替代本课责任；没有实际邻接探索时省略该模块，不要为了凑结构生成。',
   '可选互动关注只改变叙事关注重心，不筛除证据、不决定完成度，也不规定章节和表达形式。',
   '不要补写未发生的表现、掌握或观点变化。各 markdown 字段可自由组织，不要套用模板句。',
@@ -39,6 +39,36 @@ const COURSE_REVIEW_CAPABILITY = [
   '可选互动关注只改变叙事关注重心，不筛除课程证据、不改变完成事实，也不规定章节和表达形式。',
   '不要套用固定标题、固定段落或固定推荐。各 markdown 字段可自由组织并保持可追溯。',
 ].join('\n');
+
+const SUMMARY_HEADING = /^#{1,6}\s*本课总结(?:[：:].*)?$/u;
+const SUMMARY_META_BLOCK =
+  /^(?:本课(?:学习|流程)?(?:已经|已)?完成|本课到这里可以结束|你的评价|综合应用中，?\s*你|你(?:已经|在(?:综合|案例|本课)|首先|最初|能够|能|通过|完成|坚持|选择|确认|指出|判断)|今后的|后续学习|以后阅读)/u;
+
+export function projectCoreInsightFromClassroomSummary(markdown: string): string {
+  const blocks = markdown
+    .split(/\r?\n\s*\r?\n/u)
+    .map((block) => {
+      const lines = block.split(/\r?\n/u).filter((line) => !SUMMARY_HEADING.test(line.trim()));
+      return lines
+        .join('\n')
+        .replace(/^有。\s*/u, '')
+        .trim();
+    })
+    .filter((block) => block !== '' && !SUMMARY_META_BLOCK.test(block));
+  const projected = blocks.join('\n\n').trim();
+  return projected === '' ? markdown.trim() : projected;
+}
+
+function projectCoreInsightFromReviewPrompt(prompt: string | undefined): string | undefined {
+  if (prompt === undefined) return undefined;
+  const match = prompt.match(
+    /【最终课堂总结·仅供语义收束】\r?\n(?<summary>[\s\S]*?)(?=\r?\n\r?\n【(?:综合应用关系收束|本次 Review 关注)|$)/u,
+  );
+  const summary = match?.groups?.summary?.trim();
+  return summary === undefined || summary === ''
+    ? undefined
+    : projectCoreInsightFromClassroomSummary(summary);
+}
 
 function outputContract(kind: ReviewDocument['kind']): string {
   const fields =
@@ -259,7 +289,11 @@ function parseDocument(raw: string, taskKind: string | undefined): ReviewDocumen
   return expectedKind === undefined || parsed.data.kind === expectedKind ? parsed.data : undefined;
 }
 
-function generatedResult(raw: string, taskKind: string | undefined) {
+function generatedResult(
+  raw: string,
+  taskKind: string | undefined,
+  coreInsightOverride?: string | undefined,
+) {
   if (taskKind === 'final-review') {
     const trimmed = raw.trim();
     const first = trimmed.indexOf('{');
@@ -276,7 +310,10 @@ function generatedResult(raw: string, taskKind: string | undefined) {
     return {
       markdown: '',
       contentSha256: sha256(trimmed),
-      lessonFinalAnalysis: lessonFinalAnalysis.data,
+      lessonFinalAnalysis: {
+        ...lessonFinalAnalysis.data,
+        ...(coreInsightOverride === undefined ? {} : { coreInsight: coreInsightOverride }),
+      },
     };
   }
   const document = parseDocument(raw, taskKind);
@@ -299,6 +336,7 @@ export function createGenerationReviewWriter(options: {
   execution?: GenerationExecution;
   providerId: string;
 }): GenerationReviewWriter {
+  const coreInsightByTaskId = new Map<string, string>();
   return {
     async submit(pack, attemptKey) {
       if (
@@ -327,7 +365,7 @@ export function createGenerationReviewWriter(options: {
       }
       const serialized = JSON.stringify(pack);
       const evidenceBackground = renderLessonReviewEvidence(pack);
-      return (options.execution ?? options.runtime).submit({
+      const submitted = await (options.execution ?? options.runtime).submit({
         taskKey: `${pack.kind}-review:${pack.checkpoint.checkpointId}:${sha256(serialized)}:${sha256(attemptKey).slice(0, 16)}`,
         inputSnapshotHash: sha256(serialized),
         taskKind: `${pack.kind}-review`,
@@ -337,6 +375,13 @@ export function createGenerationReviewWriter(options: {
         priority: pack.kind === 'final' ? 80 : 50,
         prompt: `${REVIEW_CAPABILITY}\n\n${outputContract(pack.kind === 'final' ? 'lesson-final' : 'lesson-stage')}\n\n${evidenceBackground}`,
       });
+      if (pack.kind === 'final' && pack.classroomSummary !== undefined) {
+        coreInsightByTaskId.set(
+          submitted.taskId,
+          projectCoreInsightFromClassroomSummary(pack.classroomSummary.markdown),
+        );
+      }
+      return submitted;
     },
     async submitCourse(pack, attemptKey) {
       const lessonIds = new Set(pack.lessons.map((lesson) => lesson.lessonId));
@@ -364,7 +409,11 @@ export function createGenerationReviewWriter(options: {
       if (options.execution !== undefined) {
         const task = await options.execution.awaitTerminal(taskId);
         if (task.status !== 'completed') throw new Error('review_generation_failed');
-        return generatedResult(task.draftMarkdown ?? '', task.taskKind);
+        return generatedResult(
+          task.draftMarkdown ?? '',
+          task.taskKind,
+          coreInsightByTaskId.get(taskId) ?? projectCoreInsightFromReviewPrompt(task.prompt),
+        );
       }
       let task = await options.runtime.get(taskId);
       while (task.status === 'queued' || task.status === 'running') {
@@ -375,7 +424,11 @@ export function createGenerationReviewWriter(options: {
         }
       }
       if (task.status !== 'completed') throw new Error('review_generation_failed');
-      return generatedResult(task.draftMarkdown ?? '', task.taskKind);
+      return generatedResult(
+        task.draftMarkdown ?? '',
+        task.taskKind,
+        coreInsightByTaskId.get(taskId) ?? projectCoreInsightFromReviewPrompt(task.prompt),
+      );
     },
   };
 }

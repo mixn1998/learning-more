@@ -22,6 +22,9 @@ function client(overrides: Partial<LearningClient> = {}): LearningClient {
       leaseToken: 'lease_01',
     }),
     openLesson: vi.fn().mockResolvedValue({ taskId: 'task_opening_01', resourceVersion: 2 }),
+    continueTeaching: vi
+      .fn()
+      .mockResolvedValue({ taskId: 'task_continuation_01', resourceVersion: 3 }),
     getSession: vi.fn().mockResolvedValue({
       resourceVersion: 1,
       learning: { progress: 'in_progress', session: { state: 'active' } },
@@ -103,6 +106,308 @@ describe('learning SessionPage', () => {
     expect(screen.getByText('重点')).toBeInTheDocument();
     expect(screen.getByText('难点')).toBeInTheDocument();
     expect(screen.getByText('重难点')).toBeInTheDocument();
+  });
+
+  it('offers system continuation without sending a learner message', async () => {
+    let continued = false;
+    const continueTeaching = vi.fn().mockImplementation(async () => {
+      continued = true;
+      return { taskId: 'task_continuation_01', resourceVersion: 5 };
+    });
+    const snapshot = () => ({
+      resourceVersion: continued ? 6 : 4,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress' as const,
+        session: {
+          id: 'session_01',
+          state: 'active' as const,
+          messageIds: continued
+            ? ['message_user_01', 'message_assistant_01', 'message_assistant_02']
+            : ['message_user_01', 'message_assistant_01'],
+          evidenceCheckpoint: true,
+        },
+        processedCommandIds: [],
+      },
+      actualSeconds: 30,
+      teachingProgress: {
+        ledgerVersion: continued ? 3 : 2,
+        observationStatus: 'current' as const,
+        lessonPhase: 'knowledge_point' as const,
+        comprehensiveCheck: 'pending' as const,
+        closureInquiry: 'pending' as const,
+        summaryStatus: 'pending' as const,
+        turnHandoff: 'offer_continue' as const,
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '关键概念',
+            progress: 'learning' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'explained' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        { id: 'message_user_01', role: 'user' as const, createdAt: '', markdown: '我的判断。' },
+        {
+          id: 'message_assistant_01',
+          role: 'assistant' as const,
+          createdAt: '',
+          markdown: '这里先完成一个自然教学单元。',
+          completionStatus: 'complete' as const,
+          knowledgePointRef: 'knowledge:kp_1',
+        },
+        ...(continued
+          ? [
+              {
+                id: 'message_assistant_02',
+                role: 'assistant' as const,
+                createdAt: '',
+                markdown: '继续后的讲解。',
+                completionStatus: 'complete' as const,
+                generationTaskId: 'task_continuation_01',
+                knowledgePointRef: 'knowledge:kp_1',
+              },
+            ]
+          : []),
+      ],
+    });
+    const getSession = vi.fn().mockImplementation(async () => snapshot());
+    const sendMessage = vi.fn();
+    const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
+      onEvent({ type: 'message.delta', data: { markdown: '继续后的讲解。' } });
+      onEvent({ type: 'task.completed', data: { resultRef: 'assistant-message:02' } });
+    });
+
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({ continueTeaching, getSession, sendMessage, stream })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '继续讲解' }));
+
+    await waitFor(() => expect(continueTeaching).toHaveBeenCalledWith('session_01', 4));
+    await waitFor(() => expect(screen.getByText('继续后的讲解。')).toBeInTheDocument());
+    expect(screen.getAllByRole('heading', { name: '关键概念' })).toHaveLength(1);
+    expect(screen.getAllByTestId('continuation-divider')).toHaveLength(1);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows continuation thinking and its boundary before the request is accepted', async () => {
+    const snapshot = {
+      resourceVersion: 4,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress' as const,
+        session: {
+          id: 'session_01',
+          state: 'active' as const,
+          messageIds: ['message_assistant_01'],
+          evidenceCheckpoint: true,
+        },
+        processedCommandIds: [],
+      },
+      teachingProgress: {
+        ledgerVersion: 2,
+        observationStatus: 'current' as const,
+        lessonPhase: 'knowledge_point' as const,
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        comprehensiveCheck: 'pending' as const,
+        closureInquiry: 'pending' as const,
+        summaryStatus: 'pending' as const,
+        turnHandoff: 'offer_continue' as const,
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '关键概念',
+            progress: 'learning' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'explained' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        {
+          id: 'message_assistant_01',
+          role: 'assistant' as const,
+          createdAt: '',
+          markdown: '上一批讲解。',
+          completionStatus: 'complete' as const,
+          knowledgePointRef: 'knowledge:kp_1',
+        },
+      ],
+    };
+    const continueTeaching = vi.fn(() => new Promise<never>(() => undefined));
+
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({
+          continueTeaching,
+          getSession: vi.fn().mockResolvedValue(snapshot),
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '继续讲解' }));
+
+    expect(screen.getByRole('status', { name: 'AI 回复状态' })).toHaveTextContent('正在思考中');
+    expect(screen.getByTestId('continuation-divider')).toBeInTheDocument();
+  });
+
+  it('restores knowledge-point titles and continuation boundaries from persisted messages', async () => {
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 7,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress',
+        session: {
+          id: 'session_01',
+          state: 'active',
+          messageIds: ['assistant_01', 'assistant_02', 'user_01', 'assistant_03'],
+          evidenceCheckpoint: true,
+        },
+        processedCommandIds: [],
+      },
+      teachingProgress: {
+        ledgerVersion: 5,
+        observationStatus: 'current',
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_2',
+        comprehensiveCheck: 'pending',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '双侧极限的单侧判据',
+            progress: 'completed',
+            interactionStatus: 'completed',
+            delivery: 'explained',
+            verification: 'supporting',
+            unresolvedQuestionCount: 0,
+          },
+          {
+            ref: 'knowledge:kp_2',
+            title: '函数值与极限值的区别',
+            progress: 'learning',
+            interactionStatus: 'pending',
+            delivery: 'explained',
+            verification: 'not_observed',
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        {
+          id: 'assistant_01',
+          role: 'assistant',
+          createdAt: '',
+          markdown: '第一批。',
+          knowledgePointRef: 'knowledge:kp_1',
+        },
+        {
+          id: 'assistant_02',
+          role: 'assistant',
+          createdAt: '',
+          markdown: '同一知识点的继续讲解。',
+          knowledgePointRef: 'knowledge:kp_1',
+        },
+        { id: 'user_01', role: 'user', createdAt: '', markdown: '明白了。' },
+        {
+          id: 'assistant_03',
+          role: 'assistant',
+          createdAt: '',
+          markdown: '进入下一个知识点。',
+          knowledgePointRef: 'knowledge:kp_2',
+        },
+      ],
+    });
+
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
+
+    expect(await screen.findByRole('heading', { name: '双侧极限的单侧判据' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '函数值与极限值的区别' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: '双侧极限的单侧判据' })).toHaveLength(1);
+    expect(screen.getAllByTestId('continuation-divider')).toHaveLength(1);
+  });
+
+  it('restores the continuation action when an accepted continuation task fails', async () => {
+    const snapshot = {
+      resourceVersion: 6,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress' as const,
+        session: {
+          id: 'session_01',
+          state: 'active' as const,
+          messageIds: ['message_user_01', 'message_assistant_01'],
+          evidenceCheckpoint: true,
+        },
+        processedCommandIds: [],
+      },
+      teachingProgress: {
+        ledgerVersion: 2,
+        observationStatus: 'current' as const,
+        lessonPhase: 'knowledge_point' as const,
+        comprehensiveCheck: 'pending' as const,
+        closureInquiry: 'pending' as const,
+        summaryStatus: 'pending' as const,
+        turnHandoff: 'offer_continue' as const,
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '关键概念',
+            progress: 'learning' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'explained' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        { id: 'message_user_01', role: 'user' as const, createdAt: '', markdown: '我的判断。' },
+        {
+          id: 'message_assistant_01',
+          role: 'assistant' as const,
+          createdAt: '',
+          markdown: '这里先完成一个自然教学单元。',
+          completionStatus: 'complete' as const,
+        },
+      ],
+    };
+    const continueTeaching = vi
+      .fn()
+      .mockResolvedValue({ taskId: 'task_continuation_failed', resourceVersion: 5 });
+    const getSession = vi.fn().mockResolvedValue(snapshot);
+    const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
+      onEvent({
+        type: 'task.failed',
+        data: { problem: { code: 'projection_incomplete', retryable: true } },
+      });
+    });
+
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({ continueTeaching, getSession, stream })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '继续讲解' }));
+
+    expect(await screen.findByText('继续讲解失败，请重试。')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '继续讲解' })).toBeEnabled();
+    expect(screen.queryAllByText('正在同步教学进度')).toHaveLength(0);
+    expect(screen.queryByTestId('continuation-divider')).not.toBeInTheDocument();
   });
 
   it('automatically starts an AI-led opening without a user message', async () => {

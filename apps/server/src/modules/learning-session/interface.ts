@@ -34,6 +34,7 @@ export type LearningSessionCommand =
         messageId: string;
         contentArtifactRef: string;
         generationTaskId: string;
+        knowledgePointRef?: string;
         completionStatus?: 'complete' | 'interrupted';
       }>)
   | (LessonCommand & Readonly<{ type: 'EstablishEvidenceCheckpoint' }>)

@@ -647,6 +647,60 @@ describe('InteractiveTeaching deep module', () => {
     expect(capturedReasoningObservations).toEqual([]);
   });
 
+  it('binds an assistant reply to the active knowledge point before applying its directive', async () => {
+    const { module, drainObservations, ledgerRepository, messageLog } = await fixture();
+    await seedLearningKnowledgePoint(ledgerRepository);
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    expect(await messageLog.list('session_1')).toContainEqual(
+      expect.objectContaining({
+        id: 'message_ai_1',
+        knowledgePointRef: 'knowledge:kp_1',
+      }),
+    );
+  });
+
+  it('continues from an offered handoff without appending or observing a learner message', async () => {
+    const { module, drainObservations, messageLog, submittedContext, observedMessageBatches } =
+      await fixture({
+        agentDirective: {
+          schemaVersion: 3,
+          lessonPhase: 'warmup',
+          turnHandoff: 'offer_continue',
+        },
+      });
+
+    await module.openLesson(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    const continued = await module.continueTurn(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      { ...commandContext, commandId: 'continue_turn', idempotencyKey: 'continue_turn' },
+    );
+    await drainObservations('session_1');
+
+    expect(continued.taskId).toBe('task_2');
+    expect(submittedContext()).toMatchObject({ turnKind: 'continuation' });
+    expect(await messageLog.list('session_1')).toEqual([
+      expect.objectContaining({ role: 'assistant' }),
+      expect.objectContaining({ role: 'assistant' }),
+    ]);
+    expect(observedMessageBatches).toEqual([]);
+  });
+
   it('forwards safe assistant reply deltas without replaying the full reply at completion', async () => {
     const { module, drainObservations, frames } = await fixture({ streamReply: true });
 
@@ -888,7 +942,8 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('stops a durable generation after volatile task ownership is lost', async () => {
-    const { module, sessionModule, messageLog } = await fixture();
+    const { module, sessionModule, messageLog, ledgerRepository } = await fixture();
+    await seedLearningKnowledgePoint(ledgerRepository);
     await sessionModule.execute(
       {
         type: 'StartSessionGeneration',
@@ -919,6 +974,7 @@ describe('InteractiveTeaching deep module', () => {
       expect.objectContaining({
         generationTaskId: 'task_recovered',
         completionStatus: 'interrupted',
+        knowledgePointRef: 'knowledge:kp_1',
       }),
     ]);
   });
@@ -1335,6 +1391,87 @@ describe('InteractiveTeaching deep module', () => {
     ]);
   });
 
+  it('keeps the first delivered classroom summary as the Review projection source', async () => {
+    const directive: TeachingDirective = {
+      schemaVersion: 1,
+      lessonPhase: 'ready_to_close',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'completed',
+      closureInquiry: 'confirmed_no_questions',
+      summaryStatus: 'delivered',
+    };
+    const { module, drainObservations, ledgerRepository } = await fixture({
+      agentDirective: directive,
+    });
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1'],
+    });
+    await ledgerRepository.save(
+      tx,
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        observations: [],
+        checkpoints: [],
+        state: {
+          ...initial,
+          lessonPhase: 'discussion',
+          comprehensiveCheck: 'completed',
+          closureInquiry: 'awaiting_confirmation',
+          summaryStatus: 'pending',
+          knowledgePoints: initial.knowledgePoints.map((point) => ({
+            ...point,
+            progress: 'completed',
+            interactionStatus: 'completed',
+          })),
+        },
+        resourceVersion: 0,
+      },
+      0,
+    );
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      reviewProjection: { classroomSummarySourceMessageId: 'message_ai_1' },
+    });
+
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_2',
+        userContentArtifactRef: 'artifact:user:2',
+      },
+      {
+        ...commandContext,
+        commandId: 'command_repeat_summary',
+        idempotencyKey: 'command_repeat_summary',
+        expectedVersion: undefined,
+      },
+    );
+    await drainObservations('session_1');
+
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      reviewProjection: { classroomSummarySourceMessageId: 'message_ai_1' },
+    });
+  });
+
   it('builds each teaching observation from only the latest completed teaching turn', async () => {
     const { module, drainObservations, observedMessageBatches, capturedInteractionObservations } =
       await fixture();
@@ -1548,7 +1685,8 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('recovers a persisted active teaching generation and commits its completed reply', async () => {
-    const { recoverSession, sessionModule, messageLog } = await fixture();
+    const { recoverSession, sessionModule, messageLog, ledgerRepository } = await fixture();
+    await seedLearningKnowledgePoint(ledgerRepository);
     await sessionModule.execute(
       {
         type: 'AppendUserMessage',
@@ -1587,7 +1725,11 @@ describe('InteractiveTeaching deep module', () => {
     expect(recoveredView.learning.session?.activeGenerationTaskId).toBeUndefined();
     await expect(messageLog.list('session_1')).resolves.toEqual([
       expect.objectContaining({ id: 'message_user_1', completionStatus: 'complete' }),
-      expect.objectContaining({ generationTaskId: 'task_recovered', completionStatus: 'complete' }),
+      expect.objectContaining({
+        generationTaskId: 'task_recovered',
+        completionStatus: 'complete',
+        knowledgePointRef: 'knowledge:kp_1',
+      }),
     ]);
   });
 

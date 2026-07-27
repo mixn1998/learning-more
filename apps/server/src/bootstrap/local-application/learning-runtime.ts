@@ -361,6 +361,7 @@ export function createLocalLearningRuntime(
               : (state?.comprehensiveCheck ?? ('pending' as const)),
         closureInquiry: state?.closureInquiry ?? 'pending',
         summaryStatus: state?.summaryStatus ?? 'pending',
+        ...(state?.turnHandoff === undefined ? {} : { turnHandoff: state.turnHandoff }),
         knowledgePoints: facts.lesson.coreKnowledgePoints.map((knowledgePoint) => {
           const point = stateByRef.get(knowledgePoint.ref);
           return {

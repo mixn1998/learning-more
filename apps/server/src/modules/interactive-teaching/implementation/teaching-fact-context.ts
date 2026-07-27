@@ -48,11 +48,21 @@ function knowledgeBackground(context: TeachingContextPackage): string[] {
             : '待讲解';
     const need =
       point.verification === 'limiting' || point.verification === 'mixed'
-        ? '本轮需要针对现有理解缺口继续支架'
+        ? '存在需要处理的理解缺口'
         : point.progress === 'pending'
-          ? '按本课顺序建立理解并形成可回应的互动'
-          : '依据当前证据自然推进';
-    return `- ${text}：${progress}；${weight}；${difficulty}；${delivery}；${evidence}；教学需要：${need}`;
+          ? '教学责任尚未完成'
+          : '当前无新增阻塞';
+    const relation =
+      definition?.relationToNext === undefined
+        ? ''
+        : `；与下一节点的关系：${definition.relationToNext}`;
+    const attachedBranches =
+      definition?.branches === undefined || definition.branches.length === 0
+        ? ''
+        : `；必要分支：${definition.branches
+            .map((branch) => `${branch.content}（${branch.relation}）`)
+            .join('；')}`;
+    return `- ${text}：${progress}；${weight}；${difficulty}；${delivery}；${evidence}；${need}${relation}${attachedBranches}`;
   });
 }
 
@@ -110,12 +120,17 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
   });
   const currentRequest = currentUserMessage(context);
   const opening = context.turnKind === 'opening';
-  if (!opening && currentRequest.length === 0) throw new Error('current_teaching_request_missing');
+  const continuation = context.turnKind === 'continuation';
+  if (!opening && !continuation && currentRequest.length === 0) {
+    throw new Error('current_teaching_request_missing');
+  }
   return [
     '【教学事实上下文】',
     opening
       ? '这是学习者刚进入本课的课前热身。'
-      : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
+      : continuation
+        ? '这是学习者点击“继续讲解”触发的系统续讲事件；它不是学习者消息、理解证据或互动回应。'
+        : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
     `【已知学习背景】\n课程：${context.course.title}\n课程目标：${localCourseGoals(context).join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
     section('课程关系', relations),
     context.course.playIntent === undefined
@@ -132,7 +147,7 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
     section('课程邻接探索', branches),
     section('可用于个性化的背景', personalization),
     section('此前真实对话', priorConversation(context)),
-    ...(opening ? [] : [`【当前诉求｜用户原话】\n${currentRequest}`]),
+    ...(opening || continuation ? [] : [`【当前诉求｜用户原话】\n${currentRequest}`]),
   ]
     .filter((value): value is string => value !== undefined)
     .join('\n\n');

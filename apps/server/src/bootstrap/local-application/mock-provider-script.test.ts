@@ -17,8 +17,8 @@ async function generate(prompt: string): Promise<string> {
 
 describe('local mock provider script', () => {
   it('returns the hidden teaching directive and visible reply required by interactive teaching', async () => {
-    const output = await generate(`【教学方针（高优先级）】
-依据提供的真实上下文继续当前互动式教学。
+    const output = await generate(`【教学目标】
+以学习者形成清晰、准确、能够支撑后续理解的知识结构为最高目标。
 
 【当前诉求｜用户原话】
 请继续。
@@ -29,8 +29,9 @@ describe('local mock provider script', () => {
     expect(parseTeachingAgentResult(output, true)).toMatchObject({
       markdown: expect.stringContaining('我们从你刚才的问题继续'),
       directive: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         lessonPhase: 'knowledge_point',
+        turnHandoff: 'invite_response',
         knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
       },
     });

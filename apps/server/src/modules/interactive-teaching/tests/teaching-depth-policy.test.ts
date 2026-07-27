@@ -67,33 +67,29 @@ function context(input: {
 }
 
 describe('teaching depth policy', () => {
-  it('keeps normal knowledge points concise and proportionate', () => {
+  it('provides only a depth signal for a normal knowledge point', () => {
     const rendered = renderTeachingDepthPolicy(context({}));
     expect(rendered).toContain('【教学深模块｜普通知识点】');
-    expect(rendered).toContain('详略得当');
-    expect(rendered).not.toContain('典型误区');
+    expect(rendered).toContain('不规定固定讲解或互动方式');
+    expect(rendered?.split('\n')).toHaveLength(3);
   });
 
-  it('expands fixed key points without turning depth into repeated detail interrogation', () => {
+  it('marks fixed key points without adding content-generation tactics', () => {
     const rendered = renderTeachingDepthPolicy(context({ fixedImportance: 'key' }));
     expect(rendered).toContain('【教学深模块｜重点】');
-    expect(rendered).toContain('边界和适用条件');
-    expect(rendered).toContain('反例');
-    expect(rendered).toContain('典型误区');
-    expect(rendered).toContain('综合问题');
-    expect(rendered).toContain('最多追问一次');
-    expect(rendered).not.toContain('多轮互动');
+    expect(rendered).toContain('不规定固定讲解或互动方式');
+    expect(rendered).not.toContain('综合问题');
+    expect(rendered).not.toContain('最多追问一次');
+    expect(rendered).not.toContain('反例');
   });
 
-  it('combines fixed importance and adaptive difficulty without losing either strategy', () => {
+  it('combines fixed importance and adaptive difficulty as one signal', () => {
     const rendered = renderTeachingDepthPolicy(
       context({ fixedImportance: 'key', adaptiveDifficulty: 'difficult' }),
     );
     expect(rendered).toContain('【教学深模块｜重难点】');
-    expect(rendered).toContain('边界和适用条件');
-    expect(rendered).toContain('学习者已经出现的错误、误解、不解或深入讲解需求');
-    expect(rendered).toContain('更换例子、类比、反例、图形或推理路径');
-    expect(rendered).toContain('推进到更深一层理解');
+    expect(rendered).not.toContain('更换例子、类比、反例、图形或推理路径');
+    expect(rendered?.split('\n')).toHaveLength(3);
   });
 
   it('downgrades a fixed key point for the current session when the learner requests brevity', () => {

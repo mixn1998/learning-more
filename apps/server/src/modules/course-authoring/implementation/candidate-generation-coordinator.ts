@@ -12,7 +12,7 @@ import type { CandidateGenerationCoordinator } from './course-authoring-facade.j
 import type { createCourseAuthoringModule } from './course-authoring-module.js';
 import { createAuthoringContextAssembler } from './authoring-context-assembler.js';
 import { buildCandidatePromptInput } from './prompt-input-builder.js';
-import type { CompletedLessonOutlineContext } from '../ports/authoring-agent.js';
+import type { FrozenLessonOutlineContext } from '../ports/authoring-agent.js';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -54,16 +54,16 @@ export function createCandidateGenerationCoordinator(options: {
   readonly execution: GenerationExecution;
   readonly frameLog: GenerationFrameLog;
   readonly nextCandidateId: () => string;
-  readonly listCompletedLessonOutlineContexts?: (
+  readonly listFrozenLessonOutlineContexts?: (
     courseId: string,
-  ) => Promise<readonly CompletedLessonOutlineContext[]>;
+  ) => Promise<readonly FrozenLessonOutlineContext[]>;
   readonly dispatchBackground?: (work: () => Promise<void>) => void;
 }): CandidateGenerationCoordinator {
   const assembleAuthoringContext = createAuthoringContextAssembler(options.repositories, {
-    ...(options.listCompletedLessonOutlineContexts === undefined
+    ...(options.listFrozenLessonOutlineContexts === undefined
       ? {}
       : {
-          listCompletedLessonOutlineContexts: options.listCompletedLessonOutlineContexts,
+          listFrozenLessonOutlineContexts: options.listFrozenLessonOutlineContexts,
         }),
   });
   const activeFinalizations = new Map<string, Promise<void>>();

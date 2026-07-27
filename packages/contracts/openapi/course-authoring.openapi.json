@@ -1771,6 +1771,82 @@
                     "type": "string"
                   }
                 },
+                "knowledgeStructure": {
+                  "type": "object",
+                  "properties": {
+                    "mainChain": {
+                      "minItems": 1,
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "content": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          },
+                          "relationToNext": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "content"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "branches": {
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "attachedTo": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "content": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          },
+                          "relation": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "attachedTo",
+                          "content",
+                          "relation"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "mainChain",
+                    "branches"
+                  ],
+                  "additionalProperties": false
+                },
                 "prerequisiteLessonIds": {
                   "type": "array",
                   "items": {
@@ -1922,6 +1998,82 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "knowledgeStructure": {
+            "type": "object",
+            "properties": {
+              "mainChain": {
+                "minItems": 1,
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "relationToNext": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "branches": {
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "attachedTo": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "relation": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "attachedTo",
+                    "content",
+                    "relation"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "mainChain",
+              "branches"
+            ],
+            "additionalProperties": false
           },
           "knowledgePointWeights": {
             "type": "array",

@@ -28,15 +28,136 @@ export const COURSE_MODES = [
 
 export const CourseModeSchema = z.enum(COURSE_MODES);
 
-export const CandidateLessonSchema = z.strictObject({
+export const KnowledgeChainNodeSchema = z.strictObject({
   id: identifierSchema,
-  title: z.string().min(1),
-  objective: z.string().min(1),
-  coreKnowledgePoints: z.array(z.string().min(1)).min(1),
-  prerequisiteLessonIds: z.array(identifierSchema),
-  estimatedMinutes: z.number().int().min(5).max(480),
-  sourceRefs: z.array(identifierSchema).min(1),
+  content: z.string().trim().min(1).max(2_000),
+  relationToNext: z.string().trim().min(1).max(2_000).optional(),
 });
+
+export const KnowledgeChainBranchSchema = z.strictObject({
+  id: identifierSchema,
+  attachedTo: identifierSchema,
+  content: z.string().trim().min(1).max(2_000),
+  relation: z.string().trim().min(1).max(2_000),
+});
+
+export const LessonKnowledgeStructureSchema = z
+  .strictObject({
+    mainChain: z.array(KnowledgeChainNodeSchema).min(1).max(50),
+    branches: z.array(KnowledgeChainBranchSchema).max(100),
+  })
+  .superRefine((structure, context) => {
+    const nodeIds = structure.mainChain.map((node) => node.id);
+    if (new Set(nodeIds).size !== nodeIds.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['mainChain'],
+        message: 'knowledge_chain_node_ids_must_be_unique',
+      });
+    }
+    const branchIds = structure.branches.map((branch) => branch.id);
+    if (new Set(branchIds).size !== branchIds.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['branches'],
+        message: 'knowledge_chain_branch_ids_must_be_unique',
+      });
+    }
+    if (branchIds.some((id) => nodeIds.includes(id))) {
+      context.addIssue({
+        code: 'custom',
+        path: ['branches'],
+        message: 'knowledge_chain_ids_must_be_unique',
+      });
+    }
+    for (const [index, node] of structure.mainChain.entries()) {
+      const isLast = index === structure.mainChain.length - 1;
+      if (!isLast && node.relationToNext === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['mainChain', index, 'relationToNext'],
+          message: 'knowledge_chain_relation_required',
+        });
+      }
+      if (isLast && node.relationToNext !== undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['mainChain', index, 'relationToNext'],
+          message: 'knowledge_chain_terminal_relation_forbidden',
+        });
+      }
+    }
+    const knownNodes = new Set(nodeIds);
+    for (const [index, branch] of structure.branches.entries()) {
+      if (!knownNodes.has(branch.attachedTo)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['branches', index, 'attachedTo'],
+          message: 'knowledge_chain_branch_anchor_unknown',
+        });
+      }
+    }
+  });
+
+function legacyKnowledgeStructure(coreKnowledgePoints: readonly string[]) {
+  return {
+    mainChain: coreKnowledgePoints.map((content, index) => ({
+      id: `node_${index + 1}`,
+      content,
+      ...(index === coreKnowledgePoints.length - 1
+        ? {}
+        : { relationToNext: '为下一步理解提供基础' }),
+    })),
+    branches: [],
+  };
+}
+
+/**
+ * `coreKnowledgePoints` remains an output compatibility projection for the
+ * teaching ledger. New model output is authoritative through
+ * `knowledgeStructure`; legacy v1 candidates are upgraded while parsing.
+ */
+export const CandidateLessonSchema = z
+  .strictObject({
+    id: identifierSchema,
+    title: z.string().min(1),
+    objective: z.string().min(1),
+    knowledgeStructure: LessonKnowledgeStructureSchema.optional(),
+    coreKnowledgePoints: z.array(z.string().min(1)).min(1).optional(),
+    prerequisiteLessonIds: z.array(identifierSchema),
+    estimatedMinutes: z.number().int().min(5).max(480),
+    sourceRefs: z.array(identifierSchema).min(1),
+  })
+  .superRefine((lesson, context) => {
+    if (lesson.knowledgeStructure === undefined && lesson.coreKnowledgePoints === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['knowledgeStructure'],
+        message: 'lesson_knowledge_structure_required',
+      });
+    }
+    if (
+      lesson.knowledgeStructure !== undefined &&
+      lesson.coreKnowledgePoints !== undefined &&
+      JSON.stringify(lesson.knowledgeStructure.mainChain.map((node) => node.content)) !==
+        JSON.stringify(lesson.coreKnowledgePoints)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['coreKnowledgePoints'],
+        message: 'core_knowledge_points_must_match_main_chain',
+      });
+    }
+  })
+  .transform((lesson) => {
+    const knowledgeStructure =
+      lesson.knowledgeStructure ?? legacyKnowledgeStructure(lesson.coreKnowledgePoints ?? []);
+    return {
+      ...lesson,
+      knowledgeStructure,
+      coreKnowledgePoints: knowledgeStructure.mainChain.map((node) => node.content),
+    };
+  });
 
 export const CandidateModuleSchema = z.strictObject({
   id: identifierSchema,
@@ -69,6 +190,9 @@ export type CandidateLesson = Readonly<z.infer<typeof CandidateLessonSchema>>;
 export type CandidateModule = Readonly<z.infer<typeof CandidateModuleSchema>>;
 export type CandidateOutlineMetadata = Readonly<z.infer<typeof CandidateOutlineMetadataSchema>>;
 export type CandidateModelResponse = Readonly<z.infer<typeof CandidateModelResponseSchema>>;
+export type KnowledgeChainNode = Readonly<z.infer<typeof KnowledgeChainNodeSchema>>;
+export type KnowledgeChainBranch = Readonly<z.infer<typeof KnowledgeChainBranchSchema>>;
+export type LessonKnowledgeStructure = Readonly<z.infer<typeof LessonKnowledgeStructureSchema>>;
 
 export const CandidateGenerationFailureCodeSchema = z.enum([
   'candidate_invalid',
@@ -283,6 +407,7 @@ export const CourseArchiveResponseSchema = z.strictObject({
         title: z.string(),
         objective: z.string(),
         coreKnowledgePoints: z.array(z.string()),
+        knowledgeStructure: LessonKnowledgeStructureSchema.optional(),
         prerequisiteLessonIds: z.array(identifierSchema),
         estimatedMinutes: z.number().int().positive(),
       }),
@@ -323,6 +448,7 @@ export const LessonPreviewResponseSchema = z.strictObject({
   title: z.string(),
   objective: z.string(),
   coreKnowledgePoints: z.array(z.string().min(1)),
+  knowledgeStructure: LessonKnowledgeStructureSchema.optional(),
   knowledgePointWeights: z.array(z.enum(['normal', 'key'])).optional(),
   teachingWeightStatus: z.enum(['pending', 'completed', 'failed']).optional(),
   estimatedMinutes: z.number().int().positive(),

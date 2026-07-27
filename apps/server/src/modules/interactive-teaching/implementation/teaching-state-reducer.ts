@@ -33,6 +33,7 @@ export function createTeachingState(input: {
     comprehensiveCheck: 'pending',
     closureInquiry: 'pending',
     summaryStatus: 'pending',
+    turnHandoff: 'offer_continue',
     knowledgePoints: orderedKnowledgePointRefs.map((ref) => ({
       ref,
       progress: 'pending',

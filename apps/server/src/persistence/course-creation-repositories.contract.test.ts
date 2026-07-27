@@ -41,6 +41,10 @@ describe('LocalFile Course creation repositories', () => {
             title: '概率空间',
             objective: '理解概念',
             coreKnowledgePoints: ['样本空间'],
+            knowledgeStructure: {
+              mainChain: [{ id: 'node_1', content: '样本空间' }],
+              branches: [],
+            },
             prerequisiteLessonIds: [],
             estimatedMinutes: 30,
             sourceRefs: ['source_topic'],

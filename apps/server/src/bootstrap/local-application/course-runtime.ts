@@ -90,14 +90,18 @@ export function createLocalCourseRuntime(
       if (lesson !== undefined && lesson.courseId === courseId) yield lesson;
     }
   };
+  const getLessonProgress = async (
+    lessonId: string,
+  ): Promise<'not_started' | 'in_progress' | 'abandoned' | 'completed'> =>
+    (await learningSessionRepositories.get(lessonId))?.learning.progress ?? 'not_started';
   const isLessonCompleted = async (lessonId: string) =>
-    (await learningSessionRepositories.get(lessonId))?.learning.progress === 'completed';
-  const listCompletedLessonOutlineContexts = async (courseId: string) => {
+    (await getLessonProgress(lessonId)) === 'completed';
+  const listFrozenLessonOutlineContexts = async (courseId: string) => {
     const course = await courseRepositories.courses.get(courseId);
     if (course === undefined) return [];
     const lessons = [];
     for await (const lesson of listCurrentLessons(courseId)) {
-      if (await isLessonCompleted(lesson.id)) lessons.push(lesson);
+      if ((await getLessonProgress(lesson.id)) !== 'not_started') lessons.push(lesson);
     }
     const activeOrder = new Map(course.lessonIds.map((lessonId, index) => [lessonId, index]));
     lessons.sort(
@@ -105,13 +109,21 @@ export function createLocalCourseRuntime(
         (activeOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
           (activeOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id),
     );
-    return lessons.map((lesson) => ({
-      lessonId: lesson.id,
-      semanticKey: lesson.semanticKey,
-      title: lesson.title,
-      objective: lesson.objective,
-      coreKnowledgePoints: lesson.coreKnowledgePoints,
-    }));
+    return Promise.all(
+      lessons.map(async (lesson) => {
+        const progress = await getLessonProgress(lesson.id);
+        if (progress === 'not_started') throw new Error('frozen_lesson_progress_mismatch');
+        return {
+          lessonId: lesson.id,
+          semanticKey: lesson.semanticKey,
+          title: lesson.title,
+          objective: lesson.objective,
+          coreKnowledgePoints: lesson.coreKnowledgePoints,
+          knowledgeStructure: lesson.knowledgeStructure,
+          progress,
+        };
+      }),
+    );
   };
   const teachingWeights = createTeachingWeightService({
     courses: courseRepositories,
@@ -200,7 +212,7 @@ export function createLocalCourseRuntime(
     execution: input.generation.execution,
     frameLog: input.generation.frameLog,
     nextCandidateId: () => `candidate_${randomUUID()}`,
-    listCompletedLessonOutlineContexts,
+    listFrozenLessonOutlineContexts,
   });
   const nextId = (kind: 'session' | 'course' | 'event' | 'outline' | 'adjustment' | 'message') =>
     `${kind}_${randomUUID()}`;
@@ -249,7 +261,8 @@ export function createLocalCourseRuntime(
     }),
     nextLessonRecommender: input.generation.nextLessonRecommender,
     isLessonCompleted,
-    listCompletedLessonOutlineContexts,
+    getLessonProgress,
+    listFrozenLessonOutlineContexts,
     outlineRevisionLiveCleanup,
     outbox: input.events.outbox,
     profileEvidenceSink: input.profile.checkpointSink,

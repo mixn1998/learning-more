@@ -21,7 +21,7 @@ import {
   evolveAll,
 } from '../model/outline-session.js';
 import type { CourseCreationRepositories } from '../ports/course-repositories.js';
-import type { AuthoringAgent, CompletedLessonOutlineContext } from '../ports/authoring-agent.js';
+import type { AuthoringAgent, FrozenLessonOutlineContext } from '../ports/authoring-agent.js';
 import type { CandidateAlignmentPlanner } from '../ports/candidate-alignment-planner.js';
 import type { OutlineSessionRecord } from '../ports/outline-session-repository.js';
 import type { OutlineSessionDraftStore } from '../ports/outline-session-draft-store.js';
@@ -76,9 +76,12 @@ export function createCourseAuthoringFacade(options: {
   readonly outlineRevisionLiveCleanup?: PlanningOutlineRevisionParticipant;
   readonly outbox?: Outbox;
   readonly isLessonCompleted?: (lessonId: string) => Promise<boolean>;
-  readonly listCompletedLessonOutlineContexts?: (
+  readonly getLessonProgress?: (
+    lessonId: string,
+  ) => Promise<'not_started' | 'in_progress' | 'abandoned' | 'completed'>;
+  readonly listFrozenLessonOutlineContexts?: (
     courseId: string,
-  ) => Promise<readonly CompletedLessonOutlineContext[]>;
+  ) => Promise<readonly FrozenLessonOutlineContext[]>;
   readonly profileEvidenceSink?: Readonly<{
     capture(checkpoint: CourseAuthoringEvidenceCheckpoint): void;
   }>;
@@ -99,10 +102,10 @@ export function createCourseAuthoringFacade(options: {
   readonly outlineSessionDraftStore?: OutlineSessionDraftStore;
 }): RecoverableCourseAuthoring {
   const assembleAuthoringContext = createAuthoringContextAssembler(options.authoring, {
-    ...(options.listCompletedLessonOutlineContexts === undefined
+    ...(options.listFrozenLessonOutlineContexts === undefined
       ? {}
       : {
-          listCompletedLessonOutlineContexts: options.listCompletedLessonOutlineContexts,
+          listFrozenLessonOutlineContexts: options.listFrozenLessonOutlineContexts,
         }),
   });
 
@@ -779,6 +782,12 @@ export function createCourseAuthoringFacade(options: {
         const course = await options.courses.courses.get(command.courseId);
         if (course === undefined) throw new ResourceNotFoundError();
         assertVersion(course.resourceVersion, context);
+        const currentOutline = await options.courses.outlineVersions.get(course.outlineVersionId);
+        if (currentOutline === undefined) throw new ResourceNotFoundError();
+        const currentCandidate = await options.authoring.candidateVersions.get(
+          currentOutline.sourceCandidateVersionId,
+        );
+        if (currentCandidate === undefined) throw new ResourceNotFoundError();
         const candidate = await options.authoring.candidateVersions.get(
           command.sourceCandidateVersionId,
         );
@@ -792,11 +801,19 @@ export function createCourseAuthoringFacade(options: {
             newOutlineVersionId: outlineVersionId,
             expectedCourseVersion: course.resourceVersion,
             candidate: candidate.candidate,
+            currentOutlineSemanticKeys: currentCandidate.candidate.lessons.map(
+              (lesson) => lesson.id,
+            ),
           },
           {
             repositories: options.courses,
             unitOfWork: options.unitOfWork,
-            isLessonCompleted: options.isLessonCompleted ?? (async () => false),
+            getLessonProgress:
+              options.getLessonProgress ??
+              (async (lessonId) =>
+                (await options.isLessonCompleted?.(lessonId)) === true
+                  ? 'completed'
+                  : 'not_started'),
             ...(options.nextLessonRecommender === undefined
               ? {}
               : { nextLessonRecommender: options.nextLessonRecommender }),
@@ -976,6 +993,7 @@ export function createCourseAuthoringFacade(options: {
           title: lesson.title,
           objective: lesson.objective,
           coreKnowledgePoints: lesson.coreKnowledgePoints,
+          knowledgeStructure: lesson.knowledgeStructure,
           prerequisiteLessonIds: lesson.prerequisiteLessonIds,
           estimatedMinutes: lesson.estimatedMinutes,
         })),
@@ -1019,6 +1037,7 @@ export function createCourseAuthoringFacade(options: {
         title: lesson.title,
         objective: lesson.objective,
         coreKnowledgePoints: lesson.coreKnowledgePoints,
+        knowledgeStructure: lesson.knowledgeStructure,
         estimatedMinutes: lesson.estimatedMinutes,
       };
     },

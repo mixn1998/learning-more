@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createTeachingResponseStream } from '../implementation/teaching-response-stream.js';
+import { parseTeachingAgentResult } from '../implementation/teaching-control-protocol.js';
 
 const directive = {
   schemaVersion: 1,
@@ -53,6 +54,22 @@ describe('TeachingResponseStream', () => {
 
     expect(events).toContainEqual({ type: 'directive.ready', directive: sparse });
     expect(stream.finish().result).toEqual({ markdown: 'Visible reply.', directive: sparse });
+  });
+
+  it('requires a version 3 interaction invitation to appear in the visible reply', () => {
+    const directiveV3 = {
+      schemaVersion: 3,
+      lessonPhase: 'knowledge_point',
+      turnHandoff: 'invite_response',
+      interactionPromptExcerpt: '你会先检查哪个条件？',
+    } as const;
+    const valid = `<learning-more-reply>先区分事实与判断。你会先检查哪个条件？</learning-more-reply><learning-more-control>${JSON.stringify(directiveV3)}</learning-more-control>`;
+    const invalid = `<learning-more-reply>先区分事实与判断。</learning-more-reply><learning-more-control>${JSON.stringify(directiveV3)}</learning-more-control>`;
+
+    expect(parseTeachingAgentResult(valid, true).directive).toEqual(directiveV3);
+    expect(() => parseTeachingAgentResult(invalid, true)).toThrowError(
+      'teaching_interaction_prompt_not_in_reply',
+    );
   });
 
   it('publishes safe reply sentences before the trailing control block is available', () => {

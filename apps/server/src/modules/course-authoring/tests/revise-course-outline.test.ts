@@ -40,6 +40,10 @@ async function seeded(status: 'active' | 'closed' = 'active') {
       title: '概率空间',
       objective: '理解概率空间',
       coreKnowledgePoints: ['样本空间'],
+      knowledgeStructure: {
+        mainChain: [{ id: 'node_1', content: '样本空间' }],
+        branches: [],
+      },
       prerequisiteLessonIds: [],
       estimatedMinutes: 30,
       sourceRefs: ['source_topic'],
@@ -135,7 +139,7 @@ describe('reviseCourseOutline', () => {
     );
   });
 
-  it('preserves an unchanged lesson id even before the lesson has learning evidence', async () => {
+  it('publishes a new lesson definition for an unchanged lesson that has not started', async () => {
     const repositories = await seeded();
 
     await reviseCourseOutline(
@@ -155,12 +159,16 @@ describe('reviseCourseOutline', () => {
       },
     );
 
-    await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
-      lessonIds: ['lesson_stable'],
+    const course = await repositories.courses.get('course_01');
+    expect(course?.lessonIds).toHaveLength(1);
+    expect(course?.lessonIds[0]).not.toBe('lesson_stable');
+    await expect(repositories.lessons.get(course!.lessonIds[0]!)).resolves.toMatchObject({
+      outlineVersionId: 'outline_v2',
+      semanticKey: 'probability-space',
     });
   });
 
-  it('maps an unchanged lesson back to its existing id when the generated semantic key drifts', async () => {
+  it('keeps a regenerated unstarted lesson inside the new outline when its semantic key changes', async () => {
     const repositories = await seeded();
 
     await reviseCourseOutline(
@@ -194,8 +202,12 @@ describe('reviseCourseOutline', () => {
       },
     );
 
-    await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
-      lessonIds: ['lesson_stable'],
+    const course = await repositories.courses.get('course_01');
+    expect(course?.lessonIds).toHaveLength(1);
+    expect(course?.lessonIds[0]).not.toBe('lesson_stable');
+    await expect(repositories.lessons.get(course!.lessonIds[0]!)).resolves.toMatchObject({
+      outlineVersionId: 'outline_v2',
+      semanticKey: 'probability-space-renamed-by-model',
     });
   });
 
@@ -260,6 +272,46 @@ describe('reviseCourseOutline', () => {
     });
   });
 
+  it('keeps an in-progress lesson bound to its old immutable definition', async () => {
+    const repositories = await seeded();
+
+    await reviseCourseOutline(
+      {
+        adjustmentSessionId: 'adjustment_keeps_learning_lesson',
+        courseId: 'course_01',
+        sourceCandidateVersionId: 'candidate_v2',
+        newOutlineVersionId: 'outline_v2',
+        expectedCourseVersion: 1,
+        candidate: {
+          ...revision,
+          lessons: [
+            {
+              ...revision.lessons[0]!,
+              title: '模型尝试改写的课节',
+              objective: '模型尝试改写的目标',
+              coreKnowledgePoints: ['模型改写内容'],
+            },
+          ],
+        },
+      },
+      {
+        repositories,
+        unitOfWork,
+        getLessonProgress: async (id) => (id === 'lesson_stable' ? 'in_progress' : 'not_started'),
+        now: () => new Date('2026-07-13T01:00:00.000Z'),
+      },
+    );
+
+    await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
+      lessonIds: ['lesson_stable'],
+    });
+    await expect(repositories.lessons.get('lesson_stable')).resolves.toMatchObject({
+      outlineVersionId: 'outline_v1',
+      title: '概率空间',
+      coreKnowledgePoints: ['样本空间'],
+    });
+  });
+
   it('ignores model rewrites of a completed semantic key and keeps the frozen lesson definition', async () => {
     const repositories = await seeded();
 
@@ -298,5 +350,90 @@ describe('reviseCourseOutline', () => {
       objective: '理解概率空间',
       coreKnowledgePoints: ['样本空间'],
     });
+  });
+
+  it('does not resurrect a historical started lesson outside the current outline', async () => {
+    const repositories = await seeded();
+    await repositories.lessons.save(
+      tx,
+      {
+        id: 'lesson_historical',
+        courseId: 'course_01',
+        outlineVersionId: 'outline_legacy',
+        semanticKey: 'historical-only',
+        title: 'Historical lesson',
+        objective: 'Preserve its historical learning record',
+        coreKnowledgePoints: ['Historical knowledge'],
+        knowledgeStructure: {
+          mainChain: [{ id: 'node_historical', content: 'Historical knowledge' }],
+          branches: [],
+        },
+        prerequisiteLessonIds: [],
+        estimatedMinutes: 20,
+        sourceRefs: ['source_history'],
+        resourceVersion: 0,
+      },
+      0,
+    );
+
+    await reviseCourseOutline(
+      {
+        adjustmentSessionId: 'adjustment_excludes_historical',
+        courseId: 'course_01',
+        sourceCandidateVersionId: 'candidate_v2',
+        newOutlineVersionId: 'outline_v2',
+        expectedCourseVersion: 1,
+        candidate: revision,
+        currentOutlineSemanticKeys: ['probability-space'],
+      },
+      {
+        repositories,
+        unitOfWork,
+        getLessonProgress: async (id) =>
+          id === 'lesson_historical' ? 'in_progress' : 'not_started',
+        now: () => new Date('2026-07-13T01:00:00.000Z'),
+      },
+    );
+
+    const course = await repositories.courses.get('course_01');
+    expect(course?.lessonIds).toHaveLength(1);
+    expect(course?.lessonIds).not.toContain('lesson_historical');
+    await expect(repositories.lessons.get('lesson_historical')).resolves.toMatchObject({
+      outlineVersionId: 'outline_legacy',
+      semanticKey: 'historical-only',
+    });
+  });
+
+  it('rejects the commit when a lesson starts after revision planning', async () => {
+    const repositories = await seeded();
+    let progressReadCount = 0;
+
+    await expect(
+      reviseCourseOutline(
+        {
+          adjustmentSessionId: 'adjustment_racing_lesson_start',
+          courseId: 'course_01',
+          sourceCandidateVersionId: 'candidate_v2',
+          newOutlineVersionId: 'outline_v2',
+          expectedCourseVersion: 1,
+          candidate: revision,
+        },
+        {
+          repositories,
+          unitOfWork,
+          getLessonProgress: async () => {
+            progressReadCount += 1;
+            return progressReadCount === 1 ? 'not_started' : 'in_progress';
+          },
+          now: () => new Date('2026-07-13T01:00:00.000Z'),
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'source_snapshot_changed' });
+
+    await expect(repositories.courses.get('course_01')).resolves.toMatchObject({
+      outlineVersionId: 'outline_v1',
+      lessonIds: ['lesson_stable'],
+    });
+    await expect(repositories.outlineVersions.get('outline_v2')).resolves.toBeUndefined();
   });
 });

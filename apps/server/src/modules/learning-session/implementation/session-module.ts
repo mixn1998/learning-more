@@ -323,6 +323,10 @@ export function createSessionModule(options: {
               ...(command.type === 'CommitAssistantMessage'
                 ? { generationTaskId: command.generationTaskId }
                 : {}),
+              ...(command.type === 'CommitAssistantMessage' &&
+              command.knowledgePointRef !== undefined
+                ? { knowledgePointRef: command.knowledgePointRef }
+                : {}),
               completionStatus:
                 command.type === 'CommitAssistantMessage'
                   ? (command.completionStatus ?? 'complete')

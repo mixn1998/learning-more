@@ -124,6 +124,14 @@ export function createLocalInsightsRuntime(
 
   return {
     routes: {
+      commands: {
+        retryWeeklyReport(localWeekKey, context) {
+          return coordinator.retry(localWeekKey, context.commandId, context.expectedVersion!);
+        },
+      },
+      now: input.now,
+      nextCommandId: randomUUID,
+      nextCorrelationId: randomUUID,
       queries: {
         getHistory: input.events.historyView,
         getCourseSummary: input.events.courseSummaryView,

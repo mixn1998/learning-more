@@ -275,7 +275,13 @@ describe('WeeklyReportService', () => {
       attemptCount: 1,
       nextRetryAt: '2026-07-12T00:05:00.000Z',
     });
-    const retrying = await service.retry('2026-W28', 'retry_01');
+    await expect(
+      service.retry('2026-W28', 'retry_stale', generating.resourceVersion),
+    ).rejects.toMatchObject({
+      code: 'version_conflict',
+      currentVersion: failed!.resourceVersion,
+    });
+    const retrying = await service.retry('2026-W28', 'retry_01', failed!.resourceVersion);
     expect(retrying).toMatchObject({
       state: 'generating',
       generationTaskId: 'task_week_2',

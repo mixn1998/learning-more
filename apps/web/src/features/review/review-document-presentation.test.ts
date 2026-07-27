@@ -69,6 +69,65 @@ describe('lesson Review presentation projection', () => {
     expect(projection.performance).toHaveLength(2);
   });
 
+  it('keeps multi-paragraph performance evidence complete and presents it in second person', () => {
+    const projection = projectLessonReviewDocument({
+      knowledgeMap: { title: '线索', markdown: '方向 → 线性组合 → 张成空间' },
+      coreInsight: '张成空间由向量的全部线性组合构成。',
+      performance: [
+        {
+          title: '已形成：能展开参数表示',
+          markdown: [
+            '学习者将',
+            '',
+            '\\[',
+            'p(1,0)+q(1,1)',
+            '\\]',
+            '',
+            '逐坐标展开为 \\(x=p+q,\\ y=q\\)，并反解出 \\(q=y,\\ p=x-y\\)。',
+          ].join('\n'),
+        },
+        {
+          title: '已形成：能识别共线关系',
+          markdown: '学习者明确指出两个共线向量不能张成平面。',
+        },
+        {
+          title: '尚待验证',
+          markdown: '学习者的原回答尚未说明前两个方向独立，仍需验证其能否完整说明。',
+        },
+      ],
+    });
+
+    const visible = projection.performance.map((block) => block.markdown).join('\n');
+    expect(visible).toContain('你将 \\[ p(1,0)+q(1,1) \\] 逐坐标展开为 \\(x=p+q,\\ y=q\\)');
+    expect(visible).toContain('你明确指出两个共线向量不能张成平面。');
+    expect(visible).not.toContain('学习者');
+    expect(visible).not.toContain('其能否');
+    expect(visible).toContain('你的原回答');
+    expect(visible).not.toMatch(/-\s*你将\s*$/mu);
+  });
+
+  it('omits genuinely dangling performance fragments', () => {
+    const projection = projectLessonReviewDocument({
+      knowledgeMap: { title: '线索', markdown: '方向 → 线性组合 → 张成空间' },
+      coreInsight: '张成空间由向量的全部线性组合构成。',
+      performance: [
+        {
+          title: '你做得好的地方',
+          markdown: '- 学习者识别了一个独立方向对应一条直线。\n- 学习者将',
+        },
+        {
+          title: '接下来的判断',
+          markdown: '学习者仍需验证新的生成集合。',
+        },
+      ],
+    });
+
+    const visible = projection.performance.map((block) => block.markdown).join('\n');
+    expect(visible).toContain('你识别了一个独立方向对应一条直线。');
+    expect(visible).not.toContain('学习者');
+    expect(visible).not.toMatch(/-\s*你将\s*$/mu);
+  });
+
   it('preserves the complete semantic Markdown structure of core insight', () => {
     const coreInsight = [
       '先识别**关键约束**，再判断它改变了哪些行动路径。',

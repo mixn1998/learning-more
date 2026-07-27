@@ -37,7 +37,14 @@ export type CourseLessonTeachingContext = Readonly<{
     objective: string;
     coreKnowledgePoints: readonly Readonly<{
       ref: string;
+      nodeId?: string;
       text: string;
+      relationToNext?: string;
+      branches?: readonly Readonly<{
+        id: string;
+        content: string;
+        relation: string;
+      }>[];
       fixedImportance?: 'normal' | 'key';
     }>[];
   }>;
@@ -45,7 +52,7 @@ export type CourseLessonTeachingContext = Readonly<{
 
 export type TeachingContextPackage = Readonly<{
   schemaVersion: 1;
-  turnKind?: 'opening' | 'response';
+  turnKind?: 'opening' | 'response' | 'continuation';
   course: CourseLessonTeachingContext['course'];
   lesson: CourseLessonTeachingContext['lesson'];
   learningStartSummary?: string;
@@ -78,7 +85,7 @@ export interface TeachingContextAssembler {
     lessonId: string;
     sessionId: string;
     currentUserMessageId?: string;
-    turnKind?: 'opening' | 'response';
+    turnKind?: 'opening' | 'response' | 'continuation';
     teachingState: TeachingStateSnapshot;
     unobservedMessageIds: readonly string[];
   }): Promise<TeachingContextPackage>;

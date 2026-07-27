@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import { RepositoryVersionConflictError } from '../../../persistence/repository-errors.js';
 import type { TransactionContext, UnitOfWork } from '../../../persistence/unit-of-work.js';
 import type { FactRepository } from '../ports/fact-repository.js';
 import type { LearningFact } from '../interface.js';
@@ -417,10 +418,13 @@ export function createWeeklyReportService(options: {
       });
     },
 
-    async retry(localWeekKey: string, commandId: string) {
+    async retry(localWeekKey: string, commandId: string, expectedVersion?: number) {
       void commandId;
       const current = await options.repository.get(localWeekKey);
       if (current === undefined) throw new WeeklyReportError('weekly_report_not_found');
+      if (expectedVersion !== undefined && current.resourceVersion !== expectedVersion) {
+        throw new RepositoryVersionConflictError(current.resourceVersion);
+      }
       if (current.state === 'finalized') throw new WeeklyReportError('weekly_report_immutable');
       const snapshot = await buildSnapshot({
         startLocalDate: current.startLocalDate,

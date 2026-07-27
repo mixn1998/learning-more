@@ -59,6 +59,11 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+
+.lesson-session-handoff {
+  justify-content: flex-end;
+  padding: 0 20px 12px;
+}
 .lesson-session-side {
   position: sticky;
   top: 86px;
@@ -254,6 +259,17 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
 }
 .lesson-session-workspace .learn-ai {
   margin: 0;
+}
+.lesson-session-workspace .lesson-knowledge-point-title {
+  margin: 24px 0 12px;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.45;
+}
+.lesson-session-workspace .lesson-continuation-divider {
+  height: 1px;
+  margin: 28px 0;
+  background: var(--line);
 }
 .lesson-session-workspace .learn-ai-thinking {
   color: var(--muted);

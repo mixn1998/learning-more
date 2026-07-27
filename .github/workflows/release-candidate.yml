@@ -31,7 +31,7 @@ jobs:
       - name: Frozen dependency graph
         run: pnpm install --frozen-lockfile
       - name: Full quality gate
-        run: pnpm verify
+        run: pnpm verify:full
       - name: Install browser runtime
         run: pnpm exec playwright install chromium
       - name: Browser, HTTP and SSE journeys

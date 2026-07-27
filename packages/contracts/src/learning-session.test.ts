@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { LessonRecordResponseSchema } from './learning-session.js';
+import {
+  LearningSessionViewResponseSchema,
+  LessonRecordResponseSchema,
+} from './learning-session.js';
 
 const baseRecord = {
   lessonId: 'lesson_01',
@@ -59,5 +62,38 @@ describe('lesson record contract', () => {
       reviewErrorCode: 'review_evidence_pack_incomplete',
       reviewRetry: { transactionId: 'closure_01', resourceVersion: 2 },
     });
+  });
+});
+
+describe('learning session view contract', () => {
+  it('carries optional knowledge-point ownership on assistant messages', () => {
+    const view = LearningSessionViewResponseSchema.parse({
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress',
+        processedCommandIds: [],
+        session: {
+          id: 'session_01',
+          state: 'active',
+          messageIds: ['assistant_01'],
+          evidenceCheckpoint: false,
+        },
+      },
+      resourceVersion: 1,
+      actualSeconds: 0,
+      messages: [
+        {
+          id: 'assistant_01',
+          role: 'assistant',
+          createdAt: '2026-07-27T00:00:00.000Z',
+          markdown: '讲解',
+          completionStatus: 'complete',
+          generationTaskId: 'task_01',
+          knowledgePointRef: 'knowledge:lesson_01:point_01',
+        },
+      ],
+    });
+
+    expect(view.messages?.[0]?.knowledgePointRef).toBe('knowledge:lesson_01:point_01');
   });
 });

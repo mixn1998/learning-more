@@ -35,6 +35,9 @@ function fixture(
     lessonId: string,
   ) => Promise<Readonly<{ actualStartedAt: string; actualEndedAt: string }> | undefined>,
 ) {
+  const commands = {
+    retryWeeklyReport: vi.fn(),
+  };
   const queries = {
     getHistory: vi.fn().mockResolvedValue({
       entries,
@@ -71,13 +74,59 @@ function fixture(
   };
   const app = Fastify();
   void registerLearningFactsRoutes(app, {
+    commands,
+    nextCommandId: () => 'command_weekly_retry',
+    nextCorrelationId: () => 'correlation_weekly_retry',
+    now: () => new Date('2026-07-27T03:00:00.000Z'),
     queries,
     ...(getLessonActualInterval === undefined ? {} : { getLessonActualInterval }),
   });
-  return { app, queries };
+  return { app, commands, queries };
 }
 
 describe('LearningFacts HTTP routes', () => {
+  it('accepts an explicit retry for a failed weekly report with version control', async () => {
+    const { app, commands } = fixture();
+    vi.mocked(commands.retryWeeklyReport).mockResolvedValue({
+      localWeekKey: '2026-W30',
+      timezone: 'Asia/Shanghai',
+      startLocalDate: '2026-07-20',
+      endLocalDate: '2026-07-27',
+      state: 'generating',
+      factSnapshot: [],
+      factSnapshotHash: 'snapshot_hash',
+      snapshotExclusions: [],
+      metricDefinitionVersion: 4,
+      generationTaskId: 'task_retry_01',
+      attemptCount: 2,
+      createdAt: '2026-07-27T02:00:00.000Z',
+      updatedAt: '2026-07-27T03:00:00.000Z',
+      resourceVersion: 4,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/weekly-reports/2026-W30/retries',
+      headers: {
+        'idempotency-key': 'retry_weekly_report_01',
+        'if-match': '"3"',
+        'x-page-instance-id': 'history_page_01',
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers.etag).toBe('"4"');
+    expect(commands.retryWeeklyReport).toHaveBeenCalledWith(
+      '2026-W30',
+      expect.objectContaining({
+        commandId: 'command_weekly_retry',
+        correlationId: 'correlation_weekly_retry',
+        expectedVersion: 3,
+      }),
+    );
+  });
+
   it('uses a stable sort-key cursor without duplicates or omissions', async () => {
     const { app } = fixture();
     const first = await app.inject({ method: 'GET', url: '/api/v1/history?pageSize=2' });

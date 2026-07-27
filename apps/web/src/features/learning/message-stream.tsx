@@ -9,6 +9,7 @@ export type SessionMessageView = Readonly<{
   createdAt?: string | undefined;
   completionStatus?: 'complete' | 'interrupted' | undefined;
   generationTaskId?: string | undefined;
+  knowledgePointRef?: string | undefined;
 }>;
 
 export function MessageStream(props: {

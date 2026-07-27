@@ -1,4 +1,5 @@
 import { CandidateModelResponseSchema } from './schemas/candidate-outline.js';
+import type { LessonKnowledgeStructure } from '@learning-more/contracts';
 
 export interface CandidateInputManifest {
   readonly draftArtifactRef: string;
@@ -24,6 +25,7 @@ export type CandidateCompilationResult =
           title: string;
           objective: string;
           coreKnowledgePoints: readonly string[];
+          knowledgeStructure?: LessonKnowledgeStructure;
           prerequisiteLessonIds: readonly string[];
           estimatedMinutes: number;
           sourceRefs: readonly string[];

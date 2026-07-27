@@ -60,6 +60,7 @@ const FullTeachingDirectiveSchema = z.strictObject({
   comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),
   summaryStatus: z.enum(['pending', 'delivered']),
+  turnHandoff: z.enum(['invite_response', 'offer_continue']).optional(),
 });
 
 const SparseKnowledgePointDirectiveSchema = z.strictObject({
@@ -71,7 +72,7 @@ const SparseKnowledgePointDirectiveSchema = z.strictObject({
 
 const SparseTeachingDirectiveSchema = z
   .strictObject({
-    schemaVersion: z.literal(2),
+    schemaVersion: z.union([z.literal(2), z.literal(3)]),
     lessonPhase: TeachingLessonPhaseSchema.optional(),
     activeKnowledgePointRef: z.string().trim().min(1).max(2_000).nullable().optional(),
     knowledgePoints: z.array(SparseKnowledgePointDirectiveSchema).optional(),
@@ -96,6 +97,39 @@ const SparseTeachingDirectiveSchema = z
       .enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions'])
       .optional(),
     summaryStatus: z.enum(['pending', 'delivered']).optional(),
+    turnHandoff: z.enum(['invite_response', 'offer_continue']).optional(),
+    interactionPromptExcerpt: z.string().trim().min(1).max(500).optional(),
+  })
+  .superRefine((directive, context) => {
+    if (directive.schemaVersion !== 3) return;
+    if (directive.turnHandoff === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['turnHandoff'],
+        message: 'teaching_turn_handoff_required',
+      });
+      return;
+    }
+    if (
+      directive.turnHandoff === 'invite_response' &&
+      directive.interactionPromptExcerpt === undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['interactionPromptExcerpt'],
+        message: 'teaching_interaction_prompt_excerpt_required',
+      });
+    }
+    if (
+      directive.turnHandoff === 'offer_continue' &&
+      directive.interactionPromptExcerpt !== undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['interactionPromptExcerpt'],
+        message: 'teaching_interaction_prompt_excerpt_forbidden',
+      });
+    }
   })
   .transform(({ comprehensiveApplication, comprehensiveCheck, ...directive }) => ({
     ...directive,
@@ -247,6 +281,7 @@ export function materializeTeachingDirective(
       parsed.comprehensiveCheck ?? normalizedComprehensive(state.comprehensiveCheck),
     closureInquiry: parsed.closureInquiry ?? state.closureInquiry ?? 'pending',
     summaryStatus: parsed.summaryStatus ?? state.summaryStatus ?? 'pending',
+    turnHandoff: parsed.turnHandoff ?? state.turnHandoff ?? 'offer_continue',
   };
 }
 
@@ -283,6 +318,7 @@ export function teachingDirectiveMatchesState(
     normalizedComprehensive(state.comprehensiveCheck) === directive.comprehensiveCheck &&
     (state.closureInquiry ?? 'pending') === directive.closureInquiry &&
     (state.summaryStatus ?? 'pending') === directive.summaryStatus &&
+    (state.turnHandoff ?? 'offer_continue') === directive.turnHandoff &&
     JSON.stringify(statePoints) === JSON.stringify(directivePoints)
   );
 }
@@ -318,6 +354,7 @@ export function applyTeachingDirective(
   }>,
 ): TeachingStateSnapshot {
   const current = normalizeTeachingControlState(currentInput);
+  const sourceDirective = TeachingDirectiveSchema.parse(directiveInput) as TeachingDirective;
   const directive = materializeTeachingDirective(current, directiveInput, validation);
   const expectedRefs = current.knowledgePoints.map((point) => point.ref);
   const incomingRefs = directive.knowledgePoints.map((point) => point.ref);
@@ -352,6 +389,7 @@ export function applyTeachingDirective(
   }
 
   const currentByRef = new Map(current.knowledgePoints.map((point) => [point.ref, point]));
+  const newlyCompleted: string[] = [];
   for (const incoming of directive.knowledgePoints) {
     const previous = normalizedProgress(currentByRef.get(incoming.ref)?.progress);
     if ((previous === 'completed' || previous === 'skipped') && incoming.status !== previous) {
@@ -360,20 +398,11 @@ export function applyTeachingDirective(
     if (previous === 'learning' && incoming.status === 'pending') {
       invalid('teaching_directive_learning_point_regression');
     }
-    if (incoming.status === 'completed' && incoming.interactionStatus === 'pending') {
-      invalid('teaching_directive_completed_interaction_unsettled');
+    if (incoming.status === 'completed' && previous !== 'completed' && previous !== 'skipped') {
+      newlyCompleted.push(incoming.ref);
     }
     if (incoming.status === 'skipped' && incoming.interactionStatus !== 'skipped') {
       invalid('teaching_directive_skipped_point_interaction_mismatch');
-    }
-    if (
-      validation?.enforceCurrentTurn !== false &&
-      validation !== undefined &&
-      incoming.status === 'completed' &&
-      previous !== 'learning' &&
-      previous !== 'completed'
-    ) {
-      invalid('teaching_directive_point_must_be_learning_before_completion');
     }
     if (
       incoming.status === 'completed' &&
@@ -393,6 +422,17 @@ export function applyTeachingDirective(
     ) {
       invalid('teaching_directive_point_blocked_by_open_loop');
     }
+  }
+  if (sourceDirective.schemaVersion === 3 && newlyCompleted.length > 1) {
+    invalid('teaching_directive_multiple_points_completed');
+  }
+  if (
+    sourceDirective.schemaVersion === 3 &&
+    newlyCompleted.length === 1 &&
+    current.activeKnowledgePointRef !== undefined &&
+    newlyCompleted[0] !== current.activeKnowledgePointRef
+  ) {
+    invalid('teaching_directive_non_active_point_completed');
   }
 
   const phaseOrder = [
@@ -488,6 +528,7 @@ export function applyTeachingDirective(
     comprehensiveCheck: directive.comprehensiveCheck,
     closureInquiry: directive.closureInquiry,
     summaryStatus: directive.summaryStatus,
+    turnHandoff: directive.turnHandoff ?? 'offer_continue',
     knowledgePoints: current.knowledgePoints.map((point) => {
       const incoming = incomingByRef.get(point.ref)!;
       const difficultySignals = [...(point.difficultySignals ?? [])];

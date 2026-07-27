@@ -67,9 +67,18 @@ export function createLearningTeachingContext(input: {
           outlineVersionId: lesson.outlineVersionId,
           title: lesson.title,
           objective: lesson.objective,
-          coreKnowledgePoints: lesson.coreKnowledgePoints.map((text, index) => ({
-            ref: `knowledge:${lesson.id}:${createHash('sha256').update(text).digest('hex').slice(0, 16)}`,
-            text,
+          coreKnowledgePoints: lesson.knowledgeStructure.mainChain.map((node, index) => ({
+            ref: `knowledge:${lesson.id}:${createHash('sha256').update(node.content).digest('hex').slice(0, 16)}`,
+            nodeId: node.id,
+            text: node.content,
+            ...(node.relationToNext === undefined ? {} : { relationToNext: node.relationToNext }),
+            branches: lesson.knowledgeStructure.branches
+              .filter((branch) => branch.attachedTo === node.id)
+              .map((branch) => ({
+                id: branch.id,
+                content: branch.content,
+                relation: branch.relation,
+              })),
             fixedImportance: keyIndexes.has(index) ? ('key' as const) : ('normal' as const),
           })),
         },

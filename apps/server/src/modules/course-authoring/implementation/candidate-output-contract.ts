@@ -17,7 +17,27 @@ export const candidateOutlineOutputExample = {
       id: 'lesson_foundation',
       title: '课节标题',
       objective: '本课节的学习目标',
-      coreKnowledgePoints: ['核心知识点'],
+      knowledgeStructure: {
+        mainChain: [
+          {
+            id: 'node_question',
+            content: '需要解决的核心问题',
+            relationToNext: '问题促使我们建立',
+          },
+          {
+            id: 'node_concept',
+            content: '能够解释问题的关键概念',
+          },
+        ],
+        branches: [
+          {
+            id: 'branch_boundary',
+            attachedTo: 'node_concept',
+            content: '概念成立的边界或常见误区',
+            relation: '限定其适用范围',
+          },
+        ],
+      },
       prerequisiteLessonIds: [],
       estimatedMinutes: 30,
       sourceRefs: ['source_topic'],
@@ -51,17 +71,19 @@ function renderConversation(conversation: CandidatePromptInput['conversation']):
 function renderPastVersionContext(
   context: NonNullable<CandidatePromptInput['pastVersionContext']>,
 ) {
-  const completedLessons =
-    context.completedLessons.length === 0
-      ? 'No lessons from a past version are completed.'
-      : context.completedLessons
+  const frozenLessons =
+    context.frozenLessons.length === 0
+      ? 'No lessons from a past version have been started.'
+      : context.frozenLessons
           .map((lesson) =>
             [
-              '- Completion status: 用户已完成',
+              `- Learning status: ${lesson.progress}`,
               `  Stable semantic key: ${lesson.semanticKey}`,
               `  Title: ${lesson.title}`,
               `  Objective: ${lesson.objective}`,
-              `  Core knowledge points: ${lesson.coreKnowledgePoints.join('、')}`,
+              `  Knowledge chain: ${lesson.knowledgeStructure.mainChain
+                .map((node) => node.content)
+                .join(' → ')}`,
             ].join('\n'),
           )
           .join('\n');
@@ -69,10 +91,10 @@ function renderPastVersionContext(
     'PART 1 — COMPRESSED OUTLINE-GENERATION DIALOGUE',
     context.dialogueDigest || 'No historical authoring dialogue is available.',
     '',
-    'PART 2 — COMPLETED LESSON OUTLINE SUMMARIES',
-    completedLessons,
+    'PART 2 — FROZEN STARTED-LESSON OUTLINE SUMMARIES',
+    frozenLessons,
     '',
-    'Every listed completed lesson must appear exactly once in the revised outline with its stable semantic key, title, objective, and core knowledge points unchanged. Mark it as already completed by the learner. Do not rename, rewrite, replace, or duplicate these completed lessons. Continue revision around and after these frozen anchors.',
+    'Every listed lesson has already been started. It must appear exactly once in the revised outline with its stable semantic key, title, objective, and knowledge structure unchanged. Preserve its stated learning status. Do not rename, rewrite, replace, or duplicate it. Regenerate knowledge structures only for lessons that have not been started, around and after these frozen anchors.',
   ].join('\n');
 }
 
@@ -110,11 +132,12 @@ export function buildCandidateGenerationPrompt(input: CandidatePromptInput): str
     '',
     '[CONTENT FREEDOM]',
     'Compose the Markdown body freely around the learner’s real goal. Course mode is an attention preference, not a format prison. Course-adjacent exploration may be included when it supports the goal, but it must not masquerade as already completed core content.',
+    'Within each lesson objective, design one intelligible main logic chain. Name every main-chain node as a learner-facing teaching knowledge point: use the shortest complete meaning that identifies the core cognition to be established and remains understandable outside the chain. A name may express a concept, relationship, criterion, insight, disagreement, or misconception correction at your discretion, but it must not be a bare graph label, a transition fragment, or a full explanation, argument, or case description. Tone examples only, not templates: `双侧极限的单侧判据`, `函数值与极限值的区别`, `无界不等于趋于无穷`, `基本定理连接变化与累积`. Put the reasoning between knowledge points in the free semantic text of `relationToNext`, rather than expanding the knowledge-point names. Attach only necessary counterexamples, boundaries, or supporting concepts as branches of the relevant main node. Do not turn branches into separate progress steps, and do not use a node-type or relation-type taxonomy.',
     '',
     '[OUTLINE READABILITY]',
     'Start the Markdown body with exactly one level-1 course title, then one standalone paragraph in the form `**课程摘要：** 摘要内容`. The summary must contain 50–100 Chinese characters and concisely cover the learning target, core question, and expected outcome. Do not include scheduling, learning-cycle, weekly-investment, keyword, module, or lesson-list content in the summary.',
-    'Help the learner scan the outline by making each module-to-lesson relationship explicit in the Markdown. For every lesson, let the Markdown naturally answer three questions: What is the lesson name? What is its concise summary? What are its keywords or core knowledge points? Keep the displayed lesson name consistent with the corresponding `outline.lessons[].title`, and place the summary and keywords near that lesson heading.',
-    'This is presentation guidance only: choose the module count, lesson count, teaching sequence, wording, hierarchy depth, and Markdown expression that best fit the learner. Do not force a fixed lesson template.',
+    'Help the learner scan the outline by making each module-to-lesson relationship explicit in the Markdown. For every lesson, make its objective, main logic chain, and necessary attached branches understandable. Keep the displayed lesson name consistent with the corresponding `outline.lessons[].title`.',
+    'The knowledge chain is part of the confirmed outline and defines the teaching boundary. Its presentation is not fixed: choose the Markdown expression, wording, hierarchy depth, module count, lesson count, and teaching sequence that best fit the learner.',
     '',
     '[KNOWN LEARNING BACKGROUND]',
     `Course direction: ${input.courseDirection}`,

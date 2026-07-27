@@ -158,3 +158,46 @@ Call the manifest health URL and require:
   "providerStatus": "ready"
 }
 ```
+
+### Task 5: Pin the authoritative classroom-summary source
+
+**Files:**
+- Modify: `apps/server/src/modules/interactive-teaching/implementation/interactive-teaching.ts`
+- Test: `apps/server/src/modules/interactive-teaching/tests/interactive-teaching.test.ts`
+- Modify: `tools/review-semantic-source-selection.mjs`
+- Test: `tools/review-semantic-source-selection.test.mjs`
+- Modify: `tools/reproject-review-classroom-sources.mjs`
+
+**Interfaces:**
+- Consumes: teaching directives and assistant messages that may repeat the `ready_to_close` state.
+- Produces: one stable source message for `coreInsight`.
+
+- [x] **Step 1: Reproduce the overwrite**
+
+Confirm that a second `ready_to_close` reply currently changes
+`reviewProjection.classroomSummarySourceMessageId`.
+
+- [x] **Step 2: Make the projection reference write-once**
+
+Set the classroom-summary reference only when no reference has been recorded yet.
+
+- [x] **Step 3: Align historical source reconstruction**
+
+When legacy records contain multiple delivered summaries, select the first assistant task whose
+control payload reports `lessonPhase=ready_to_close` and `summaryStatus=delivered`.
+
+- [x] **Step 4: Remove completion-only metadata**
+
+Treat “本课完成”“本课学习完成”和“本课流程已完成” as non-knowledge metadata while
+preserving the following knowledge blocks unchanged.
+
+- [x] **Step 5: Reproject and verify all eligible Reviews**
+
+Run:
+
+```powershell
+node tools/reproject-review-classroom-sources.mjs --apply --local-core-only
+node tools/reproject-review-classroom-sources.mjs --verify
+```
+
+Expected: every eligible Review matches its authoritative classroom-summary projection.

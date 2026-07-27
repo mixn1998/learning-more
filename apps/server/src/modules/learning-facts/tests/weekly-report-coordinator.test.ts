@@ -24,6 +24,41 @@ function report(overrides: Partial<WeeklyReportRecord> = {}): WeeklyReportRecord
 }
 
 describe('WeeklyReportCoordinator', () => {
+  it('starts an explicit failed-report retry without waiting for generation to finish', async () => {
+    const failed = report({ state: 'failed', resourceVersion: 3 });
+    const generating = report({
+      state: 'generating',
+      generationTaskId: 'task_retry',
+      attemptCount: 2,
+      resourceVersion: 4,
+    });
+    const retry = vi.fn().mockResolvedValue(generating);
+    const awaitTerminal = vi.fn(() => new Promise<never>(() => undefined));
+    const coordinator = createWeeklyReportCoordinator({
+      repository: {
+        get: async () => failed,
+        async *list() {
+          yield failed;
+        },
+      },
+      service: {
+        generate: vi.fn(),
+        retry,
+        regenerateLegacyFallback: vi.fn(),
+        isLegacyDeterministicOutput: vi.fn(() => false),
+        finalize: vi.fn(),
+        fail: vi.fn(),
+      },
+      execution: { awaitTerminal },
+      readArtifact: async () => undefined,
+      now: () => new Date('2026-07-20T00:00:00.000Z'),
+    });
+
+    await expect(coordinator.retry('2026-W28', 'retry_command', 3)).resolves.toEqual(generating);
+    expect(retry).toHaveBeenCalledWith('2026-W28', 'retry_command', 3);
+    expect(awaitTerminal).toHaveBeenCalledWith('task_retry');
+  });
+
   it('keeps invalid AI output failed instead of finalizing a mechanical fallback', async () => {
     let current: WeeklyReportRecord | undefined;
     const retryAt = '2026-07-20T00:05:00.000Z';

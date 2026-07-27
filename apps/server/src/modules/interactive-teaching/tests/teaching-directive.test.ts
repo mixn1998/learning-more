@@ -91,6 +91,72 @@ describe('teaching directive', () => {
     ]);
   });
 
+  it('allows a taught knowledge point to complete when no interaction was invited', () => {
+    const learning = applyTeachingDirective(initial(), {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+    });
+
+    const advanced = applyTeachingDirective(learning, {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'learning' },
+      ],
+    });
+
+    expect(advanced.knowledgePoints).toMatchObject([
+      { progress: 'completed', interactionStatus: 'pending' },
+      { progress: 'learning', interactionStatus: 'pending' },
+    ]);
+  });
+
+  it('stores a version 3 handoff while completing only the active main-chain point', () => {
+    const learning = applyTeachingDirective(initial(), {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+    });
+
+    const advanced = applyTeachingDirective(learning, {
+      schemaVersion: 3,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed' },
+        { ref: 'knowledge:kp_2', status: 'learning' },
+      ],
+      turnHandoff: 'offer_continue',
+    });
+
+    expect(advanced).toMatchObject({
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      turnHandoff: 'offer_continue',
+      knowledgePoints: [{ progress: 'completed' }, { progress: 'learning' }],
+    });
+  });
+
+  it('rejects completing multiple main-chain points in one version 3 turn', () => {
+    expect(() =>
+      applyTeachingDirective(initial(), {
+        schemaVersion: 3,
+        lessonPhase: 'comprehensive_application',
+        activeKnowledgePointRef: null,
+        knowledgePoints: [
+          { ref: 'knowledge:kp_1', status: 'completed' },
+          { ref: 'knowledge:kp_2', status: 'completed' },
+        ],
+        comprehensiveApplication: 'pending',
+        turnHandoff: 'offer_continue',
+      }),
+    ).toThrowError('teaching_directive_multiple_points_completed');
+  });
+
   it('stores the learner-requested condensed depth as a session-only ledger override', () => {
     const next = applyTeachingDirective(initial(), {
       schemaVersion: 1,
@@ -488,26 +554,28 @@ describe('teaching directive', () => {
 });
 
 describe('teaching completion gate', () => {
-  it('rejects completing a point before it has entered learning', () => {
-    expect(() =>
-      applyTeachingDirective(
-        initial(),
-        {
-          schemaVersion: 2,
-          lessonPhase: 'knowledge_point',
-          activeKnowledgePointRef: 'knowledge:kp_2',
-          knowledgePoints: [
-            {
-              ref: 'knowledge:kp_1',
-              status: 'completed',
-              interactionStatus: 'completed',
-            },
-            { ref: 'knowledge:kp_2', status: 'learning' },
-          ],
-        },
-        { currentUserMessageId: 'message_1' },
-      ),
-    ).toThrowError('teaching_directive_point_must_be_learning_before_completion');
+  it('allows completing a point directly when teaching responsibility is fulfilled', () => {
+    const advanced = applyTeachingDirective(
+      initial(),
+      {
+        schemaVersion: 2,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_2',
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            status: 'completed',
+          },
+          { ref: 'knowledge:kp_2', status: 'learning' },
+        ],
+      },
+      { currentUserMessageId: 'message_1' },
+    );
+
+    expect(advanced.knowledgePoints).toMatchObject([
+      { progress: 'completed', interactionStatus: 'pending' },
+      { progress: 'learning', interactionStatus: 'pending' },
+    ]);
   });
 
   it('rejects completion when the same turn reports a new understanding blocker', () => {

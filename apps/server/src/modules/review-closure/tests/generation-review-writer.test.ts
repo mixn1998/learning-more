@@ -2,9 +2,30 @@ import type { GenerationRequest, GenerationRuntime } from '../../generation-runt
 import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 import { describe, expect, it } from 'vitest';
 
-import { createGenerationReviewWriter } from '../implementation/generation-review-writer.js';
+import {
+  createGenerationReviewWriter,
+  projectCoreInsightFromClassroomSummary,
+} from '../implementation/generation-review-writer.js';
 
 describe('GenerationReviewWriter', () => {
+  it('keeps the valid classroom-summary knowledge structure and removes learner evaluation', () => {
+    const knowledgeSummary = [
+      '本课的核心，是在信息和调查机会都有限时，作出当时有根据、边界清楚的判断。',
+      '',
+      '- 调查的先后决定你能看见什么。',
+      '- 证据还要看可靠性、相关性、覆盖范围与代表性。',
+    ].join('\n');
+    const classroomSummary = [
+      '本课完成。',
+      '',
+      knowledgeSummary,
+      '',
+      '你在综合情境中选择了近期实际入库记录，抓住了财政证据的关键。',
+    ].join('\n');
+
+    expect(projectCoreInsightFromClassroomSummary(classroomSummary)).toBe(knowledgeSummary);
+  });
+
   it('uses the complete checkpoint as mandatory evidence and keeps the play lens advisory', async () => {
     let request: GenerationRequest | undefined;
     let task: GenerationTask = {
@@ -36,7 +57,7 @@ describe('GenerationReviewWriter', () => {
             },
             methodologyInsight:
               '先确认当前约束改变了哪些可行路径，再比较不同路径会把结果推向哪里。',
-            coreInsight: '条件会改变判断所依赖的参照总体，因此概率计算必须先确定当前样本空间。',
+            coreInsight: '在抽取红球的案例里，分母应改成满足条件的球数，并进一步展开案例步骤。',
             performance: [
               { title: '你做得很好的地方', markdown: '主动追问了分母为什么变化。' },
               { title: '接下来的判断', markdown: '继续检验不同条件下参照总体的变化。' },
@@ -161,7 +182,11 @@ describe('GenerationReviewWriter', () => {
 
     await expect(writer.complete(accepted.taskId)).resolves.toMatchObject({
       markdown: '',
-      lessonFinalAnalysis: { kind: 'lesson-final', schemaVersion: 1 },
+      lessonFinalAnalysis: {
+        kind: 'lesson-final',
+        schemaVersion: 1,
+        coreInsight: '条件会改变判断所依赖的参照总体。',
+      },
     });
     expect(request?.prompt).toContain('【本课责任】');
     expect(request?.prompt).toContain('【必要的学习者原话证据】');
@@ -175,14 +200,20 @@ describe('GenerationReviewWriter', () => {
     expect(request?.prompt).toContain('用户没有直接回答或明确跳过综合应用');
     expect(request?.prompt).toContain('不得据此声称用户已经掌握');
     expect(request?.prompt).toMatch(/移除完成宣布、用户评价、掌握判断.*未来学习建议/u);
-    expect(request?.prompt).toContain('语义过滤，而不是截取或轻度改写原文');
     expect(request?.prompt).toContain('动态保留完成理解所必需的总结结构');
     expect(request?.prompt).toContain('不得套用固定框架');
+    expect(request?.prompt).toContain('仅以【最终课堂总结·仅供语义收束】中的知识性内容为来源');
+    expect(request?.prompt).toContain('有效知识内容允许原样保留，不要求改写');
+    expect(request?.prompt).toContain('保留其余有效内容的原有措辞、顺序和结构');
+    expect(request?.prompt).not.toContain('不得直接复制整段课堂文本');
+    expect(request?.prompt).not.toContain('而不是截取或轻度改写原文');
     expect(request?.prompt).toContain('保留承载语义的 Markdown 格式');
     expect(request?.prompt).toContain('加粗、分段、编号层级、列表、引用块、代码或公式');
     expect(request?.prompt).toContain('不得为了简短而删除');
     expect(request?.prompt).not.toContain('只保留能改变理解或行动的最小充分表达');
     expect(request?.prompt).toContain('performance 在后端继续完整记录');
+    expect(request?.prompt).toContain('用户可见 markdown 必须统一使用第二人称“你”');
+    expect(request?.prompt).toContain('每个条目必须是语义完整的表达');
     expect(request?.prompt).toContain('自然关注情境信息使用、约束意识和迁移边界。');
     expect(request?.prompt).not.toContain('observationCompleteness');
     expect(request?.prompt).not.toContain('checkpoint_1');

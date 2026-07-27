@@ -3,8 +3,28 @@ import test from 'node:test';
 
 import {
   renderComprehensiveApplicationSegment,
+  selectClassroomSummaryAssistant,
   selectComprehensiveApplicationAssistantReplies,
 } from './review-semantic-source-selection.mjs';
+
+test('keeps the first delivered classroom summary when a later reply repeats ready-to-close', () => {
+  const firstSummary = {
+    message: { id: 'message_summary_1' },
+    task: {
+      raw: '{"lessonPhase":"ready_to_close","summaryStatus":"delivered"}',
+      reply: 'the original classroom summary',
+    },
+  };
+  const repeatedSummary = {
+    message: { id: 'message_summary_2' },
+    task: {
+      raw: '{"lessonPhase":"ready_to_close","summaryStatus":"delivered"}',
+      reply: 'a later rewritten summary',
+    },
+  };
+
+  assert.equal(selectClassroomSummaryAssistant([firstSummary, repeatedSummary]), firstSummary);
+});
 
 test('keeps the complete comprehensive application segment instead of only its terminal reply', () => {
   const candidates = [

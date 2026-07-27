@@ -107,6 +107,7 @@ describe('shared week workspace presentation', () => {
         endLocalDate="2026-07-19"
         onBack={() => undefined}
         onOpenRecord={() => undefined}
+        onRetryReport={() => undefined}
         records={[
           {
             localDate: '2026-07-17',

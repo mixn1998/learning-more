@@ -1,5 +1,5 @@
 import type { CourseAuthoringRepositories } from '../../../persistence/course-authoring-repositories.js';
-import type { AuthoringContext, CompletedLessonOutlineContext } from '../ports/authoring-agent.js';
+import type { AuthoringContext, FrozenLessonOutlineContext } from '../ports/authoring-agent.js';
 import { buildOutlineSemanticManifest } from './outline-semantic-manifest.js';
 
 const MAX_MATERIAL_EXCERPT_CHARS = 12_000;
@@ -39,9 +39,9 @@ function compactHistoricalDialogue(records: readonly AuthoringContext['messages'
 export function createAuthoringContextAssembler(
   repositories: CourseAuthoringRepositories,
   options: Readonly<{
-    listCompletedLessonOutlineContexts?: (
+    listFrozenLessonOutlineContexts?: (
       courseId: string,
-    ) => Promise<readonly CompletedLessonOutlineContext[]>;
+    ) => Promise<readonly FrozenLessonOutlineContext[]>;
   }> = {},
 ) {
   return async function assemble(outlineSessionId: string): Promise<AuthoringContext> {
@@ -68,10 +68,10 @@ export function createAuthoringContextAssembler(
         if (historical !== undefined) historicalMessages.push(historical.messages);
       }
     }
-    const completedLessons =
-      adjustmentCourseId === undefined || options.listCompletedLessonOutlineContexts === undefined
+    const frozenLessons =
+      adjustmentCourseId === undefined || options.listFrozenLessonOutlineContexts === undefined
         ? []
-        : await options.listCompletedLessonOutlineContexts(adjustmentCourseId);
+        : await options.listFrozenLessonOutlineContexts(adjustmentCourseId);
     return {
       outlineSessionId,
       phase: candidate === undefined ? 'assessment' : 'candidate-alignment',
@@ -85,7 +85,7 @@ export function createAuthoringContextAssembler(
         : {
             pastVersionContext: {
               dialogueDigest: compactHistoricalDialogue(historicalMessages),
-              completedLessons,
+              frozenLessons,
             },
           }),
       ...(record.session.pendingAlignment === undefined

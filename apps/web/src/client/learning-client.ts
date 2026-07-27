@@ -17,6 +17,7 @@ import {
   type CourseReviewView,
   type LearningSessionCommandView,
   type LearningSessionView,
+  type LessonKnowledgeStructure,
   type LessonClosureView,
 } from '@learning-more/contracts';
 
@@ -32,6 +33,7 @@ export interface LearningClient {
     title: string;
     objective: string;
     coreKnowledgePoints: readonly string[];
+    knowledgeStructure?: LessonKnowledgeStructure | undefined;
     knowledgePointWeights?: readonly ('normal' | 'key')[] | undefined;
     teachingWeightStatus?: 'pending' | 'completed' | 'failed' | undefined;
     estimatedMinutes: number;
@@ -57,6 +59,13 @@ export interface LearningClient {
     leaseToken?: string | undefined;
   }>;
   openLesson(
+    sessionId: string,
+    resourceVersion: number,
+  ): Promise<{
+    taskId: string;
+    resourceVersion: number;
+  }>;
+  continueTeaching(
     sessionId: string,
     resourceVersion: number,
   ): Promise<{
@@ -186,6 +195,12 @@ export const learningClient: LearningClient = {
     }),
   openLesson: (sessionId, resourceVersion) =>
     commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/opening`, {
+      body: {},
+      schema: GenerationTaskAcceptedResponseSchema,
+      resourceVersion,
+    }),
+  continueTeaching: (sessionId, resourceVersion) =>
+    commandRequest(`/api/v1/lesson-sessions/${encodeURIComponent(sessionId)}/continuations`, {
       body: {},
       schema: GenerationTaskAcceptedResponseSchema,
       resourceVersion,

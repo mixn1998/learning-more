@@ -3,6 +3,7 @@ import type {
   CommandResult,
   CandidateGenerationFailureCode,
   CourseMode,
+  LessonKnowledgeStructure,
   QueryContext,
 } from '@learning-more/contracts';
 
@@ -153,6 +154,7 @@ export type CourseArchiveView = Readonly<{
     title: string;
     objective: string;
     coreKnowledgePoints: readonly string[];
+    knowledgeStructure?: LessonKnowledgeStructure;
     prerequisiteLessonIds: readonly string[];
     estimatedMinutes: number;
   }>[];
@@ -184,6 +186,7 @@ export type LessonPreviewView = Readonly<{
   title: string;
   objective: string;
   coreKnowledgePoints: readonly string[];
+  knowledgeStructure?: LessonKnowledgeStructure;
   knowledgePointWeights?: readonly ('normal' | 'key')[];
   teachingWeightStatus?: 'pending' | 'completed' | 'failed';
   estimatedMinutes: number;

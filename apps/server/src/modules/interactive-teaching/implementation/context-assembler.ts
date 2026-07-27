@@ -111,7 +111,7 @@ export function createTeachingContextAssembler(options: {
       });
       let context: TeachingContextPackage = {
         schemaVersion: 1,
-        ...(turnKind === 'opening' ? { turnKind } : {}),
+        ...(turnKind === 'response' ? {} : { turnKind }),
         course: courseAndLesson.course,
         lesson: courseAndLesson.lesson,
         ...(learningStartSummary === undefined ? {} : { learningStartSummary }),

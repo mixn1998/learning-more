@@ -90,6 +90,31 @@ function markdownUnits(markdown: string): string[] {
     .filter((value) => value !== '');
 }
 
+function performanceMarkdownUnits(markdown: string): string[] {
+  const lines = markdown
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  const listItems = lines.filter((line) => /^[-*+]\s+/u.test(line));
+  if (listItems.length > 0) return listItems.map(trimPrefix);
+  const unit = trimPrefix(markdown).replaceAll(/\s+/gu, ' ').trim();
+  return unit === '' ? [] : [unit];
+}
+
+function secondPersonPerformanceUnit(value: string): string {
+  return value
+    .replaceAll('学习者', '你')
+    .replace(/其((?:原)?(?:回答|判断|选择|表现|理解))/gu, '你的$1')
+    .replace(/其(?=能否|是否)/gu, '你')
+    .replace(/(^|[。！？；]\s*)用户(?=[\u3400-\u9fff])/gu, '$1你');
+}
+
+function isDanglingPerformanceUnit(value: string): boolean {
+  return /(?:你|学习者|用户)?(?:将|会|能|能够|可以|应|应该|需要|尝试|继续|通过|根据|对于|把|在|与|和|或|并|并且|但|而|因为|所以|从|向)\s*[：:]?$/u.test(
+    value,
+  );
+}
+
 function treeKnowledgeNodes(markdown: string): string[] {
   return unique(
     [...markdown.replaceAll(/\r?\n/gu, ' ').matchAll(/(?:^|\s)[├└]─\s*(.*?)(?=\s+[├└]─|$)/gu)]
@@ -143,9 +168,13 @@ function compactBlocks(
 ): ReviewTextBlock {
   const evidenceRefs = unique(blocks.flatMap((block) => [...(block.evidenceRefs ?? [])]));
   const markdown = blocks
-    .flatMap((block) => markdownUnits(block.markdown).slice(0, blocks.length === 1 ? limit : 1))
+    .flatMap((block) =>
+      performanceMarkdownUnits(block.markdown).slice(0, blocks.length === 1 ? limit : 1),
+    )
     .map((unit) => conciseSentence(unit))
+    .map(secondPersonPerformanceUnit)
     .filter((unit) => unit !== '')
+    .filter((unit) => !isDanglingPerformanceUnit(unit))
     .slice(0, limit)
     .map((unit) => `- ${unit}`)
     .join('\n');

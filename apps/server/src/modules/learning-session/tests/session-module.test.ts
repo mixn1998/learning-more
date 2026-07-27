@@ -69,6 +69,42 @@ function fixture(
 }
 
 describe('LearningSession module', () => {
+  it('persists assistant message knowledge-point ownership', async () => {
+    const { module, messageLog } = fixture();
+    await module.execute(
+      { type: 'StartLesson', lessonId: 'lesson_owned_message' },
+      context('start_owned_message', 'page_a'),
+    );
+    await module.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_owned_message',
+        taskId: 'task_owned_message',
+        mode: 'new-turn',
+      },
+      { ...context('generate_owned_message', 'page_a'), expectedVersion: 1 },
+    );
+    await module.execute(
+      {
+        type: 'CommitAssistantMessage',
+        lessonId: 'lesson_owned_message',
+        sessionId: 'session_01',
+        messageId: 'assistant_owned_message',
+        contentArtifactRef: 'artifact:owned-message',
+        generationTaskId: 'task_owned_message',
+        knowledgePointRef: 'knowledge:lesson_owned_message:point_01',
+      },
+      { ...context('commit_owned_message', 'page_a'), expectedVersion: 2 },
+    );
+
+    expect(await messageLog.list('session_01')).toContainEqual(
+      expect.objectContaining({
+        id: 'assistant_owned_message',
+        knowledgePointRef: 'knowledge:lesson_owned_message:point_01',
+      }),
+    );
+  });
+
   it('atomically replaces only the pending user turn and its interrupted assistant tail', async () => {
     const { module, messageLog } = fixture();
     await module.execute(

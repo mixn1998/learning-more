@@ -19,6 +19,8 @@ type State = Readonly<{
   input: string;
   assistantMarkdown: string;
   assistantPending: boolean;
+  continuationPending: boolean;
+  generationKnowledgePointRef?: string | undefined;
   opening: boolean;
   openingError: boolean;
   pendingUserMessage?:
@@ -114,6 +116,8 @@ type Action =
       resourceVersion: number;
       userMessageId?: string | undefined;
     }>
+  | Readonly<{ type: 'continuation-started'; knowledgePointRef?: string | undefined }>
+  | Readonly<{ type: 'continuation-failed' }>
   | Readonly<{ type: 'delta'; markdown: string }>
   | Readonly<{ type: 'completed' }>
   | Readonly<{
@@ -155,6 +159,7 @@ const initial: State = {
   editingCancellationPending: false,
   assistantMarkdown: '',
   assistantPending: false,
+  continuationPending: false,
   opening: false,
   openingError: false,
   phase: 'starting',
@@ -356,6 +361,8 @@ function reducer(state: State, action: Action): State {
       phase: 'generating',
       assistantMarkdown: '',
       assistantPending: true,
+      continuationPending: false,
+      generationKnowledgePointRef: state.teachingProgress?.activeKnowledgePointRef,
       taskId: undefined,
       sendError: undefined,
       draftArtifactRef: undefined,
@@ -386,6 +393,8 @@ function reducer(state: State, action: Action): State {
       input: '',
       assistantMarkdown: '',
       assistantPending: true,
+      continuationPending: false,
+      generationKnowledgePointRef: state.teachingProgress?.activeKnowledgePointRef,
       pendingUserMessage: {
         id: action.messageId,
         markdown: action.content,
@@ -467,8 +476,9 @@ function reducer(state: State, action: Action): State {
       taskId: action.taskId,
       resourceVersion: action.resourceVersion,
       assistantPending:
-        state.assistantMarkdown === '' &&
-        (state.pendingUserMessage !== undefined || state.messages.at(-1)?.role !== 'assistant'),
+        state.continuationPending ||
+        (state.assistantMarkdown === '' &&
+          (state.pendingUserMessage !== undefined || state.messages.at(-1)?.role !== 'assistant')),
       pendingUserMessage:
         state.pendingUserMessage === undefined
           ? undefined
@@ -477,6 +487,30 @@ function reducer(state: State, action: Action): State {
               ...(action.userMessageId === undefined ? {} : { id: action.userMessageId }),
               status: 'complete',
             },
+    };
+  }
+  if (action.type === 'continuation-started') {
+    return {
+      ...state,
+      phase: 'generating',
+      assistantMarkdown: '',
+      assistantPending: true,
+      continuationPending: true,
+      generationKnowledgePointRef: action.knowledgePointRef,
+      taskId: undefined,
+      sendError: undefined,
+      draftArtifactRef: undefined,
+    };
+  }
+  if (action.type === 'continuation-failed') {
+    return {
+      ...state,
+      phase: 'ready',
+      assistantMarkdown: '',
+      assistantPending: false,
+      continuationPending: false,
+      generationKnowledgePointRef: undefined,
+      taskId: undefined,
     };
   }
   if (action.type === 'delta') {
@@ -493,6 +527,8 @@ function reducer(state: State, action: Action): State {
       openingError: false,
       phase: state.draftArtifactRef === undefined ? 'ready' : 'stopped',
       assistantPending: false,
+      continuationPending: false,
+      generationKnowledgePointRef: undefined,
       taskId: undefined,
     };
   if (action.type === 'stopped') {
@@ -500,6 +536,8 @@ function reducer(state: State, action: Action): State {
       ...state,
       phase: 'stopped',
       assistantPending: false,
+      continuationPending: false,
+      generationKnowledgePointRef: undefined,
       draftArtifactRef: action.draftArtifactRef,
       resourceVersion: action.resourceVersion,
     };
@@ -1199,6 +1237,64 @@ export function SessionPage(props: {
       await finishMessageTask(task, content, attempt, localMessageId);
     });
 
+  const continueTeaching = () =>
+    once('continue-teaching', async () => {
+      if (state.sessionId === undefined) return;
+      setNavigationError(undefined);
+      const attempt = generationAttempt.current + 1;
+      generationAttempt.current = attempt;
+      dispatch({
+        type: 'continuation-started',
+        knowledgePointRef: state.teachingProgress?.activeKnowledgePointRef,
+      });
+      let task: Awaited<ReturnType<LearningClient['continueTeaching']>>;
+      try {
+        task = await withLatestSessionVersion((resourceVersion) =>
+          api.continueTeaching(state.sessionId!, resourceVersion),
+        );
+      } catch {
+        dispatch({ type: 'continuation-failed' });
+        setNavigationError('继续讲解失败，请重试。');
+        return;
+      }
+      dispatch({
+        type: 'generating',
+        taskId: task.taskId,
+        resourceVersion: task.resourceVersion,
+      });
+      let streamOutcome: Awaited<ReturnType<typeof consumeGenerationStream>> | undefined;
+      try {
+        streamOutcome = await consumeGenerationStream(
+          api,
+          task.taskId,
+          (event) => {
+            if (generationAttempt.current !== attempt) return;
+            if (event.type === 'message.delta' && typeof event.data.markdown === 'string') {
+              dispatch({ type: 'delta', markdown: event.data.markdown });
+            }
+          },
+          generationStartTimeouts.current,
+        );
+      } catch {
+        // Persisted task/session projection remains authoritative.
+      }
+      if (generationAttempt.current !== attempt) return;
+      const outcome = await convergeGenerationProjection({
+        sessionId: state.sessionId,
+        taskId: task.taskId,
+        attempt,
+        responseKind: 'turn',
+        ...(streamOutcome === undefined ? {} : { streamOutcome }),
+      });
+      if (outcome.status === 'failed') {
+        hydrateAndRefreshTeachingProgress(state.sessionId, outcome.snapshot);
+        dispatch({ type: 'continuation-failed' });
+        setNavigationError('继续讲解失败，请重试。');
+        return;
+      }
+      if (outcome.status === 'completed') dispatch({ type: 'completed' });
+    });
+
   const editMessage = (messageId: string, markdown: string) =>
     once('edit-message', async () => {
       if (state.sessionId === undefined) return;
@@ -1572,11 +1668,19 @@ export function SessionPage(props: {
     state.messages.some(
       (message) => message.role === 'user' && message.id === pendingUserMessage.id,
     );
+  const knowledgePointTitleByRef = new Map(
+    state.teachingProgress?.knowledgePoints.map((point) => [point.ref, point.title]) ?? [],
+  );
   const messages = [
     ...visibleStoredMessages.map((message) => ({
       id: message.id,
       role: message.role,
       markdown: message.markdown,
+      knowledgePointRef: message.knowledgePointRef,
+      knowledgePointTitle:
+        message.knowledgePointRef === undefined
+          ? undefined
+          : knowledgePointTitleByRef.get(message.knowledgePointRef),
     })),
     ...(pendingUserMessage === undefined || pendingUserAlreadyRendered
       ? []
@@ -1595,6 +1699,11 @@ export function SessionPage(props: {
             id: 'streaming-assistant',
             role: 'assistant' as const,
             markdown: state.assistantMarkdown,
+            knowledgePointRef: state.generationKnowledgePointRef,
+            knowledgePointTitle:
+              state.generationKnowledgePointRef === undefined
+                ? undefined
+                : knowledgePointTitleByRef.get(state.generationKnowledgePointRef),
           },
         ]),
   ];
@@ -1633,7 +1742,14 @@ export function SessionPage(props: {
             state.teachingProgress.lessonPhase === 'ready_to_close')
         }
         canStop={state.taskId !== undefined}
+        canContinueTeaching={
+          state.teachingProgress?.turnHandoff === 'offer_continue' &&
+          state.teachingProgress.lessonPhase !== 'ready_to_close' &&
+          state.phase === 'ready' &&
+          state.editingMessageId === undefined
+        }
         conversationKey={state.sessionId}
+        continuationPending={state.continuationPending}
         courseTitle={props.courseTitle ?? '当前课程'}
         elapsedSeconds={state.actualSeconds}
         editableMessageId={editAvailable ? latestUserMessage.id : undefined}
@@ -1671,6 +1787,7 @@ export function SessionPage(props: {
         onSend={() => void send()}
         onSubmitEdit={() => void submitEdit()}
         onStop={() => void stop()}
+        onContinueTeaching={() => void continueTeaching()}
         onTransfer={() => void transfer()}
       />
       {state.progress === 'abandoned' && state.stageReviewStatus === 'generating' ? (

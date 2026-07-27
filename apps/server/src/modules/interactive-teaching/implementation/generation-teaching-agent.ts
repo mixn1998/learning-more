@@ -14,7 +14,6 @@ import {
   renderTeachingControlProtocol,
 } from './teaching-control-protocol.js';
 import { renderTeachingCorePolicy } from './teaching-core-policy.js';
-import { renderTeachingDepthPolicy } from './teaching-depth-policy.js';
 import { renderTeachingFactContext } from './teaching-fact-context.js';
 import { renderTeachingFlowPolicy } from './teaching-flow-policy.js';
 import { renderTeachingGuidingPolicy } from './teaching-guiding-policy.js';
@@ -40,14 +39,12 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
     renderTeachingClosurePolicy(),
     capabilities.has('math-plot') ? renderMathPlotCapability() : undefined,
     renderTeachingFlowPolicy(context),
-    renderTeachingDepthPolicy(context),
     renderTeachingFactContext(context),
     opening
-      ? '这是学习者刚进入本课的课前热身。请由教学助手主动导入语境，连接学习目标与已有经验，并提出一个容易回应的热身问题。不要要求学习者先提问，不要开始连续讲解全部知识点。'
-      : undefined,
-    opening
       ? '直接面向学习者输出自然的开场教学，不复述栏目名或内部状态。'
-      : '不要复述栏目名或内部状态，直接回应当前诉求。',
+      : context.turnKind === 'continuation'
+        ? '这是系统续讲回合。不要伪造学习者输入或声称学习者已经回应；直接继续当前教学。'
+        : '不要复述栏目名或内部状态，直接回应当前诉求。',
     renderTeachingControlProtocol(context),
   ]
     .filter((value): value is string => value !== undefined)

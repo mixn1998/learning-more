@@ -81,7 +81,11 @@ describe('local application public interface', () => {
         'planning',
       ]);
       expect(Object.keys(local.serverDependencies.learningFacts!).sort()).toEqual([
+        'commands',
         'getLessonActualInterval',
+        'nextCommandId',
+        'nextCorrelationId',
+        'now',
         'queries',
       ]);
       expect(Object.keys(local.serverDependencies.profile!).sort()).toEqual([

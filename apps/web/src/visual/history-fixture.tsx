@@ -308,6 +308,7 @@ export function WeeklyReportFixture() {
         endLocalDate="2026-07-05"
         onBack={() => undefined}
         onOpenRecord={() => undefined}
+        onRetryReport={() => undefined}
         records={weeklyRecords}
         reportState="finalized"
         startLocalDate="2026-06-29"

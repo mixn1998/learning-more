@@ -17,6 +17,13 @@ describe('test suite policy', () => {
   });
 
   it('composes release verification without recursively invoking daily verification', () => {
+    expect(packageJson.scripts.verify).toBe('node tools/verify-change.mjs');
+    expect(packageJson.scripts['verify:full']).toContain('corepack pnpm format:check');
+    expect(packageJson.scripts['verify:full']).toContain('corepack pnpm build');
+    expect(packageJson.scripts['verify:release']).toContain('corepack pnpm verify:full');
+    expect(packageJson.scripts['ci:local']).toContain('corepack pnpm verify:full');
+    expect(packageJson.scripts['release:portable']).toContain('corepack pnpm verify:full');
+    expect(packageJson.scripts['frontend:acceptance']).toContain('corepack pnpm verify:full');
     expect(packageJson.scripts['verify:release']).toContain('frontend:acceptance:checks');
     expect(packageJson.scripts['frontend:acceptance:checks']).not.toContain(
       'corepack pnpm verify &&',

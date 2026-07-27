@@ -15,6 +15,15 @@ export type WeeklyReportRecord = Readonly<{
 
 type ReportState = 'generating' | 'failed' | 'finalized' | 'missing';
 
+function WeeklyReportRetryIcon() {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+      <path d="M4 4v5h5" />
+      <path d="M4.6 8.7A8.5 8.5 0 1 1 3.5 15" />
+    </svg>
+  );
+}
+
 const weekdayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
 
 function dateRange(start: string, end: string): readonly string[] {
@@ -50,8 +59,11 @@ export function WeeklyReportWorkspace(props: {
   readonly exclusionCount?: number;
   readonly summaryMarkdown?: string;
   readonly defaultExpanded?: boolean;
+  readonly retryPending?: boolean;
+  readonly retryError?: string;
   readonly onBack: () => void;
   readonly onOpenRecord: (record: WeeklyReportRecord) => void;
+  readonly onRetryReport: () => void;
 }) {
   const [expanded, setExpanded] = useState(props.defaultExpanded ?? false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -147,11 +159,29 @@ export function WeeklyReportWorkspace(props: {
                   className="weekly-report-state"
                   role={props.reportState === 'failed' ? 'alert' : 'status'}
                 >
-                  {props.reportState === 'generating'
-                    ? '上周学习成果正在汇总。'
-                    : props.reportState === 'failed'
-                      ? '周报生成失败；完成课节事实不受影响，系统将自动重新汇总。'
-                      : '上周学习成果正在汇总。'}
+                  {props.reportState === 'failed' ? (
+                    <>
+                      <span className="weekly-report-state-copy">
+                        周报生成失败；完成课节事实不受影响。
+                        {props.retryError === undefined ? null : <small>{props.retryError}</small>}
+                      </span>
+                      <button
+                        aria-label="重新生成上周学习报告"
+                        className={`weekly-report-retry${props.retryPending === true ? ' spinning' : ''}`}
+                        disabled={props.retryPending === true}
+                        onClick={props.onRetryReport}
+                        title="重新生成"
+                        type="button"
+                      >
+                        <WeeklyReportRetryIcon />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="weekly-report-spinner" aria-hidden="true" />
+                      <span>上周学习成果正在汇总。</span>
+                    </>
+                  )}
                 </div>
               )}
             </div>

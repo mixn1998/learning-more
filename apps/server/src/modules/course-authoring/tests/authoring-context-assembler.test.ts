@@ -84,13 +84,21 @@ describe('createAuthoringContextAssembler', () => {
     );
 
     const assemble = createAuthoringContextAssembler(repositories, {
-      listCompletedLessonOutlineContexts: async () => [
+      listFrozenLessonOutlineContexts: async () => [
         {
           lessonId: 'lesson_limit',
           semanticKey: 'lesson_limit',
           title: '极限是什么',
           objective: '理解趋近过程',
           coreKnowledgePoints: ['趋近', '极限'],
+          knowledgeStructure: {
+            mainChain: [
+              { id: 'node_1', content: '趋近', relationToNext: '形成' },
+              { id: 'node_2', content: '极限' },
+            ],
+            branches: [],
+          },
+          progress: 'completed',
         },
       ],
     });
@@ -103,13 +111,21 @@ describe('createAuthoringContextAssembler', () => {
         '用户：我想理解极限与导数，并保留极限基础模块。',
         '助手：已确认课程先建立极限，再进入导数应用。',
       ].join('\n'),
-      completedLessons: [
+      frozenLessons: [
         {
           lessonId: 'lesson_limit',
           semanticKey: 'lesson_limit',
           title: '极限是什么',
           objective: '理解趋近过程',
           coreKnowledgePoints: ['趋近', '极限'],
+          knowledgeStructure: {
+            mainChain: [
+              { id: 'node_1', content: '趋近', relationToNext: '形成' },
+              { id: 'node_2', content: '极限' },
+            ],
+            branches: [],
+          },
+          progress: 'completed',
         },
       ],
     });

@@ -15,6 +15,7 @@ export type LearningMessage = Readonly<{
   createdAt: string;
   contentArtifactRef: string;
   generationTaskId?: string | undefined;
+  knowledgePointRef?: string | undefined;
   completionStatus: 'complete' | 'interrupted';
 }>;
 
@@ -35,6 +36,7 @@ const LearningMessageSchema = z.strictObject({
   createdAt: z.iso.datetime({ offset: true }),
   contentArtifactRef: z.string().min(1),
   generationTaskId: z.string().min(1).optional(),
+  knowledgePointRef: z.string().min(1).optional(),
   completionStatus: z.enum(['complete', 'interrupted']),
 });
 const StoredLearningMessageSchema = LearningMessageSchema.extend({

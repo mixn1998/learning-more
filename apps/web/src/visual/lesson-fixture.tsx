@@ -82,10 +82,12 @@ export function LessonSessionFixture() {
     <LessonSessionWorkspace
       abandoned={false}
       assistantPending={false}
+      continuationPending={false}
       opening={false}
       openingError={false}
       canComplete
       canStop
+      canContinueTeaching={false}
       courseTitle="从反馈到核心循环"
       elapsedSeconds={18 * 60 + 42}
       editingSubmitDisabled={false}
@@ -144,6 +146,7 @@ export function LessonSessionFixture() {
       onAbandon={() => undefined}
       onBackToOutline={() => undefined}
       onComplete={() => undefined}
+      onContinueTeaching={() => undefined}
       onCancelEdit={() => undefined}
       onEditDraft={() => undefined}
       onEditMessage={() => undefined}

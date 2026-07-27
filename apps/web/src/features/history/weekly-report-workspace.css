@@ -151,9 +151,96 @@
 }
 
 .weekly-report-workspace .weekly-report-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.65;
+}
+
+.weekly-report-workspace .weekly-report-state-copy {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.weekly-report-workspace .weekly-report-state-copy small {
+  color: #9a4f37;
+  font-size: inherit;
+}
+
+.weekly-report-workspace .weekly-report-retry {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 7%, #fff);
+  color: var(--accent-dark);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.weekly-report-workspace .weekly-report-retry:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, #fff);
+  transform: rotate(-16deg);
+}
+
+.weekly-report-workspace .weekly-report-retry:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 54%, transparent);
+  outline-offset: 2px;
+}
+
+.weekly-report-workspace .weekly-report-retry:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.weekly-report-workspace .weekly-report-retry svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.weekly-report-workspace .weekly-report-retry.spinning svg {
+  animation: weekly-report-spin 0.8s linear infinite;
+}
+
+.weekly-report-workspace .weekly-report-spinner {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  border: 2px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: weekly-report-spin 0.8s linear infinite;
+}
+
+@keyframes weekly-report-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weekly-report-workspace .weekly-report-retry,
+  .weekly-report-workspace .weekly-report-retry.spinning svg,
+  .weekly-report-workspace .weekly-report-spinner {
+    animation: none;
+    transition: none;
+  }
 }
 
 .weekly-report-workspace .weekly-report-filters {

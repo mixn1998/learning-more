@@ -34,6 +34,8 @@ export type OpenTeachingLesson = Readonly<{
   sessionId: string;
 }>;
 
+export type ContinueTeachingTurn = OpenTeachingLesson;
+
 export type TeachingTurnAccepted = Readonly<{
   taskId: string;
   resourceVersion: number;
@@ -67,6 +69,7 @@ export interface InteractiveTeaching {
   reviseTurn(input: ReviseTeachingTurn, context: CommandContext): Promise<TeachingTurnAccepted>;
   retryTurn(input: RetryTeachingTurn, context: CommandContext): Promise<TeachingTurnAccepted>;
   openLesson(input: OpenTeachingLesson, context: CommandContext): Promise<TeachingTurnAccepted>;
+  continueTurn(input: ContinueTeachingTurn, context: CommandContext): Promise<TeachingTurnAccepted>;
   stopTurn(input: StopTeachingTurn, context: CommandContext): Promise<TeachingTurnStopped>;
   getTeachingState(sessionId: string): Promise<TeachingStateSnapshot>;
   freezeCheckpoint(input: {

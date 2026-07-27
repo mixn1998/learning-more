@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 import type { AiSurfaceContent } from '@learning-more/ui';
 import { AiContent, AiSurface } from '@learning-more/ui';
@@ -19,6 +19,8 @@ export type LessonSessionMessage = Readonly<{
   markdown?: string;
   content?: string | AiSurfaceContent;
   status?: 'submitting' | 'complete' | 'failed';
+  knowledgePointRef?: string | undefined;
+  knowledgePointTitle?: string | undefined;
 }>;
 
 export type LessonPathPoint = Readonly<{
@@ -64,10 +66,12 @@ export function LessonSessionWorkspace(props: {
   readonly opening: boolean;
   readonly openingError: boolean;
   readonly assistantPending: boolean;
+  readonly continuationPending: boolean;
   readonly paused: boolean;
   readonly abandoned: boolean;
   readonly canComplete: boolean;
   readonly canStop: boolean;
+  readonly canContinueTeaching: boolean;
   readonly stopped: boolean;
   readonly sendError?: string | undefined;
   readonly editableMessageId?: string | undefined;
@@ -84,6 +88,7 @@ export function LessonSessionWorkspace(props: {
   readonly onCancelEdit: () => void;
   readonly onRetryMessage: () => void;
   readonly onStop: () => void;
+  readonly onContinueTeaching: () => void;
   readonly onTransfer: () => void;
   readonly onPause: () => void;
   readonly onResume: () => void;
@@ -212,66 +217,115 @@ export function LessonSessionWorkspace(props: {
                   </div>
                 </div>
               ) : (
-                props.messages.map((message) =>
-                  message.role === 'assistant' ? (
-                    <article aria-label="AI 导师" className="learn-ai" key={message.id}>
-                      {message.markdown !== undefined ? (
-                        <AiContent markdown={message.markdown} />
-                      ) : typeof message.content === 'string' ? (
-                        <AiContent markdown={message.content} />
-                      ) : message.content === undefined ? null : (
-                        <AiSurface>{message.content}</AiSurface>
-                      )}
-                      {props.retryableMessageId === message.id ? (
-                        <footer className="learn-ai-meta">
-                          <button
-                            aria-label={props.retryLabel ?? '重新生成'}
-                            className="chat-user-action"
-                            title={props.retryLabel ?? '重新生成'}
-                            type="button"
-                            onClick={props.onRetryMessage}
-                          >
-                            <RetryIcon />
-                          </button>
-                        </footer>
+                props.messages.map((message, index) => {
+                  if (message.role === 'user') {
+                    return (
+                      <UserMessageRow
+                        editing={props.editingMessageId === message.id}
+                        editValue={props.editingDraft}
+                        errorText="消息未发送"
+                        key={message.id}
+                        messageId={message.id}
+                        onEdit={
+                          props.editableMessageId === message.id
+                            ? () => props.onEditMessage(message.id, messageText(message))
+                            : undefined
+                        }
+                        onRetry={
+                          props.retryableMessageId === message.id ? props.onRetryMessage : undefined
+                        }
+                        onEditCancel={props.onCancelEdit}
+                        onEditChange={props.onEditDraft}
+                        onEditSubmit={props.onSubmitEdit}
+                        editSubmitDisabled={props.editingSubmitDisabled}
+                        retryLabel={props.retryLabel}
+                        status={message.status}
+                        text={messageText(message)}
+                      />
+                    );
+                  }
+
+                  const previousAssistant = props.messages
+                    .slice(0, index)
+                    .findLast((candidate) => candidate.role === 'assistant');
+                  const showKnowledgePointTitle =
+                    message.knowledgePointRef !== undefined &&
+                    message.knowledgePointTitle !== undefined &&
+                    previousAssistant?.knowledgePointRef !== message.knowledgePointRef;
+                  const showContinuationDivider =
+                    index > 0 && props.messages[index - 1]?.role === 'assistant';
+
+                  return (
+                    <Fragment key={message.id}>
+                      {showContinuationDivider ? (
+                        <div
+                          aria-hidden="true"
+                          className="lesson-continuation-divider"
+                          data-testid="continuation-divider"
+                        />
                       ) : null}
-                    </article>
-                  ) : (
-                    <UserMessageRow
-                      editing={props.editingMessageId === message.id}
-                      editValue={props.editingDraft}
-                      errorText="消息未发送"
-                      key={message.id}
-                      messageId={message.id}
-                      onEdit={
-                        props.editableMessageId === message.id
-                          ? () => props.onEditMessage(message.id, messageText(message))
-                          : undefined
-                      }
-                      onRetry={
-                        props.retryableMessageId === message.id ? props.onRetryMessage : undefined
-                      }
-                      onEditCancel={props.onCancelEdit}
-                      onEditChange={props.onEditDraft}
-                      onEditSubmit={props.onSubmitEdit}
-                      editSubmitDisabled={props.editingSubmitDisabled}
-                      retryLabel={props.retryLabel}
-                      status={message.status}
-                      text={messageText(message)}
-                    />
-                  ),
-                )
+                      {showKnowledgePointTitle ? (
+                        <h2 className="lesson-knowledge-point-title">
+                          {message.knowledgePointTitle}
+                        </h2>
+                      ) : null}
+                      <article aria-label="AI 导师" className="learn-ai">
+                        {message.markdown !== undefined ? (
+                          <AiContent markdown={message.markdown} />
+                        ) : typeof message.content === 'string' ? (
+                          <AiContent markdown={message.content} />
+                        ) : message.content === undefined ? null : (
+                          <AiSurface>{message.content}</AiSurface>
+                        )}
+                        {props.retryableMessageId === message.id ? (
+                          <footer className="learn-ai-meta">
+                            <button
+                              aria-label={props.retryLabel ?? '重新生成'}
+                              className="chat-user-action"
+                              title={props.retryLabel ?? '重新生成'}
+                              type="button"
+                              onClick={props.onRetryMessage}
+                            >
+                              <RetryIcon />
+                            </button>
+                          </footer>
+                        ) : null}
+                      </article>
+                    </Fragment>
+                  );
+                })
               )}
               {props.assistantPending && !props.opening ? (
-                <article
-                  aria-label="AI 回复状态"
-                  className="learn-ai learn-ai-thinking"
-                  role="status"
-                >
-                  正在思考中…
-                </article>
+                <>
+                  {props.continuationPending ? (
+                    <div
+                      aria-hidden="true"
+                      className="lesson-continuation-divider"
+                      data-testid="continuation-divider"
+                    />
+                  ) : null}
+                  <article
+                    aria-label="AI 回复状态"
+                    className="learn-ai learn-ai-thinking"
+                    role="status"
+                  >
+                    正在思考中…
+                  </article>
+                </>
               ) : null}
             </ConversationStream>
+            {props.canContinueTeaching ? (
+              <div className="lm-actions lesson-session-handoff">
+                <button
+                  className="lm-btn primary"
+                  disabled={props.generating || !props.writable || props.paused || props.abandoned}
+                  type="button"
+                  onClick={props.onContinueTeaching}
+                >
+                  继续讲解
+                </button>
+              </div>
+            ) : null}
             <ChatComposer
               busy={props.generating}
               className="lesson-session-composer"

@@ -37,6 +37,16 @@ function user(messageId: string, markdown = 'Learner response'): MaterializedTea
   };
 }
 
+function assistant(messageId: string, markdown = 'Teaching reply'): MaterializedTeachingMessage {
+  return {
+    messageId,
+    role: 'assistant',
+    completionStatus: 'complete',
+    markdown,
+    sourceRef: `message:${messageId}`,
+  };
+}
+
 describe('teaching generation reconciliation planning', () => {
   it('recovers a completed reply for the latest unanswered source message', () => {
     expect(
@@ -68,6 +78,31 @@ describe('teaching generation reconciliation planning', () => {
       taskId: 'task_completed',
       bindTask: true,
       cancelTaskIds: ['task_queued'],
+    });
+  });
+
+  it('keeps an active system continuation bound to its latest assistant anchor', () => {
+    expect(
+      planTeachingGenerationReconciliation({
+        sessionId: 'session_1',
+        activeTaskId: 'task_continuation',
+        tasks: [
+          task(
+            'task_continuation',
+            'running',
+            'continuation:session_1',
+            '2026-07-19T12:01:00.000Z',
+          ),
+        ],
+        messages: [user('message_user_1'), assistant('message_assistant_1')],
+      }),
+    ).toMatchObject({
+      action: 'resumed',
+      taskId: 'task_continuation',
+      sourceMessageId: 'continuation:session_1',
+      bindTask: false,
+      clearActiveTask: false,
+      cancelTaskIds: [],
     });
   });
 

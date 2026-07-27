@@ -156,6 +156,8 @@ export function HistoryPage(props: {
   const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse | undefined>(
     initialWeeklyReport,
   );
+  const [weeklyRetryPending, setWeeklyRetryPending] = useState(false);
+  const [weeklyRetryError, setWeeklyRetryError] = useState<string>();
   const [section, setSection] = useState<HistorySection>(initialSection);
   useAppShellBrandSubtitle(
     showingWeekly
@@ -282,6 +284,24 @@ export function HistoryPage(props: {
     const timer = setTimeout(() => setLoadAttempt((value) => value + 1), delay);
     return () => clearTimeout(timer);
   }, [loadAttempt]);
+
+  const retryWeeklyReport = useCallback(async () => {
+    if (weeklyReport?.state !== 'failed' || weeklyRetryPending) return;
+    setWeeklyRetryPending(true);
+    setWeeklyRetryError(undefined);
+    try {
+      const retried = await api.retryWeeklyReport(
+        weeklyReport.localWeekKey,
+        weeklyReport.resourceVersion,
+      );
+      setWeeklyReport(retried);
+    } catch {
+      setWeeklyRetryError('重新生成失败，请稍后重试。');
+      setLoadAttempt((value) => value + 1);
+    } finally {
+      setWeeklyRetryPending(false);
+    }
+  }, [api, weeklyReport, weeklyRetryPending]);
 
   useEffect(() => {
     if (!showingWeekly || loadState !== 'ready') return;
@@ -465,9 +485,12 @@ export function HistoryPage(props: {
               : `/courses/${record.courseId}/lessons/${record.lessonId}/record`,
           )
         }
+        onRetryReport={() => void retryWeeklyReport()}
         records={weeklyRecords}
         reportState={weeklyReport?.state ?? 'generating'}
+        retryPending={weeklyRetryPending}
         startLocalDate={weeklyBounds.start}
+        {...(weeklyRetryError === undefined ? {} : { retryError: weeklyRetryError })}
         {...(weeklySummary === undefined ? {} : { summaryMarkdown: weeklySummary })}
       />
     );

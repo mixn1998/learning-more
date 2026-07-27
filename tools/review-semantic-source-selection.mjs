@@ -22,6 +22,17 @@ function settlesComprehensiveApplication(candidate) {
   );
 }
 
+function deliversClassroomSummary(candidate) {
+  return (
+    hasControlValue(candidate.task?.raw, 'lessonPhase', 'ready_to_close') &&
+    hasControlValue(candidate.task?.raw, 'summaryStatus', 'delivered')
+  );
+}
+
+export function selectClassroomSummaryAssistant(candidates) {
+  return candidates.find(deliversClassroomSummary) ?? candidates.at(-1);
+}
+
 export function selectComprehensiveApplicationAssistantReplies(candidates) {
   const startIndex = candidates.findIndex(isComprehensiveApplication);
   if (startIndex >= 0) {

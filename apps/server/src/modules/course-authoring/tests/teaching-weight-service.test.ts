@@ -43,6 +43,14 @@ async function seedCourse() {
       title: 'Lesson',
       objective: 'Understand boundaries',
       coreKnowledgePoints: ['Definition', 'Boundary conditions', 'Counterexamples'],
+      knowledgeStructure: {
+        mainChain: [
+          { id: 'node_1', content: 'Definition', relationToNext: 'then' },
+          { id: 'node_2', content: 'Boundary conditions', relationToNext: 'then' },
+          { id: 'node_3', content: 'Counterexamples' },
+        ],
+        branches: [],
+      },
       prerequisiteLessonIds: [],
       estimatedMinutes: 30,
       sourceRefs: [],

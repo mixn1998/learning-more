@@ -194,6 +194,7 @@ export const TeachingStateSnapshotSchema = z.strictObject({
     .optional(),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']).optional(),
   summaryStatus: z.enum(['pending', 'delivered']).optional(),
+  turnHandoff: z.enum(['invite_response', 'offer_continue']).optional(),
   reviewProjection: z
     .strictObject({
       methodologyInsight: z

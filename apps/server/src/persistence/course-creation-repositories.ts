@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { z } from 'zod';
+import { LessonKnowledgeStructureSchema } from '@learning-more/contracts';
 
 import type { CourseCreationRepositories } from '../modules/course-authoring/ports/course-repositories.js';
 import { mapConcurrentOrdered } from './concurrent-map.js';
@@ -56,19 +57,58 @@ const OutlineSchema = z.strictObject({
   createdAt: z.string(),
   resourceVersion: z.number().int().nonnegative(),
 });
-const LessonSchema = z.strictObject({
-  id: z.string(),
-  courseId: z.string(),
-  outlineVersionId: z.string(),
-  semanticKey: z.string(),
-  title: z.string(),
-  objective: z.string(),
-  coreKnowledgePoints: z.array(z.string()),
-  prerequisiteLessonIds: z.array(z.string()),
-  estimatedMinutes: z.number().int(),
-  sourceRefs: z.array(z.string()),
-  resourceVersion: z.number().int().nonnegative(),
-});
+const LessonSchema = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+    const lesson = value as Record<string, unknown>;
+    const knowledgeStructure = lesson.knowledgeStructure as
+      Readonly<{ mainChain?: unknown }> | undefined;
+    if (Array.isArray(knowledgeStructure?.mainChain) && knowledgeStructure.mainChain.length > 0) {
+      return value;
+    }
+    if (!Array.isArray(lesson.coreKnowledgePoints)) return value;
+    const coreKnowledgePoints = lesson.coreKnowledgePoints.filter(
+      (point): point is string => typeof point === 'string',
+    );
+    const compatibleKnowledgePoints =
+      coreKnowledgePoints.length > 0
+        ? coreKnowledgePoints
+        : [
+            typeof lesson.objective === 'string' && lesson.objective.trim() !== ''
+              ? lesson.objective
+              : typeof lesson.title === 'string' && lesson.title.trim() !== ''
+                ? lesson.title
+                : '本课核心目标',
+          ];
+    return {
+      ...lesson,
+      knowledgeStructure: {
+        mainChain: compatibleKnowledgePoints.map((content, index) => ({
+          id: `node_${index + 1}`,
+          content,
+          ...(index === compatibleKnowledgePoints.length - 1
+            ? {}
+            : { relationToNext: '为下一步理解提供基础' }),
+        })),
+        branches: [],
+      },
+    };
+  },
+  z.strictObject({
+    id: z.string(),
+    courseId: z.string(),
+    outlineVersionId: z.string(),
+    semanticKey: z.string(),
+    title: z.string(),
+    objective: z.string(),
+    coreKnowledgePoints: z.array(z.string()),
+    knowledgeStructure: LessonKnowledgeStructureSchema,
+    prerequisiteLessonIds: z.array(z.string()),
+    estimatedMinutes: z.number().int(),
+    sourceRefs: z.array(z.string()),
+    resourceVersion: z.number().int().nonnegative(),
+  }),
+);
 
 export function createLocalFileCourseCreationRepositories(
   dataRoot: DataRoot,

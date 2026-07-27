@@ -37,29 +37,7 @@ export function renderTeachingDepthPolicy(context: TeachingContextPackage): stri
           : '普通知识点';
   const common = [
     `当前知识点“${active.text}”的教学深度：${heading}。`,
-    '教学深度不等于完成状态；达到足够理解后仍应自然小结并进入下一节点。',
+    '教学深度不等于完成状态，也不规定固定讲解或互动方式。',
   ];
-  if (emphasis === 'normal') {
-    return `【教学深模块｜${heading}】\n${[
-      ...common,
-      '根据内容难度保持详略得当；简单内容可以简洁讲解，通过自然互动确认理解后推进，不机械拉长。',
-    ].join('\n')}`;
-  }
-  const keyPolicy = [
-    '不只给结论，更详细地展开说明概念成立的原因、前提、边界和适用条件。',
-    '视需要加入例子、反例、对比或图形进行补充说明。',
-    '主动展开典型误区、易漏条件和容易混淆的相邻概念。',
-    '用一个有思考密度的综合问题连接核心关系；只追问回答真实暴露的理解缺口，同一缺口最多追问一次，不把深度教学变成细节盘问。',
-    '学习者出现误解时换一种解释、例子或思考角度继续，而不是直接判定完成或重复原问题。',
-  ];
-  const difficultPolicy = [
-    '围绕学习者已经出现的错误、误解、不解或深入讲解需求进行针对性讲解。',
-    '更换例子、类比、反例、图形或推理路径，不机械重复原有解释。',
-    '一次针对性追问后不再停留于相同缺口，改用新的解释或任务表征，推进到更深一层理解。',
-  ];
-  return `【教学深模块｜${heading}】\n${[
-    ...common,
-    ...(emphasis === 'key' || emphasis === 'key_difficult' ? keyPolicy : []),
-    ...(emphasis === 'difficult' || emphasis === 'key_difficult' ? difficultPolicy : []),
-  ].join('\n')}`;
+  return `【教学深模块｜${heading}】\n${common.join('\n')}`;
 }

@@ -154,7 +154,7 @@ export async function executeReleaseDrill(
     return step;
   };
 
-  run('quality', ['verify']);
+  run('quality', ['verify:full']);
   run('recovery', ['test:recovery']);
   run('capacity', ['test:capacity']);
   run('runtime-e2e', ['playwright:runtime']);

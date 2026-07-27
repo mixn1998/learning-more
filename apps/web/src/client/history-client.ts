@@ -15,7 +15,7 @@ import {
   type WeeklyResponse,
 } from '@learning-more/contracts';
 
-import { apiRequest, apiRequestOptional } from './api-client.js';
+import { apiRequest, apiRequestOptional, createCommandAttempt } from './api-client.js';
 
 export type { HistoryEntry } from '@learning-more/contracts';
 
@@ -27,6 +27,7 @@ export interface HistoryClient {
   getCourseSummary(courseId: string): Promise<CourseSummaryResponse>;
   getWeekly(isoWeek: string): Promise<WeeklyResponse>;
   getWeeklyReport(localWeekKey: string): Promise<WeeklyReportResponse | undefined>;
+  retryWeeklyReport(localWeekKey: string, resourceVersion: number): Promise<WeeklyReportResponse>;
 }
 
 export const historyClient: HistoryClient = {
@@ -70,6 +71,17 @@ export const historyClient: HistoryClient = {
     return (
       await apiRequestOptional(`/api/v1/weekly-reports/${encodeURIComponent(localWeekKey)}`, {
         schema: WeeklyReportResponseSchema,
+      })
+    ).data;
+  },
+  async retryWeeklyReport(localWeekKey, resourceVersion) {
+    return (
+      await apiRequest(`/api/v1/weekly-reports/${encodeURIComponent(localWeekKey)}/retries`, {
+        method: 'POST',
+        body: {},
+        schema: WeeklyReportResponseSchema,
+        command: createCommandAttempt(),
+        resourceVersion,
       })
     ).data;
   },

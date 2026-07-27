@@ -56,9 +56,14 @@ describe('candidate output protocol', () => {
     expect(prompt).toContain('"courseGoals"');
     expect(prompt).toContain('"modules"');
     expect(prompt).toContain('"lessons"');
-    expect(prompt).toContain('What is the lesson name?');
-    expect(prompt).toContain('What is its concise summary?');
-    expect(prompt).toContain('keywords or core knowledge points');
+    expect(prompt).toContain('"knowledgeStructure"');
+    expect(prompt).toContain('one intelligible main logic chain');
+    expect(prompt).toContain('learner-facing teaching knowledge point');
+    expect(prompt).toContain('shortest complete meaning');
+    expect(prompt).toContain('双侧极限的单侧判据');
+    expect(prompt).toContain('Put the reasoning between knowledge points');
+    expect(prompt).not.toContain('concise yet reveal why the node matters');
+    expect(prompt).toContain('Do not turn branches into separate progress steps');
     expect(prompt).toContain('outline.lessons[].title');
     expect(prompt).toContain(
       'disciplineTag must be one recognizable academic discipline or domain at the most specific stable level supported by the course',
@@ -70,8 +75,8 @@ describe('candidate output protocol', () => {
     expect(prompt).not.toContain('Do not use a detailed course topic, subfield');
     expect(prompt).toContain('**课程摘要：**');
     expect(prompt).toContain('50–100 Chinese characters');
-    expect(prompt).toContain('choose the module count, lesson count');
-    expect(prompt).toContain('Do not force a fixed lesson template');
+    expect(prompt).toContain('Its presentation is not fixed');
+    expect(prompt).toContain('module count, lesson count');
     expect(prompt).not.toContain('outlineSessionId');
     expect(prompt).not.toContain('completedAssessmentRounds');
     expect(prompt).not.toContain('messageId');
@@ -98,13 +103,21 @@ describe('candidate output protocol', () => {
       requestedAdjustment: { action: 'patch', targetModuleIds: ['module:极限'] },
       pastVersionContext: {
         dialogueDigest: '用户目标与边界：希望掌握极限、导数及其应用；已经确认保留极限模块。',
-        completedLessons: [
+        frozenLessons: [
           {
             lessonId: 'lesson_limit',
             semanticKey: 'lesson_limit',
             title: '极限是什么',
             objective: '理解极限如何描述趋近过程',
             coreKnowledgePoints: ['趋近', '极限'],
+            knowledgeStructure: {
+              mainChain: [
+                { id: 'node_1', content: '趋近', relationToNext: '形成' },
+                { id: 'node_2', content: '极限' },
+              ],
+              branches: [],
+            },
+            progress: 'completed',
           },
         ],
       },
@@ -122,12 +135,10 @@ describe('candidate output protocol', () => {
     expect(prompt).toContain('[PAST VERSION CONTEXT]');
     expect(prompt).toContain('PART 1 — COMPRESSED OUTLINE-GENERATION DIALOGUE');
     expect(prompt).toContain('希望掌握极限、导数及其应用');
-    expect(prompt).toContain('PART 2 — COMPLETED LESSON OUTLINE SUMMARIES');
-    expect(prompt).toContain('用户已完成');
+    expect(prompt).toContain('PART 2 — FROZEN STARTED-LESSON OUTLINE SUMMARIES');
+    expect(prompt).toContain('Learning status: completed');
     expect(prompt).toContain('Stable semantic key: lesson_limit');
     expect(prompt).toContain('理解极限如何描述趋近过程');
-    expect(prompt).toContain(
-      'Do not rename, rewrite, replace, or duplicate these completed lessons',
-    );
+    expect(prompt).toContain('Do not rename, rewrite, replace, or duplicate it');
   });
 });

@@ -19,6 +19,7 @@ type TeachingDepthPreference = 'default' | 'condensed';
 type TeachingComprehensiveStatus = 'pending' | 'learning' | 'completed' | 'skipped';
 type TeachingClosureInquiry = 'pending' | 'awaiting_confirmation' | 'confirmed_no_questions';
 type TeachingSummaryStatus = 'pending' | 'delivered';
+type TeachingTurnHandoff = 'invite_response' | 'offer_continue';
 
 type TeachingDifficultySignal = Readonly<{
   knowledgePointRef: string;
@@ -48,10 +49,11 @@ export type FullTeachingDirective = Readonly<{
   comprehensiveCheck: TeachingComprehensiveStatus;
   closureInquiry: TeachingClosureInquiry;
   summaryStatus: TeachingSummaryStatus;
+  turnHandoff?: TeachingTurnHandoff;
 }>;
 
 export type SparseTeachingDirective = Readonly<{
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   lessonPhase?: TeachingLessonPhase;
   activeKnowledgePointRef?: string | null;
   knowledgePoints?: readonly Readonly<{
@@ -65,6 +67,8 @@ export type SparseTeachingDirective = Readonly<{
   comprehensiveCheck?: TeachingComprehensiveStatus;
   closureInquiry?: TeachingClosureInquiry;
   summaryStatus?: TeachingSummaryStatus;
+  turnHandoff?: TeachingTurnHandoff;
+  interactionPromptExcerpt?: string;
 }>;
 
 export type TeachingDirective = FullTeachingDirective | SparseTeachingDirective;

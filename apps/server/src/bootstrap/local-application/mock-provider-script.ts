@@ -381,10 +381,23 @@ function mockScript(
         : state.lessonPhase === 'discussion' && currentUserTurn
           ? '# 本课总结\n\n本课沿着条件变化与判断修正的关系完成了课堂总结。'
           : '我们从你刚才的问题继续，先把条件变化与判断修正之间的关系讲清。你会先检查哪个条件发生了变化，为什么？';
+    const interactionPromptExcerpt = reply
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .findLast((line) => /[?？]$/u.test(line));
+    const control = {
+      ...nextState,
+      schemaVersion: 3,
+      turnHandoff:
+        interactionPromptExcerpt === undefined
+          ? ('offer_continue' as const)
+          : ('invite_response' as const),
+      ...(interactionPromptExcerpt === undefined ? {} : { interactionPromptExcerpt }),
+    };
     return [
       {
         type: 'text',
-        text: `<learning-more-reply>${reply}</learning-more-reply><learning-more-control>${JSON.stringify(nextState)}</learning-more-control>`,
+        text: `<learning-more-reply>${reply}</learning-more-reply><learning-more-control>${JSON.stringify(control)}</learning-more-control>`,
       },
     ];
   }

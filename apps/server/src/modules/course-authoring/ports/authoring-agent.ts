@@ -1,12 +1,15 @@
 import type { CourseMode } from '../model/commands.js';
 import type { OutlineMessage } from '../model/outline-message.js';
+import type { LessonKnowledgeStructure } from '@learning-more/contracts';
 
-export type CompletedLessonOutlineContext = Readonly<{
+export type FrozenLessonOutlineContext = Readonly<{
   lessonId: string;
   semanticKey: string;
   title: string;
   objective: string;
   coreKnowledgePoints: readonly string[];
+  knowledgeStructure: LessonKnowledgeStructure;
+  progress: 'in_progress' | 'abandoned' | 'completed';
 }>;
 
 export type AuthoringContext = Readonly<{
@@ -23,7 +26,7 @@ export type AuthoringContext = Readonly<{
   }>[];
   pastVersionContext?: Readonly<{
     dialogueDigest: string;
-    completedLessons: readonly CompletedLessonOutlineContext[];
+    frozenLessons: readonly FrozenLessonOutlineContext[];
   }>;
   candidate?: Readonly<{
     candidateVersionId: string;

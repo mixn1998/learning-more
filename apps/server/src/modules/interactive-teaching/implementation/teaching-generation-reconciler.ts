@@ -68,6 +68,12 @@ function sourceForTask(input: {
       ? undefined
       : `opening:${sessionId}`;
   }
+  if (task.requestRef === `continuation:${sessionId}`) {
+    const latest = messages.at(-1);
+    return latest?.role === 'assistant' && latest.completionStatus === 'complete'
+      ? `continuation:${sessionId}`
+      : undefined;
+  }
   if (task.requestRef !== undefined) {
     return unansweredUsers.some((message) => message.messageId === task.requestRef)
       ? task.requestRef

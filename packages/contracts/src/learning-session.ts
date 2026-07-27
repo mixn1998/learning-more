@@ -88,6 +88,7 @@ export const LessonTeachingProgressSchema = z.strictObject({
   comprehensiveCheck: z.enum(['pending', 'learning', 'completed', 'skipped']),
   closureInquiry: z.enum(['pending', 'awaiting_confirmation', 'confirmed_no_questions']),
   summaryStatus: z.enum(['pending', 'delivered']),
+  turnHandoff: z.enum(['invite_response', 'offer_continue']).optional(),
   knowledgePoints: z.array(
     z.strictObject({
       ref: z.string().trim().min(1).max(2_000),
@@ -135,6 +136,7 @@ export const LearningSessionViewResponseSchema = z.strictObject({
         markdown: z.string(),
         completionStatus: z.enum(['complete', 'interrupted']).optional(),
         generationTaskId: identifier.optional(),
+        knowledgePointRef: identifier.optional(),
       }),
     )
     .optional(),

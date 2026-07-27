@@ -77,6 +77,85 @@ describe('CourseAuthoring transport contracts', () => {
     ).toBe(false);
   });
 
+  it('upgrades legacy knowledge points into a ledger-compatible main chain', () => {
+    const parsed = CandidateOutlineMetadataSchema.parse({
+      courseGoals: ['理解概率模型'],
+      disciplineTag: '数学',
+      topicTags: ['概率'],
+      modules: [{ id: 'module_foundation', title: '基础', lessonIds: ['lesson_space'] }],
+      lessons: [
+        {
+          id: 'lesson_space',
+          title: '概率空间',
+          objective: '理解样本空间',
+          coreKnowledgePoints: ['样本空间', '事件'],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: ['source_topic'],
+        },
+      ],
+    });
+
+    expect(parsed.lessons[0]).toMatchObject({
+      coreKnowledgePoints: ['样本空间', '事件'],
+      knowledgeStructure: {
+        mainChain: [
+          {
+            id: 'node_1',
+            content: '样本空间',
+            relationToNext: '为下一步理解提供基础',
+          },
+          { id: 'node_2', content: '事件' },
+        ],
+        branches: [],
+      },
+    });
+  });
+
+  it('rejects broken main-chain relations and unattached branches', () => {
+    const base = {
+      courseGoals: ['理解概率模型'],
+      disciplineTag: '数学',
+      topicTags: ['概率'],
+      modules: [{ id: 'module_foundation', title: '基础', lessonIds: ['lesson_space'] }],
+      lessons: [
+        {
+          id: 'lesson_space',
+          title: '概率空间',
+          objective: '理解样本空间',
+          knowledgeStructure: {
+            mainChain: [
+              { id: 'point_1', content: '样本空间' },
+              { id: 'point_2', content: '事件', relationToNext: '错误的终点关系' },
+            ],
+            branches: [
+              {
+                id: 'branch_1',
+                attachedTo: 'missing_point',
+                content: '边界情况',
+                relation: '限定适用范围',
+              },
+            ],
+          },
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 30,
+          sourceRefs: ['source_topic'],
+        },
+      ],
+    };
+
+    const result = CandidateOutlineMetadataSchema.safeParse(base);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.message)).toEqual(
+      expect.arrayContaining([
+        'knowledge_chain_relation_required',
+        'knowledge_chain_terminal_relation_forbidden',
+        'knowledge_chain_branch_anchor_unknown',
+      ]),
+    );
+  });
+
   it('accepts a richer set of descriptive topic tags', () => {
     const result = CandidateOutlineMetadataSchema.safeParse({
       courseGoals: ['理解 AI token 与货币的关系'],

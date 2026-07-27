@@ -7,7 +7,11 @@ import type {
 
 type WeeklyReportLifecycle = Readonly<{
   generate(command: WeeklyReportWindow & { commandId: string }): Promise<WeeklyReportRecord>;
-  retry(localWeekKey: string, commandId: string): Promise<WeeklyReportRecord>;
+  retry(
+    localWeekKey: string,
+    commandId: string,
+    expectedVersion?: number,
+  ): Promise<WeeklyReportRecord>;
   fail(
     localWeekKey: string,
     errorCode: string,
@@ -47,7 +51,9 @@ export function createWeeklyReportCoordinator(options: {
   readArtifact(artifactRef: string): Promise<string | undefined>;
   now(): Date;
 }) {
-  async function finishGeneration(record: WeeklyReportRecord): Promise<void> {
+  const activeFinishes = new Map<string, Promise<void>>();
+
+  async function performFinishGeneration(record: WeeklyReportRecord): Promise<void> {
     let terminal: GenerationTerminal;
     try {
       terminal = await options.execution.awaitTerminal(record.generationTaskId);
@@ -78,6 +84,18 @@ export function createWeeklyReportCoordinator(options: {
         `draft_${record.generationTaskId}`,
       );
     }
+  }
+
+  function finishGeneration(record: WeeklyReportRecord): Promise<void> {
+    const existing = activeFinishes.get(record.generationTaskId);
+    if (existing !== undefined) return existing;
+    const active = performFinishGeneration(record).finally(() => {
+      if (activeFinishes.get(record.generationTaskId) === active) {
+        activeFinishes.delete(record.generationTaskId);
+      }
+    });
+    activeFinishes.set(record.generationTaskId, active);
+    return active;
   }
 
   async function reconcileWindow(window: WeeklyReportWindow): Promise<void> {
@@ -112,6 +130,17 @@ export function createWeeklyReportCoordinator(options: {
   }
 
   return {
+    async retry(
+      localWeekKey: string,
+      commandId: string,
+      expectedVersion: number,
+    ): Promise<WeeklyReportRecord> {
+      const record = await options.service.retry(localWeekKey, commandId, expectedVersion);
+      if (record.state === 'generating') {
+        void finishGeneration(record).catch(() => undefined);
+      }
+      return record;
+    },
     async reconcile(currentWindow: WeeklyReportWindow): Promise<Date | undefined> {
       const windows = new Map<string, WeeklyReportWindow>([
         [currentWindow.localWeekKey, currentWindow],

@@ -230,11 +230,92 @@ describe('GenerationTeachingAgent', () => {
 
     await agent.submit(opening, 'opening:session_1');
 
-    expect(fake.request()?.prompt).toContain('主动导入语境');
+    expect(fake.request()?.prompt).toContain('目标是连接学习目标与已有经验并了解学习起点');
     expect(fake.request()?.prompt).toContain('当前阶段是课前热身');
-    expect(fake.request()?.prompt).toContain('不要开始连续讲解全部知识点');
+    expect(fake.request()?.prompt).toContain('确认版知识链是本课教学边界');
     expect(fake.request()?.prompt).toContain('【当前教学窗口】');
     expect(fake.request()?.prompt).not.toContain('【当前诉求｜用户原话】');
+  });
+
+  it('lets the teaching reply prepare the next point without unfolding it or requiring filler text', async () => {
+    const fake = runtime();
+    const base = context();
+    const teachingState = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1', 'knowledge:kp_2'],
+    });
+    const advancingContext: TeachingContextPackage = {
+      ...base,
+      lesson: {
+        ...base.lesson,
+        coreKnowledgePoints: [
+          { ref: 'knowledge:kp_1', text: 'Political coalition evidence.' },
+          { ref: 'knowledge:kp_2', text: 'Path dependence.' },
+        ],
+      },
+      teachingState: {
+        ...teachingState,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        knowledgePoints: teachingState.knowledgePoints.map((point) =>
+          point.ref === 'knowledge:kp_1'
+            ? { ...point, progress: 'learning' as const, delivery: 'explained' as const }
+            : point,
+        ),
+      },
+      recentMessages: [
+        {
+          messageId: 'message_current',
+          role: 'user',
+          completionStatus: 'complete',
+          markdown: '军队愿意共同维护这套制度。',
+          sourceRef: 'message:message_current',
+        },
+      ],
+    };
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(advancingContext, 'message_user_advance');
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('完成后可以把下一主链节点置为 learning，为下一轮准备');
+    expect(prompt).toContain('不要在同一可见回复中展开下一节点');
+    expect(prompt).toContain('界面会提供“继续讲解”');
+    expect(prompt).not.toContain('直接在同一回复中自然衔接并开始下一知识点');
+  });
+
+  it('lets the ledger prepare comprehensive application without unfolding it in the same reply', async () => {
+    const fake = runtime();
+    const base = context();
+    const teachingState = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1'],
+    });
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(
+      {
+        ...base,
+        teachingState: {
+          ...teachingState,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'knowledge:kp_1',
+          knowledgePoints: teachingState.knowledgePoints.map((point) => ({
+            ...point,
+            progress: 'learning' as const,
+            delivery: 'explained' as const,
+          })),
+        },
+      },
+      'message_user_last_point',
+    );
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('最后一个主链节点完成后可以把下一阶段置为 comprehensive_application');
+    expect(prompt).toContain('综合应用在下一轮展开');
+    expect(prompt).toContain('完成最后一个知识点后可以清除 activeKnowledgePointRef');
   });
 
   it('submits materialized context with one stable capability contract and no scene template', async () => {
@@ -255,53 +336,41 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).not.toContain('modeWeight');
     expect(fake.request()?.prompt).toContain('【已知学习背景】');
     expect(fake.request()?.prompt).toContain('【当前诉求｜用户原话】');
-    expect(fake.request()?.prompt).toContain('学习者正在回应课前热身');
-    expect(fake.request()?.prompt).toContain('本回合最多完成“Sample-space change.”');
+    expect(fake.request()?.prompt).toContain('结合学习者对课前热身的回应');
+    expect(fake.request()?.prompt).toContain('从“Sample-space change.”开始教学');
     expect(fake.request()?.prompt).toContain(
       'Prefer concrete situations when they create a useful learning opportunity.',
     );
     expect(fake.request()?.prompt).toContain('课程邻接探索');
     expect(fake.request()?.prompt).toContain('把选择权交给学习者');
-    expect(fake.request()?.prompt).toContain(
-      '不要默认用户理解，但也不要用频繁过密的互动中断教学推进',
-    );
     const prompt = fake.request()?.prompt ?? '';
-    expect(prompt).toContain('【教学方针（高优先级）】');
-    expect(prompt).toContain(
-      '以开放、可回应且服务于理解推进的互动教学为核心，不预设任何阅读理解式的标准答案（严禁设计阅读理解式的课堂互动）。',
-    );
-    expect(prompt).toContain('可以邀请学习者思考，但不强制其沿预设步骤');
-    expect(prompt).toContain('优先沿其思考路径继续教学');
-    expect(prompt).toContain(
-      '下一教学动作已经明确时，不要用“接下来看看”“下一步将讲”“也可以先”之类的话预告或列出分支',
-    );
-    expect(prompt).toContain('直接进入下一段讲解、示例或互动');
-    expect(prompt).toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
-    expect(prompt.match(/【教学方针（高优先级）】/gu)).toHaveLength(1);
-    expect(prompt.indexOf('【教学方针（高优先级）】')).toBeLessThan(
-      prompt.indexOf('【通用教学原则】'),
-    );
-    expect(prompt).not.toContain(
-      '严谨应服务于理解推进；纠偏后沿知识逻辑自然前进，避免反复盘问相似细节。',
-    );
-    expect(fake.request()?.prompt).toContain('知识点提问是非强制互动邀请');
-    expect(fake.request()?.prompt).toContain('不得在同一轮直接完成');
+    expect(prompt).toContain('【教学目标】');
+    expect(prompt).toContain('以学习者形成清晰、准确、能够支撑后续理解的知识结构为最高目标');
+    expect(prompt).toContain('自主选择此刻最有教学价值的教学动作');
+    expect(prompt).toContain('讲解深度、表达方式、互动形式和衔接范围由你判断');
+    expect(prompt).toContain('只有学习者参与会为后续教学带来真实信息或思考价值时才发起互动');
+    expect(prompt).not.toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
+    expect(prompt.match(/【教学目标】/gu)).toHaveLength(1);
+    expect(prompt.indexOf('【教学目标】')).toBeLessThan(prompt.indexOf('【通用教学原则】'));
+    expect(prompt).toContain('【当前教学阶段】');
+    expect(prompt).not.toContain('本回合只处理');
     expect(fake.request()?.prompt).toContain('综合应用只提供一次');
     expect(fake.request()?.prompt).toContain('只有学习者明确没有疑问或无需继续讲解后');
-    expect(fake.request()?.prompt).toContain('互动邀请不要求机械复述');
-    expect(fake.request()?.prompt).toContain('情境应用、对比辨析、错误诊断');
-    expect(fake.request()?.prompt).toContain('同一理解缺口最多追问一次');
-    expect(fake.request()?.prompt).toContain('推动理解继续向前深化');
-    expect(fake.request()?.prompt).toContain('每轮都以自然、易回应');
-    expect((fake.request()?.prompt ?? '').indexOf('互动邀请不要求机械复述')).toBeLessThan(
-      (fake.request()?.prompt ?? '').indexOf('每轮都以自然、易回应'),
-    );
-    expect(fake.request()?.prompt).toContain('该总结是唯一不再提问');
+    expect(prompt).not.toContain('学习者已经实质回应互动或明确跳过互动');
+    expect(prompt).not.toContain('首次完整讲解并发出互动邀请时必须');
+    expect(prompt).not.toContain('形成可回应的互动');
+    expect(prompt).not.toContain('学习者回应或明确跳过');
+    expect(prompt).not.toContain('下一教学动作已经明确时直接行动');
+    expect(prompt).not.toContain('情境应用、对比辨析、错误诊断');
+    expect(prompt).not.toContain('同一理解缺口最多追问一次');
+    expect(prompt).not.toContain('每轮都以自然、易回应');
+    expect(prompt).not.toContain('用一至两句小结');
     expect(fake.request()?.prompt).not.toContain('```math-plot');
     expect(fake.request()?.prompt).not.toContain('vectorField2d');
     expect(fake.request()?.reasoningEffort).toBe('low');
     expect(fake.request()?.prompt).toContain('<learning-more-control>');
-    expect(fake.request()?.prompt).toContain('控制 JSON 使用 schemaVersion=2');
+    expect(fake.request()?.prompt).toContain('控制 JSON 使用 schemaVersion=3');
+    expect(fake.request()?.prompt).toContain('每轮必须返回 turnHandoff');
     expect(fake.request()?.prompt).toContain('lessonPhase 每轮必须返回');
     expect(fake.request()?.prompt).toContain(
       'warmup|knowledge_point|comprehensive_application|discussion|summary|ready_to_close',
@@ -414,11 +483,11 @@ describe('GenerationTeachingAgent', () => {
     await agent.submit(summaryContext, 'message_user_1');
 
     expect(fake.request()?.prompt).toContain('当前处于讨论答疑阶段');
-    expect(fake.request()?.prompt).toContain('如果学习者提出疑问，完整回应');
-    expect(fake.request()?.prompt).toContain('在回复末尾再次自然询问是否还有其他疑惑或讲解需求');
-    expect(fake.request()?.prompt).toContain('不要提前输出最终课程总结');
+    expect(fake.request()?.prompt).toContain('如果学习者提出疑问，继续答疑');
+    expect(fake.request()?.prompt).not.toContain('在回复末尾');
+    expect(fake.request()?.prompt).toContain('在学习者确认无需继续前，不要输出最终课程总结');
     expect(fake.request()?.prompt).toContain('用户可以连续追问任意轮次');
-    expect(fake.request()?.prompt).toContain('才输出结构完整、简洁连贯的最终课程总结');
+    expect(fake.request()?.prompt).toContain('才输出最终课程总结');
   });
 
   it('publishes validated reply sentences while provider output is still arriving', async () => {
@@ -580,7 +649,7 @@ describe('GenerationTeachingAgent', () => {
 });
 
 describe('comprehensive check variety', () => {
-  it('requires a transfer task instead of paraphrasing classroom checks', () => {
+  it('keeps the transfer purpose without prescribing a task form', () => {
     const base = context();
     const prompt = renderTeachingFlowPolicy({
       ...base,
@@ -591,7 +660,9 @@ describe('comprehensive check variety', () => {
       },
     });
 
-    expect(prompt).toContain('综合应用要连接本课全部核心知识点');
-    expect(prompt).toContain('不要沿用课堂原题的对象、数字、叙述骨架和问法');
+    expect(prompt).toContain('综合应用应连接本课核心知识关系并体现迁移');
+    expect(prompt).not.toContain('任务形式和反馈方式');
+    expect(prompt).not.toContain('新情境决策、反例诊断、条件变化预测');
+    expect(prompt).not.toContain('不要沿用课堂原题的对象、数字、叙述骨架和问法');
   });
 });

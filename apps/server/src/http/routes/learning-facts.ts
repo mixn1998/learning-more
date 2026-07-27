@@ -1,7 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
-import { CalendarQuerySchema, HistoryQuerySchema, IsoWeekSchema } from '@learning-more/contracts';
+import {
+  CalendarQuerySchema,
+  HistoryQuerySchema,
+  IsoWeekSchema,
+  type CommandContext,
+} from '@learning-more/contracts';
 
 import type { CalendarView } from '../../modules/learning-facts/implementation/projections/calendar.js';
 import type { CourseSummaryView } from '../../modules/learning-facts/implementation/projections/course-summary.js';
@@ -10,7 +15,7 @@ import type { StatisticsView } from '../../modules/learning-facts/implementation
 import type { WeeklyView } from '../../modules/learning-facts/implementation/projections/weekly.js';
 import type { WeeklyReportRecord } from '../../modules/learning-facts/ports/weekly-report-repository.js';
 import type { ReadModelStatus } from '../../modules/learning-facts/interface.js';
-import { HttpContractError } from '../command-context.js';
+import { buildCommandContext, HttpContractError } from '../command-context.js';
 import { sendConditionalJson } from '../conditional-get.js';
 import { mapApplicationError } from '../error-mapper.js';
 
@@ -26,7 +31,15 @@ export type LearningFactsRouteOptions = Readonly<{
     getWeekly(): Promise<WeeklyView | undefined>;
     getWeeklyReport(localWeekKey: string): Promise<WeeklyReportRecord | undefined>;
   };
+  commands: {
+    retryWeeklyReport(localWeekKey: string, context: CommandContext): Promise<WeeklyReportRecord>;
+  };
+  now(): Date;
+  nextCommandId(): string;
+  nextCorrelationId(): string;
 }>;
+
+const EmptyCommandBodySchema = z.strictObject({});
 
 const CursorSchema = z.strictObject({
   occurredAt: z.iso.datetime({ offset: true }),
@@ -197,6 +210,28 @@ export async function registerLearningFactsRoutes(
       });
     } catch (error) {
       const problem = mapApplicationError(error, 'weekly_report_query');
+      return reply.code(problem.status).send(problem);
+    }
+  });
+
+  app.post('/api/v1/weekly-reports/:localWeekKey/retries', async (request, reply) => {
+    const correlationId = options.nextCorrelationId();
+    try {
+      EmptyCommandBodySchema.parse(request.body ?? {});
+      const key = IsoWeekSchema.parse((request.params as { localWeekKey: string }).localWeekKey);
+      const report = await options.commands.retryWeeklyReport(
+        key,
+        buildCommandContext(request, {
+          commandId: options.nextCommandId(),
+          correlationId,
+          now: options.now(),
+          requireIfMatch: true,
+          requirePageInstanceId: true,
+        }),
+      );
+      return reply.header('etag', `"${report.resourceVersion}"`).code(202).send(report);
+    } catch (error) {
+      const problem = mapApplicationError(error, correlationId);
       return reply.code(problem.status).send(problem);
     }
   });

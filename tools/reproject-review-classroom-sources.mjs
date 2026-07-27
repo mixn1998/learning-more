@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import {
   renderComprehensiveApplicationSegment,
+  selectClassroomSummaryAssistant,
   selectComprehensiveApplicationAssistantReplies,
 } from './review-semantic-source-selection.mjs';
 
@@ -19,6 +20,7 @@ const apply = process.argv.includes('--apply');
 const verify = process.argv.includes('--verify');
 const refresh = process.argv.includes('--refresh');
 const allowProviderEgress = process.argv.includes('--allow-provider-egress');
+const localCoreOnly = process.argv.includes('--local-core-only');
 const batchSizeArgument = process.argv.find((argument) => argument.startsWith('--batch-size='));
 const batchSize = Math.max(1, Number(batchSizeArgument?.split('=')[1] ?? 4));
 const exportInputsArgument = process.argv.find((argument) =>
@@ -104,6 +106,25 @@ function normalizedMethodology(value) {
   return normalized === '' ? undefined : normalized;
 }
 
+const SUMMARY_HEADING = /^#{1,6}\s*本课总结(?:[：:].*)?$/u;
+const SUMMARY_META_BLOCK =
+  /^(?:本课(?:学习|流程)?(?:已经|已)?完成|本课到这里可以结束|你的评价|综合应用中，?\s*你|你(?:已经|在(?:综合|案例|本课)|首先|最初|能够|能|通过|完成|坚持|选择|确认|指出|判断)|今后的|后续学习|以后阅读)/u;
+
+function projectCoreInsightFromClassroomSummary(markdown) {
+  const blocks = markdown
+    .split(/\r?\n\s*\r?\n/u)
+    .map((block) => {
+      const lines = block.split(/\r?\n/u).filter((line) => !SUMMARY_HEADING.test(line.trim()));
+      return lines
+        .join('\n')
+        .replace(/^有。\s*/u, '')
+        .trim();
+    })
+    .filter((block) => block !== '' && !SUMMARY_META_BLOCK.test(block));
+  const projected = blocks.join('\n\n').trim();
+  return projected === '' ? markdown.trim() : projected;
+}
+
 function validateSemanticResult(result, expectedIds) {
   if (result === null || typeof result !== 'object' || !Array.isArray(result.items)) {
     throw new Error('review_semantic_output_invalid');
@@ -124,7 +145,11 @@ function validateSemanticResult(result, expectedIds) {
       throw new Error(`review_semantic_methodology_too_long:${item.id}`);
     }
     const coreInsight = item.coreInsight.trim();
-    if (/(?:本课学习完成|你已经掌握|你的评价很准确|今后的.*课|接下来.*学习)/u.test(coreInsight)) {
+    if (
+      /(?:本课(?:学习|流程)?(?:已经|已)?完成|你已经掌握|你的评价很准确|今后的.*课|接下来.*学习)/u.test(
+        coreInsight,
+      )
+    ) {
       throw new Error(`review_semantic_core_contains_meta:${item.id}`);
     }
     if (
@@ -300,10 +325,10 @@ function semanticPrompt(items) {
   return [
     '你是 Learning MORE 的课时 Review 语义收束模块。',
     '只返回一个 JSON 对象：{"items":[{"id":"原样返回","coreInsight":"...","methodologyInsight":"...可省略"}]}。不要代码围栏或说明。',
-    'coreInsight：对最终课堂总结做语义提炼，并动态保留完成理解所必需的总结结构；结构可以随课程内容表现为概念关系、因果链、判断框架、操作步骤、条件对比、推理过程、适用边界或其他必要形式。允许保留必要段落、列表与层次，不得套用固定框架。',
-    'coreInsight 必须保留承载语义的 Markdown 格式，包括原总结中有助于理解的加粗、分段、编号层级、列表、引用块、代码或公式；不要把清晰的关系链、分项解释和结论段改写成连续的大段正文。只移除不承载知识结构的装饰性格式，不要求逐字复制全部原文。',
+    'coreInsight：仅以每个项目的 finalClassroomSummary 中的知识性内容为来源，筛选有效知识语义，并动态保留完成理解所必需的总结结构；结构可以随课程内容表现为概念关系、因果链、判断框架、操作步骤、条件对比、推理过程、适用边界或其他必要形式。允许保留必要段落、列表与层次，不得套用固定框架。有效知识内容允许原样保留，不要求改写。',
+    'coreInsight 必须保留承载语义的 Markdown 格式，包括原总结中有助于理解的加粗、分段、编号层级、列表、引用块、代码或公式；不要把清晰的关系链、分项解释和结论段改写成连续的大段正文。只移除不承载知识结构的装饰性格式，不新增 finalClassroomSummary 没有的事实、案例、解释或结构。',
     'methodologyInsight：从综合应用所连接的知识关系中提炼一句可迁移的方法、判断原则或技巧，最多 240 字且不得换行。不要复述知识点清单，不要写“把本课合起来看”“本课真正值得保留的是”等引导语。',
-    '两项字段都必须执行语义过滤，而不是截取或轻度改写原文：移除完成宣布、用户评价、掌握判断、互动复盘、鼓励、未来学习建议、课程流程说明和不承载知识含义的过渡语；只合并真正同义的重复表述，不得把互相支撑的不同层次误判为重复。',
+    'coreInsight 只做来源内筛选：移除完成宣布、用户评价、掌握判断、互动复盘、鼓励、未来学习建议、课程流程说明和不承载知识含义的过渡语；保留其余有效内容的原有措辞、顺序和结构，只合并真正同义的重复表述，不得把互相支撑的不同层次误判为重复。',
     'coreInsight 应在不损失必要总结结构、关键关系、推理链和边界条件的前提下使用清晰紧凑的表达；不得为了简短而删除完成理解所需要的信息，也不得强制压缩成一句话。methodologyInsight 仍负责一句高度凝练、可迁移的方法或技巧，不承担完整总结职责。',
     '综合应用输入包含从任务提出到纠偏或收束的完整片段。优先保留其中最具体、最能迁移的关系或技巧；后出现的流程过渡只提供语境，不因位置更晚而自动覆盖更具体的收束。',
     '用户没有直接回答或明确跳过综合应用时，仍可依据综合应用任务、AI 的纠偏或关系收束、最终课堂总结提炼方法论，但不得声称用户已经掌握、通过或形成能力。来源不足时省略 methodologyInsight。',
@@ -411,7 +436,7 @@ for (const file of await filesUnder(path.join(dataRoot, 'entities', 'lesson-clos
     )
     .map((message) => ({ message, task: taskById.get(message.generationTaskId) }))
     .filter((candidate) => candidate.task?.reply);
-  const finalAssistant = assistantMessages.at(-1);
+  const finalAssistant = selectClassroomSummaryAssistant(assistantMessages);
   if (finalAssistant === undefined) {
     unresolved.push({ transactionId: closure.transactionId, reason: 'final_summary_missing' });
     continue;
@@ -464,6 +489,23 @@ if (!apply && !verify) {
     cache = JSON.parse(await readFile(cacheFile, 'utf8').catch(() => '{}'));
   }
   if (apply) {
+    if (localCoreOnly) {
+      cache = Object.fromEntries(
+        records.map((record) => [
+          record.id,
+          {
+            coreInsight: projectCoreInsightFromClassroomSummary(
+              record.semanticInput.finalClassroomSummary,
+            ),
+            ...(record.review.document.methodologyInsight === undefined
+              ? {}
+              : { methodologyInsight: record.review.document.methodologyInsight }),
+          },
+        ]),
+      );
+      await mkdir(runtimeRoot, { recursive: true });
+      await writeFile(cacheFile, `${JSON.stringify(cache, null, 2)}\n`, 'utf8');
+    }
     const missing = records.filter((record) => cache[record.id] === undefined);
     if (missing.length > 0 && !allowProviderEgress) {
       throw new Error(

@@ -16,7 +16,7 @@ describe('release drill gate', () => {
         steps: [
           {
             name: 'verify',
-            command: 'pnpm verify',
+            command: 'pnpm verify:full',
             status: 'passed',
             durationMs: 1,
             outputTail: '',
