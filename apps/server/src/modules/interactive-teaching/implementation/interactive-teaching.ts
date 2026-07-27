@@ -47,6 +47,8 @@ import {
 } from './teaching-directive.js';
 import { planTeachingGenerationReconciliation } from './teaching-generation-reconciler.js';
 
+const CURRENT_FALLBACK_OBSERVER_VERSION = 'teaching-observer-fallback@2';
+
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -1304,6 +1306,11 @@ export function createInteractiveTeaching(options: {
         role: message.role,
         completionStatus: message.completionStatus,
       })),
+      interactionMessages: allMessages.map((message) => ({
+        messageId: message.messageId,
+        role: message.role,
+        completionStatus: message.completionStatus,
+      })),
     };
     let validated: TeachingObservation;
     try {
@@ -1329,7 +1336,7 @@ export function createInteractiveTeaching(options: {
           },
           entries: [],
           interactions: [],
-          observerVersion: 'teaching-observer-fallback@1',
+          observerVersion: CURRENT_FALLBACK_OBSERVER_VERSION,
           observedAt: options.now().toISOString(),
           status: 'active',
         } satisfies TeachingObservation,
@@ -1921,11 +1928,14 @@ export function createInteractiveTeaching(options: {
       const interactionBackfillRequired = ledger?.observations.some(
         (observation) => observation.status === 'active' && observation.interactions === undefined,
       );
+      const fallbackContractUpgradeRequired =
+        ledger?.observations.at(-1)?.observerVersion === 'teaching-observer-fallback@1';
       if (
         ledger === undefined ||
         ledger.state.observationStatus !== 'current' ||
         observedThrough !== lastMessage ||
-        interactionBackfillRequired === true
+        interactionBackfillRequired === true ||
+        fallbackContractUpgradeRequired
       ) {
         await markObservationPending(input.courseId, input.lessonId, input.sessionId);
         await observationQueue.enqueue(input.sessionId, () => observeCompletedTurn(input));

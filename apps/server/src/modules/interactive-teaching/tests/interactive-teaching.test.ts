@@ -1743,13 +1743,62 @@ describe('InteractiveTeaching deep module', () => {
     const ledger = await ledgerRepository.get('session_1');
     expect(ledger?.state.observationStatus).toBe('current');
     expect(ledger?.observations.at(-1)).toMatchObject({
-      observerVersion: 'teaching-observer-fallback@1',
+      observerVersion: 'teaching-observer-fallback@2',
       sourceMessageIds: ['message_user_1', 'message_ai_1'],
       entries: [],
       interactions: [],
     });
     expect(capturedInteractionObservations.at(-1)?.observerVersion).toBe(
-      'teaching-observer-fallback@1',
+      'teaching-observer-fallback@2',
+    );
+  });
+
+  it('retries a legacy fallback observation once under the current validation contract', async () => {
+    const { module, drainObservations, recoverSession, ledgerRepository } = await fixture({
+      observerReturnsInvalidInteraction: true,
+    });
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    const current = (await ledgerRepository.get('session_1'))!;
+    await ledgerRepository.save(
+      tx,
+      {
+        ...current,
+        observations: current.observations.map((observation, index) =>
+          index === current.observations.length - 1
+            ? { ...observation, observerVersion: 'teaching-observer-fallback@1' }
+            : observation,
+        ),
+      },
+      current.resourceVersion,
+    );
+
+    await recoverSession({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: commandContext,
+    });
+    const recovered = (await ledgerRepository.get('session_1'))!;
+    expect(recovered.observations.at(-1)?.observerVersion).toBe('teaching-observer-fallback@2');
+
+    await recoverSession({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: commandContext,
+    });
+    expect((await ledgerRepository.get('session_1'))?.observations).toHaveLength(
+      recovered.observations.length,
     );
   });
 

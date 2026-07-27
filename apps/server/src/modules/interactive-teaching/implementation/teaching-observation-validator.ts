@@ -12,6 +12,11 @@ export type TeachingObservationValidationContext = Readonly<{
     role: 'user' | 'assistant';
     completionStatus: 'complete' | 'interrupted' | 'failed';
   }>[];
+  interactionMessages?: readonly Readonly<{
+    messageId: string;
+    role: 'user' | 'assistant';
+    completionStatus: 'complete' | 'interrupted' | 'failed';
+  }>[];
 }>;
 
 function invalid(code: string): never {
@@ -34,8 +39,12 @@ export function validateTeachingObservation(
   }
 
   const messageById = new Map(context.messages.map((message) => [message.messageId, message]));
+  const interactionMessages = context.interactionMessages ?? context.messages;
+  const interactionMessageById = new Map(
+    interactionMessages.map((message) => [message.messageId, message]),
+  );
   const messageOrderById = new Map(
-    context.messages.map((message, index) => [message.messageId, index] as const),
+    interactionMessages.map((message, index) => [message.messageId, index] as const),
   );
   const knowledgePointRefs = new Set(context.knowledgePointRefs);
   const resolvableEntryRefs = new Set([
@@ -68,7 +77,7 @@ export function validateTeachingObservation(
     }
     const promptMessageId = messageIdFromRef(interaction.promptSourceRef);
     const promptMessage =
-      promptMessageId === undefined ? undefined : messageById.get(promptMessageId);
+      promptMessageId === undefined ? undefined : interactionMessageById.get(promptMessageId);
     if (promptMessage?.role !== 'assistant') invalid('interaction_prompt_requires_assistant');
     if (interaction.interactionId !== `interaction:${promptMessageId}`) {
       invalid('interaction_id_not_bound_to_prompt');
@@ -79,7 +88,7 @@ export function validateTeachingObservation(
     if (interaction.responseSourceRef !== undefined) {
       const responseMessageId = messageIdFromRef(interaction.responseSourceRef);
       const responseMessage =
-        responseMessageId === undefined ? undefined : messageById.get(responseMessageId);
+        responseMessageId === undefined ? undefined : interactionMessageById.get(responseMessageId);
       if (responseMessage?.role !== 'user') invalid('interaction_response_requires_user');
       if (
         promptMessageId === undefined ||

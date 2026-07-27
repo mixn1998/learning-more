@@ -152,4 +152,31 @@ describe('teaching observation validator', () => {
       }),
     ).toThrowError('interaction_response_must_follow_prompt');
   });
+
+  it('validates a cross-turn interaction against history without widening incremental evidence', () => {
+    const base = observation();
+    const incremental: TeachingObservation = {
+      ...base,
+      sourceMessageIds: ['message_user_1', 'message_ai_2'],
+      entries: base.entries.map((entry) => ({
+        ...entry,
+        sourceRefs: ['message:message_ai_2'],
+      })),
+    };
+
+    expect(
+      validateTeachingObservation(incremental, {
+        ...validationContext,
+        messages: [
+          { messageId: 'message_user_1', role: 'user', completionStatus: 'complete' },
+          { messageId: 'message_ai_2', role: 'assistant', completionStatus: 'complete' },
+        ],
+        interactionMessages: [
+          { messageId: 'message_ai_1', role: 'assistant', completionStatus: 'complete' },
+          { messageId: 'message_user_1', role: 'user', completionStatus: 'complete' },
+          { messageId: 'message_ai_2', role: 'assistant', completionStatus: 'complete' },
+        ],
+      }),
+    ).toEqual(incremental);
+  });
 });
