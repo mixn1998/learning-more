@@ -280,4 +280,68 @@ describe('OutlineView', () => {
     expect(screen.getByText('Current module')).toBeInTheDocument();
     expect(screen.queryByText('未分组课程')).not.toBeInTheDocument();
   });
+
+  it('uses the current confirmed outline as the stable module grouping across lesson versions', () => {
+    const lesson = (lessonId: string, outlineVersionId: string, title: string) => ({
+      lessonId,
+      outlineVersionId,
+      title,
+      objective: title,
+      coreKnowledgePoints: [],
+      prerequisiteLessonIds: [],
+      estimatedMinutes: 20,
+    });
+    render(
+      <OutlineView
+        course={{
+          courseId: 'course_revised',
+          title: '线性代数',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_current',
+          lessonIds: ['lesson_1', 'lesson_2', 'lesson_3', 'lesson_4', 'lesson_5'],
+          lessons: [
+            lesson('lesson_1', 'outline_original', '对象、条件、结论与反例'),
+            lesson('lesson_2', 'outline_original', '向量：方向、位移与坐标'),
+            lesson('lesson_3', 'outline_original', '线性组合：用已有方向生成新对象'),
+            lesson('lesson_4', 'outline_current', '向量方程、坐标方程与几何交点'),
+            lesson('lesson_5', 'outline_current', '张成空间与可达性'),
+          ],
+          outlineMarkdown: `# 线性代数
+
+## 推理基础与向量语言
+
+### 对象、条件、结论与反例
+### 向量：方向、位移与坐标
+### 线性组合：用已有方向生成新对象
+### 向量方程、坐标方程与几何交点
+### 张成空间与可达性`,
+          resourceVersion: 2,
+        }}
+        lessonStates={{
+          lesson_1: { progress: 'completed' },
+          lesson_2: { progress: 'completed' },
+          lesson_3: { progress: 'completed' },
+          lesson_4: { progress: 'completed' },
+          lesson_5: { progress: 'completed' },
+        }}
+        outlineMarkdownByVersion={{
+          outline_original: `# 线性代数
+
+## 数学语言与向量世界
+
+### 对象、条件、结论与反例
+### 向量：方向、位移与坐标
+### 线性组合：用已有方向生成新对象`,
+        }}
+        onOpenLesson={vi.fn()}
+      />,
+    );
+
+    const modules = document.querySelectorAll('.course-module');
+    expect(modules).toHaveLength(1);
+    expect(screen.getByText('推理基础与向量语言')).toBeInTheDocument();
+    expect(screen.queryByText('数学语言与向量世界')).not.toBeInTheDocument();
+    expect(within(modules[0] as HTMLElement).getAllByRole('button')).toHaveLength(5);
+  });
 });

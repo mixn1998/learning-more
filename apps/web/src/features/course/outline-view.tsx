@@ -38,40 +38,71 @@ export function OutlineView(props: {
         (lessonOrder.get(right.lessonId) ?? Number.MAX_SAFE_INTEGER) ||
       left.lessonId.localeCompare(right.lessonId),
   );
-  const outlineVersionIds = [...new Set(orderedLessons.map((lesson) => lesson.outlineVersionId))];
-  const projections = outlineVersionIds.map((outlineVersionId) => {
-    const versionLessons = orderedLessons.filter(
+  const currentProjection = projectOutlineMarkdown(
+    props.course.outlineMarkdown ?? '',
+    orderedLessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+  );
+  const currentMatchedLessonIds = new Set([
+    ...currentProjection.modules.flatMap((module) =>
+      module.lessons.flatMap((lesson) => (lesson.lessonId === undefined ? [] : [lesson.lessonId])),
+    ),
+    ...currentProjection.ungroupedLessons.flatMap((lesson) =>
+      lesson.lessonId === undefined || lesson.markdown === '' ? [] : [lesson.lessonId],
+    ),
+  ]);
+  const historicalFallbackLessons = orderedLessons.filter(
+    (lesson) => !currentMatchedLessonIds.has(lesson.lessonId),
+  );
+  const historicalVersionIds = [
+    ...new Set(historicalFallbackLessons.map((lesson) => lesson.outlineVersionId)),
+  ];
+  const historicalProjections = historicalVersionIds.map((outlineVersionId) => {
+    const versionLessons = historicalFallbackLessons.filter(
       (lesson) => lesson.outlineVersionId === outlineVersionId,
     );
-    const markdown =
-      outlineVersionId === props.course.outlineVersionId
-        ? (props.course.outlineMarkdown ?? '')
-        : (props.outlineMarkdownByVersion?.[outlineVersionId] ?? '');
     return {
       outlineVersionId,
       projection: projectOutlineMarkdown(
-        markdown,
+        props.outlineMarkdownByVersion?.[outlineVersionId] ?? '',
         versionLessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
       ),
     };
   });
   const modules = [
-    ...projections.flatMap(({ outlineVersionId, projection }) =>
+    ...currentProjection.modules.map((module) => ({
+      ...module,
+      key: `${props.course.outlineVersionId}:${module.key}`,
+    })),
+    ...historicalProjections.flatMap(({ outlineVersionId, projection }) =>
       projection.modules.map((module) => ({
         ...module,
         key: `${outlineVersionId}:${module.key}`,
       })),
     ),
-    ...(projections.every(({ projection }) => projection.ungroupedLessons.length === 0)
-      ? []
-      : [
-          {
-            key: 'ungrouped-lessons',
-            title: '未分组课程',
-            lessons: projections.flatMap(({ projection }) => projection.ungroupedLessons),
-          },
-        ]),
+  ].sort((left, right) => {
+    const firstLessonOrder = (module: (typeof modules)[number]) =>
+      Math.min(
+        ...module.lessons.map((lesson) =>
+          lesson.lessonId === undefined
+            ? Number.MAX_SAFE_INTEGER
+            : (lessonOrder.get(lesson.lessonId) ?? Number.MAX_SAFE_INTEGER),
+        ),
+      );
+    return firstLessonOrder(left) - firstLessonOrder(right);
+  });
+  const ungroupedLessons = [
+    ...currentProjection.ungroupedLessons.filter((lesson) => lesson.markdown !== ''),
+    ...historicalProjections.flatMap(({ projection }) => projection.ungroupedLessons),
   ];
+  if (ungroupedLessons.length > 0) {
+    modules.push({
+      key: 'ungrouped-lessons',
+      anchor: 'module:ungrouped-lessons',
+      title: '未分组课程',
+      markdown: '',
+      lessons: ungroupedLessons,
+    });
+  }
   const closed = props.course.status === 'closed';
   const completed = closed
     ? lessons.length
