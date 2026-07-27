@@ -12,6 +12,30 @@ function initial() {
 }
 
 describe('teaching directive', () => {
+  it('keeps every knowledge point pending while the lesson remains in warmup', () => {
+    const warmup = applyTeachingDirective(initial(), {
+      schemaVersion: 2,
+      lessonPhase: 'warmup',
+      turnHandoff: 'invite_response',
+    });
+
+    expect(warmup).toMatchObject({
+      lessonPhase: 'warmup',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', progress: 'pending', interactionStatus: 'pending' },
+        { ref: 'knowledge:kp_2', progress: 'pending', interactionStatus: 'pending' },
+      ],
+    });
+    expect(() =>
+      applyTeachingDirective(initial(), {
+        schemaVersion: 2,
+        lessonPhase: 'warmup',
+        knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+        turnHandoff: 'invite_response',
+      }),
+    ).toThrowError('teaching_directive_warmup_changed_knowledge_point');
+  });
+
   it('materializes a sparse version 2 update against the authoritative ledger', () => {
     const next = applyTeachingDirective(initial(), {
       schemaVersion: 2,

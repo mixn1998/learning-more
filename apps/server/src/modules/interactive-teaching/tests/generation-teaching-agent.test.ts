@@ -230,8 +230,10 @@ describe('GenerationTeachingAgent', () => {
 
     await agent.submit(opening, 'opening:session_1');
 
-    expect(fake.request()?.prompt).toContain('目标是连接学习目标与已有经验并了解学习起点');
-    expect(fake.request()?.prompt).toContain('当前阶段是课前热身');
+    expect(fake.request()?.prompt).toContain(
+      '只提出一个能够连接本课目标与学习者已有经验的暖场问题',
+    );
+    expect(fake.request()?.prompt).toContain('本回复不展开任何知识点，也不推进知识点状态');
     expect(fake.request()?.prompt).toContain('确认版知识链是本课教学边界');
     expect(fake.request()?.prompt).toContain('【当前教学窗口】');
     expect(fake.request()?.prompt).not.toContain('【当前诉求｜用户原话】');
@@ -336,8 +338,8 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).not.toContain('modeWeight');
     expect(fake.request()?.prompt).toContain('【已知学习背景】');
     expect(fake.request()?.prompt).toContain('【当前诉求｜用户原话】');
-    expect(fake.request()?.prompt).toContain('结合学习者对课前热身的回应');
-    expect(fake.request()?.prompt).toContain('从“Sample-space change.”开始教学');
+    expect(fake.request()?.prompt).toContain('无论回应是否正确、是否完整、表示不理解或希望跳过');
+    expect(fake.request()?.prompt).toContain('开始讲解“Sample-space change.”');
     expect(fake.request()?.prompt).toContain(
       'Prefer concrete situations when they create a useful learning opportunity.',
     );

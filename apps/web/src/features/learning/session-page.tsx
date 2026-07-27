@@ -184,6 +184,16 @@ function hasAssistantResponse(messages: readonly SessionMessageView[] | undefine
     );
 }
 
+function learnerTurnKnowledgePointRef(
+  teachingProgress: TeachingProgress | undefined,
+): string | undefined {
+  if (teachingProgress === undefined) return undefined;
+  if (teachingProgress.lessonPhase === 'warmup') {
+    return teachingProgress.knowledgePoints[0]?.ref;
+  }
+  return teachingProgress.activeKnowledgePointRef;
+}
+
 function hasUnansweredUserMessage(messages: readonly SessionMessageView[] | undefined): boolean {
   if (messages === undefined) return false;
   const latestUserMessage = messages.findLast((message) => message.role === 'user');
@@ -362,7 +372,7 @@ function reducer(state: State, action: Action): State {
       assistantMarkdown: '',
       assistantPending: true,
       continuationPending: false,
-      generationKnowledgePointRef: state.teachingProgress?.activeKnowledgePointRef,
+      generationKnowledgePointRef: learnerTurnKnowledgePointRef(state.teachingProgress),
       taskId: undefined,
       sendError: undefined,
       draftArtifactRef: undefined,
@@ -394,7 +404,7 @@ function reducer(state: State, action: Action): State {
       assistantMarkdown: '',
       assistantPending: true,
       continuationPending: false,
-      generationKnowledgePointRef: state.teachingProgress?.activeKnowledgePointRef,
+      generationKnowledgePointRef: learnerTurnKnowledgePointRef(state.teachingProgress),
       pendingUserMessage: {
         id: action.messageId,
         markdown: action.content,
@@ -611,6 +621,14 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
       state: completed || afterWarmup ? ('done' as const) : ('active' as const),
     },
     ...teaching.knowledgePoints.map((point) => {
+      if (!afterWarmup) {
+        return {
+          title: point.title,
+          detail: '待讲解',
+          state: 'pending' as const,
+          emphasis: point.emphasis,
+        };
+      }
       const active = point.progress === 'learning';
       if (point.progress === 'completed') {
         return {

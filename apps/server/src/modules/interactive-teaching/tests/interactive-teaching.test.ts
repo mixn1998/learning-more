@@ -62,6 +62,7 @@ async function fixture(
     frameEnsureFailsOnce?: boolean;
     frameDeltaFailsOnce?: boolean;
     agentDirective?: TeachingDirective;
+    agentDirectives?: readonly TeachingDirective[];
     legacyRecoveredTaskSourceId?: string;
     recoveredTaskStatus?: GenerationTask['status'];
     recoveredTaskMarkdown?: string;
@@ -283,9 +284,11 @@ async function fixture(
       }
       const current = generationTasks.get(_taskId);
       if (current !== undefined) generationTasks.set(_taskId, { ...current, status: 'completed' });
+      const taskSequence = Number.parseInt(_taskId.replace('task_', ''), 10) - 1;
+      const directive = options.agentDirectives?.[taskSequence] ?? options.agentDirective;
       return {
         markdown,
-        ...(options.agentDirective === undefined ? {} : { directive: options.agentDirective }),
+        ...(directive === undefined ? {} : { directive }),
       };
     },
     async read() {
@@ -647,6 +650,139 @@ describe('InteractiveTeaching deep module', () => {
     expect(capturedReasoningObservations).toEqual([]);
   });
 
+  it('asks one unowned warmup question, then enters and owns the first knowledge point after any learner reply', async () => {
+    const { module, drainObservations, messageLog, sessionModule } = await fixture({
+      agentDirectives: [
+        {
+          schemaVersion: 2,
+          lessonPhase: 'warmup',
+          turnHandoff: 'invite_response',
+        },
+        {
+          schemaVersion: 2,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'K1',
+          knowledgePoints: [{ ref: 'K1', status: 'learning' }],
+          turnHandoff: 'offer_continue',
+        },
+      ],
+    });
+
+    await module.openLesson(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      commandContext,
+    );
+    await drainObservations('session_1');
+
+    expect(await messageLog.list('session_1')).toEqual([
+      expect.not.objectContaining({ knowledgePointRef: expect.anything() }),
+    ]);
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'warmup',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', progress: 'pending' }],
+    });
+
+    const current = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_after_warmup',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      {
+        ...commandContext,
+        commandId: 'answer_warmup',
+        idempotencyKey: 'answer_warmup',
+        expectedVersion: current.resourceVersion,
+      },
+    );
+    await drainObservations('session_1');
+
+    expect(await messageLog.list('session_1')).toContainEqual(
+      expect.objectContaining({
+        id: 'message_ai_2',
+        knowledgePointRef: 'knowledge:kp_1',
+      }),
+    );
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', progress: 'learning' }],
+    });
+  });
+
+  it('discards a second warmup reply when the agent fails to enter the first knowledge point', async () => {
+    const { module, drainObservations, frames, messageLog, sessionModule } = await fixture({
+      streamReply: true,
+      agentDirectives: [
+        {
+          schemaVersion: 2,
+          lessonPhase: 'warmup',
+          turnHandoff: 'invite_response',
+        },
+        {
+          schemaVersion: 2,
+          lessonPhase: 'warmup',
+          turnHandoff: 'invite_response',
+        },
+      ],
+    });
+    await module.openLesson(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    const afterOpening = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_before_invalid_warmup_reply',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      {
+        ...commandContext,
+        commandId: 'invalid_second_warmup',
+        idempotencyKey: 'invalid_second_warmup',
+        expectedVersion: afterOpening.resourceVersion,
+      },
+    );
+
+    await expect(drainObservations('session_1')).rejects.toThrow(
+      'teaching_directive_first_point_transition_required',
+    );
+    expect(await messageLog.list('session_1')).toEqual([
+      expect.objectContaining({ id: 'message_ai_1', role: 'assistant' }),
+      expect.objectContaining({ id: 'message_user_1', role: 'user' }),
+    ]);
+    expect(
+      frames.filter((frame) => frame.type === 'message.delta' && frame.taskId === 'task_2'),
+    ).toEqual([]);
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'warmup',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', progress: 'pending' }],
+    });
+  });
+
   it('binds an assistant reply to the active knowledge point before applying its directive', async () => {
     const { module, drainObservations, ledgerRepository, messageLog } = await fixture();
     await seedLearningKnowledgePoint(ledgerRepository);
@@ -672,37 +808,103 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('continues from an offered handoff without appending or observing a learner message', async () => {
-    const { module, drainObservations, messageLog, submittedContext, observedMessageBatches } =
-      await fixture({
-        agentDirective: {
-          schemaVersion: 3,
+    const {
+      module,
+      drainObservations,
+      messageLog,
+      sessionModule,
+      submittedContext,
+      observedMessageBatches,
+    } = await fixture({
+      agentDirectives: [
+        {
+          schemaVersion: 2,
           lessonPhase: 'warmup',
+          turnHandoff: 'invite_response',
+        },
+        {
+          schemaVersion: 3,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'K1',
+          knowledgePoints: [{ ref: 'K1', status: 'learning' }],
           turnHandoff: 'offer_continue',
         },
-      });
-
+        {
+          schemaVersion: 3,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'K1',
+          turnHandoff: 'offer_continue',
+        },
+      ],
+    });
     await module.openLesson(
       { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
       commandContext,
     );
     await drainObservations('session_1');
+    const afterOpening = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_before_warmup_answer',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      {
+        ...commandContext,
+        commandId: 'answer_before_continue',
+        idempotencyKey: 'answer_before_continue',
+        expectedVersion: afterOpening.resourceVersion,
+      },
+    );
+    await drainObservations('session_1');
+    const observedBeforeContinuation = observedMessageBatches.length;
+    const beforeContinuation = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_before_continue',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+
     const continued = await module.continueTurn(
       { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
-      { ...commandContext, commandId: 'continue_turn', idempotencyKey: 'continue_turn' },
+      {
+        ...commandContext,
+        commandId: 'continue_turn',
+        idempotencyKey: 'continue_turn',
+        expectedVersion: beforeContinuation.resourceVersion,
+      },
     );
     await drainObservations('session_1');
 
-    expect(continued.taskId).toBe('task_2');
+    expect(continued.taskId).toBe('task_3');
     expect(submittedContext()).toMatchObject({ turnKind: 'continuation' });
     expect(await messageLog.list('session_1')).toEqual([
       expect.objectContaining({ role: 'assistant' }),
-      expect.objectContaining({ role: 'assistant' }),
+      expect.objectContaining({ role: 'user' }),
+      expect.objectContaining({ role: 'assistant', knowledgePointRef: 'knowledge:kp_1' }),
+      expect.objectContaining({ role: 'assistant', knowledgePointRef: 'knowledge:kp_1' }),
     ]);
-    expect(observedMessageBatches).toEqual([]);
+    expect(observedMessageBatches).toHaveLength(observedBeforeContinuation);
   });
 
   it('forwards safe assistant reply deltas without replaying the full reply at completion', async () => {
-    const { module, drainObservations, frames } = await fixture({ streamReply: true });
+    const { module, drainObservations, frames, ledgerRepository } = await fixture({
+      streamReply: true,
+    });
+    await seedLearningKnowledgePoint(ledgerRepository);
 
     await module.advanceTurn(
       {
@@ -732,11 +934,12 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('keeps a completed streamed reply independent when the trailing teaching directive is invalid', async () => {
-    const { module, drainObservations, frames, messageLog } = await fixture({
+    const { module, drainObservations, frames, ledgerRepository, messageLog } = await fixture({
       streamReply: true,
       agentDirective: {
         schemaVersion: 1,
-        lessonPhase: 'warmup',
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
         knowledgePoints: [
           {
             ref: 'knowledge:unknown',
@@ -749,6 +952,7 @@ describe('InteractiveTeaching deep module', () => {
         summaryStatus: 'pending',
       },
     });
+    await seedLearningKnowledgePoint(ledgerRepository);
 
     await module.advanceTurn(
       {
@@ -773,9 +977,9 @@ describe('InteractiveTeaching deep module', () => {
       }),
     ]);
     await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
-      lessonPhase: 'warmup',
+      lessonPhase: 'knowledge_point',
       observationStatus: 'failed',
-      knowledgePoints: [{ ref: 'knowledge:kp_1', progress: 'pending' }],
+      knowledgePoints: [{ ref: 'knowledge:kp_1', progress: 'learning' }],
     });
     expect(frames.map((frame) => frame.type)).toEqual([
       'message.started',
@@ -792,10 +996,11 @@ describe('InteractiveTeaching deep module', () => {
   });
 
   it('commits the authoritative reply when incremental frame projection fails', async () => {
-    const { module, drainObservations, frames, messageLog } = await fixture({
+    const { module, drainObservations, frames, ledgerRepository, messageLog } = await fixture({
       streamReply: true,
       frameDeltaFailsOnce: true,
     });
+    await seedLearningKnowledgePoint(ledgerRepository);
 
     await module.advanceTurn(
       {

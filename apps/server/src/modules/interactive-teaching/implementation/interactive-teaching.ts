@@ -179,6 +179,18 @@ function stateSyncFailureProblem(taskId: string): ApplicationProblem {
   };
 }
 
+function isWarmupFlowViolation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    [
+      'teaching_directive_warmup_changed_knowledge_point',
+      'teaching_directive_opening_warmup_required',
+      'teaching_warmup_requires_learner_response',
+      'teaching_directive_first_point_transition_required',
+    ].includes(error.message)
+  );
+}
+
 export function createInteractiveTeaching(options: {
   sessionModule: LearningSessionModule;
   contextSources: TeachingContextSources;
@@ -352,7 +364,10 @@ export function createInteractiveTeaching(options: {
     const requestRef =
       currentUserMessageId ??
       `${input.assembled.turnKind === 'continuation' ? 'continuation' : 'opening'}:${input.sessionId}`;
-    const messageKnowledgePointRef = input.assembled.teachingState.activeKnowledgePointRef;
+    let messageKnowledgePointRef =
+      (input.assembled.teachingState.lessonPhase ?? 'warmup') === 'warmup'
+        ? undefined
+        : input.assembled.teachingState.activeKnowledgePointRef;
     const accepted = await options.agent.submit(input.assembled, requestRef);
     let startedResourceVersion: number;
     try {
@@ -444,13 +459,17 @@ export function createInteractiveTeaching(options: {
       let directiveApplied = false;
       let generationTerminalPublished = false;
       let streamProjectionAvailable = true;
+      const deferReplyProjection =
+        (input.assembled.teachingState.lessonPhase ?? 'warmup') === 'warmup';
       try {
         streamProjectionAvailable = await tryAppendFrame(accepted.taskId, 'message.started', {
           messageId: assistantMessageId,
         });
         const result = await options.agent.complete(accepted.taskId, {
           async onReplyDelta(markdown) {
-            if (markdown.length === 0 || !streamProjectionAvailable) return;
+            if (markdown.length === 0 || !streamProjectionAvailable || deferReplyProjection) {
+              return;
+            }
             const appended = await tryAppendFrame(accepted.taskId, 'message.delta', {
               messageId: assistantMessageId,
               markdown,
@@ -476,14 +495,21 @@ export function createInteractiveTeaching(options: {
         // stream, but it is business-validated only after the authoritative task
         // reaches completion. A partial/in-flight projection must never terminate
         // an otherwise healthy provider task.
-        await validateDirective({
+        const validatedTeachingState = await validateDirective({
           courseId: input.courseId,
           lessonId: input.lessonId,
           sessionId: input.sessionId,
           directive: result.directive,
           baseState: input.assembled.teachingState,
+          ...(input.assembled.turnKind === undefined ? {} : { turnKind: input.assembled.turnKind }),
           ...(currentUserMessageId === undefined ? {} : { currentUserMessageId }),
         });
+        if (
+          (input.assembled.teachingState.lessonPhase ?? 'warmup') === 'warmup' &&
+          validatedTeachingState?.lessonPhase === 'knowledge_point'
+        ) {
+          messageKnowledgePointRef = validatedTeachingState.activeKnowledgePointRef;
+        }
         directiveValidated = true;
         assertCurrentTask(accepted.taskId);
         if (!result.markdown.startsWith(streamedMarkdown)) {
@@ -574,7 +600,11 @@ export function createInteractiveTeaching(options: {
         }
         const failedReplyMarkdown = completedReplyMarkdown ?? streamedMarkdown;
         const failedReplyStatus = completedReplyMarkdown === undefined ? 'interrupted' : 'complete';
-        if (failedReplyMarkdown.length > 0 && (!directiveValidated || directiveApplied)) {
+        if (
+          failedReplyMarkdown.length > 0 &&
+          (!directiveValidated || directiveApplied) &&
+          !isWarmupFlowViolation(error)
+        ) {
           try {
             await options.assistantArtifacts.save({
               artifactRef,
@@ -852,17 +882,41 @@ export function createInteractiveTeaching(options: {
     directive?: TeachingDirective | undefined;
     baseState?: TeachingCheckpointSnapshot['teachingState'];
     currentUserMessageId?: string;
-  }): Promise<void> {
+    turnKind?: 'opening' | 'response' | 'continuation';
+  }): Promise<TeachingStateSnapshot | undefined> {
     if (input.directive === undefined) return;
     const base =
       input.baseState ?? (await initialState(input.courseId, input.lessonId, input.sessionId));
-    applyTeachingDirective(
+    const next = applyTeachingDirective(
       base,
       input.directive,
       input.currentUserMessageId === undefined
         ? undefined
         : { currentUserMessageId: input.currentUserMessageId },
     );
+    if ((base.lessonPhase ?? 'warmup') !== 'warmup') return next;
+    if (input.turnKind === 'opening') {
+      if (next.lessonPhase !== 'warmup' || next.turnHandoff !== 'invite_response') {
+        throw new Error('teaching_directive_opening_warmup_required');
+      }
+      return next;
+    }
+    if (input.currentUserMessageId === undefined) {
+      throw new Error('teaching_warmup_requires_learner_response');
+    }
+    const firstKnowledgePointRef = base.knowledgePoints[0]?.ref;
+    const firstKnowledgePoint = next.knowledgePoints.find(
+      (point) => point.ref === firstKnowledgePointRef,
+    );
+    if (
+      firstKnowledgePointRef === undefined ||
+      next.lessonPhase !== 'knowledge_point' ||
+      next.activeKnowledgePointRef !== firstKnowledgePointRef ||
+      firstKnowledgePoint?.progress !== 'learning'
+    ) {
+      throw new Error('teaching_directive_first_point_transition_required');
+    }
+    return next;
   }
 
   async function reconcileGeneration(input: {

@@ -9,10 +9,13 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
   const lines =
     phase === 'warmup'
       ? context.turnKind === 'opening'
-        ? ['当前阶段是课前热身，目标是连接学习目标与已有经验并了解学习起点。']
+        ? [
+            '当前阶段是课前热身。只提出一个能够连接本课目标与学习者已有经验的暖场问题，并等待学习者回应。',
+            '本回复不展开任何知识点，也不推进知识点状态。',
+          ]
         : [
-            '结合学习者对课前热身的回应，进入账本标记的第一个知识点。',
-            `从“${activePoint?.text ?? '第一个知识点'}”开始教学。`,
+            '结合学习者刚才的回应作出必要反馈，然后在同一回复中自然进入第一个知识点；无论回应是否正确、是否完整、表示不理解或希望跳过，都不再追加热身问题，也不要求学习者额外发送“继续”。',
+            `开始讲解“${activePoint?.text ?? '第一个知识点'}”，并将教学阶段推进到 knowledge_point、将该知识点置为 learning。`,
           ]
       : phase === 'knowledge_point'
         ? [

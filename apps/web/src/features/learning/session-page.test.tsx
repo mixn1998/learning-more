@@ -339,6 +339,92 @@ describe('learning SessionPage', () => {
     expect(screen.getAllByTestId('continuation-divider')).toHaveLength(1);
   });
 
+  it('keeps the warmup message untitled and shows the first knowledge-point title on the reply turn', async () => {
+    const snapshot = {
+      resourceVersion: 4,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress' as const,
+        session: {
+          id: 'session_01',
+          state: 'active' as const,
+          messageIds: ['assistant_warmup'],
+          evidenceCheckpoint: false,
+        },
+        processedCommandIds: [],
+      },
+      teachingProgress: {
+        ledgerVersion: 1,
+        observationStatus: 'current' as const,
+        lessonPhase: 'warmup' as const,
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        comprehensiveCheck: 'pending' as const,
+        closureInquiry: 'pending' as const,
+        summaryStatus: 'pending' as const,
+        turnHandoff: 'invite_response' as const,
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '条件表达式的真假结果',
+            progress: 'pending' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'not_addressed' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        {
+          id: 'assistant_warmup',
+          role: 'assistant' as const,
+          createdAt: '',
+          markdown: '如果程序需要根据年龄选择不同分支，你会先判断什么？',
+          completionStatus: 'complete' as const,
+        },
+      ],
+    };
+    const stream = vi.fn(
+      async (_taskId: string, onEvent: (event: { type: string; data: unknown }) => void) => {
+        onEvent({
+          type: 'message.delta',
+          data: { markdown: '先看你的判断。接下来进入条件表达式的真假结果。' },
+        });
+        return new Promise<never>(() => undefined);
+      },
+    );
+
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({
+          getSession: vi.fn().mockResolvedValue(snapshot),
+          sendMessage: vi.fn().mockResolvedValue({
+            taskId: 'task_first_point',
+            resourceVersion: 5,
+            userMessageId: 'user_warmup_answer',
+          }),
+          stream,
+        })}
+      />,
+    );
+
+    expect(
+      await screen.findByText('如果程序需要根据年龄选择不同分支，你会先判断什么？'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '条件表达式的真假结果' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('学习输入'), {
+      target: { value: '我不太确定。' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(
+      await screen.findByRole('heading', { name: '条件表达式的真假结果' }),
+    ).toBeInTheDocument();
+    expect(stream).toHaveBeenCalledWith('task_first_point', expect.any(Function));
+  });
+
   it('restores the continuation action when an accepted continuation task fails', async () => {
     const snapshot = {
       resourceVersion: 6,
@@ -1553,7 +1639,7 @@ describe('learning SessionPage', () => {
     });
 
     expect(getSession).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('玩家幻想').closest('li')).toHaveClass('active');
+    expect(screen.getByText('玩家幻想').closest('li')).toHaveClass('pending');
     expect(screen.getByText('体验目标').closest('li')).toHaveClass('pending');
   });
 

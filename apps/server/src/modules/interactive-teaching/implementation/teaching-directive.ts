@@ -447,6 +447,18 @@ export function applyTeachingDirective(
   if (phaseOrder.indexOf(directive.lessonPhase) < phaseOrder.indexOf(currentPhase)) {
     invalid('teaching_directive_phase_regression');
   }
+  if (
+    directive.lessonPhase === 'warmup' &&
+    directive.knowledgePoints.some((point) => {
+      const previous = currentByRef.get(point.ref);
+      return (
+        point.status !== normalizedProgress(previous?.progress) ||
+        point.interactionStatus !== (previous?.interactionStatus ?? 'pending')
+      );
+    })
+  ) {
+    invalid('teaching_directive_warmup_changed_knowledge_point');
+  }
 
   const settled = directive.knowledgePoints.every(
     (point) => point.status === 'completed' || point.status === 'skipped',
