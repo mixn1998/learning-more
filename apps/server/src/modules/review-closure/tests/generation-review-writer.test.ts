@@ -2,31 +2,10 @@ import type { GenerationRequest, GenerationRuntime } from '../../generation-runt
 import type { GenerationTask } from '../../generation-runtime/ports/generation-task-repository.js';
 import { describe, expect, it } from 'vitest';
 
-import {
-  createGenerationReviewWriter,
-  projectCoreInsightFromClassroomSummary,
-} from '../implementation/generation-review-writer.js';
+import { createGenerationReviewWriter } from '../implementation/generation-review-writer.js';
 
 describe('GenerationReviewWriter', () => {
-  it('keeps the valid classroom-summary knowledge structure and removes learner evaluation', () => {
-    const knowledgeSummary = [
-      '本课的核心，是在信息和调查机会都有限时，作出当时有根据、边界清楚的判断。',
-      '',
-      '- 调查的先后决定你能看见什么。',
-      '- 证据还要看可靠性、相关性、覆盖范围与代表性。',
-    ].join('\n');
-    const classroomSummary = [
-      '本课完成。',
-      '',
-      knowledgeSummary,
-      '',
-      '你在综合情境中选择了近期实际入库记录，抓住了财政证据的关键。',
-    ].join('\n');
-
-    expect(projectCoreInsightFromClassroomSummary(classroomSummary)).toBe(knowledgeSummary);
-  });
-
-  it('uses the complete checkpoint as mandatory evidence and keeps the play lens advisory', async () => {
+  it('uses semantic core insight instead of overriding it with local text filtering', async () => {
     let request: GenerationRequest | undefined;
     let task: GenerationTask = {
       id: 'task_review',
@@ -57,7 +36,10 @@ describe('GenerationReviewWriter', () => {
             },
             methodologyInsight:
               '先确认当前约束改变了哪些可行路径，再比较不同路径会把结果推向哪里。',
-            coreInsight: '在抽取红球的案例里，分母应改成满足条件的球数，并进一步展开案例步骤。',
+            coreInsight: [
+              '- 条件表达式产生 True 或 False，决定程序进入哪条路径。',
+              '- if / elif / else 从上到下判断，只执行第一个命中的分支。',
+            ].join('\n'),
             performance: [
               { title: '你做得很好的地方', markdown: '主动追问了分母为什么变化。' },
               { title: '接下来的判断', markdown: '继续检验不同条件下参照总体的变化。' },
@@ -167,8 +149,13 @@ describe('GenerationReviewWriter', () => {
         ],
         classroomSummary: {
           sourceMessageId: 'message_ai_1',
-          markdown:
-            '本课学习完成。你已经掌握了条件概率。今后可以继续练习。\n\n条件会改变判断所依赖的参照总体。',
+          markdown: [
+            '本课学习完成。',
+            '',
+            '- 条件表达式产生 True 或 False，决定程序进入哪条路径。',
+            '- if / elif / else 从上到下判断，只执行第一个命中的分支。',
+            '你在运费综合应用中正确跟踪了原程序，并通过调整条件顺序处理了无效输入、重叠条件和边界值。',
+          ].join('\n'),
         },
         comprehensiveSynthesis: {
           sourceMessageId: 'message_ai_1',
@@ -185,7 +172,10 @@ describe('GenerationReviewWriter', () => {
       lessonFinalAnalysis: {
         kind: 'lesson-final',
         schemaVersion: 1,
-        coreInsight: '条件会改变判断所依赖的参照总体。',
+        coreInsight: [
+          '- 条件表达式产生 True 或 False，决定程序进入哪条路径。',
+          '- if / elif / else 从上到下判断，只执行第一个命中的分支。',
+        ].join('\n'),
       },
     });
     expect(request?.prompt).toContain('【本课责任】');
@@ -195,16 +185,18 @@ describe('GenerationReviewWriter', () => {
     expect(request?.prompt).toContain('knowledgeMap 只负责把本课知识点串成关系图式');
     expect(request?.prompt).toContain('coreInsight 必须返回');
     expect(request?.prompt).toContain('methodologyInsight');
-    expect(request?.prompt).toContain('本课学习完成。你已经掌握了条件概率');
+    expect(request?.prompt).toContain('本课学习完成。');
+    expect(request?.prompt).toContain('你在运费综合应用中正确跟踪了原程序');
     expect(request?.prompt).toContain('你没有直接回答综合应用');
     expect(request?.prompt).toContain('用户没有直接回答或明确跳过综合应用');
     expect(request?.prompt).toContain('不得据此声称用户已经掌握');
-    expect(request?.prompt).toMatch(/移除完成宣布、用户评价、掌握判断.*未来学习建议/u);
+    expect(request?.prompt).toMatch(/完成宣布、用户评价、掌握判断.*未来学习建议.*不属于核心思想/u);
+    expect(request?.prompt).toContain('理解最终课堂总结，识别其中承担知识表达的有效语义');
     expect(request?.prompt).toContain('动态保留完成理解所必需的总结结构');
     expect(request?.prompt).toContain('不得套用固定框架');
     expect(request?.prompt).toContain('仅以【最终课堂总结·仅供语义收束】中的知识性内容为来源');
     expect(request?.prompt).toContain('有效知识内容允许原样保留，不要求改写');
-    expect(request?.prompt).toContain('保留其余有效内容的原有措辞、顺序和结构');
+    expect(request?.prompt).toContain('对承担知识表达的部分，保留其原有措辞、顺序和结构');
     expect(request?.prompt).not.toContain('不得直接复制整段课堂文本');
     expect(request?.prompt).not.toContain('而不是截取或轻度改写原文');
     expect(request?.prompt).toContain('保留承载语义的 Markdown 格式');
