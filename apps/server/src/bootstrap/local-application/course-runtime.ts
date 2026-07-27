@@ -41,6 +41,7 @@ export type CourseAccess = Readonly<{
   getCourse: CourseRepositories['courses']['get'];
   getLesson: CourseRepositories['lessons']['get'];
   getOutlineVersion: CourseRepositories['outlineVersions']['get'];
+  getOutlineCandidate: AuthoringRepositories['candidateVersions']['get'];
   getMaterial: AuthoringRepositories['materials']['get'];
   getTeachingWeightMetadata: ReturnType<typeof createLocalFileTeachingWeightRepository>['get'];
   listCourses: CourseRepositories['courses']['list'];
@@ -363,6 +364,8 @@ export function createLocalCourseRuntime(
       getLesson: (lessonId) => courseRepositories.lessons.get(lessonId),
       getOutlineVersion: (outlineVersionId) =>
         courseRepositories.outlineVersions.get(outlineVersionId),
+      getOutlineCandidate: (candidateVersionId) =>
+        authoringRepositories.candidateVersions.get(candidateVersionId),
       getMaterial: (sourceRef) => authoringRepositories.materials.get(sourceRef),
       getTeachingWeightMetadata: (outlineVersionId) => teachingWeights.get(outlineVersionId),
       listCourses: listCoursesWithOutlineTitle,

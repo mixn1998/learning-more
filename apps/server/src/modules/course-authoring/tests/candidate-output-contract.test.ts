@@ -62,6 +62,9 @@ describe('candidate output protocol', () => {
     expect(prompt).toContain('shortest complete meaning');
     expect(prompt).toContain('双侧极限的单侧判据');
     expect(prompt).toContain('Put the reasoning between knowledge points');
+    expect(prompt).toContain('state the concrete inferential need');
+    expect(prompt).toContain('Do not use generic placeholders such as');
+    expect(prompt).toContain('为下一步理解提供基础');
     expect(prompt).not.toContain('concise yet reveal why the node matters');
     expect(prompt).toContain('Do not turn branches into separate progress steps');
     expect(prompt).toContain('outline.lessons[].title');

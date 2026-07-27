@@ -15,6 +15,27 @@ export type SourceExcerpt = Readonly<{
   selectedBecause: string;
 }>;
 
+export type TeachingKnowledgeMapPosition = Readonly<{
+  discipline: string;
+  courseLessonIndex: number;
+  courseLessonCount: number;
+  currentModule: Readonly<{
+    id: string;
+    title: string;
+    lessonIndex: number;
+    lessonCount: number;
+    lessons: readonly Readonly<{
+      lessonId: string;
+      title: string;
+      objective: string;
+    }>[];
+    previousModuleTitle?: string;
+    nextModuleTitle?: string;
+  }>;
+  isFirstLessonInModule: boolean;
+  isFirstLessonInCourse: boolean;
+}>;
+
 export type CourseLessonTeachingContext = Readonly<{
   course: Readonly<{
     courseId: string;
@@ -23,11 +44,12 @@ export type CourseLessonTeachingContext = Readonly<{
     courseMode: CourseMode;
     playIntent?: string;
     goals: readonly string[];
+    knowledgeMap?: TeachingKnowledgeMapPosition;
     lessonMap: readonly Readonly<{
       lessonId: string;
       title: string;
       objective: string;
-      relation: 'current' | 'prerequisite' | 'other';
+      relation: 'current' | 'prerequisite' | 'earlier' | 'future' | 'other';
     }>[];
   }>;
   lesson: Readonly<{

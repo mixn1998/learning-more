@@ -5,6 +5,11 @@ import { renderTeachingPersonalizationPrompt } from './teaching-personalization-
 
 const MAX_COURSE_RELATIONS = 8;
 const MAX_LOCAL_COURSE_GOALS = 3;
+const GENERIC_KNOWLEDGE_RELATIONS = new Set([
+  '为下一步理解提供基础',
+  '为下一步学习提供基础',
+  '为后续理解提供基础',
+]);
 
 function section(title: string, values: readonly string[]): string | undefined {
   const content = values.map((value) => value.trim()).filter((value) => value.length > 0);
@@ -53,7 +58,8 @@ function knowledgeBackground(context: TeachingContextPackage): string[] {
           ? '教学责任尚未完成'
           : '当前无新增阻塞';
     const relation =
-      definition?.relationToNext === undefined
+      definition?.relationToNext === undefined ||
+      GENERIC_KNOWLEDGE_RELATIONS.has(definition.relationToNext.trim())
         ? ''
         : `；与下一节点的关系：${definition.relationToNext}`;
     const attachedBranches =
@@ -95,6 +101,7 @@ function localCourseWindow(context: TeachingContextPackage) {
 }
 
 function localCourseGoals(context: TeachingContextPackage): readonly string[] {
+  if (context.course.knowledgeMap !== undefined) return context.course.goals;
   const currentIndex = context.course.lessonMap.findIndex(
     (lesson) => lesson.relation === 'current' || lesson.lessonId === context.lesson.lessonId,
   );
@@ -103,10 +110,56 @@ function localCourseGoals(context: TeachingContextPackage): readonly string[] {
   return context.course.goals.slice(start, start + MAX_LOCAL_COURSE_GOALS);
 }
 
+function courseRelationLabel(
+  relation: TeachingContextPackage['course']['lessonMap'][number]['relation'],
+): string {
+  if (relation === 'current') return '本课';
+  if (relation === 'prerequisite') return '前置课（是否已建立以真实对话为准）';
+  if (relation === 'earlier') return '先前课节（是否已建立以真实对话为准）';
+  if (relation === 'future') return '后续课（尚未学习，仅用于理解方向）';
+  return '相关课（不视为已学习）';
+}
+
+function knowledgeMapBackground(context: TeachingContextPackage): string | undefined {
+  const map = context.course.knowledgeMap;
+  if (map === undefined) return undefined;
+  const module = map.currentModule;
+  const moduleLessons = module.lessons
+    .map(
+      (lesson, index) =>
+        `${index + 1}. ${lesson.title}${lesson.lessonId === context.lesson.lessonId ? '（本课）' : ''}：${lesson.objective}`,
+    )
+    .join('\n');
+  const adjacentModules = [
+    module.previousModuleTitle === undefined
+      ? undefined
+      : `上一模块：${module.previousModuleTitle}`,
+    module.nextModuleTitle === undefined ? undefined : `下一模块：${module.nextModuleTitle}`,
+  ]
+    .filter((value): value is string => value !== undefined)
+    .join('；');
+  const startingPoint =
+    map.isFirstLessonInCourse && map.isFirstLessonInModule
+      ? '本课是当前模块的第一课，也是整门课程的第一课。'
+      : map.isFirstLessonInModule
+        ? '本课是当前模块的第一课，但不是整门课程的第一课。'
+        : undefined;
+  return [
+    '【知识地图位置】',
+    `学科或领域：${map.discipline}`,
+    `课程位置：第 ${map.courseLessonIndex} 课，共 ${map.courseLessonCount} 课`,
+    `当前模块：${module.title}；模块内第 ${module.lessonIndex} 课，共 ${module.lessonCount} 课`,
+    startingPoint,
+    adjacentModules.length === 0 ? undefined : adjacentModules,
+    `模块内课节：\n${moduleLessons}`,
+  ]
+    .filter((value): value is string => value !== undefined)
+    .join('\n');
+}
+
 export function renderTeachingFactContext(context: TeachingContextPackage): string {
   const relations = localCourseWindow(context).map(
-    (lesson) =>
-      `- ${lesson.title}（${lesson.relation === 'current' ? '本课' : lesson.relation === 'prerequisite' ? '前置课' : '相关课'}）：${lesson.objective}`,
+    (lesson) => `- ${lesson.title}（${courseRelationLabel(lesson.relation)}）：${lesson.objective}`,
   );
   const personalization = renderTeachingPersonalizationPrompt(context.personalization);
   const branches = context.teachingState.explorationBranches.map((branch) => {
@@ -132,7 +185,9 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
         ? '这是学习者点击“继续讲解”触发的系统续讲事件；它不是学习者消息、理解证据或互动回应。'
         : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
     `【已知学习背景】\n课程：${context.course.title}\n课程目标：${localCourseGoals(context).join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
+    knowledgeMapBackground(context),
     section('课程关系', relations),
+    `【课程关系使用边界】\n实际发生的对话决定哪些概念已经建立。前置、先前、相关和后续课节标题只描述知识关系；尤其后续课节标题只表示教学方向，不代表相关术语已经建立。`,
     context.course.playIntent === undefined
       ? undefined
       : `【互动关注】\n${context.course.playIntent}`,

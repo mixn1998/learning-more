@@ -8,6 +8,7 @@ import { createLocalFileMessageLog } from '../../modules/learning-session/implem
 import { createLocalFileLearningSessionRepositories } from '../../persistence/learning-session-repositories.js';
 import { createMarkdownArtifactStore } from '../../persistence/markdown-artifact-store.js';
 import type { LocalCourseRuntime } from './course-runtime.js';
+import { projectTeachingKnowledgeMap } from './teaching-knowledge-map.js';
 
 type LearningRepositories = ReturnType<typeof createLocalFileLearningSessionRepositories>;
 type MessageLog = ReturnType<typeof createLocalFileMessageLog>;
@@ -29,22 +30,48 @@ export function createLearningTeachingContext(input: {
       if (course === undefined || lesson === undefined || lesson.courseId !== course.id) {
         throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
       }
-      const lessonMap = [];
+      const activeLessons = [];
       for await (const candidate of input.course.listLessons(courseId)) {
-        lessonMap.push({
+        activeLessons.push(candidate);
+      }
+      const currentLessonIndex = activeLessons.findIndex((candidate) => candidate.id === lessonId);
+      const lessonMap = activeLessons.map((candidate, index) => {
+        const relation =
+          candidate.id === lessonId
+            ? ('current' as const)
+            : lesson.prerequisiteLessonIds.includes(candidate.id)
+              ? ('prerequisite' as const)
+              : currentLessonIndex < 0
+                ? ('other' as const)
+                : index < currentLessonIndex
+                  ? ('earlier' as const)
+                  : ('future' as const);
+        return {
           lessonId: candidate.id,
           title: candidate.title,
           objective: candidate.objective,
-          relation:
-            candidate.id === lessonId
-              ? ('current' as const)
-              : lesson.prerequisiteLessonIds.includes(candidate.id)
-                ? ('prerequisite' as const)
-                : ('other' as const),
-        });
-      }
+          relation,
+        };
+      });
       const playIntent = teachingPlayIntent(course.courseMode);
-      const teachingWeight = await input.course.getTeachingWeightMetadata(course.outlineVersionId);
+      const [teachingWeight, outline] = await Promise.all([
+        input.course.getTeachingWeightMetadata(course.outlineVersionId),
+        input.course.getOutlineVersion(course.outlineVersionId),
+      ]);
+      const outlineCandidate =
+        outline === undefined
+          ? undefined
+          : await input.course.getOutlineCandidate(outline.sourceCandidateVersionId);
+      const knowledgeMap =
+        outline === undefined || outlineCandidate === undefined
+          ? undefined
+          : projectTeachingKnowledgeMap({
+              course,
+              currentLesson: lesson,
+              activeLessons,
+              outline,
+              candidate: outlineCandidate,
+            });
       const keyIndexes = new Set(
         teachingWeight !== undefined && teachingWeightStatus(teachingWeight) === 'completed'
           ? teachingWeight.keyKnowledgePoints
@@ -59,7 +86,8 @@ export function createLearningTeachingContext(input: {
           title: course.title,
           courseMode: course.courseMode,
           ...(playIntent === undefined ? {} : { playIntent }),
-          goals: lessonMap.map((item) => item.objective),
+          goals: outlineCandidate?.candidate.courseGoals ?? lessonMap.map((item) => item.objective),
+          ...(knowledgeMap === undefined ? {} : { knowledgeMap }),
           lessonMap,
         },
         lesson: {

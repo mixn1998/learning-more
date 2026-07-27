@@ -225,18 +225,94 @@ describe('GenerationTeachingAgent', () => {
 
   it('renders an active opening instruction without a fabricated learner request', async () => {
     const fake = runtime();
-    const opening = { ...context(), turnKind: 'opening' as const, recentMessages: [] };
+    const base = context();
+    const opening: TeachingContextPackage = {
+      ...base,
+      turnKind: 'opening',
+      recentMessages: [],
+      course: {
+        ...base.course,
+        goals: ['建立概率推理体系', '连接条件变化与后续推断'],
+        knowledgeMap: {
+          discipline: '数学',
+          courseLessonIndex: 1,
+          courseLessonCount: 6,
+          currentModule: {
+            id: 'module_probability_language',
+            title: '模块一：概率语言',
+            lessonIndex: 1,
+            lessonCount: 2,
+            lessons: [
+              {
+                lessonId: 'lesson_1',
+                title: 'Conditioning',
+                objective: 'Explain conditioning.',
+              },
+              {
+                lessonId: 'lesson_2',
+                title: 'Bayes',
+                objective: 'Explain inverse probability.',
+              },
+            ],
+            nextModuleTitle: '模块二：随机变量',
+          },
+          isFirstLessonInModule: true,
+          isFirstLessonInCourse: true,
+        },
+      },
+    };
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
 
     await agent.submit(opening, 'opening:session_1');
 
-    expect(fake.request()?.prompt).toContain(
-      '只提出一个能够连接本课目标与学习者已有经验的暖场问题',
-    );
+    expect(fake.request()?.prompt).toContain('本课在当前模块和整门课程中的位置及学习意义');
+    expect(fake.request()?.prompt).toContain('最后只提出一个');
+    expect(fake.request()?.prompt).toContain('模块一：概率语言');
+    expect(fake.request()?.prompt).toContain('本课是当前模块的第一课，也是整门课程的第一课');
     expect(fake.request()?.prompt).toContain('本回复不展开任何知识点，也不推进知识点状态');
     expect(fake.request()?.prompt).toContain('确认版知识链是本课教学边界');
     expect(fake.request()?.prompt).toContain('【当前教学窗口】');
     expect(fake.request()?.prompt).not.toContain('【当前诉求｜用户原话】');
+  });
+
+  it('marks future lessons as directional context and ignores placeholder chain edges', async () => {
+    const fake = runtime();
+    const base = context();
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(
+      {
+        ...base,
+        course: {
+          ...base.course,
+          lessonMap: [
+            ...base.course.lessonMap,
+            {
+              lessonId: 'lesson_future',
+              title: 'Echelon forms and pivots',
+              objective: 'Use pivots to read a solution structure.',
+              relation: 'future',
+            },
+          ],
+        },
+        lesson: {
+          ...base.lesson,
+          coreKnowledgePoints: [
+            {
+              ref: 'knowledge:kp_1',
+              text: 'Sample-space change.',
+              relationToNext: '为下一步理解提供基础',
+            },
+          ],
+        },
+      },
+      'message_user_future_boundary',
+    );
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('后续课（尚未学习，仅用于理解方向）');
+    expect(prompt).toContain('后续课节标题只表示教学方向，不代表相关术语已经建立');
+    expect(prompt).not.toContain('与下一节点的关系：为下一步理解提供基础');
   });
 
   it('lets the teaching reply prepare the next point without unfolding it or requiring filler text', async () => {
@@ -354,6 +430,10 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain('各独立语义条件共同如何充分刻画目标');
     expect(prompt).toContain('删减、放宽或替换条件后的反例');
     expect(prompt).toContain('不要求套用固定段落或逐项盘问');
+    expect(prompt).toContain('当前结论如何产生新的问题');
+    expect(prompt).toContain('下一概念为什么由此成为必要');
+    expect(prompt).toContain('尚未学习的后续内容不能作为当前论证的未解释前提');
+    expect(prompt).toContain('先判断缺失的是定义、判据、概念边界还是中间推理');
     expect(prompt).toContain('只有学习者参与会为后续教学带来真实信息或思考价值时才发起互动');
     expect(prompt).not.toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
     expect(prompt.match(/【教学目标】/gu)).toHaveLength(1);
