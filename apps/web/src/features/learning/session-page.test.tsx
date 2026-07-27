@@ -262,7 +262,7 @@ describe('learning SessionPage', () => {
     expect(screen.getByTestId('continuation-divider')).toBeInTheDocument();
   });
 
-  it('shows a prepared pending point as active only while its own continuation is generating', async () => {
+  it('keeps a legacy pre-activated point pending until its own continuation is generating', async () => {
     const snapshot = {
       resourceVersion: 4,
       learning: {
@@ -298,7 +298,7 @@ describe('learning SessionPage', () => {
           {
             ref: 'knowledge:kp_2',
             title: 'Prepared next point',
-            progress: 'pending' as const,
+            progress: 'learning' as const,
             interactionStatus: 'pending' as const,
             delivery: 'not_addressed' as const,
             verification: 'not_observed' as const,

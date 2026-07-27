@@ -614,6 +614,9 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
   const phase = teaching.lessonPhase;
   const afterWarmup = phase !== 'warmup';
   const afterComprehensive = ['discussion', 'summary', 'ready_to_close'].includes(phase);
+  const hasBoundAssistantMessages = state.messages.some(
+    (message) => message.role === 'assistant' && message.knowledgePointRef !== undefined,
+  );
   const path = [
     {
       title: '课前热身',
@@ -629,8 +632,11 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
           emphasis: point.emphasis,
         };
       }
+      const hasTeachingMessage = state.messages.some(
+        (message) => message.role === 'assistant' && message.knowledgePointRef === point.ref,
+      );
       const active =
-        point.progress === 'learning' ||
+        (point.progress === 'learning' && (!hasBoundAssistantMessages || hasTeachingMessage)) ||
         (state.phase === 'generating' && state.generationKnowledgePointRef === point.ref);
       if (point.progress === 'completed') {
         return {
