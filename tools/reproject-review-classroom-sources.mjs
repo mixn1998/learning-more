@@ -34,8 +34,12 @@ const cacheFile =
   cacheFileArgument === undefined
     ? path.join(runtimeRoot, 'review-semantic-distillation-v1.json')
     : path.resolve(projectRoot, cacheFileArgument.slice('--cache-file='.length));
+const lessonIdArgument = process.argv.find((argument) => argument.startsWith('--lesson-id='));
+const lessonId =
+  lessonIdArgument === undefined ? undefined : lessonIdArgument.slice('--lesson-id='.length).trim();
 
 if (apply && verify) throw new Error('review_semantic_mode_conflict');
+if (lessonId === '') throw new Error('review_semantic_lesson_id_empty');
 
 function sha256(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -404,6 +408,7 @@ for (const file of await filesUnder(path.join(dataRoot, 'entities', 'lesson-clos
   if (!file.endsWith('.json')) continue;
   const aggregate = JSON.parse(await readFile(file, 'utf8'));
   const closure = aggregate.data;
+  if (lessonId !== undefined && closure?.lessonId !== lessonId) continue;
   const review = closure?.review;
   if (review?.document?.kind !== 'lesson-final') continue;
   const assistantMessages = (closure.sourceMessageIds ?? [])
