@@ -11,6 +11,98 @@ import { CoursePage } from './course-page.js';
 afterEach(cleanup);
 
 describe('CoursePage', () => {
+  it('loads the bound historical outline so a frozen lesson keeps its original module', async () => {
+    const course = {
+      courseId: 'course_revised',
+      title: 'Revised course',
+      status: 'active' as const,
+      courseMode: 'standard' as const,
+      outlineVersionId: 'outline_current',
+      lessonIds: ['lesson_frozen', 'lesson_current'],
+      lessons: [
+        {
+          lessonId: 'lesson_frozen',
+          outlineVersionId: 'outline_original',
+          title: 'Frozen lesson',
+          objective: 'Keep the completed lesson structure',
+          coreKnowledgePoints: [],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 20,
+        },
+        {
+          lessonId: 'lesson_current',
+          outlineVersionId: 'outline_current',
+          title: 'Current lesson',
+          objective: 'Use the revised outline',
+          coreKnowledgePoints: [],
+          prerequisiteLessonIds: [],
+          estimatedMinutes: 20,
+        },
+      ],
+      outlineMarkdown: '# Revised course\n\n## Current module\n\n### Current lesson',
+      outlineVersions: [
+        {
+          outlineVersionId: 'outline_original',
+          sourceCandidateVersionId: 'candidate_original',
+          createdAt: '2026-07-20T00:00:00.000Z',
+          current: false,
+        },
+        {
+          outlineVersionId: 'outline_current',
+          sourceCandidateVersionId: 'candidate_current',
+          createdAt: '2026-07-21T00:00:00.000Z',
+          current: true,
+        },
+      ],
+      resourceVersion: 2,
+    };
+    const getOutlineVersion = vi.fn(async (_courseId: string, outlineVersionId: string) => ({
+      courseId: 'course_revised',
+      outlineVersionId,
+      sourceCandidateVersionId:
+        outlineVersionId === 'outline_original' ? 'candidate_original' : 'candidate_current',
+      outlineMarkdown:
+        outlineVersionId === 'outline_original'
+          ? '# Original course\n\n## Original module one\n\n### Frozen lesson'
+          : course.outlineMarkdown,
+      disciplineTag: 'general',
+      topicTags: [],
+      createdAt:
+        outlineVersionId === 'outline_original'
+          ? '2026-07-20T00:00:00.000Z'
+          : '2026-07-21T00:00:00.000Z',
+      resourceVersion: 1,
+      current: outlineVersionId === 'outline_current',
+    }));
+
+    render(
+      <CoursePage
+        courseId="course_revised"
+        client={
+          {
+            getCourseReview: vi.fn().mockResolvedValue(undefined),
+            getLessonState: vi.fn(async (lessonId: string) => ({
+              lessonId,
+              progress: lessonId === 'lesson_frozen' ? 'completed' : 'not_started',
+              resourceVersion: 1,
+            })),
+          } as unknown as LearningClient
+        }
+        authoringClient={
+          {
+            getCourse: vi.fn().mockResolvedValue(course),
+            getOutlineVersion,
+          } as unknown as CourseAuthoringClient
+        }
+      />,
+    );
+
+    expect(await screen.findByText('Original module one')).toBeInTheDocument();
+    expect(screen.getByText('Current module')).toBeInTheDocument();
+    expect(screen.queryByText('未分组课程')).not.toBeInTheDocument();
+    expect(getOutlineVersion).toHaveBeenCalledWith('course_revised', 'outline_original');
+  });
+
   it('saves a course-page title edit and updates the visible canonical name', async () => {
     const course = {
       courseId: 'course_rename',

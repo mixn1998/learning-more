@@ -232,4 +232,52 @@ describe('OutlineView', () => {
     expect(ungrouped).not.toBeNull();
     expect(within(ungrouped as HTMLElement).getAllByRole('button')).toHaveLength(3);
   });
+
+  it('keeps a frozen lesson in the module from its bound historical outline', () => {
+    render(
+      <OutlineView
+        course={{
+          courseId: 'course_revised',
+          title: 'Revised course',
+          status: 'active',
+          courseMode: 'standard',
+          outlineVersionId: 'outline_current',
+          lessonIds: ['lesson_frozen', 'lesson_current'],
+          lessons: [
+            {
+              lessonId: 'lesson_frozen',
+              outlineVersionId: 'outline_original',
+              title: 'Frozen lesson',
+              objective: 'Keep the completed lesson structure',
+              coreKnowledgePoints: [],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+            {
+              lessonId: 'lesson_current',
+              outlineVersionId: 'outline_current',
+              title: 'Current lesson',
+              objective: 'Use the revised outline',
+              coreKnowledgePoints: [],
+              prerequisiteLessonIds: [],
+              estimatedMinutes: 20,
+            },
+          ],
+          outlineMarkdown: '# Revised course\n\n## Current module\n\n### Current lesson',
+          resourceVersion: 2,
+        }}
+        lessonStates={{ lesson_frozen: { progress: 'completed' } }}
+        outlineMarkdownByVersion={{
+          outline_original: '# Original course\n\n## Original module one\n\n### Frozen lesson',
+        }}
+        onOpenLesson={vi.fn()}
+      />,
+    );
+
+    const originalModule = screen.getByText('Original module one').closest('.course-module');
+    expect(originalModule).not.toBeNull();
+    expect(within(originalModule as HTMLElement).getByText('Frozen lesson')).toBeInTheDocument();
+    expect(screen.getByText('Current module')).toBeInTheDocument();
+    expect(screen.queryByText('未分组课程')).not.toBeInTheDocument();
+  });
 });

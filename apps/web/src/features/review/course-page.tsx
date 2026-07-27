@@ -184,6 +184,9 @@ export function CoursePage(props: {
   const [lessonStates, setLessonStates] = useState<
     Readonly<Record<string, CourseLessonRuntimeState | undefined>>
   >({});
+  const [outlineMarkdownByVersion, setOutlineMarkdownByVersion] = useState<
+    Readonly<Record<string, string | undefined>>
+  >({});
   const [dashboard, setDashboard] = useState<HomeDashboardView>();
   const [review, setReview] = useState<CourseReviewPayload>();
   const [error, setError] = useState<string>();
@@ -259,17 +262,34 @@ export function CoursePage(props: {
         : await authoring.getCourse(props.courseId);
     if (!mounted.current) return next as CourseArchiveView;
     const archive = next as CourseArchiveView;
-    setCourse(archive);
-    setError(undefined);
-
+    let loadedCurrentOutline: CourseOutlineVersionView | undefined;
+    let loadedOutlineMarkdownByVersion: Readonly<Record<string, string | undefined>> = {};
     if (authoring !== undefined) {
-      void authoring.getOutlineVersion(archive.courseId, archive.outlineVersionId).then(
-        (outline) => {
-          if (mounted.current) setCurrentOutline(outline);
-        },
-        () => undefined,
+      const outlineVersionIds = [
+        ...new Set([
+          archive.outlineVersionId,
+          ...(archive.lessons ?? []).map((lesson) => lesson.outlineVersionId),
+        ]),
+      ];
+      const outlines = await Promise.all(
+        outlineVersionIds.map((outlineVersionId) =>
+          authoring.getOutlineVersion(archive.courseId, outlineVersionId).catch(() => undefined),
+        ),
+      );
+      loadedCurrentOutline = outlines.find(
+        (outline) => outline?.outlineVersionId === archive.outlineVersionId,
+      );
+      loadedOutlineMarkdownByVersion = Object.fromEntries(
+        outlines
+          .filter((outline): outline is CourseOutlineVersionView => outline !== undefined)
+          .map((outline) => [outline.outlineVersionId, outline.outlineMarkdown]),
       );
     }
+    if (!mounted.current) return archive;
+    setCurrentOutline(loadedCurrentOutline);
+    setOutlineMarkdownByVersion(loadedOutlineMarkdownByVersion);
+    setCourse(archive);
+    setError(undefined);
 
     const getLessonState = api.getLessonState?.bind(api);
     if (getLessonState !== undefined) {
@@ -726,6 +746,7 @@ export function CoursePage(props: {
         currentOutline={currentOutline}
         initiallyOpenDelete={props.initiallyOpenDelete}
         lessonStates={lessonStates}
+        outlineMarkdownByVersion={outlineMarkdownByVersion}
         onCloseCourse={() => setCloseConfirmOpen(true)}
         onDeleteCourse={deleteCourse}
         onModifyOutline={() => navigate(`/courses/${course.courseId}?view=revision`)}

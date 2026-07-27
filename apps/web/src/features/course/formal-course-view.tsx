@@ -34,6 +34,7 @@ export function FormalCourseView(props: {
   readonly course: CourseArchiveView;
   readonly currentOutline?: CourseOutlineVersionView | undefined;
   readonly lessonStates: Readonly<Record<string, CourseLessonRuntimeState | undefined>>;
+  readonly outlineMarkdownByVersion?: Readonly<Record<string, string | undefined>> | undefined;
   readonly availableCourses?: readonly CourseDirectoryItem[] | undefined;
   readonly initiallyOpenDelete?: boolean | undefined;
   readonly onCloseCourse: () => void;
@@ -225,6 +226,7 @@ export function FormalCourseView(props: {
         <OutlineView
           course={course}
           lessonStates={props.lessonStates}
+          outlineMarkdownByVersion={props.outlineMarkdownByVersion}
           onOpenLesson={(lessonId, destination) =>
             props.onNavigate(
               destination === 'record'

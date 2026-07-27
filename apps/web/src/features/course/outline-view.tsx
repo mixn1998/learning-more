@@ -26,23 +26,49 @@ function lessonStateLabel(
 export function OutlineView(props: {
   readonly course: CourseArchiveView;
   readonly lessonStates: Readonly<Record<string, CourseLessonRuntimeState | undefined>>;
+  readonly outlineMarkdownByVersion?: Readonly<Record<string, string | undefined>> | undefined;
   readonly onOpenLesson: (lessonId: string, destination: 'lesson' | 'record') => void;
 }) {
   const lessons = props.course.lessons ?? [];
   const lessonById = new Map(lessons.map((lesson) => [lesson.lessonId, lesson]));
-  const projection = projectOutlineMarkdown(
-    props.course.outlineMarkdown ?? '',
-    lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+  const lessonOrder = new Map(props.course.lessonIds.map((lessonId, index) => [lessonId, index]));
+  const orderedLessons = [...lessons].sort(
+    (left, right) =>
+      (lessonOrder.get(left.lessonId) ?? Number.MAX_SAFE_INTEGER) -
+        (lessonOrder.get(right.lessonId) ?? Number.MAX_SAFE_INTEGER) ||
+      left.lessonId.localeCompare(right.lessonId),
   );
+  const outlineVersionIds = [...new Set(orderedLessons.map((lesson) => lesson.outlineVersionId))];
+  const projections = outlineVersionIds.map((outlineVersionId) => {
+    const versionLessons = orderedLessons.filter(
+      (lesson) => lesson.outlineVersionId === outlineVersionId,
+    );
+    const markdown =
+      outlineVersionId === props.course.outlineVersionId
+        ? (props.course.outlineMarkdown ?? '')
+        : (props.outlineMarkdownByVersion?.[outlineVersionId] ?? '');
+    return {
+      outlineVersionId,
+      projection: projectOutlineMarkdown(
+        markdown,
+        versionLessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title })),
+      ),
+    };
+  });
   const modules = [
-    ...projection.modules,
-    ...(projection.ungroupedLessons.length === 0
+    ...projections.flatMap(({ outlineVersionId, projection }) =>
+      projection.modules.map((module) => ({
+        ...module,
+        key: `${outlineVersionId}:${module.key}`,
+      })),
+    ),
+    ...(projections.every(({ projection }) => projection.ungroupedLessons.length === 0)
       ? []
       : [
           {
             key: 'ungrouped-lessons',
             title: '未分组课程',
-            lessons: projection.ungroupedLessons,
+            lessons: projections.flatMap(({ projection }) => projection.ungroupedLessons),
           },
         ]),
   ];
