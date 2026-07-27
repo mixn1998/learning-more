@@ -45,6 +45,7 @@ type MarkdownNode = Readonly<{
   level: number;
   lineIndex: number;
   title: string;
+  matchTitle?: string | undefined;
   parentHeadingIndex?: number | undefined;
 }>;
 
@@ -129,11 +130,18 @@ function parseMarkdown(markdown: string): Readonly<{
     const list = /^\s*(?:[-+*]|\d+[.)、])\s+(.+?)\s*$/u.exec(line);
     if (list === null) continue;
     const parent = headingStack.at(-1);
+    const listContent = list[1] ?? '';
+    const emphasizedTitle = /^(?:\*\*|__)(.+?)(?:\*\*|__)(?=\s|[（(]|$)/u.exec(
+      listContent,
+    )?.[1];
     nodes.push({
       kind: 'list',
       level: (parent?.level ?? 0) + 1,
       lineIndex,
-      title: stripInlineMarkdown(list[1] ?? ''),
+      title: stripInlineMarkdown(listContent),
+      ...(emphasizedTitle === undefined
+        ? {}
+        : { matchTitle: stripInlineMarkdown(emphasizedTitle) }),
       ...(parent === undefined ? {} : { parentHeadingIndex: parent.nodeIndex }),
     });
   }
@@ -238,10 +246,10 @@ function findModuleHeadingIndex(
   return parentIndex;
 }
 
-function likelySameTitle(nodeTitle: string, lessonTitle: string): boolean {
-  const node = normalizeOutlineTitle(nodeTitle);
+function likelySameTitle(node: MarkdownNode, lessonTitle: string): boolean {
+  const nodeTitle = normalizeOutlineTitle(node.matchTitle ?? node.title);
   const lesson = normalizeOutlineTitle(lessonTitle);
-  return node !== '' && node === lesson;
+  return nodeTitle !== '' && nodeTitle === lesson;
 }
 
 function projectWithFormalLessons(
@@ -254,7 +262,7 @@ function projectWithFormalLessons(
 
   lessons.forEach((lesson) => {
     const nodeIndex = parsed.nodes.findIndex(
-      (node, index) => !usedNodeIndexes.has(index) && likelySameTitle(node.title, lesson.title),
+      (node, index) => !usedNodeIndexes.has(index) && likelySameTitle(node, lesson.title),
     );
     if (nodeIndex < 0) {
       ungroupedLessons.push({
