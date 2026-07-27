@@ -273,7 +273,11 @@ describe('GenerationTeachingAgent', () => {
 
     await agent.submit(opening, 'opening:session_1');
 
+    expect(fake.request()?.prompt).toContain('环节目标是建立本课所需的理解背景');
     expect(fake.request()?.prompt).toContain('本课在当前模块和整门课程中的位置及学习意义');
+    expect(fake.request()?.prompt).toContain('当案例是本课的主要理解载体时');
+    expect(fake.request()?.prompt).toContain('关键链条与整体脉络');
+    expect(fake.request()?.prompt).toContain('使后续事实、判断和机制有清晰位置');
     expect(fake.request()?.prompt).toContain('最后只提出一个');
     expect(fake.request()?.prompt).toContain('模块一：概率语言');
     expect(fake.request()?.prompt).toContain('本课是当前模块的第一课，也是整门课程的第一课');
