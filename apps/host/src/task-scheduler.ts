@@ -4,9 +4,12 @@ export type HostTaskDefinition = Readonly<{
   arguments: readonly string[];
   userId: string;
   trigger: 'logon';
+  runLevel: 'limited' | 'highest';
   startWhenAvailable: true;
   allowStartOnBatteries: boolean;
   stopIfGoingOnBatteries: boolean;
+  stopOnIdleEnd: boolean;
+  allowHardTerminate: boolean;
   multipleInstances: 'ignore-new';
   restartIntervalMinutes: 1;
   restartCount: number;

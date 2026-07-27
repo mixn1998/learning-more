@@ -9,9 +9,12 @@ const desired: HostTaskDefinition = {
   arguments: ['C:\\Learning MORE\\host\\main.js', 'run'],
   userId: 'WORKSTATION\\developer',
   trigger: 'logon',
+  runLevel: 'highest',
   startWhenAvailable: true,
   allowStartOnBatteries: true,
   stopIfGoingOnBatteries: false,
+  stopOnIdleEnd: false,
+  allowHardTerminate: false,
   multipleInstances: 'ignore-new',
   restartIntervalMinutes: 1,
   restartCount: 999,
@@ -56,8 +59,9 @@ describe('Windows Host manager', () => {
 
     scheduler.definition = {
       ...desired,
-      allowStartOnBatteries: false,
-      stopIfGoingOnBatteries: true,
+      runLevel: 'limited',
+      stopOnIdleEnd: true,
+      allowHardTerminate: true,
     };
     await expect(manager.status()).resolves.toMatchObject({ state: 'drifted', matches: false });
     await expect(manager.repair()).resolves.toMatchObject({ state: 'installed', matches: true });

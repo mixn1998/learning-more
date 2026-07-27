@@ -100,9 +100,12 @@ function parseDefinition(stdout: string): HostTaskDefinition {
     typeof value.argumentString !== 'string' ||
     typeof value.userId !== 'string' ||
     value.trigger !== 'logon' ||
+    (value.runLevel !== 'limited' && value.runLevel !== 'highest') ||
     typeof value.startWhenAvailable !== 'boolean' ||
     typeof value.allowStartOnBatteries !== 'boolean' ||
     typeof value.stopIfGoingOnBatteries !== 'boolean' ||
+    typeof value.stopOnIdleEnd !== 'boolean' ||
+    typeof value.allowHardTerminate !== 'boolean' ||
     value.multipleInstances !== 'ignore-new' ||
     typeof value.restartIntervalMinutes !== 'number' ||
     typeof value.restartCount !== 'number' ||
@@ -116,9 +119,12 @@ function parseDefinition(stdout: string): HostTaskDefinition {
     arguments: parseWindowsArguments(value.argumentString),
     userId: value.userId,
     trigger: 'logon',
+    runLevel: value.runLevel,
     startWhenAvailable: value.startWhenAvailable as true,
     allowStartOnBatteries: value.allowStartOnBatteries,
     stopIfGoingOnBatteries: value.stopIfGoingOnBatteries,
+    stopOnIdleEnd: value.stopOnIdleEnd,
+    allowHardTerminate: value.allowHardTerminate,
     multipleInstances: 'ignore-new',
     restartIntervalMinutes: value.restartIntervalMinutes as 1,
     restartCount: value.restartCount,
@@ -158,9 +164,12 @@ $restartInterval = [string]$task.Settings.RestartInterval
   argumentString = $action.Arguments
   userId = $task.Principal.UserId
   trigger = if ($trigger.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger') { 'logon' } else { 'unknown' }
+  runLevel = if ($task.Principal.RunLevel.ToString() -eq 'Highest') { 'highest' } else { 'limited' }
   startWhenAvailable = [bool]$task.Settings.StartWhenAvailable
   allowStartOnBatteries = -not [bool]$task.Settings.DisallowStartIfOnBatteries
   stopIfGoingOnBatteries = [bool]$task.Settings.StopIfGoingOnBatteries
+  stopOnIdleEnd = [bool]$task.Settings.StopOnIdleEnd
+  allowHardTerminate = [bool]$task.Settings.AllowHardTerminate
   multipleInstances = if ($task.Settings.MultipleInstances.ToString() -eq 'IgnoreNew') { 'ignore-new' } else { $task.Settings.MultipleInstances.ToString() }
   restartIntervalMinutes = [int]([Xml.XmlConvert]::ToTimeSpan($restartInterval).TotalMinutes)
   restartCount = [int]$task.Settings.RestartCount
@@ -193,8 +202,12 @@ $definitionJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$
 $definition = $definitionJson | ConvertFrom-Json
 $action = New-ScheduledTaskAction -Execute $definition.executable -Argument $definition.argumentString
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $definition.userId
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount $definition.restartCount -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
-$principal = New-ScheduledTaskPrincipal -UserId $definition.userId -LogonType Interactive -RunLevel Limited
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -DisallowHardTerminate -MultipleInstances IgnoreNew -RestartCount $definition.restartCount -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+$principal = New-ScheduledTaskPrincipal -UserId $definition.userId -LogonType Interactive -RunLevel Highest
+$existingTask = Get-ScheduledTask -TaskName $definition.name -ErrorAction SilentlyContinue
+if ($null -ne $existingTask -and $existingTask.State -eq 'Running') {
+  Stop-ScheduledTask -TaskName $definition.name -ErrorAction Stop
+}
 Register-ScheduledTask -TaskName $definition.name -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 `;
       const result = await execute(run, powershell, script);

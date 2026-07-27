@@ -9,9 +9,12 @@ const definition: HostTaskDefinition = {
   arguments: ['C:\\Learning MORE\\host\\main.js', 'run', '--project-root', 'D:\\Growth OS'],
   userId: 'WORKSTATION\\developer',
   trigger: 'logon',
+  runLevel: 'highest',
   startWhenAvailable: true,
   allowStartOnBatteries: true,
   stopIfGoingOnBatteries: false,
+  stopOnIdleEnd: false,
+  allowHardTerminate: false,
   multipleInstances: 'ignore-new',
   restartIntervalMinutes: 1,
   restartCount: 999,
@@ -25,7 +28,7 @@ describe('Windows Task Scheduler adapter', () => {
       const encoded = arguments_[arguments_.indexOf('-EncodedCommand') + 1]!;
       const script = Buffer.from(encoded, 'base64').toString('utf16le');
       scripts.push(script);
-      if (script.includes('Get-ScheduledTask')) {
+      if (script.includes('__LEARNING_MORE_TASK_MISSING__')) {
         return { exitCode: 3, stdout: '__LEARNING_MORE_TASK_MISSING__', stderr: '' };
       }
       return { exitCode: 0, stdout: '', stderr: '' };
@@ -46,8 +49,16 @@ describe('Windows Task Scheduler adapter', () => {
     expect(registration).toContain('MultipleInstances IgnoreNew');
     expect(registration).toContain('AllowStartIfOnBatteries');
     expect(registration).toContain('DontStopIfGoingOnBatteries');
+    expect(registration).toContain('DontStopOnIdleEnd');
+    expect(registration).toContain('DisallowHardTerminate');
     expect(registration).toContain('RestartInterval (New-TimeSpan -Minutes 1)');
     expect(registration).toContain('ExecutionTimeLimit ([TimeSpan]::Zero)');
+    expect(registration).toContain('RunLevel Highest');
+    expect(registration).not.toContain('RunLevel Limited');
+    expect(registration).toContain('Stop-ScheduledTask');
+    expect(registration.indexOf('Stop-ScheduledTask')).toBeLessThan(
+      registration.indexOf('Register-ScheduledTask'),
+    );
     expect(registration).not.toContain(definition.executable);
     expect(registration).not.toContain(definition.userId);
   });
@@ -67,9 +78,12 @@ describe('Windows Task Scheduler adapter', () => {
           argumentString: '"C:\\Learning MORE\\host\\main.js" run --project-root "D:\\Growth OS"',
           userId: definition.userId,
           trigger: definition.trigger,
+          runLevel: definition.runLevel,
           startWhenAvailable: definition.startWhenAvailable,
           allowStartOnBatteries: definition.allowStartOnBatteries,
           stopIfGoingOnBatteries: definition.stopIfGoingOnBatteries,
+          stopOnIdleEnd: definition.stopOnIdleEnd,
+          allowHardTerminate: definition.allowHardTerminate,
           multipleInstances: definition.multipleInstances,
           restartIntervalMinutes: definition.restartIntervalMinutes,
           restartCount: definition.restartCount,
