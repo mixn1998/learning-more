@@ -418,14 +418,6 @@ export function applyTeachingDirective(
     ) {
       invalid('teaching_directive_point_blocked_by_new_difficulty');
     }
-    if (
-      incoming.status === 'completed' &&
-      current.openLoops.some(
-        (loop) => loop.knowledgePointRefs.includes(incoming.ref) && loop.sourceRefs.length > 0,
-      )
-    ) {
-      invalid('teaching_directive_point_blocked_by_open_loop');
-    }
   }
   if (sourceDirective.schemaVersion === 3 && newlyCompleted.length > 1) {
     invalid('teaching_directive_multiple_points_completed');

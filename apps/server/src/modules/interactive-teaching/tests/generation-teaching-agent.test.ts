@@ -155,6 +155,14 @@ function runtime(
       releaseRunNext?.();
       return task;
     },
+    async invalidate(_taskId, errorCode) {
+      task = {
+        ...task,
+        status: 'failed',
+        errorCode,
+      };
+      return task;
+    },
     async get() {
       getCount += 1;
       if (task.status === 'running' && transientRunningReadFailures > 0) {
@@ -717,6 +725,19 @@ describe('GenerationTeachingAgent', () => {
     await expect(agent.recover('task_1')).resolves.toEqual({
       markdown: 'A partial explanation.',
       completionStatus: 'interrupted',
+    });
+  });
+
+  it('can re-read a complete structured draft invalidated only by teaching state validation', async () => {
+    const fake = runtime();
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+    await agent.submit(context(), 'message_user_1');
+    await fake.value.runNext();
+    await fake.value.invalidate?.('task_1', 'teaching_output_invalid');
+
+    await expect(agent.read('task_1')).resolves.toEqual({
+      markdown: 'A free-form explanation. A second sentence.',
+      directive: fake.directive,
     });
   });
 

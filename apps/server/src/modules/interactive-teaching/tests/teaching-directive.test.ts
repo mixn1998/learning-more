@@ -170,6 +170,51 @@ describe('teaching directive', () => {
     });
   });
 
+  it('lets the teaching agent complete the current point when historical open loops remain as context', () => {
+    const learning = {
+      ...applyTeachingDirective(initial(), {
+        schemaVersion: 3,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_1',
+        knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+        turnHandoff: 'invite_response',
+        interactionPromptExcerpt: 'Which evidence can establish the delay before diagnosing it?',
+      }),
+      openLoops: [
+        {
+          entryId: 'open_loop_1',
+          summary: 'The later investigation still needs to identify the concrete cause.',
+          knowledgePointRefs: ['knowledge:kp_1'],
+          sourceRefs: ['message:message_user_1'],
+        },
+      ],
+    };
+
+    const advanced = applyTeachingDirective(learning, {
+      schemaVersion: 3,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      knowledgePoints: [
+        {
+          ref: 'knowledge:kp_1',
+          status: 'completed',
+          interactionStatus: 'completed',
+        },
+      ],
+      turnHandoff: 'offer_continue',
+    });
+
+    expect(advanced).toMatchObject({
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      turnHandoff: 'offer_continue',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', progress: 'completed', interactionStatus: 'completed' },
+        { ref: 'knowledge:kp_2', progress: 'pending', interactionStatus: 'pending' },
+      ],
+    });
+    expect(advanced.openLoops).toEqual(learning.openLoops);
+  });
+
   it('rejects marking an unexpanded next point as learning', () => {
     const learning = applyTeachingDirective(initial(), {
       schemaVersion: 2,

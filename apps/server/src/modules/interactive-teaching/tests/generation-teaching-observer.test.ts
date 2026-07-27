@@ -139,8 +139,9 @@ describe('GenerationTeachingObserver', () => {
     expect(request?.prompt).toContain('不要输出 progressionSignal');
     expect(request?.prompt).toContain('open_loop 必须引用用户消息');
     expect(request?.prompt).toContain('绝不能把助手提出的问题记为 open_loop');
+    expect(request?.prompt).toContain('已回应的证据边界与教学衔接，不是 open_loop');
     expect(request?.prompt).toContain('记录为 learner_intent');
-    expect(result.observerVersion).toBe('teaching-observer@4');
+    expect(result.observerVersion).toBe('teaching-observer@5');
     expect(result.interactions).toEqual(output.interactions);
   });
 

@@ -199,7 +199,12 @@ export function createGenerationTeachingAgent(options: {
     },
     async read(taskId) {
       const task = await options.runtime.get(taskId);
-      if (task.status !== 'completed') return undefined;
+      if (
+        task.status !== 'completed' &&
+        !(task.status === 'failed' && task.errorCode === 'teaching_output_invalid')
+      ) {
+        return undefined;
+      }
       return parseTeachingAgentResult(
         task.draftMarkdown ?? '',
         task.taskKey.startsWith(STRUCTURED_TASK_PREFIX),

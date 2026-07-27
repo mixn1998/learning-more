@@ -831,7 +831,12 @@ export function createInteractiveTeaching(options: {
     const taskId = latestAssistant?.generationTaskId;
     if (taskId === undefined) return;
     const task = input.tasks.find((candidate) => candidate.id === taskId);
-    if (task?.status !== 'completed') return;
+    if (
+      task?.status !== 'completed' &&
+      !(task?.status === 'failed' && task.errorCode === 'teaching_output_invalid')
+    ) {
+      return;
+    }
     const currentUserMessageId = input.messages
       .slice(0, latestAssistantIndex)
       .findLast((message) => message.role === 'user')?.messageId;
@@ -864,10 +869,7 @@ export function createInteractiveTeaching(options: {
     } catch (error) {
       if (
         error instanceof Error &&
-        (error.message === 'teaching_directive_phase_regression' ||
-          error.message === 'teaching_directive_completed_point_regression' ||
-          error.message === 'teaching_directive_learning_point_regression' ||
-          error.message === 'teaching_directive_comprehensive_regression')
+        (error.message.startsWith('teaching_directive_') || error.name === 'ZodError')
       ) {
         return;
       }

@@ -27,6 +27,7 @@ const OBSERVATION_CAPABILITY = [
   '教学观察不判断知识点是否完成，也不决定课程阶段或课程闭环，不要输出 progressionSignal。教学推进完全由教学智能体的隐藏结构化指令负责。',
   'learner_demonstration、learner_misconception 和 assessment 只记录用户在会话中实际呈现的学习行为与证据，不得把 assessment 解释为前端进度或阶段门槛。',
   '用户明确跳过知识点、知识点互动或综合应用时，记录为 learner_intent；用户提出且在完整历史结束时仍未被回答的相关疑问记录为 open_loop。open_loop 必须引用用户消息，绝不能把助手提出的问题记为 open_loop。已经在历史中得到回答的问题不要保留为 open_loop。',
+  '如果助手已经解释当前证据为何不足以断言答案，并把该事项作为后续知识点或后续调查自然引出，这属于已回应的证据边界与教学衔接，不是 open_loop；不要把客观上仍待调查的事项等同于用户疑问尚未得到回应。',
   'learner_reasoning_behavior 的 elicitation 用 spontaneous、elicited、mixed 或 unknown，表示该行为是否由教学任务直接引出；它不改变行为事实本身。',
   '只返回 scope、entries 与 interactions 的 JSON 数据，不输出 Markdown 说明。',
 ].join('\n');
@@ -157,7 +158,7 @@ export function createGenerationTeachingObserver(options: {
   nextObservationId?: (sourceSnapshotHash: string) => string;
   now?: () => Date;
 }): TeachingObserver {
-  const observerVersion = options.observerVersion ?? 'teaching-observer@4';
+  const observerVersion = options.observerVersion ?? 'teaching-observer@5';
   return {
     async observe(input) {
       const serializedInput = JSON.stringify(input);

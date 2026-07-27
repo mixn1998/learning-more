@@ -66,6 +66,7 @@ async function fixture(
     legacyRecoveredTaskSourceId?: string;
     recoveredTaskStatus?: GenerationTask['status'];
     recoveredTaskMarkdown?: string;
+    recoveredTaskErrorCode?: string;
     ledgerDirectiveSaveConflictsOnce?: boolean;
     agentReadError?: Error;
     agentRecoverError?: Error;
@@ -250,6 +251,9 @@ async function fixture(
           taskGroup: 'interactive' as const,
           ownerRef: 'session_1',
           draftMarkdown: options.recoveredTaskMarkdown ?? 'Recovered teaching explanation.',
+          ...(options.recoveredTaskErrorCode === undefined
+            ? {}
+            : { errorCode: options.recoveredTaskErrorCode }),
           ...(options.legacyRecoveredTaskSourceId === undefined
             ? { requestRef: 'message_user_1' }
             : {
@@ -1799,6 +1803,81 @@ describe('InteractiveTeaching deep module', () => {
     await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
       lessonPhase: 'comprehensive_application',
       comprehensiveCheck: 'learning',
+      knowledgePoints: [{ progress: 'completed', interactionStatus: 'completed' }],
+    });
+  });
+
+  it('replays a committed directive from a task previously rejected only by state validation', async () => {
+    const directive: TeachingDirective = {
+      schemaVersion: 1,
+      lessonPhase: 'comprehensive_application',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', status: 'completed', interactionStatus: 'completed' },
+      ],
+      comprehensiveCheck: 'learning',
+      closureInquiry: 'pending',
+      summaryStatus: 'pending',
+      turnHandoff: 'offer_continue',
+    };
+    const { module, reconcileGeneration, ledgerRepository, sessionModule } = await fixture({
+      agentDirective: directive,
+      recoveredTaskStatus: 'failed',
+      recoveredTaskErrorCode: 'teaching_output_invalid',
+    });
+    await seedLearningKnowledgePoint(ledgerRepository);
+    const appended = await sessionModule.execute(
+      {
+        type: 'AppendUserMessage',
+        lessonId: 'lesson_1',
+        messageId: 'message_user_1',
+        contentArtifactRef: 'artifact:user:1',
+      },
+      commandContext,
+    );
+    const bound = await sessionModule.execute(
+      {
+        type: 'StartSessionGeneration',
+        lessonId: 'lesson_1',
+        taskId: 'task_recovered',
+        mode: 'new-turn',
+      },
+      {
+        ...commandContext,
+        commandId: 'bind_failed_state_validation_task',
+        idempotencyKey: 'bind_failed_state_validation_task',
+        expectedVersion: appended.value.resourceVersion,
+      },
+    );
+    await sessionModule.execute(
+      {
+        type: 'CommitAssistantMessage',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        messageId: 'message_ai_recovered',
+        contentArtifactRef: 'artifact:user:2',
+        generationTaskId: 'task_recovered',
+        knowledgePointRef: 'knowledge:kp_1',
+        completionStatus: 'complete',
+      },
+      {
+        ...commandContext,
+        commandId: 'commit_failed_state_validation_reply',
+        idempotencyKey: 'commit_failed_state_validation_reply',
+        expectedVersion: bound.value.resourceVersion,
+      },
+    );
+
+    await reconcileGeneration({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      context: commandContext,
+    });
+
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'comprehensive_application',
+      comprehensiveCheck: 'learning',
+      turnHandoff: 'offer_continue',
       knowledgePoints: [{ progress: 'completed', interactionStatus: 'completed' }],
     });
   });
