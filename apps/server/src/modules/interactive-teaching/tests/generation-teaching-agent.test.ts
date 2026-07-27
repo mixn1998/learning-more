@@ -357,8 +357,9 @@ describe('GenerationTeachingAgent', () => {
     await agent.submit(advancingContext, 'message_user_advance');
 
     const prompt = fake.request()?.prompt ?? '';
-    expect(prompt).toContain('完成后可以把下一主链节点置为 learning，为下一轮准备');
+    expect(prompt).toContain('下一主链节点保持 pending');
     expect(prompt).toContain('不要在同一可见回复中展开下一节点');
+    expect(prompt).not.toContain('把相邻下一点设为 learning');
     expect(prompt).toContain('界面会提供“继续讲解”');
     expect(prompt).not.toContain('直接在同一回复中自然衔接并开始下一知识点');
   });

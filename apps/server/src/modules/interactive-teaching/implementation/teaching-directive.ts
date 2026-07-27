@@ -390,6 +390,7 @@ export function applyTeachingDirective(
 
   const currentByRef = new Map(current.knowledgePoints.map((point) => [point.ref, point]));
   const newlyCompleted: string[] = [];
+  const newlyLearning: string[] = [];
   for (const incoming of directive.knowledgePoints) {
     const previous = normalizedProgress(currentByRef.get(incoming.ref)?.progress);
     if ((previous === 'completed' || previous === 'skipped') && incoming.status !== previous) {
@@ -400,6 +401,9 @@ export function applyTeachingDirective(
     }
     if (incoming.status === 'completed' && previous !== 'completed' && previous !== 'skipped') {
       newlyCompleted.push(incoming.ref);
+    }
+    if (incoming.status === 'learning' && previous === 'pending') {
+      newlyLearning.push(incoming.ref);
     }
     if (incoming.status === 'skipped' && incoming.interactionStatus !== 'skipped') {
       invalid('teaching_directive_skipped_point_interaction_mismatch');
@@ -427,12 +431,19 @@ export function applyTeachingDirective(
     invalid('teaching_directive_multiple_points_completed');
   }
   if (
-    sourceDirective.schemaVersion === 3 &&
+    sourceDirective.schemaVersion !== 1 &&
     newlyCompleted.length === 1 &&
     current.activeKnowledgePointRef !== undefined &&
     newlyCompleted[0] !== current.activeKnowledgePointRef
   ) {
     invalid('teaching_directive_non_active_point_completed');
+  }
+  if (
+    sourceDirective.schemaVersion !== 1 &&
+    (current.lessonPhase ?? 'warmup') === 'knowledge_point' &&
+    newlyLearning.some((ref) => ref !== current.activeKnowledgePointRef)
+  ) {
+    invalid('teaching_directive_unexpanded_next_point_learning');
   }
 
   const phaseOrder = [
@@ -483,12 +494,41 @@ export function applyTeachingDirective(
   ) {
     invalid('teaching_directive_active_point_required');
   }
-  if (
-    directive.lessonPhase === 'knowledge_point' &&
-    directive.knowledgePoints.find((point) => point.ref === directive.activeKnowledgePointRef)
-      ?.status !== 'learning'
-  ) {
-    invalid('teaching_directive_active_point_not_learning');
+  const activePoint = directive.knowledgePoints.find(
+    (point) => point.ref === directive.activeKnowledgePointRef,
+  );
+  if (directive.lessonPhase === 'knowledge_point' && activePoint?.status !== 'learning') {
+    const currentActive = current.activeKnowledgePointRef;
+    const currentActiveBefore =
+      currentActive === undefined
+        ? undefined
+        : normalizedProgress(currentByRef.get(currentActive)?.progress);
+    const currentActiveAfter = directive.knowledgePoints.find(
+      (point) => point.ref === currentActive,
+    )?.status;
+    const currentSettledThisTurn =
+      currentActive !== undefined &&
+      currentActiveBefore !== 'completed' &&
+      currentActiveBefore !== 'skipped' &&
+      (currentActiveAfter === 'completed' || currentActiveAfter === 'skipped');
+    const nextUnsettledRef =
+      currentActive === undefined
+        ? undefined
+        : directive.knowledgePoints
+            .slice(expectedRefs.indexOf(currentActive) + 1)
+            .find((point) => point.status !== 'completed' && point.status !== 'skipped')?.ref;
+    const alreadyPrepared =
+      currentPhase === 'knowledge_point' &&
+      currentActiveBefore === 'pending' &&
+      directive.activeKnowledgePointRef === currentActive;
+    const preparedAfterCurrent =
+      currentPhase === 'knowledge_point' &&
+      activePoint?.status === 'pending' &&
+      currentSettledThisTurn &&
+      directive.activeKnowledgePointRef === nextUnsettledRef;
+    if (!alreadyPrepared && !preparedAfterCurrent) {
+      invalid('teaching_directive_active_point_not_learning');
+    }
   }
   if (
     !['warmup', 'knowledge_point'].includes(directive.lessonPhase) &&

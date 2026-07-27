@@ -105,13 +105,12 @@ describe('teaching directive', () => {
           status: 'completed',
           interactionStatus: 'completed',
         },
-        { ref: 'knowledge:kp_2', status: 'learning' },
       ],
     });
 
     expect(advanced.knowledgePoints).toMatchObject([
       { progress: 'completed', interactionStatus: 'completed' },
-      { progress: 'learning', interactionStatus: 'pending' },
+      { progress: 'pending', interactionStatus: 'pending' },
     ]);
   });
 
@@ -127,19 +126,16 @@ describe('teaching directive', () => {
       schemaVersion: 2,
       lessonPhase: 'knowledge_point',
       activeKnowledgePointRef: 'knowledge:kp_2',
-      knowledgePoints: [
-        { ref: 'knowledge:kp_1', status: 'completed' },
-        { ref: 'knowledge:kp_2', status: 'learning' },
-      ],
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'completed' }],
     });
 
     expect(advanced.knowledgePoints).toMatchObject([
       { progress: 'completed', interactionStatus: 'pending' },
-      { progress: 'learning', interactionStatus: 'pending' },
+      { progress: 'pending', interactionStatus: 'pending' },
     ]);
   });
 
-  it('stores a version 3 handoff while completing only the active main-chain point', () => {
+  it('prepares the adjacent next point without marking it as taught', () => {
     const learning = applyTeachingDirective(initial(), {
       schemaVersion: 2,
       lessonPhase: 'knowledge_point',
@@ -151,18 +147,49 @@ describe('teaching directive', () => {
       schemaVersion: 3,
       lessonPhase: 'knowledge_point',
       activeKnowledgePointRef: 'knowledge:kp_2',
-      knowledgePoints: [
-        { ref: 'knowledge:kp_1', status: 'completed' },
-        { ref: 'knowledge:kp_2', status: 'learning' },
-      ],
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'completed' }],
       turnHandoff: 'offer_continue',
     });
 
     expect(advanced).toMatchObject({
       activeKnowledgePointRef: 'knowledge:kp_2',
       turnHandoff: 'offer_continue',
+      knowledgePoints: [{ progress: 'completed' }, { progress: 'pending' }],
+    });
+
+    const started = applyTeachingDirective(advanced, {
+      schemaVersion: 3,
+      lessonPhase: 'knowledge_point',
+      knowledgePoints: [{ ref: 'knowledge:kp_2', status: 'learning' }],
+      turnHandoff: 'offer_continue',
+    });
+
+    expect(started).toMatchObject({
+      activeKnowledgePointRef: 'knowledge:kp_2',
       knowledgePoints: [{ progress: 'completed' }, { progress: 'learning' }],
     });
+  });
+
+  it('rejects marking an unexpanded next point as learning', () => {
+    const learning = applyTeachingDirective(initial(), {
+      schemaVersion: 2,
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: [{ ref: 'knowledge:kp_1', status: 'learning' }],
+    });
+
+    expect(() =>
+      applyTeachingDirective(learning, {
+        schemaVersion: 3,
+        lessonPhase: 'knowledge_point',
+        activeKnowledgePointRef: 'knowledge:kp_2',
+        knowledgePoints: [
+          { ref: 'knowledge:kp_1', status: 'completed' },
+          { ref: 'knowledge:kp_2', status: 'learning' },
+        ],
+        turnHandoff: 'offer_continue',
+      }),
+    ).toThrowError('teaching_directive_unexpanded_next_point_learning');
   });
 
   it('rejects completing multiple main-chain points in one version 3 turn', () => {

@@ -262,6 +262,83 @@ describe('learning SessionPage', () => {
     expect(screen.getByTestId('continuation-divider')).toBeInTheDocument();
   });
 
+  it('shows a prepared pending point as active only while its own continuation is generating', async () => {
+    const snapshot = {
+      resourceVersion: 4,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress' as const,
+        session: {
+          id: 'session_01',
+          state: 'active' as const,
+          messageIds: ['message_assistant_01'],
+          evidenceCheckpoint: true,
+        },
+        processedCommandIds: [],
+      },
+      teachingProgress: {
+        ledgerVersion: 3,
+        observationStatus: 'current' as const,
+        lessonPhase: 'knowledge_point' as const,
+        activeKnowledgePointRef: 'knowledge:kp_2',
+        comprehensiveCheck: 'pending' as const,
+        closureInquiry: 'pending' as const,
+        summaryStatus: 'pending' as const,
+        turnHandoff: 'offer_continue' as const,
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: 'Completed point',
+            progress: 'completed' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'explained' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+          {
+            ref: 'knowledge:kp_2',
+            title: 'Prepared next point',
+            progress: 'pending' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'not_addressed' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        {
+          id: 'message_assistant_01',
+          role: 'assistant' as const,
+          createdAt: '',
+          markdown: 'The previous point is complete.',
+          completionStatus: 'complete' as const,
+          knowledgePointRef: 'knowledge:kp_1',
+        },
+      ],
+    };
+    const continueTeaching = vi.fn(() => new Promise<never>(() => undefined));
+
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({
+          continueTeaching,
+          getSession: vi.fn().mockResolvedValue(snapshot),
+        })}
+      />,
+    );
+
+    const preparedPoint = await screen.findByText('Prepared next point');
+    expect(preparedPoint.closest('li')).toHaveClass('pending');
+
+    fireEvent.click(await screen.findByRole('button', { name: '继续讲解' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Prepared next point').closest('li')).toHaveClass('active'),
+    );
+  });
+
   it('restores knowledge-point titles and continuation boundaries from persisted messages', async () => {
     const getSession = vi.fn().mockResolvedValue({
       resourceVersion: 7,

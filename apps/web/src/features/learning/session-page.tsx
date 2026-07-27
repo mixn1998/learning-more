@@ -629,7 +629,9 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
           emphasis: point.emphasis,
         };
       }
-      const active = point.progress === 'learning';
+      const active =
+        point.progress === 'learning' ||
+        (state.phase === 'generating' && state.generationKnowledgePointRef === point.ref);
       if (point.progress === 'completed') {
         return {
           title: point.title,

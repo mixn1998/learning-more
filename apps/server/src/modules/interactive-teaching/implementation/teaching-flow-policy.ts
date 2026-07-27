@@ -21,7 +21,7 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
       : phase === 'knowledge_point'
         ? [
             `当前从知识点“${activePoint?.text ?? '账本标记的当前知识点'}”继续教学。`,
-            '本回复可以继续或完成当前节点；完成后可以把下一主链节点置为 learning，为下一轮准备，但不要在同一可见回复中展开下一节点。最后一个主链节点完成后可以把下一阶段置为 comprehensive_application，但综合应用在下一轮展开。',
+            '本回复可以继续或完成当前节点；完成后可以把教学游标切换到相邻下一主链节点，但下一主链节点保持 pending，直到属于它的讲解真正开始。不要在同一可见回复中展开下一节点。最后一个主链节点完成后可以把下一阶段置为 comprehensive_application，但综合应用在下一轮展开。',
           ]
         : phase === 'comprehensive_application'
           ? [
