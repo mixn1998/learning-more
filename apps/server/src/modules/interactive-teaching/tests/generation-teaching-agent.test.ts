@@ -350,6 +350,10 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain('以学习者形成清晰、准确、能够支撑后续理解的知识结构为最高目标');
     expect(prompt).toContain('自主选择此刻最有教学价值的教学动作');
     expect(prompt).toContain('讲解深度、表达方式、互动形式和衔接范围由你判断');
+    expect(prompt).toContain('优先以精确定义建立共同基准');
+    expect(prompt).toContain('各独立语义条件共同如何充分刻画目标');
+    expect(prompt).toContain('删减、放宽或替换条件后的反例');
+    expect(prompt).toContain('不要求套用固定段落或逐项盘问');
     expect(prompt).toContain('只有学习者参与会为后续教学带来真实信息或思考价值时才发起互动');
     expect(prompt).not.toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
     expect(prompt.match(/【教学目标】/gu)).toHaveLength(1);
