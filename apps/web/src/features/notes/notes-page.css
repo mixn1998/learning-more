@@ -131,9 +131,28 @@
 .notes-directory-all.active,
 .notes-tree-row > button:last-child.active,
 .notes-tree-course-label.active {
-  background: color-mix(in srgb, var(--tint) 50%, transparent);
+  background: transparent;
   color: var(--accent-dark);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: none;
+}
+
+.notes-directory-all.active span,
+.notes-tree-row > button:last-child.active span,
+.notes-tree-course-label.active span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notes-directory-all.active span::before,
+.notes-tree-row > button:last-child.active span::before,
+.notes-tree-course-label.active span::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
 }
 
 .notes-directory-all span,
@@ -178,12 +197,12 @@
 
 .notes-tree-discipline > button:last-child {
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .notes-tree-course-label {
   font-size: 10px;
-  font-weight: 720;
+  font-weight: 650;
 }
 
 .notes-tree-toggle {
