@@ -126,13 +126,14 @@ function hasUnappliedRevisionConversation(session: OutlineSessionView): boolean 
   return generationMessageIndex >= 0 && generationMessageIndex < messages.length - 1;
 }
 
-async function waitForAdjustedSession(input: {
+export async function waitForAdjustedSession(input: {
   readonly authoring: CoursePageAuthoringClient;
   readonly outlineSessionId: string;
   readonly baselineCandidateVersionId?: string | undefined;
   readonly appendState: string;
+  readonly shouldContinue?: (() => boolean) | undefined;
 }): Promise<OutlineSessionView> {
-  for (let attempt = 0; attempt < 480; attempt += 1) {
+  while (input.shouldContinue?.() ?? true) {
     const session = await input.authoring.getOutlineSession(input.outlineSessionId);
     if (
       session.candidateVersionId !== undefined &&
@@ -161,7 +162,7 @@ async function waitForAdjustedSession(input: {
     if (candidateExpected && session.state === 'candidate-ready') return session;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error('outline_adjustment_generation_timeout');
+  throw new Error('outline_adjustment_observation_stopped');
 }
 
 export function CoursePage(props: {
@@ -372,6 +373,7 @@ export function CoursePage(props: {
             outlineSessionId: opened.outlineSessionId,
             baselineCandidateVersionId: currentOutline.sourceCandidateVersionId,
             appendState: opened.state,
+            shouldContinue: () => !cancelled && mounted.current,
           });
         }
         if (cancelled || !mounted.current) return;
@@ -556,6 +558,7 @@ export function CoursePage(props: {
         outlineSessionId: revisionSession.outlineSessionId,
         baselineCandidateVersionId,
         appendState: accepted.state,
+        shouldContinue: () => mounted.current,
       });
       if (generationCancelled.current || !mounted.current) return;
       const candidate = candidateFromSession(course, currentOutline, refreshed);
