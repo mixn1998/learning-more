@@ -11,6 +11,46 @@ import { CoursePage, waitForAdjustedSession } from './course-page.js';
 afterEach(cleanup);
 
 describe('CoursePage', () => {
+  it('keeps observing after a transient outline-session read interruption', async () => {
+    vi.useFakeTimers();
+    try {
+      const getOutlineSession = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({
+          outlineSessionId: 'outline_session_recovering',
+          resourceVersion: 2,
+          state: 'generating-candidates',
+          candidateVersionId: 'candidate_old',
+          candidateMarkdown: '# Existing candidate',
+        })
+        .mockResolvedValue({
+          outlineSessionId: 'outline_session_recovering',
+          resourceVersion: 3,
+          state: 'candidate-ready',
+          candidateVersionId: 'candidate_new',
+          candidateMarkdown: '# Completed candidate',
+        });
+
+      const result = waitForAdjustedSession({
+        authoring: { getOutlineSession } as unknown as CourseAuthoringClient,
+        outlineSessionId: 'outline_session_recovering',
+        baselineCandidateVersionId: 'candidate_old',
+        appendState: 'running',
+      });
+      const assertion = expect(result).resolves.toMatchObject({
+        state: 'candidate-ready',
+        candidateVersionId: 'candidate_new',
+      });
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await assertion;
+      expect(getOutlineSession).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps observing a candidate generation that runs beyond the former four-minute client timeout', async () => {
     vi.useFakeTimers();
     try {

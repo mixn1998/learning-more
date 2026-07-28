@@ -134,7 +134,13 @@ export async function waitForAdjustedSession(input: {
   readonly shouldContinue?: (() => boolean) | undefined;
 }): Promise<OutlineSessionView> {
   while (input.shouldContinue?.() ?? true) {
-    const session = await input.authoring.getOutlineSession(input.outlineSessionId);
+    let session: OutlineSessionView;
+    try {
+      session = await input.authoring.getOutlineSession(input.outlineSessionId);
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      continue;
+    }
     if (
       session.candidateVersionId !== undefined &&
       session.candidateVersionId !== input.baselineCandidateVersionId
