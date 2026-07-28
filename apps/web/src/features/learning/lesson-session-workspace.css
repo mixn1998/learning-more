@@ -207,6 +207,7 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
 }
 .lesson-notes-head h3 {
   margin: 0;
+  font-size: 12px;
 }
 .lesson-notes-head a {
   color: var(--accent-dark);
@@ -227,6 +228,7 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   background: var(--paper-2);
   color: var(--ink);
   font: inherit;
+  font-size: 10px;
   line-height: 1.55;
   resize: vertical;
 }
