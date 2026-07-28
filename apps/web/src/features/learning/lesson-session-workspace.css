@@ -282,15 +282,20 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   justify-content: flex-end;
   gap: 10px;
 }
-.lesson-note-text-button {
-  padding: 0;
+.lesson-session-side .lesson-note-item-actions .lesson-note-text-button {
+  display: inline-flex;
+  min-height: 22px;
+  padding: 2px 4px;
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--accent-dark);
   font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
 }
-.lesson-note-text-button.danger {
+.lesson-session-side .lesson-note-item-actions .lesson-note-text-button.danger {
   color: var(--danger);
 }
 .lesson-session-side .lesson-session-timer {
