@@ -1,16 +1,16 @@
 import type { CourseAuthoringRepositories } from '../../../persistence/course-authoring-repositories.js';
 import type { AuthoringContext, FrozenLessonOutlineContext } from '../ports/authoring-agent.js';
 import { buildOutlineSemanticManifest } from './outline-semantic-manifest.js';
+import { projectSemanticText } from './semantic-context-projection.js';
 
 const MAX_MATERIAL_EXCERPT_CHARS = 12_000;
-const MAX_HISTORY_MESSAGES = 12;
-const MAX_HISTORY_MESSAGE_CHARS = 1_000;
+const MAX_HISTORICAL_DIALOGUE_CHARS = 1_800;
 
 function normalizeMessageContent(content: string): string {
-  return content.replace(/\s+/gu, ' ').trim().slice(0, MAX_HISTORY_MESSAGE_CHARS);
+  return content.replace(/\s+/gu, ' ').trim();
 }
 
-function compactHistoricalDialogue(records: readonly AuthoringContext['messages'][]): string {
+function projectHistoricalDialogue(records: readonly AuthoringContext['messages'][]): string {
   const entries = records
     .flat()
     .filter((message) => message.status === 'complete')
@@ -27,13 +27,15 @@ function compactHistoricalDialogue(records: readonly AuthoringContext['messages'
         (candidate) => candidate.role === message.role && candidate.content === message.content,
       ) === index,
   );
-  const selected =
-    unique.length <= MAX_HISTORY_MESSAGES
-      ? unique
-      : [...unique.slice(0, 4), ...unique.slice(-(MAX_HISTORY_MESSAGES - 4))];
-  return selected
+  const latestAssistantIndex = unique.findLastIndex((message) => message.role === 'assistant');
+  const semanticProjection = unique.filter(
+    (message, index) =>
+      message.role === 'assistant' || latestAssistantIndex < 0 || index > latestAssistantIndex,
+  );
+  const rendered = semanticProjection
     .map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.content}`)
     .join('\n');
+  return projectSemanticText(rendered, MAX_HISTORICAL_DIALOGUE_CHARS);
 }
 
 export function createAuthoringContextAssembler(
@@ -84,7 +86,7 @@ export function createAuthoringContextAssembler(
         ? {}
         : {
             pastVersionContext: {
-              dialogueDigest: compactHistoricalDialogue(historicalMessages),
+              dialogueDigest: projectHistoricalDialogue(historicalMessages),
               frozenLessons,
             },
           }),

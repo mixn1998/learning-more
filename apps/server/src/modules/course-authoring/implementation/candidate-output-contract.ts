@@ -1,9 +1,9 @@
 import { CandidateOutlineMetadataSchema } from './schemas/candidate-outline.js';
 import type { CandidatePromptInput } from './prompt-input-builder.js';
+import { projectSemanticText, selectSemanticItems } from './semantic-context-projection.js';
 
 const MAX_PAST_VERSION_CONTEXT_CHARS = 3_000;
 const MAX_PAST_DIALOGUE_DIGEST_CHARS = 900;
-const MAX_CURRENT_ADJUSTMENT_CONTEXT_CHARS = 5_000;
 const MAX_ADJUSTMENT_TARGET_NAMES_CHARS = 500;
 
 export const candidateOutlineOutputExample = {
@@ -76,43 +76,51 @@ function renderConversation(conversation: CandidatePromptInput['conversation']):
     .join('\n\n');
 }
 
-function compactPromptText(text: string, maxCharacters: number): string {
-  const trimmed = text.trim();
-  if (trimmed.length <= maxCharacters) return trimmed;
-  const normalized = trimmed.replace(/\s+/gu, ' ');
-  const marker = ' … ';
-  const available = maxCharacters - marker.length;
-  const headLength = Math.ceil(available * 0.7);
-  return `${normalized.slice(0, headLength)}${marker}${normalized.slice(
-    normalized.length - (available - headLength),
-  )}`;
+function renderFrozenLessonAnchors(
+  context: NonNullable<CandidatePromptInput['pastVersionContext']>,
+  maxCharacters: number,
+): string {
+  if (context.frozenLessons.length === 0) {
+    return 'No lessons from a past version have been started.';
+  }
+  const anchors = context.frozenLessons.map(
+    (lesson) => `- ${lesson.progress} | ${lesson.semanticKey} | ${lesson.title}`,
+  );
+  const selection = selectSemanticItems(anchors, Math.max(0, maxCharacters - 80));
+  const omission =
+    selection.omitted === 0
+      ? []
+      : [`- ${selection.omitted} additional frozen lesson anchors are enforced by the server.`];
+  return [...selection.selected, ...omission].join('\n');
 }
 
 function renderPastVersionContext(
   context: NonNullable<CandidatePromptInput['pastVersionContext']>,
 ) {
-  const frozenLessons =
-    context.frozenLessons.length === 0
-      ? 'No lessons from a past version have been started.'
-      : context.frozenLessons
-          .map(
-            (lesson) =>
-              `- ${lesson.progress} | ${lesson.semanticKey} | ${compactPromptText(lesson.title, 80)}`,
-          )
-          .join('\n');
-  const rendered = [
+  const fixed = [
     'PART 1 — HISTORICAL AUTHORING DECISIONS',
-    compactPromptText(
-      context.dialogueDigest || 'No historical authoring dialogue is available.',
-      MAX_PAST_DIALOGUE_DIGEST_CHARS,
-    ),
+    '',
+    '',
+    'PART 2 — FROZEN STARTED-LESSON ANCHORS',
+    '',
+    '',
+    'Every listed lesson has already been started. Use the current candidate as the authoritative source for its full title, objective, and knowledge structure. Keep each stable semantic key and learning status, and preserve the lesson exactly once. Do not rename, rewrite, replace, or duplicate it. Regenerate knowledge structures only for lessons that have not been started, around and after these frozen anchors.',
+  ].join('\n');
+  const contentBudget = MAX_PAST_VERSION_CONTEXT_CHARS - fixed.length;
+  const dialogueDigest = projectSemanticText(
+    context.dialogueDigest || 'No historical authoring dialogue is available.',
+    Math.min(MAX_PAST_DIALOGUE_DIGEST_CHARS, Math.floor(contentBudget * 0.45)),
+  );
+  const frozenLessons = renderFrozenLessonAnchors(context, contentBudget - dialogueDigest.length);
+  return [
+    'PART 1 — HISTORICAL AUTHORING DECISIONS',
+    dialogueDigest,
     '',
     'PART 2 — FROZEN STARTED-LESSON ANCHORS',
     frozenLessons,
     '',
     'Every listed lesson has already been started. Use the current candidate as the authoritative source for its full title, objective, and knowledge structure. Keep each stable semantic key and learning status, and preserve the lesson exactly once. Do not rename, rewrite, replace, or duplicate it. Regenerate knowledge structures only for lessons that have not been started, around and after these frozen anchors.',
   ].join('\n');
-  return compactPromptText(rendered, MAX_PAST_VERSION_CONTEXT_CHARS);
 }
 
 function renderAdjustmentTargets(input: CandidatePromptInput): string {
@@ -127,25 +135,35 @@ function renderAdjustmentTargets(input: CandidatePromptInput): string {
   const targets = adjustment.targetModuleIds
     .map((ref) => nodes.find((node) => node.ref === ref))
     .filter((node): node is NonNullable<typeof node> => node !== undefined);
-  const targetNames = compactPromptText(
-    targets.map((node) => node.title).join(', '),
+  const targetSelection = selectSemanticItems(
+    targets.map((node) => node.title),
     MAX_ADJUSTMENT_TARGET_NAMES_CHARS,
   );
+  const targetNames =
+    targetSelection.selected.length === 0
+      ? 'the complete current outline'
+      : [
+          targetSelection.selected.join('、'),
+          targetSelection.omitted === 0
+            ? undefined
+            : `and ${targetSelection.omitted} additional targeted sections`,
+        ]
+          .filter((value): value is string => value !== undefined)
+          .join(' ');
   return [
-    `The learner's requested change primarily concerns: ${targetNames || 'the complete current outline'}.`,
+    `The learner's requested change primarily concerns: ${targetNames}.`,
     'Preserve unrelated content where it remains coherent. You may make additional coherent adjustments when they genuinely improve the outline; the application will disclose those changes separately instead of rejecting the candidate.',
   ].join('\n\n');
 }
 
 function renderCurrentAdjustmentContext(input: CandidatePromptInput): string {
-  const rendered = [
+  return [
     'PART 1 — CURRENT CHANGE SCOPE',
     renderAdjustmentTargets(input),
     '',
     'PART 2 — UNAPPLIED ADJUSTMENT DIALOGUE',
     renderConversation(input.conversation),
   ].join('\n');
-  return compactPromptText(rendered, MAX_CURRENT_ADJUSTMENT_CONTEXT_CHARS);
 }
 
 export function buildCandidateGenerationPrompt(input: CandidatePromptInput): string {

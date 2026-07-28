@@ -107,10 +107,7 @@ describe('createAuthoringContextAssembler', () => {
 
     expect(context.messages.map((message) => message.messageId)).toEqual(['message_current']);
     expect(context.pastVersionContext).toEqual({
-      dialogueDigest: [
-        '用户：我想理解极限与导数，并保留极限基础模块。',
-        '助手：已确认课程先建立极限，再进入导数应用。',
-      ].join('\n'),
+      dialogueDigest: '助手：已确认课程先建立极限，再进入导数应用。',
       frozenLessons: [
         {
           lessonId: 'lesson_limit',

@@ -18,6 +18,13 @@ function message(
   };
 }
 
+function semanticSeries(label: string, detail: string, count: number): string {
+  return Array.from(
+    { length: count },
+    (_, index) => `${label}${index + 1}明确${detail}的第${index + 1}个独立边界。`,
+  ).join('');
+}
+
 function adjustmentContext(): AuthoringContext {
   return {
     outlineSessionId: 'outline_session_compaction',
@@ -30,12 +37,12 @@ function adjustmentContext(): AuthoringContext {
       message(2, 'assistant', `首轮共识：${'以连续情境重构案例'.repeat(90)}`),
       message(3, 'user', `第一项修正：${'加强真实约束'.repeat(85)}`),
       message(4, 'assistant', `中间重复解释一：${'候选大纲已有内容'.repeat(220)}`),
-      message(5, 'user', `第二项修正：${'知识链体现因果关系'.repeat(110)}`),
-      message(6, 'assistant', `中间重复解释二：${'候选大纲已有内容'.repeat(220)}`),
-      message(7, 'user', `第三项修正：${'允许调整未开始课节'.repeat(100)}`),
-      message(8, 'assistant', `中间重复解释三：${'候选大纲已有内容'.repeat(220)}`),
-      message(9, 'user', `最新要求：${'六国采用不同危机入口'.repeat(90)}`),
-      message(10, 'assistant', `最终共识：${'保留稳定边界并统一调整逻辑链'.repeat(90)}`),
+      message(5, 'user', semanticSeries('第二项修正', '知识链需要体现因果关系', 90)),
+      message(6, 'assistant', semanticSeries('第二项共识摘要', '确认知识链需要体现因果关系', 90)),
+      message(7, 'user', semanticSeries('第三项修正', '需要允许调整未开始课节', 90)),
+      message(8, 'assistant', semanticSeries('第三项共识摘要', '确认允许调整未开始课节', 90)),
+      message(9, 'user', semanticSeries('最新要求', '六国需要采用不同危机入口', 90)),
+      message(10, 'assistant', semanticSeries('最终共识', '确认保留边界并统一逻辑链', 90)),
     ],
     materials: [],
     pastVersionContext: {
@@ -63,16 +70,18 @@ describe('candidate prompt input compaction', () => {
     expect(adjustmentContextSection.length).toBeLessThanOrEqual(5_000);
     expect(prompt).not.toContain('[CURRENT ADJUSTMENT CONVERSATION]');
     expect(prompt).not.toContain('[CURRENT REQUEST]');
+    expect(adjustmentContextSection).not.toContain('[中间重复展开已压缩]');
     expect(adjustmentContextSection).toContain('PART 1 — CURRENT CHANGE SCOPE');
     expect(adjustmentContextSection).toContain('PART 2 — UNAPPLIED ADJUSTMENT DIALOGUE');
-    for (const marker of ['第二项修正', '第三项修正', '最新要求', '中间重复解释二', '最终共识']) {
+    for (const marker of ['第二项共识摘要', '第三项共识摘要', '最新要求', '最终共识']) {
       expect(adjustmentContextSection).toContain(marker);
     }
     expect(adjustmentContextSection).not.toContain('原始要求');
     expect(adjustmentContextSection).not.toContain('第一项修正');
     expect(adjustmentContextSection).not.toContain('首轮共识');
     expect(adjustmentContextSection).not.toContain('中间重复解释一');
-    expect(adjustmentContextSection).not.toContain('中间重复解释三');
+    expect(adjustmentContextSection).not.toContain('第二项修正');
+    expect(adjustmentContextSection).not.toContain('第三项修正');
   });
 
   it('keeps past-version context within 3,000 characters', () => {
@@ -100,6 +109,6 @@ describe('candidate prompt input compaction', () => {
     const input = buildCandidatePromptInput(initialContext);
 
     expect(input.conversation).toHaveLength(context.messages.length);
-    expect(input.conversation.some((entry) => entry.content.includes('中间重复解释二'))).toBe(true);
+    expect(input.conversation.some((entry) => entry.content.includes('第二项修正'))).toBe(true);
   });
 });

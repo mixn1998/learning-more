@@ -1,13 +1,11 @@
 import type { CourseMode } from '../model/commands.js';
 import type { AuthoringContext } from '../ports/authoring-agent.js';
+import { projectSemanticText } from './semantic-context-projection.js';
 
 const MAX_ADJUSTMENT_CONVERSATION_CHARS = 3_900;
-const MAX_FIRST_USER_CHARS = 700;
 const MAX_LATEST_USER_CHARS = 1_000;
-const MAX_MIDDLE_USER_CHARS = 600;
-const MAX_FIRST_ASSISTANT_CHARS = 300;
-const MAX_LATEST_ASSISTANT_CHARS = 400;
-const COMPACTION_MARKER = ' …[中间重复展开已压缩]… ';
+const MAX_LATEST_ASSISTANT_CHARS = 700;
+const MAX_MIDDLE_ASSISTANT_CHARS = 600;
 
 const courseModeAttention: Readonly<Record<CourseMode, string>> = {
   standard: '以系统理解和稳固掌握为主要关注点，同时允许按学习需要切换解释方式。',
@@ -46,20 +44,6 @@ export type CandidatePromptInput = Readonly<{
 
 type CandidateConversationMessage = CandidatePromptInput['conversation'][number];
 
-function normalizeConversationContent(content: string): string {
-  return content.replace(/\s+/gu, ' ').trim();
-}
-
-function compactContent(content: string, maxCharacters: number): string {
-  const normalized = normalizeConversationContent(content);
-  if (normalized.length <= maxCharacters) return normalized;
-  const available = Math.max(0, maxCharacters - COMPACTION_MARKER.length);
-  const headLength = Math.ceil(available * 0.7);
-  return `${normalized.slice(0, headLength)}${COMPACTION_MARKER}${normalized.slice(
-    normalized.length - (available - headLength),
-  )}`;
-}
-
 function renderedConversationLength(messages: readonly CandidateConversationMessage[]): number {
   return messages.reduce(
     (total, message) =>
@@ -71,7 +55,7 @@ function renderedConversationLength(messages: readonly CandidateConversationMess
   );
 }
 
-function compactAdjustmentConversation(
+function projectAdjustmentConversation(
   messages: AuthoringContext['messages'],
 ): readonly CandidateConversationMessage[] {
   const complete = messages
@@ -81,44 +65,44 @@ function compactAdjustmentConversation(
       role: message.role,
       content: message.content,
     }));
-  const users = complete.filter((message) => message.role === 'user');
-  const assistants = complete.filter((message) => message.role === 'assistant');
-  if (users.length === 0) return [];
-
-  const firstUser = users[0]!;
-  const latestUser = users.at(-1)!;
-  const firstAssistant = assistants[0];
-  const latestAssistant = assistants.at(-1);
+  const latestUserIndex = complete.findLastIndex((message) => message.role === 'user');
+  const latestAssistantIndex = complete.findLastIndex((message) => message.role === 'assistant');
+  const semanticallyRelevant = complete.filter(
+    (message) =>
+      message.role === 'assistant' ||
+      message.index === latestUserIndex ||
+      latestAssistantIndex < 0 ||
+      message.index > latestAssistantIndex,
+  );
   const selected = new Map<
     number,
     Readonly<{ index: number; role: 'user' | 'assistant'; content: string }>
   >();
-  const add = (
-    message: Readonly<{ index: number; role: 'user' | 'assistant'; content: string }> | undefined,
-    maxCharacters: number,
-  ) => {
-    if (message === undefined) return;
-    selected.set(message.index, {
-      ...message,
-      content: compactContent(message.content, maxCharacters),
-    });
-  };
+  const prioritized = [...semanticallyRelevant].sort((left, right) => {
+    const leftPriority =
+      left.index === latestUserIndex ? 3 : left.index === latestAssistantIndex ? 2 : 1;
+    const rightPriority =
+      right.index === latestUserIndex ? 3 : right.index === latestAssistantIndex ? 2 : 1;
+    return rightPriority - leftPriority || right.index - left.index;
+  });
 
-  add(firstUser, MAX_FIRST_USER_CHARS);
-  add(latestUser, MAX_LATEST_USER_CHARS);
-  add(firstAssistant, MAX_FIRST_ASSISTANT_CHARS);
-  add(latestAssistant, MAX_LATEST_ASSISTANT_CHARS);
-
-  for (const message of users.slice(1, -1).reverse()) {
-    const compacted = {
+  for (const message of prioritized) {
+    const maxCharacters =
+      message.index === latestUserIndex
+        ? MAX_LATEST_USER_CHARS
+        : message.index === latestAssistantIndex
+          ? MAX_LATEST_ASSISTANT_CHARS
+          : MAX_MIDDLE_ASSISTANT_CHARS;
+    const projected = {
       ...message,
-      content: compactContent(message.content, MAX_MIDDLE_USER_CHARS),
+      content: projectSemanticText(message.content, maxCharacters),
     };
-    const next = [...selected.values(), compacted]
+    if (projected.content.length === 0) continue;
+    const next = [...selected.values(), projected]
       .sort((left, right) => left.index - right.index)
       .map(({ role, content }) => ({ role, content }));
     if (renderedConversationLength(next) > MAX_ADJUSTMENT_CONVERSATION_CHARS) continue;
-    selected.set(message.index, compacted);
+    selected.set(message.index, projected);
   }
 
   return [...selected.values()]
@@ -143,7 +127,7 @@ export function buildCandidatePromptInput(context: AuthoringContext): CandidateP
               role: message.role,
               content: message.content,
             }))
-        : compactAdjustmentConversation(unappliedAdjustmentMessages),
+        : projectAdjustmentConversation(unappliedAdjustmentMessages),
     sources: [
       { sourceRef: 'source_topic', title: 'Initial course direction', excerpt: context.topic },
       ...context.materials,
