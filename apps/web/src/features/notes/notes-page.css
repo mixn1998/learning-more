@@ -1,84 +1,443 @@
 .notes-page {
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
+
 .notes-hero {
   display: flex;
+  min-height: 150px;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 24px;
+  padding: 24px 28px;
   border-top: 3px solid var(--accent);
 }
+
 .notes-hero h1 {
   margin: 5px 0;
+  font-size: 30px;
 }
+
 .notes-hero p,
-.notes-empty p {
+.notes-empty p,
+.notes-no-results p {
   margin: 0;
   color: var(--muted);
 }
+
+.notes-error {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--danger) 7%, var(--paper));
+  color: var(--danger);
+}
+
 .notes-empty {
-  padding: 30px;
+  padding: 38px;
   text-align: center;
 }
-.notes-discipline > h2 {
-  margin: 0 0 10px;
-  font-size: 20px;
-}
-.notes-course {
-  padding: 20px;
-}
-.notes-course + .notes-course {
-  margin-top: 12px;
-}
-.notes-course > h3 {
-  margin: 0 0 14px;
-}
-.notes-list {
+
+.notes-workspace {
   display: grid;
+  grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.notes-directory {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100dvh - 106px);
+  padding: 12px;
+  overflow: hidden;
+}
+
+.notes-directory > header {
+  padding: 4px 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notes-directory > header > div,
+.notes-directory-all,
+.notes-tree-row,
+.notes-tree-row > button:last-child,
+.notes-tree-lesson {
+  display: flex;
+  align-items: center;
+}
+
+.notes-directory > header > div {
+  justify-content: space-between;
   gap: 10px;
 }
-.notes-item {
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--paper-2);
+
+.notes-directory > header span {
+  font-size: 13px;
+  font-weight: 850;
 }
-.notes-item header {
+
+.notes-directory > header strong {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.notes-directory nav {
+  max-height: calc(100dvh - 170px);
+  padding-top: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.notes-directory button {
+  font: inherit;
+}
+
+.notes-directory-all,
+.notes-tree-row > button:last-child,
+.notes-tree-lesson {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notes-directory-all {
+  margin-bottom: 3px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.notes-directory-all:hover,
+.notes-tree-row > button:last-child:hover,
+.notes-tree-lesson:hover {
+  background: color-mix(in srgb, var(--tint) 60%, transparent);
+}
+
+.notes-directory-all.active,
+.notes-tree-row > button:last-child.active,
+.notes-tree-lesson.active {
+  background: var(--tint);
+  color: var(--accent-dark);
+}
+
+.notes-directory-all span,
+.notes-tree-row > button:last-child span,
+.notes-tree-lesson span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-directory-all small,
+.notes-tree-row > button:last-child small,
+.notes-tree-lesson small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.notes-tree,
+.notes-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notes-tree ul {
+  position: relative;
+  margin-left: 10px;
+  padding-left: 10px;
+}
+
+.notes-tree ul::before {
+  position: absolute;
+  top: 0;
+  bottom: 5px;
+  left: 0;
+  width: 1px;
+  background: var(--line);
+  content: '';
+}
+
+.notes-tree-row {
+  min-width: 0;
+}
+
+.notes-tree-row > button:last-child {
+  flex: 1 1 auto;
+}
+
+.notes-tree-discipline > button:last-child {
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.notes-tree-course > button:last-child {
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.notes-tree-toggle {
+  display: grid;
+  width: 23px;
+  height: 30px;
+  flex: 0 0 23px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  place-items: center;
+}
+
+.notes-tree-toggle:hover {
+  background: var(--paper-2);
+  color: var(--accent-dark);
+}
+
+.notes-tree-toggle span {
+  font-size: 17px;
+  line-height: 1;
+  transition: transform 150ms ease;
+}
+
+.notes-tree-toggle[aria-expanded='true'] span {
+  transform: rotate(90deg);
+}
+
+.notes-tree-lesson {
+  position: relative;
+  padding-left: 10px;
+  font-size: 10px;
+}
+
+.notes-content {
+  min-width: 0;
+}
+
+.notes-content-head {
   display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 4px 2px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notes-content-head p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.notes-content-head h2 {
+  display: inline;
+  margin: 0;
+  font-size: 24px;
+}
+
+.notes-content-head > div > span {
+  margin-left: 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.notes-search {
+  width: min(330px, 38%);
+}
+
+.notes-search input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  outline: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.notes-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.notes-groups {
+  display: grid;
+  gap: 20px;
+}
+
+.notes-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  padding: 0 2px;
+}
+
+.notes-group > header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.notes-group > header span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.notes-stream {
+  display: grid;
+  gap: 9px;
+}
+
+.notes-item {
+  padding: 15px 17px;
+  box-shadow: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.notes-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+  box-shadow: 0 8px 20px rgb(65 47 30 / 6%);
+}
+
+.notes-item > header {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
+
+.notes-item > header > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.notes-item > header strong {
+  font-size: 12px;
+}
+
+.notes-item > header span,
 .notes-item time {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
+}
+
+.notes-item time {
+  flex: 0 0 auto;
   white-space: nowrap;
 }
-.notes-item p {
-  margin: 10px 0;
+
+.notes-item > p {
+  margin: 11px 0;
+  color: var(--ink);
+  line-height: 1.75;
   white-space: pre-wrap;
 }
+
 .notes-item textarea {
+  box-sizing: border-box;
   width: 100%;
-  margin: 10px 0;
-  padding: 10px;
+  margin: 11px 0;
+  padding: 11px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 10px;
+  background: var(--paper-2);
+  color: var(--ink);
+  line-height: 1.6;
   resize: vertical;
 }
-.notes-item-actions {
+
+.notes-item-actions,
+.notes-edit-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
 }
+
 .notes-item-actions button {
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--accent-dark);
+  font-size: 10px;
   cursor: pointer;
 }
+
+.notes-item-actions button:hover {
+  text-decoration: underline;
+}
+
 .notes-item-actions button.danger {
   color: var(--danger);
+}
+
+.notes-no-results {
+  padding: 42px 24px;
+  text-align: center;
+}
+
+.notes-no-results strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+@media (max-width: 860px) {
+  .notes-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .notes-directory {
+    position: static;
+    max-height: 330px;
+  }
+
+  .notes-directory nav {
+    max-height: 270px;
+  }
+}
+
+@media (max-width: 600px) {
+  .notes-hero {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 20px;
+  }
+
+  .notes-content-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notes-search {
+    width: 100%;
+  }
+
+  .notes-item > header,
+  .notes-item > header > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
 }

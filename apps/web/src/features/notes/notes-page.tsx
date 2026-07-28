@@ -9,6 +9,55 @@ import {
 
 import './notes-page.css';
 
+type LessonGroup = Readonly<{
+  id: string;
+  title: string;
+  notes: readonly LearningNoteView[];
+}>;
+
+type CourseGroup = Readonly<{
+  id: string;
+  title: string;
+  lessons: readonly LessonGroup[];
+  noteCount: number;
+}>;
+
+type DisciplineGroup = Readonly<{
+  name: string;
+  courses: readonly CourseGroup[];
+  noteCount: number;
+}>;
+
+type NoteScope = Readonly<{
+  key: string;
+  label: string;
+  path: readonly string[];
+  discipline?: string;
+  courseId?: string;
+  lessonId?: string;
+}>;
+
+const selectedScopeStorageKey = 'learning-more:notes:selected-scope';
+const expandedScopeStorageKey = 'learning-more:notes:expanded-scopes';
+const allScope: NoteScope = { key: 'all', label: '全部笔记', path: ['全部笔记'] };
+
+const encodeKeyPart = (value: string) => encodeURIComponent(value);
+const disciplineKey = (discipline: string) => `discipline:${encodeKeyPart(discipline)}`;
+const courseKey = (courseId: string) => `course:${encodeKeyPart(courseId)}`;
+const lessonKey = (courseId: string, lessonId: string) =>
+  `lesson:${encodeKeyPart(courseId)}:${encodeKeyPart(lessonId)}`;
+
+function storedExpandedScopes(): Set<string> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(expandedScopeStorageKey) ?? '[]') as unknown;
+    return new Set(
+      Array.isArray(stored) ? stored.filter((value) => typeof value === 'string') : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -21,6 +70,13 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
+function noteMatchesScope(note: LearningNoteView, scope: NoteScope): boolean {
+  if (scope.lessonId !== undefined) return note.lessonId === scope.lessonId;
+  if (scope.courseId !== undefined) return note.courseId === scope.courseId;
+  if (scope.discipline !== undefined) return note.discipline === scope.discipline;
+  return true;
+}
+
 export function NotesPage(props: { readonly client?: LearningNotesClient }) {
   const api = props.client ?? learningNotesClient;
   const [notes, setNotes] = useState<LearningNoteView[]>([]);
@@ -29,6 +85,11 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
   const [editingId, setEditingId] = useState<string>();
   const [editingDraft, setEditingDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState('');
+  const [selectedScopeKey, setSelectedScopeKey] = useState(
+    () => localStorage.getItem(selectedScopeStorageKey) ?? '',
+  );
+  const [expandedScopes, setExpandedScopes] = useState(storedExpandedScopes);
 
   useEffect(() => {
     let active = true;
@@ -48,17 +109,171 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
     };
   }, [api]);
 
-  const groups = useMemo(() => {
-    const byDiscipline = new Map<string, Map<string, LearningNoteView[]>>();
-    for (const note of notes) {
-      const courses = byDiscipline.get(note.discipline) ?? new Map<string, LearningNoteView[]>();
-      const courseNotes = courses.get(note.courseTitle) ?? [];
-      courseNotes.push(note);
-      courses.set(note.courseTitle, courseNotes);
-      byDiscipline.set(note.discipline, courses);
+  const navigation = useMemo(() => {
+    const sortedNotes = [...notes].sort(
+      (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
+    );
+    const disciplineMaps = new Map<
+      string,
+      Map<
+        string,
+        { title: string; lessons: Map<string, { title: string; notes: LearningNoteView[] }> }
+      >
+    >();
+
+    for (const note of sortedNotes) {
+      const courses = disciplineMaps.get(note.discipline) ?? new Map();
+      const course = courses.get(note.courseId) ?? {
+        title: note.courseTitle,
+        lessons: new Map<string, { title: string; notes: LearningNoteView[] }>(),
+      };
+      const lesson = course.lessons.get(note.lessonId) ?? {
+        title: note.lessonTitle,
+        notes: [],
+      };
+      lesson.notes.push(note);
+      course.lessons.set(note.lessonId, lesson);
+      courses.set(note.courseId, course);
+      disciplineMaps.set(note.discipline, courses);
     }
-    return [...byDiscipline.entries()];
+
+    const disciplines: DisciplineGroup[] = [...disciplineMaps.entries()].map(
+      ([discipline, courses]) => {
+        const courseGroups: CourseGroup[] = [...courses.entries()].map(([courseId, course]) => {
+          const lessons: LessonGroup[] = [...course.lessons.entries()].map(
+            ([lessonId, lesson]) => ({
+              id: lessonId,
+              title: lesson.title,
+              notes: lesson.notes,
+            }),
+          );
+          return {
+            id: courseId,
+            title: course.title,
+            lessons,
+            noteCount: lessons.reduce((total, lesson) => total + lesson.notes.length, 0),
+          };
+        });
+        return {
+          name: discipline,
+          courses: courseGroups,
+          noteCount: courseGroups.reduce((total, course) => total + course.noteCount, 0),
+        };
+      },
+    );
+
+    const scopes = new Map<string, NoteScope>([[allScope.key, allScope]]);
+    for (const discipline of disciplines) {
+      const disciplineScope: NoteScope = {
+        key: disciplineKey(discipline.name),
+        label: discipline.name,
+        path: [discipline.name],
+        discipline: discipline.name,
+      };
+      scopes.set(disciplineScope.key, disciplineScope);
+      for (const course of discipline.courses) {
+        const currentCourseKey = courseKey(course.id);
+        scopes.set(currentCourseKey, {
+          key: currentCourseKey,
+          label: course.title,
+          path: [discipline.name, course.title],
+          discipline: discipline.name,
+          courseId: course.id,
+        });
+        for (const lesson of course.lessons) {
+          const currentLessonKey = lessonKey(course.id, lesson.id);
+          scopes.set(currentLessonKey, {
+            key: currentLessonKey,
+            label: lesson.title,
+            path: [discipline.name, course.title, lesson.title],
+            discipline: discipline.name,
+            courseId: course.id,
+            lessonId: lesson.id,
+          });
+        }
+      }
+    }
+
+    return { disciplines, scopes, sortedNotes };
   }, [notes]);
+
+  useEffect(() => {
+    if (loading || notes.length === 0) return;
+    if (navigation.scopes.has(selectedScopeKey)) return;
+    const latest = navigation.sortedNotes[0];
+    if (latest === undefined) return;
+    const nextScope = courseKey(latest.courseId);
+    setSelectedScopeKey(nextScope);
+    setExpandedScopes((current) => {
+      const next = new Set(current);
+      next.add(disciplineKey(latest.discipline));
+      next.add(nextScope);
+      return next;
+    });
+  }, [loading, navigation, notes.length, selectedScopeKey]);
+
+  useEffect(() => {
+    if (selectedScopeKey !== '') {
+      localStorage.setItem(selectedScopeStorageKey, selectedScopeKey);
+    }
+  }, [selectedScopeKey]);
+
+  useEffect(() => {
+    localStorage.setItem(expandedScopeStorageKey, JSON.stringify([...expandedScopes]));
+  }, [expandedScopes]);
+
+  const selectedScope = navigation.scopes.get(selectedScopeKey) ?? allScope;
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleNotes = useMemo(
+    () =>
+      navigation.sortedNotes.filter(
+        (note) =>
+          noteMatchesScope(note, selectedScope) &&
+          (normalizedQuery === '' ||
+            `${note.markdown} ${note.courseTitle} ${note.lessonTitle}`
+              .toLocaleLowerCase()
+              .includes(normalizedQuery)),
+      ),
+    [navigation.sortedNotes, normalizedQuery, selectedScope],
+  );
+
+  const noteGroups = useMemo(() => {
+    const groups = new Map<string, { title: string; notes: LearningNoteView[] }>();
+    for (const note of visibleNotes) {
+      const groupByLesson =
+        selectedScope.courseId !== undefined && selectedScope.lessonId === undefined;
+      const key = groupByLesson
+        ? note.lessonId
+        : selectedScope.lessonId === undefined
+          ? note.courseId
+          : 'lesson';
+      const title = groupByLesson
+        ? note.lessonTitle
+        : selectedScope.lessonId === undefined
+          ? note.courseTitle
+          : selectedScope.label;
+      const group = groups.get(key) ?? { title, notes: [] };
+      group.notes.push(note);
+      groups.set(key, group);
+    }
+    return [...groups.entries()].map(([key, group]) => ({ key, ...group }));
+  }, [selectedScope, visibleNotes]);
+
+  const toggleExpanded = (key: string) => {
+    setExpandedScopes((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const selectScope = (scope: NoteScope, parentKeys: readonly string[] = []) => {
+    setSelectedScopeKey(scope.key);
+    if (parentKeys.length > 0) {
+      setExpandedScopes((current) => new Set([...current, ...parentKeys]));
+    }
+  };
 
   const saveEdit = async (note: LearningNoteView) => {
     if (busy || editingDraft.trim() === '') return;
@@ -95,90 +310,248 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
         <div>
           <div className="lm-kicker">Learning notes</div>
           <h1>学习笔记</h1>
-          <p>课堂中的独立记录会按学科与课程自动整理。</p>
+          <p>沿着学科、课程与课时，重新找到课堂中形成的理解。</p>
         </div>
         <a className="lm-btn" href="/">
           返回首页
         </a>
       </section>
-      {error === undefined ? null : <p role="alert">{error}</p>}
+      {error === undefined ? null : (
+        <p className="notes-error" role="alert">
+          {error}
+        </p>
+      )}
       {loading ? (
         <section className="lm-card notes-empty">正在载入学习笔记……</section>
-      ) : groups.length === 0 ? (
+      ) : navigation.disciplines.length === 0 ? (
         <section className="lm-card notes-empty">
           <h2>还没有保存笔记</h2>
           <p>进入任意课节，即可在课堂右侧记录第一条学习笔记。</p>
         </section>
       ) : (
-        groups.map(([discipline, courses]) => (
-          <section className="notes-discipline" key={discipline}>
-            <h2>{discipline}</h2>
-            {[...courses.entries()].map(([courseTitle, courseNotes]) => (
-              <section className="lm-card notes-course" key={courseTitle}>
-                <h3>{courseTitle}</h3>
-                <div className="notes-list">
-                  {courseNotes.map((note) => (
-                    <article className="notes-item" key={note.id}>
-                      <header>
-                        <strong>{note.lessonTitle}</strong>
-                        <time dateTime={note.createdAt}>{formatDate(note.createdAt)}</time>
-                      </header>
-                      {editingId === note.id ? (
-                        <>
-                          <textarea
-                            aria-label="编辑学习笔记"
-                            rows={5}
-                            value={editingDraft}
-                            onChange={(event) => setEditingDraft(event.target.value)}
-                          />
-                          <div className="lm-actions">
-                            <button
-                              className="lm-btn"
-                              type="button"
-                              onClick={() => setEditingId(undefined)}
-                            >
-                              取消
-                            </button>
-                            <button
-                              className="lm-btn primary"
-                              disabled={busy || editingDraft.trim() === ''}
-                              type="button"
-                              onClick={() => void saveEdit(note)}
-                            >
-                              保存修改
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <p>{note.markdown}</p>
-                          <div className="notes-item-actions">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingId(note.id);
-                                setEditingDraft(note.markdown);
-                              }}
-                            >
-                              编辑
-                            </button>
-                            <button
-                              className="danger"
-                              type="button"
-                              onClick={() => void remove(note)}
-                            >
-                              删除
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ))}
+        <div className="notes-workspace">
+          <aside className="lm-card notes-directory">
+            <header>
+              <div>
+                <span>知识目录</span>
+                <strong>{notes.length} 条</strong>
+              </div>
+            </header>
+            <nav aria-label="学习笔记知识目录">
+              <button
+                className={`notes-directory-all${selectedScope.key === 'all' ? ' active' : ''}`}
+                type="button"
+                onClick={() => selectScope(allScope)}
+              >
+                <span>全部笔记</span>
+                <small>{notes.length}</small>
+              </button>
+              <ul className="notes-tree">
+                {navigation.disciplines.map((discipline) => {
+                  const currentDisciplineKey = disciplineKey(discipline.name);
+                  const disciplineExpanded = expandedScopes.has(currentDisciplineKey);
+                  const disciplineScope = navigation.scopes.get(currentDisciplineKey)!;
+                  return (
+                    <li key={discipline.name}>
+                      <div className="notes-tree-row notes-tree-discipline">
+                        <button
+                          aria-label={`${disciplineExpanded ? '收起' : '展开'}${discipline.name}`}
+                          aria-expanded={disciplineExpanded}
+                          className="notes-tree-toggle"
+                          type="button"
+                          onClick={() => toggleExpanded(currentDisciplineKey)}
+                        >
+                          <span aria-hidden="true">›</span>
+                        </button>
+                        <button
+                          className={selectedScope.key === currentDisciplineKey ? 'active' : ''}
+                          type="button"
+                          onClick={() => {
+                            selectScope(disciplineScope, [currentDisciplineKey]);
+                          }}
+                        >
+                          <span>{discipline.name}</span>
+                          <small>{discipline.noteCount}</small>
+                        </button>
+                      </div>
+                      {disciplineExpanded ? (
+                        <ul>
+                          {discipline.courses.map((course) => {
+                            const currentCourseKey = courseKey(course.id);
+                            const courseExpanded = expandedScopes.has(currentCourseKey);
+                            const courseScope = navigation.scopes.get(currentCourseKey)!;
+                            return (
+                              <li key={course.id}>
+                                <div className="notes-tree-row notes-tree-course">
+                                  <button
+                                    aria-label={`${courseExpanded ? '收起' : '展开'}${course.title}`}
+                                    aria-expanded={courseExpanded}
+                                    className="notes-tree-toggle"
+                                    type="button"
+                                    onClick={() => toggleExpanded(currentCourseKey)}
+                                  >
+                                    <span aria-hidden="true">›</span>
+                                  </button>
+                                  <button
+                                    className={
+                                      selectedScope.key === currentCourseKey ? 'active' : ''
+                                    }
+                                    type="button"
+                                    onClick={() =>
+                                      selectScope(courseScope, [
+                                        currentDisciplineKey,
+                                        currentCourseKey,
+                                      ])
+                                    }
+                                  >
+                                    <span>{course.title}</span>
+                                    <small>{course.noteCount}</small>
+                                  </button>
+                                </div>
+                                {courseExpanded ? (
+                                  <ul>
+                                    {course.lessons.map((lesson) => {
+                                      const currentLessonKey = lessonKey(course.id, lesson.id);
+                                      const lessonScope = navigation.scopes.get(currentLessonKey)!;
+                                      return (
+                                        <li key={lesson.id}>
+                                          <button
+                                            className={`notes-tree-lesson${
+                                              selectedScope.key === currentLessonKey
+                                                ? ' active'
+                                                : ''
+                                            }`}
+                                            type="button"
+                                            onClick={() =>
+                                              selectScope(lessonScope, [
+                                                currentDisciplineKey,
+                                                currentCourseKey,
+                                              ])
+                                            }
+                                          >
+                                            <span>{lesson.title}</span>
+                                            <small>{lesson.notes.length}</small>
+                                          </button>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          </aside>
+
+          <section className="notes-content">
+            <header className="notes-content-head">
+              <div>
+                <p>{selectedScope.path.join(' / ')}</p>
+                <h2>{selectedScope.label}</h2>
+                <span>{visibleNotes.length} 条笔记</span>
+              </div>
+              <label className="notes-search">
+                <span className="sr-only">搜索当前目录笔记</span>
+                <input
+                  type="search"
+                  placeholder="搜索当前目录中的笔记"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+            </header>
+
+            {visibleNotes.length === 0 ? (
+              <div className="lm-card notes-no-results">
+                <strong>{normalizedQuery === '' ? '这里还没有笔记' : '没有找到匹配内容'}</strong>
+                <p>
+                  {normalizedQuery === ''
+                    ? '可以从左侧切换到其他课程或课时。'
+                    : '换一个关键词，或从左侧扩大查看范围。'}
+                </p>
+              </div>
+            ) : (
+              <div className="notes-groups">
+                {noteGroups.map((group) => (
+                  <section className="notes-group" key={group.key}>
+                    <header>
+                      <h3>{group.title}</h3>
+                      <span>{group.notes.length} 条</span>
+                    </header>
+                    <div className="notes-stream">
+                      {group.notes.map((note) => (
+                        <article className="lm-card notes-item" key={note.id}>
+                          <header>
+                            <div>
+                              <strong>{note.lessonTitle}</strong>
+                              <span>{note.courseTitle}</span>
+                            </div>
+                            <time dateTime={note.createdAt}>{formatDate(note.createdAt)}</time>
+                          </header>
+                          {editingId === note.id ? (
+                            <>
+                              <textarea
+                                aria-label="编辑学习笔记"
+                                rows={6}
+                                value={editingDraft}
+                                onChange={(event) => setEditingDraft(event.target.value)}
+                              />
+                              <div className="lm-actions notes-edit-actions">
+                                <button
+                                  className="lm-btn"
+                                  type="button"
+                                  onClick={() => setEditingId(undefined)}
+                                >
+                                  取消
+                                </button>
+                                <button
+                                  className="lm-btn primary"
+                                  disabled={busy || editingDraft.trim() === ''}
+                                  type="button"
+                                  onClick={() => void saveEdit(note)}
+                                >
+                                  保存修改
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p>{note.markdown}</p>
+                              <div className="notes-item-actions">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingId(note.id);
+                                    setEditingDraft(note.markdown);
+                                  }}
+                                >
+                                  编辑
+                                </button>
+                                <button
+                                  className="danger"
+                                  type="button"
+                                  onClick={() => void remove(note)}
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )}
           </section>
-        ))
+        </div>
       )}
     </main>
   );
