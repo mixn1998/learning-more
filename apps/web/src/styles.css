@@ -1219,6 +1219,7 @@ button:not(
   .notes-directory-all,
   .notes-tree-toggle,
   .notes-tree-label,
+  .notes-tree-course-label,
   .notes-tree-lesson,
   .notes-item-action
 ),
@@ -1266,6 +1267,7 @@ button:not(
     .notes-directory-all,
     .notes-tree-toggle,
     .notes-tree-label,
+    .notes-tree-course-label,
     .notes-tree-lesson,
     .notes-item-action
   ):hover:not(:disabled) {
