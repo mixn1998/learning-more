@@ -7,6 +7,7 @@ import { createLocalGenerationRuntime } from './generation-runtime.js';
 import { createHomeRouteOptions } from './home-runtime.js';
 import { createLocalInsightsRuntime } from './insights-runtime.js';
 import { createLocalLearningRuntime } from './learning-runtime.js';
+import { createLocalLearningNotesRuntime } from './learning-notes-runtime.js';
 import { createLocalPlanningRuntime } from './planning-runtime.js';
 import { createLocalProfileRuntime } from './profile-runtime.js';
 import { createRuntimeReadiness } from './readiness.js';
@@ -65,6 +66,12 @@ export async function assembleLocalApplication(
     ...(options.logProjectionEvent === undefined
       ? {}
       : { logProjectionEvent: options.logProjectionEvent }),
+  });
+  const learningNotes = createLocalLearningNotesRuntime({
+    dataRoot,
+    unitOfWork,
+    course,
+    now: runtimeNow,
   });
   const planningRuntime = createLocalPlanningRuntime({
     dataRoot,
@@ -149,6 +156,7 @@ export async function assembleLocalApplication(
     home,
     courseAuthoring: course.routes,
     learningSession: learning.routes,
+    learningNotes,
     reviewClosure: review.routes,
     planning: planningRuntime.routes,
     learningFacts: {
@@ -178,7 +186,6 @@ export async function assembleLocalApplication(
       },
     },
     profile: profile.profileRoutes,
-    portraits: profile.portraitRoutes,
     generationFrameLog: frameLog,
     runtimeControl: generation.runtimeControl,
     localSecurity: {

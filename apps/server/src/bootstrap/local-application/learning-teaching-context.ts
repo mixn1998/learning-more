@@ -19,7 +19,6 @@ export function createLearningTeachingContext(input: {
   readonly getLearningRecord: LearningRepositories['get'];
   readonly listMessages: MessageLog['list'];
   readonly artifactStore: Pick<ArtifactStore, 'read' | 'readDraft'>;
-  readonly getPersonalizationView: TeachingContextSources['getPersonalizationView'];
 }): TeachingContextSources {
   return {
     async getCourseAndLesson({ courseId, lessonId }) {
@@ -168,6 +167,5 @@ export function createLearningTeachingContext(input: {
     async getLearningStartSummary() {
       return undefined;
     },
-    getPersonalizationView: input.getPersonalizationView,
   };
 }

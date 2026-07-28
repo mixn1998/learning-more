@@ -16,8 +16,8 @@ export const EQUIVALENCE_OWNER_MODULES = [
   'ReviewClosure',
   'Planning',
   'LearningFacts',
+  'LearningNotes',
   'ProfileEvidence',
-  'LearningPortrait',
   'GenerationRuntime',
 ] as const;
 
@@ -207,7 +207,7 @@ export function runEquivalenceCheck(
   const entries = readEquivalenceMatrix(matrixPath);
   const sourceEntries = extractEquivalenceSource(readFileSync(sourcePath, 'utf8'));
   const issues: unknown[] = [
-    ...checkEquivalence(entries, 80, (testPath) =>
+    ...checkEquivalence(entries, 72, (testPath) =>
       existsSync(path.resolve(repositoryRoot, testPath)),
     ),
     ...checkEquivalenceSource(entries, sourceEntries),

@@ -614,6 +614,21 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
   const phase = teaching.lessonPhase;
   const afterWarmup = phase !== 'warmup';
   const afterComprehensive = ['discussion', 'summary', 'ready_to_close'].includes(phase);
+  const lastKnowledgePointMessageIndex = state.messages.findLastIndex(
+    (message) => message.role === 'assistant' && message.knowledgePointRef !== undefined,
+  );
+  const hasComprehensiveApplicationMessage = state.messages.some(
+    (message, index) =>
+      index > lastKnowledgePointMessageIndex &&
+      message.role === 'assistant' &&
+      message.knowledgePointRef === undefined,
+  );
+  const comprehensiveStarted =
+    phase === 'comprehensive_application' &&
+    teaching.comprehensiveCheck === 'learning' &&
+    (lastKnowledgePointMessageIndex < 0 ||
+      hasComprehensiveApplicationMessage ||
+      (state.phase === 'generating' && state.generationKnowledgePointRef === undefined));
   const hasBoundAssistantMessages = state.messages.some(
     (message) => message.role === 'assistant' && message.knowledgePointRef !== undefined,
   );
@@ -676,13 +691,15 @@ function buildLessonPath(state: State, fallbackPoints: readonly string[]) {
           ? teaching.comprehensiveCheck === 'skipped'
             ? '跳过综合应用'
             : '综合应用已完成'
-          : phase === 'comprehensive_application'
+          : comprehensiveStarted
             ? '正在进行跨知识点应用'
-            : '等待逐项学习完成',
+            : phase === 'comprehensive_application'
+              ? '等待综合应用开始'
+              : '等待逐项学习完成',
       state:
         completed || afterComprehensive
           ? ('done' as const)
-          : phase === 'comprehensive_application'
+          : comprehensiveStarted
             ? ('active' as const)
             : ('pending' as const),
     },
@@ -1776,6 +1793,7 @@ export function SessionPage(props: {
         }
         conversationKey={state.sessionId}
         continuationPending={state.continuationPending}
+        courseId={props.courseId ?? 'unknown-course'}
         courseTitle={props.courseTitle ?? '当前课程'}
         elapsedSeconds={state.actualSeconds}
         editableMessageId={editAvailable ? latestUserMessage.id : undefined}
@@ -1786,6 +1804,7 @@ export function SessionPage(props: {
         opening={state.opening}
         openingError={state.openingError}
         input={state.input}
+        lessonId={props.lessonId}
         messages={messages}
         moduleLabel={props.moduleLabel ?? '正式课程课节'}
         outlineVersionLabel={props.outlineVersionLabel ?? '大纲 v1'}

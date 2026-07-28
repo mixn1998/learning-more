@@ -34,10 +34,10 @@ describe('local application public interface', () => {
         'getRuntimeReadiness',
         'home',
         'learningFacts',
+        'learningNotes',
         'learningSession',
         'localSecurity',
         'planning',
-        'portraits',
         'profile',
         'reviewClosure',
         'runtimeControl',
@@ -91,15 +91,8 @@ describe('local application public interface', () => {
       expect(Object.keys(local.serverDependencies.profile!).sort()).toEqual([
         'getGlobalProfile',
         'getReasoningAnalysis',
-        'listEvidence',
         'listReasoningEpisodes',
         'refreshReasoningAnalysis',
-      ]);
-      expect(Object.keys(local.serverDependencies.portraits!).sort()).toEqual([
-        'getCurrent',
-        'getVersion',
-        'nextCorrelationId',
-        'requestRefresh',
       ]);
       expect(Object.keys(local.serverDependencies.runtimeControl!).sort()).toEqual([
         'getProviderCatalog',

@@ -28,8 +28,8 @@ const PlanningRoute = lazy(async () => ({
 const HistoryRoute = lazy(async () => ({
   default: (await import('./routes/history-route.js')).HistoryRoute,
 }));
-const ProfileRoute = lazy(async () => ({
-  default: (await import('./routes/profile-route.js')).ProfileRoute,
+const NotesRoute = lazy(async () => ({
+  default: (await import('./routes/notes-route.js')).NotesRoute,
 }));
 const RuntimeCenter = lazy(async () => ({
   default: (await import('./features/runtime/runtime-center.js')).RuntimeCenter,
@@ -207,20 +207,20 @@ export const appRouteDefinitions: RouteObject[] = [
         ),
       },
       {
+        id: 'notes',
+        path: 'notes',
+        element: (
+          <DeferredRoute>
+            <NotesRoute />
+          </DeferredRoute>
+        ),
+      },
+      {
         id: 'history',
         path: 'history',
         element: (
           <DeferredRoute>
             <HistoryRoute />
-          </DeferredRoute>
-        ),
-      },
-      {
-        id: 'profile',
-        path: 'profile',
-        element: (
-          <DeferredRoute>
-            <ProfileRoute />
           </DeferredRoute>
         ),
       },

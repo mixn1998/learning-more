@@ -1,5 +1,3 @@
-import type { PersonalizationView } from '@learning-more/contracts';
-
 import type {
   MaterializedTeachingMessage,
   TeachingContextAssembler,
@@ -9,10 +7,6 @@ import type {
 
 function estimatedCharacters(value: unknown): number {
   return JSON.stringify(value).length;
-}
-
-function emptyPersonalization(view: PersonalizationView): PersonalizationView {
-  return { ...view, signals: [] };
 }
 
 function messageIdFromSourceRef(sourceRef: string): string | undefined {
@@ -53,27 +47,17 @@ export function createTeachingContextAssembler(options: {
 }): TeachingContextAssembler {
   return {
     async assemble(input): Promise<TeachingContextPackage> {
-      const [
-        courseAndLesson,
-        allMessages,
-        reviews,
-        materials,
-        learningStartSummary,
-        personalization,
-      ] = await Promise.all([
-        options.sources.getCourseAndLesson({
-          courseId: input.courseId,
-          lessonId: input.lessonId,
-        }),
-        options.sources.listMessages(input.sessionId),
-        options.sources.listRelevantFinalReviews(input.courseId, input.lessonId),
-        options.sources.listRelevantMaterialExcerpts(input.lessonId),
-        options.sources.getLearningStartSummary(input.courseId),
-        options.sources.getPersonalizationView({
-          courseId: input.courseId,
-          lessonId: input.lessonId,
-        }),
-      ]);
+      const [courseAndLesson, allMessages, reviews, materials, learningStartSummary] =
+        await Promise.all([
+          options.sources.getCourseAndLesson({
+            courseId: input.courseId,
+            lessonId: input.lessonId,
+          }),
+          options.sources.listMessages(input.sessionId),
+          options.sources.listRelevantFinalReviews(input.courseId, input.lessonId),
+          options.sources.listRelevantMaterialExcerpts(input.lessonId),
+          options.sources.getLearningStartSummary(input.courseId),
+        ]);
 
       if (courseAndLesson.course.courseId !== input.courseId) {
         throw new Error('teaching_course_context_mismatch');
@@ -117,7 +101,6 @@ export function createTeachingContextAssembler(options: {
         ...(learningStartSummary === undefined ? {} : { learningStartSummary }),
         relevantFinalReviews: [...reviews],
         readingMaterialExcerpts: [...materials],
-        personalization,
         teachingState: input.teachingState,
         recentMessages,
         unobservedMessages: allMessages.filter((message) => unobservedIds.has(message.messageId)),
@@ -126,7 +109,6 @@ export function createTeachingContextAssembler(options: {
       const budget = options.maxContextCharacters ?? 200_000;
       if (estimatedCharacters(context) <= budget) return context;
 
-      context = { ...context, personalization: emptyPersonalization(context.personalization) };
       while (estimatedCharacters(context) > budget && context.relevantFinalReviews.length > 0) {
         context = { ...context, relevantFinalReviews: context.relevantFinalReviews.slice(1) };
       }

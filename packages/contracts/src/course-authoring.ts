@@ -363,7 +363,6 @@ export const OutlineRevisionResponseSchema = z.strictObject({
 export const DeleteCourseArchiveResponseSchema = z.strictObject({
   courseId: identifierSchema,
   deletedAt: z.iso.datetime({ offset: true }),
-  portraitRefresh: z.literal('updating'),
 });
 
 export const DeleteOutlineSessionResponseSchema = z.strictObject({

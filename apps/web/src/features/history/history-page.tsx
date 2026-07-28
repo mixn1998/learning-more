@@ -15,7 +15,6 @@ import { Badge, Button, ContentState, Page, Stack } from '@learning-more/ui';
 
 import { historyClient, type HistoryClient } from '../../client/history-client.js';
 import { toBroadDisciplineLabel } from '../../discipline-label.js';
-import { profileClient, type ProfileClient } from '../../client/profile-client.js';
 import { useAppShellBrandSubtitle, useAppShellHeaderStatus } from '../../state/app-shell-header.js';
 import {
   calendarSnapshotCache,
@@ -40,7 +39,6 @@ import {
   type HistoryStatisticsRange,
 } from './history-statistics-workspace.js';
 import { HistoryTimeline } from './history-timeline.js';
-import { ProfilePage } from '../profile/profile-page.js';
 import { StatisticsPanel } from './statistics-panel.js';
 import { WeeklyReportView } from './weekly-report-view.js';
 import { WeeklyReportWorkspace, type WeeklyReportRecord } from './weekly-report-workspace.js';
@@ -106,23 +104,14 @@ type LoadErrors = Partial<
   Record<'catalog' | 'history' | 'statistics' | 'calendar' | 'weekly', string>
 >;
 
-export function HistoryPage(props: {
-  readonly client?: HistoryClient;
-  readonly portraitClient?: ProfileClient;
-}) {
+export function HistoryPage(props: { readonly client?: HistoryClient }) {
   const api = props.client ?? historyClient;
   const usesSharedCache = props.client === undefined;
-  const portraitApi = props.portraitClient ?? profileClient;
   const location = useLocation();
   const navigate = useNavigate();
   const requestedTab = new URLSearchParams(location.search).get('tab');
   const showingWeekly = requestedTab === 'weekly';
-  const initialSection: HistorySection =
-    requestedTab === 'calendar'
-      ? 'calendar'
-      : requestedTab === 'portrait'
-        ? 'portrait'
-        : 'statistics';
+  const initialSection: HistorySection = requestedTab === 'calendar' ? 'calendar' : 'statistics';
   const initialYear = localDate(new Date().toISOString()).slice(0, 4);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const reportWindow = useMemo(
@@ -139,7 +128,7 @@ export function HistoryPage(props: {
     ? initialWeeklyReport !== undefined
     : initialSection === 'calendar'
       ? initialCalendar !== undefined
-      : initialSection === 'portrait' || initialStatistics !== undefined;
+      : initialStatistics !== undefined;
   const [loadState, setLoadState] = useState<'loading' | 'ready'>(
     hasInitialSnapshot ? 'ready' : 'loading',
   );
@@ -160,13 +149,7 @@ export function HistoryPage(props: {
   const [weeklyRetryError, setWeeklyRetryError] = useState<string>();
   const [section, setSection] = useState<HistorySection>(initialSection);
   useAppShellBrandSubtitle(
-    showingWeekly
-      ? '上周学习回顾'
-      : section === 'calendar'
-        ? '学习日历'
-        : section === 'portrait'
-          ? '学习画像'
-          : '历史统计',
+    showingWeekly ? '上周学习回顾' : section === 'calendar' ? '学习日历' : '历史统计',
   );
   useAppShellHeaderStatus(
     showingWeekly
@@ -189,12 +172,6 @@ export function HistoryPage(props: {
     let current = true;
     const now = localDate(new Date().toISOString());
     const year = now.slice(0, 4);
-    if (section === 'portrait' && !showingWeekly) {
-      setLoadState('ready');
-      return () => {
-        current = false;
-      };
-    }
     const sectionHasSnapshot = showingWeekly
       ? weeklyReport !== undefined
       : section === 'calendar'
@@ -443,19 +420,8 @@ export function HistoryPage(props: {
   };
   const changeHistorySection = (next: HistorySection) => {
     setSection(next);
-    navigate(
-      next === 'calendar'
-        ? '/history?tab=calendar'
-        : next === 'portrait'
-          ? '/history?tab=portrait'
-          : '/history',
-      { replace: true },
-    );
+    navigate(next === 'calendar' ? '/history?tab=calendar' : '/history', { replace: true });
   };
-
-  if (section === 'portrait' && !showingWeekly) {
-    return <ProfilePage client={portraitApi} onSectionChange={changeHistorySection} />;
-  }
 
   if (loadState === 'loading') {
     return (
@@ -549,7 +515,7 @@ export function HistoryPage(props: {
         <header className="history-page-header">
           <p className="eyebrow">可追溯学习事实</p>
           <h1>学习历史</h1>
-          <p>统计、日历与画像共享同一事实来源；课程与 Review 可从记录直接回溯。</p>
+          <p>统计与日历共享同一事实来源；课程与 Review 可从记录直接回溯。</p>
         </header>
         <HistorySectionTabs active={section} onChange={changeHistorySection} />
         <Stack {...historySectionPanelAttributes(section)}>

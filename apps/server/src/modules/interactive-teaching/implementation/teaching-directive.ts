@@ -278,7 +278,10 @@ export function materializeTeachingDirective(
     difficultySignals: parsed.difficultySignals ?? [],
     verificationSignals: [],
     comprehensiveCheck:
-      parsed.comprehensiveCheck ?? normalizedComprehensive(state.comprehensiveCheck),
+      parsed.lessonPhase === 'comprehensive_application' &&
+      (state.lessonPhase ?? 'warmup') !== 'comprehensive_application'
+        ? 'pending'
+        : (parsed.comprehensiveCheck ?? normalizedComprehensive(state.comprehensiveCheck)),
     closureInquiry: parsed.closureInquiry ?? state.closureInquiry ?? 'pending',
     summaryStatus: parsed.summaryStatus ?? state.summaryStatus ?? 'pending',
     turnHandoff: parsed.turnHandoff ?? state.turnHandoff ?? 'offer_continue',

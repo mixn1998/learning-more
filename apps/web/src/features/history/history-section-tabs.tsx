@@ -1,11 +1,10 @@
 import { tabId, tabPanelId, Tabs, type TabOption } from '@learning-more/ui';
 
-export type HistorySection = 'statistics' | 'calendar' | 'portrait';
+export type HistorySection = 'statistics' | 'calendar';
 
 const sections: readonly Readonly<{ id: HistorySection; label: string }>[] = [
   { id: 'statistics', label: '历史统计' },
   { id: 'calendar', label: '学习日历' },
-  { id: 'portrait', label: '学习画像' },
 ];
 
 const historyTabsIdPrefix = 'history-primary';

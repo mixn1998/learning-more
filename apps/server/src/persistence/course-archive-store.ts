@@ -55,42 +55,6 @@ function receiptRelativePath(idempotencyKey: string): string {
   return `idempotency/course-archive-deletions/${digest(idempotencyKey)}.json`;
 }
 
-const portraitRefreshStatePath = 'portraits/refresh-state.json';
-
-export type PortraitRefreshState = Readonly<{
-  schemaVersion: 1;
-  state: 'updating' | 'failed';
-  reason: 'course_deleted';
-  courseId: string;
-  updatedAt: string;
-  errorCode?: string;
-}>;
-
-export async function readPortraitRefreshState(
-  dataRoot: DataRoot,
-): Promise<PortraitRefreshState | undefined> {
-  const value = asObject(await readJson(dataRoot, portraitRefreshStatePath));
-  if (value === undefined) return undefined;
-  if (
-    value.schemaVersion !== 1 ||
-    (value.state !== 'updating' && value.state !== 'failed') ||
-    value.reason !== 'course_deleted' ||
-    typeof value.courseId !== 'string' ||
-    typeof value.updatedAt !== 'string'
-  ) {
-    throw new StorageDocumentError('storage_corrupted');
-  }
-  return value as PortraitRefreshState;
-}
-
-export async function stagePortraitRefreshState(
-  tx: TransactionContext,
-  state: PortraitRefreshState | undefined,
-): Promise<void> {
-  if (state === undefined) await tx.deleteOnCommit(portraitRefreshStatePath);
-  else await tx.stageJson(portraitRefreshStatePath, state);
-}
-
 function messageLogRelativePath(sessionId: string): string {
   return `work/session-messages/${digest(sessionId)}.ndjson`;
 }
@@ -666,14 +630,6 @@ export function createLocalFileCourseArchiveStore(dataRoot: DataRoot): CourseArc
         courseId,
         deletedAt: new Date().toISOString(),
       });
-      await stagePortraitRefreshState(tx, {
-        schemaVersion: 1,
-        state: 'updating',
-        reason: 'course_deleted',
-        courseId,
-        updatedAt: new Date().toISOString(),
-      });
-
       return { courseId, deletedCounts: counts };
     },
   };

@@ -93,7 +93,7 @@ describe('RuntimeCenter', () => {
 
   it('returns to the page that opened the runtime center when it is closed', () => {
     render(
-      <MemoryRouter initialEntries={['/profile', '/runtime']} initialIndex={1}>
+      <MemoryRouter initialEntries={['/notes', '/runtime']} initialIndex={1}>
         <CurrentPath />
         <RuntimeStateContext.Provider value={{ state, refresh: vi.fn() }}>
           <RuntimeCenter
@@ -113,7 +113,7 @@ describe('RuntimeCenter', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '关闭' }));
 
-    expect(screen.getByTestId('current-path')).toHaveTextContent('/profile');
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/notes');
   });
 
   it('does not label the local service healthy while the shared recovery state is failed', async () => {

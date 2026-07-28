@@ -11,6 +11,7 @@ export * from './home.js';
 export * from './http.js';
 export * from './learning-session.js';
 export * from './learning-facts-http.js';
+export * from './learning-notes.js';
 export * from './metadata.js';
 export * from './planning.js';
 export * from './profile.js';

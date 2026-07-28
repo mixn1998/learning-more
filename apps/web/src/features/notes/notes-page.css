@@ -1,0 +1,84 @@
+.notes-page {
+  display: grid;
+  gap: 18px;
+}
+.notes-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px;
+  border-top: 3px solid var(--accent);
+}
+.notes-hero h1 {
+  margin: 5px 0;
+}
+.notes-hero p,
+.notes-empty p {
+  margin: 0;
+  color: var(--muted);
+}
+.notes-empty {
+  padding: 30px;
+  text-align: center;
+}
+.notes-discipline > h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+.notes-course {
+  padding: 20px;
+}
+.notes-course + .notes-course {
+  margin-top: 12px;
+}
+.notes-course > h3 {
+  margin: 0 0 14px;
+}
+.notes-list {
+  display: grid;
+  gap: 10px;
+}
+.notes-item {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper-2);
+}
+.notes-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.notes-item time {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.notes-item p {
+  margin: 10px 0;
+  white-space: pre-wrap;
+}
+.notes-item textarea {
+  width: 100%;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  resize: vertical;
+}
+.notes-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.notes-item-actions button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  cursor: pointer;
+}
+.notes-item-actions button.danger {
+  color: var(--danger);
+}

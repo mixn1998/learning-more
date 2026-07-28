@@ -15,7 +15,7 @@ const paths = [
   '/courses/course_01/lessons/lesson_01/record?tab=review',
   '/planning',
   '/history',
-  '/profile',
+  '/notes',
   '/runtime',
 ] as const;
 

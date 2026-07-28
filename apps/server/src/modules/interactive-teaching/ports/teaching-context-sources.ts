@@ -1,8 +1,4 @@
-import type {
-  CourseMode,
-  PersonalizationView,
-  TeachingStateSnapshot,
-} from '@learning-more/contracts';
+import type { CourseMode, TeachingStateSnapshot } from '@learning-more/contracts';
 
 import type { MaterializedTeachingMessage } from '../interface.js';
 
@@ -80,7 +76,6 @@ export type TeachingContextPackage = Readonly<{
   learningStartSummary?: string;
   relevantFinalReviews: readonly SourceExcerpt[];
   readingMaterialExcerpts: readonly SourceExcerpt[];
-  personalization: PersonalizationView;
   teachingState: TeachingStateSnapshot;
   recentMessages: readonly MaterializedTeachingMessage[];
   unobservedMessages: readonly MaterializedTeachingMessage[];
@@ -95,10 +90,6 @@ export interface TeachingContextSources {
   listRelevantFinalReviews(courseId: string, lessonId: string): Promise<readonly SourceExcerpt[]>;
   listRelevantMaterialExcerpts(lessonId: string): Promise<readonly SourceExcerpt[]>;
   getLearningStartSummary(courseId: string): Promise<string | undefined>;
-  getPersonalizationView(input: {
-    courseId: string;
-    lessonId: string;
-  }): Promise<PersonalizationView>;
 }
 
 export interface TeachingContextAssembler {

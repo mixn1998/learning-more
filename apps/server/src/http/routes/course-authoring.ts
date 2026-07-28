@@ -467,7 +467,6 @@ export async function registerCourseAuthoringRoutes(
           DeleteCourseArchiveResponseSchema.parse({
             courseId: result.value.courseId,
             deletedAt: result.value.deletedAt,
-            portraitRefresh: result.value.portraitRefresh,
           }),
         );
       } catch (error) {

@@ -1,6 +1,5 @@
 import type {
   CommandContext,
-  PersonalizationView,
   TeachingObservation,
   TeachingStateSnapshot,
 } from '@learning-more/contracts';
@@ -120,16 +119,6 @@ async function fixture(
       return storedSessionModule.execute(command, context);
     },
   };
-  const emptyPersonalization: PersonalizationView = {
-    profileVersion: 0,
-    purpose: 'interactive_teaching',
-    courseId: 'course_1',
-    lessonId: 'lesson_1',
-    signals: [],
-    completeness: 'insufficient',
-    sourceSnapshotHash: '0'.repeat(64),
-    createdAt: '2026-07-14T00:00:00.000Z',
-  };
   const sources: TeachingContextSources = {
     async getCourseAndLesson() {
       return {
@@ -187,9 +176,6 @@ async function fixture(
     },
     async getLearningStartSummary() {
       return undefined;
-    },
-    async getPersonalizationView() {
-      return emptyPersonalization;
     },
   };
   let submittedContext: unknown;

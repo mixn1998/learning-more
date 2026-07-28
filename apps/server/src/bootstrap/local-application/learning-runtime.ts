@@ -157,7 +157,6 @@ export function createLocalLearningRuntime(
     getLearningRecord: learningRepositories.get,
     listMessages: messageLog.list,
     artifactStore: input.artifactStore,
-    getPersonalizationView: input.profile.getTeachingPersonalization,
   });
   const teachingContextAssembler = createTeachingContextAssembler({
     sources: teachingContextSources,

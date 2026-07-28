@@ -8,7 +8,6 @@ import { HomeDashboardResponseSchema } from '@learning-more/contracts';
 
 import { createMockProvider } from '../ai-providers/mock-provider.js';
 import { reviewIdForLesson } from '../modules/review-closure/implementation/stage-review.js';
-import { stagePortraitRefreshState } from '../persistence/course-archive-store.js';
 import { DataRoot } from '../persistence/data-root.js';
 import { createLocalFileCourseCreationRepositories } from '../persistence/course-creation-repositories.js';
 import { createLocalFileLearningSessionRepositories } from '../persistence/learning-session-repositories.js';
@@ -382,30 +381,6 @@ describe('local CourseAuthoring application', () => {
     expect(after.total).toBe(before.total);
   }, 15_000);
 
-  it('does not expose a failed course-deletion refresh as the current learning portrait', async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-portrait-state-'));
-    roots.push(directory);
-    const local = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
-    const app = await buildApp(local.serverDependencies);
-    const unitOfWork = createUnitOfWork({ dataRoot: DataRoot.create(directory) });
-    await unitOfWork.execute({ transactionId: 'tx_stale_portrait_refresh' }, (tx) =>
-      stagePortraitRefreshState(tx, {
-        schemaVersion: 1,
-        state: 'failed',
-        reason: 'course_deleted',
-        courseId: 'course_deleted',
-        updatedAt: '2026-07-17T00:00:00.000Z',
-        errorCode: 'portrait_refresh_failed',
-      }),
-    );
-
-    const response = await app.inject({ method: 'GET', url: '/api/v1/portrait' });
-
-    expect(response.statusCode).toBe(404);
-    await app.close();
-    await local.close();
-  });
-
   it('[EQ-COURSE-03..06] runs confirmation, revision, closure, review, and permanent deletion through HTTP → Module → LocalFile', async () => {
     const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-app-'));
     roots.push(dataRoot);
@@ -659,20 +634,6 @@ describe('local CourseAuthoring application', () => {
       profileSchemaVersion: 1,
       sufficiency: { status: 'insufficient' },
     });
-    const portrait = await app.inject({
-      method: 'POST',
-      url: '/api/v1/portrait-refreshes',
-      headers: { ...baseHeaders, 'idempotency-key': 'portrait_01' },
-      payload: { tokenBudget: 2_000 },
-    });
-    expect(portrait.statusCode).toBe(201);
-    expect(portrait.json()).toMatchObject({
-      state: 'completed',
-      title: '学习画像：证据尚不足',
-      claims: [],
-    });
-    expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
-
     for (const [index, lessonId] of course!.lessonIds.entries()) {
       const started = await app.inject({
         method: 'POST',
@@ -742,7 +703,6 @@ describe('local CourseAuthoring application', () => {
     ).resolves.toBeUndefined();
     const afterDeleteHistory = await app.inject({ method: 'GET', url: '/api/v1/history' });
     expect(afterDeleteHistory.json<{ entries: unknown[] }>().entries).toEqual([]);
-    expect((await app.inject({ method: 'GET', url: '/api/v1/portrait' })).statusCode).toBe(200);
     await app.close();
     await local.close();
   }, 60_000);

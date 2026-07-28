@@ -388,23 +388,6 @@ await check('学习日历月份与日期详情', async () => {
   await page.close();
 });
 
-await check('学习画像设置与刷新', async () => {
-  const page = await pageFor('06-历史统计与学习画像/学习画像.html');
-  await page.locator('#openPortraitSettings').click();
-  expect(
-    await page.locator('#portraitSettings').evaluate((dialog) => dialog.open),
-    '画像设置未打开',
-  );
-  await page.locator('#savePortraitSettings').click();
-  await page.locator('#refreshPortrait').click();
-  await page.waitForTimeout(850);
-  expect(
-    (await page.locator('#portraitUpdated').innerText()).includes('刚刚'),
-    '画像刷新状态未更新',
-  );
-  await page.close();
-});
-
 await check('运行中心切换、模型与诊断', async () => {
   const page = await pageFor('07-系统运行与自愈/接口状态与本地服务自愈.html');
   await page.locator('.rc-tab[data-tab="service"]').click();

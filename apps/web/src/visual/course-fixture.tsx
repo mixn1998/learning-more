@@ -124,7 +124,7 @@ function DeleteCoursePreview() {
                   的课程档案、课节学习记录、Review 与课程排期。
                 </p>
                 <p className="delete-preview-note">
-                  此操作不可恢复。历史统计与学习画像会从底层事实中扣除此课程，并基于剩余记录重新计算。
+                  此操作不可恢复。历史统计会从底层事实中扣除此课程，并基于剩余记录重新计算。
                 </p>
               </div>
               <footer>

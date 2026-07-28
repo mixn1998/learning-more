@@ -29,16 +29,6 @@ function context(request: string, point = '商业市场分析'): TeachingContext
     },
     relevantFinalReviews: [],
     readingMaterialExcerpts: [],
-    personalization: {
-      profileVersion: 0,
-      purpose: 'interactive_teaching',
-      courseId: 'course_1',
-      lessonId: 'lesson_1',
-      signals: [],
-      completeness: 'insufficient',
-      sourceSnapshotHash: '0'.repeat(64),
-      createdAt: '2026-07-21T00:00:00.000Z',
-    },
     teachingState: {
       ...state,
       lessonPhase: 'knowledge_point',

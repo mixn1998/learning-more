@@ -58,12 +58,10 @@ describe('CourseArchiveDeletion public command seam', () => {
       },
       dispatchPending: async () => 0,
     };
-    const requestPortraitRefresh = vi.fn(async () => undefined);
     const deletion = createCourseArchiveDeletion({
       store,
       unitOfWork,
       outbox,
-      requestPortraitRefresh,
       nextEventId: () => 'event_delete_01',
       now: () => new Date('2026-07-13T08:01:00.000Z'),
     });
@@ -79,7 +77,6 @@ describe('CourseArchiveDeletion public command seam', () => {
         kind: 'course-archive-deleted',
         courseId: 'course_01',
         deletedAt: '2026-07-13T08:01:00.000Z',
-        portraitRefresh: 'updating',
       },
     });
     expect(stageDelete).toHaveBeenCalledTimes(1);
@@ -93,10 +90,5 @@ describe('CourseArchiveDeletion public command seam', () => {
         },
       }),
     ]);
-    expect(requestPortraitRefresh).toHaveBeenCalledTimes(1);
-    expect(requestPortraitRefresh).toHaveBeenCalledWith({
-      courseId: 'course_01',
-      idempotencyKey: 'course-delete-refresh:delete-course-01',
-    });
   });
 });

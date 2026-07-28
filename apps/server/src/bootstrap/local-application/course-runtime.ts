@@ -16,7 +16,6 @@ import {
 import {
   createLocalFileCourseArchiveStore,
   createLocalFileOutlineSessionDraftStore,
-  stagePortraitRefreshState,
 } from '../../persistence/course-archive-store.js';
 import { createLocalFileCourseAuthoringRepositories } from '../../persistence/course-authoring-repositories.js';
 import { createLocalFileCourseCreationRepositories } from '../../persistence/course-creation-repositories.js';
@@ -221,29 +220,6 @@ export function createLocalCourseRuntime(
     store: createLocalFileCourseArchiveStore(input.dataRoot),
     unitOfWork: input.unitOfWork,
     outbox: input.events.outbox,
-    async requestPortraitRefresh({ courseId, idempotencyKey }) {
-      try {
-        await input.profile.requestPortraitRefresh({ idempotencyKey, tokenBudget: 8_000 });
-        await input.unitOfWork.execute(
-          { transactionId: `tx_portrait_refresh_state_${randomUUID()}` },
-          (tx) => stagePortraitRefreshState(tx, undefined),
-        );
-      } catch (error) {
-        await input.unitOfWork.execute(
-          { transactionId: `tx_portrait_refresh_state_${randomUUID()}` },
-          (tx) =>
-            stagePortraitRefreshState(tx, {
-              schemaVersion: 1,
-              state: 'failed',
-              reason: 'course_deleted',
-              courseId,
-              updatedAt: input.now().toISOString(),
-              errorCode: 'portrait_refresh_failed',
-            }),
-        );
-        throw error;
-      }
-    },
     nextEventId: () => `event_${randomUUID()}`,
     now: input.now,
   });

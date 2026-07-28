@@ -416,6 +416,9 @@ export function HomePage(props: {
           {props.notice === undefined ? null : <p role="status">{props.notice}</p>}
         </div>
         <div className="lm-actions home-hero-actions">
+          <Button type="button" onClick={() => props.onNavigate('/notes')}>
+            学习笔记
+          </Button>
           <Button type="button" onClick={() => props.onNavigate('/history')}>
             历史统计
           </Button>

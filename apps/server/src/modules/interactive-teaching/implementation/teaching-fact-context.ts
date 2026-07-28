@@ -1,7 +1,6 @@
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
 import { normalizeTeachingControlState } from './teaching-directive.js';
 import { projectTeachingLedger } from './teaching-ledger-projection.js';
-import { renderTeachingPersonalizationPrompt } from './teaching-personalization-prompt.js';
 
 const MAX_COURSE_RELATIONS = 8;
 const MAX_LOCAL_COURSE_GOALS = 3;
@@ -163,7 +162,6 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
   const relations = localCourseWindow(context).map(
     (lesson) => `- ${lesson.title}（${courseRelationLabel(lesson.relation)}）：${lesson.objective}`,
   );
-  const personalization = renderTeachingPersonalizationPrompt(context.personalization);
   const branches = context.teachingState.explorationBranches.map((branch) => {
     const status =
       branch.status === 'active'
@@ -202,7 +200,6 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
       context.teachingState.openLoops.map((loop) => `- ${loop.summary}`),
     ),
     section('课程邻接探索', branches),
-    section('可用于个性化的背景', personalization),
     section('此前真实对话', priorConversation(context)),
     ...(opening || continuation ? [] : [`【当前诉求｜用户原话】\n${currentRequest}`]),
   ]

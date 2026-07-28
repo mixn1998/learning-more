@@ -36,16 +36,6 @@ function context(): TeachingContextPackage {
     },
     relevantFinalReviews: [],
     readingMaterialExcerpts: [],
-    personalization: {
-      profileVersion: 0,
-      purpose: 'interactive_teaching',
-      courseId: 'course_1',
-      lessonId: 'lesson_1',
-      signals: [],
-      completeness: 'insufficient',
-      sourceSnapshotHash: '0'.repeat(64),
-      createdAt: '2026-07-14T00:00:00.000Z',
-    },
     teachingState: createTeachingState({
       lessonId: 'lesson_1',
       sessionId: 'session_1',
@@ -191,7 +181,7 @@ function runtime(
 }
 
 describe('GenerationTeachingAgent', () => {
-  it('bounds course-wide and personalization context around the current lesson', async () => {
+  it('bounds course-wide context around the current lesson', async () => {
     const fake = runtime();
     const base = context();
     const bounded: TeachingContextPackage = {
@@ -206,16 +196,6 @@ describe('GenerationTeachingAgent', () => {
           relation: index === 6 ? ('current' as const) : ('other' as const),
         })),
       },
-      personalization: {
-        ...base.personalization,
-        signals: Array.from({ length: 12 }, (_, index) => ({
-          evidenceId: `evidence_${index}`,
-          summary: `personalization-signal-${index}`,
-          explicitness: 'ai_observed' as const,
-          sourceRefs: [`message:${index}`],
-          limitations: [],
-        })),
-      },
     };
     const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
 
@@ -227,8 +207,6 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain('lesson-title-3');
     expect(prompt).toContain('lesson-title-10');
     expect(prompt).not.toContain('lesson-title-11');
-    expect(prompt).toContain('personalization-signal-7');
-    expect(prompt).toContain('只读压缩投影');
   });
 
   it('renders an active opening instruction without a fabricated learner request', async () => {

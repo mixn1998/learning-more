@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { registerProfileRoutes } from './profile.js';
 
 describe('profile routes', () => {
-  it('keeps legacy evidence explicitly deprecated and exposes the reasoning analysis chain', async () => {
+  it('exposes the retained user-profile reasoning analysis chain', async () => {
     const refreshReasoningAnalysis = vi.fn().mockResolvedValue({
       snapshot: { snapshotId: 'reasoning_snapshot_1', status: 'usable' },
       dimensions: [],
@@ -13,7 +13,6 @@ describe('profile routes', () => {
     const app = Fastify();
     await registerProfileRoutes(app, {
       getGlobalProfile: async () => ({}),
-      listEvidence: async () => [],
       listReasoningEpisodes: async () => [{ episodeId: 'reasoning_episode_1' }],
       refreshReasoningAnalysis,
       getReasoningAnalysis: async (snapshotId) =>
@@ -21,10 +20,6 @@ describe('profile routes', () => {
           ? { snapshot: { snapshotId, status: 'usable' } }
           : undefined,
     });
-
-    const legacy = await app.inject({ method: 'GET', url: '/api/v1/portrait-evidence' });
-    expect(legacy.statusCode).toBe(200);
-    expect(legacy.headers.deprecation).toBe('true');
 
     const episodes = await app.inject({
       method: 'GET',

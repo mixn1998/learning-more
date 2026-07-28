@@ -81,26 +81,6 @@ function sources(courseMode: 'standard' | 'case_study'): TeachingContextSources 
     async getLearningStartSummary() {
       return 'The learner asked to build from concrete examples.';
     },
-    async getPersonalizationView() {
-      return {
-        profileVersion: 2,
-        purpose: 'interactive_teaching',
-        courseId: 'course_1',
-        lessonId: 'lesson_1',
-        signals: [
-          {
-            evidenceId: 'evidence_1',
-            summary: 'The learner previously requested concise examples. '.repeat(30),
-            explicitness: 'ai_observed',
-            sourceRefs: ['message:previous'],
-            limitations: ['Observed once.'],
-          },
-        ],
-        completeness: 'limited',
-        sourceSnapshotHash: 'c'.repeat(64),
-        createdAt: '2026-07-14T00:00:00.000Z',
-      };
-    },
   };
 }
 
@@ -193,7 +173,6 @@ describe('TeachingContextAssembler', () => {
       { ref: 'knowledge:kp_1', text: 'Conditioning changes the sample space.' },
     ]);
     expect(context.teachingState.openLoops).toHaveLength(1);
-    expect(context.personalization.signals).toEqual([]);
   });
 
   it('keeps a bounded recent window plus unresolved source messages', async () => {

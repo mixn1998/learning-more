@@ -138,7 +138,6 @@ describe('createLearningTeachingContext', () => {
         read: vi.fn(),
         readDraft: vi.fn(),
       },
-      getPersonalizationView: vi.fn(),
     });
 
     const context = await sources.getCourseAndLesson({

@@ -30,8 +30,6 @@ export const EVENT_TYPES = [
   'PlanFlowResumed',
   'PlanFlowReplanned',
   'PlanFlowDeleted',
-  'PortraitEvidenceExtracted',
-  'PortraitVersionCommitted',
 ] as const;
 
 export const EventTypeSchema = z.enum(EVENT_TYPES);

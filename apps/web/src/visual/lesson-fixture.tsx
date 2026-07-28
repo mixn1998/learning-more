@@ -88,11 +88,13 @@ export function LessonSessionFixture() {
       canComplete
       canStop
       canContinueTeaching={false}
+      courseId="course_visual"
       courseTitle="从反馈到核心循环"
       elapsedSeconds={18 * 60 + 42}
       editingSubmitDisabled={false}
       generating
       input=""
+      lessonId="lesson_visual"
       messages={[
         {
           id: 'a1',

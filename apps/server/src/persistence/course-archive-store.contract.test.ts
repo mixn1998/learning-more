@@ -22,7 +22,6 @@ import {
   createLocalFileScheduleRepository,
 } from './planning-repositories.js';
 import { createLocalFileEvidenceRepositories } from './profile-evidence-repositories.js';
-import { createLocalFilePortraitRepository } from './portrait-repositories.js';
 import { recoverTransactions } from './recover-transactions.js';
 import { createUnitOfWork } from './unit-of-work.js';
 
@@ -231,7 +230,6 @@ describe('LocalFile CourseArchiveStore adapter', () => {
     const planFlows = createLocalFilePlanFlowRepository(dataRoot);
     const facts = createLocalFileFactRepository(dataRoot);
     const evidence = createLocalFileEvidenceRepositories(dataRoot);
-    const portraits = createLocalFilePortraitRepository(dataRoot);
     const messages = createLocalFileMessageLog(dataRoot);
 
     const relative = (absolute: string) =>
@@ -474,11 +472,6 @@ describe('LocalFile CourseArchiveStore adapter', () => {
           0,
         );
       }
-      await portraits.saveCurrent(
-        tx,
-        { currentVersionId: 'portrait_before_delete', updatedAt: timestamp, resourceVersion: 0 },
-        0,
-      );
       await messages.stageAppend(tx, 'session_delete', {
         id: 'message_delete',
         role: 'user',
@@ -526,7 +519,6 @@ describe('LocalFile CourseArchiveStore adapter', () => {
     expect(await schedules.get('schedule_delete')).toBeUndefined();
     expect(await schedules.get('schedule_keep')).toMatchObject({ id: 'schedule_keep' });
     expect(await messages.list('session_delete')).toEqual([]);
-    expect(await portraits.getCurrent()).toBeUndefined();
     await expect(access(paths.aggregate('teaching-ledgers', 'session_delete'))).rejects.toThrow();
     await expect(
       access(paths.aggregate('reasoning-behavior-episodes', 'reasoning_delete')),

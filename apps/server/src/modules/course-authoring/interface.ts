@@ -70,7 +70,6 @@ export type CourseArchiveDeletedResult = Readonly<{
   kind: 'course-archive-deleted';
   courseId: string;
   deletedAt: string;
-  portraitRefresh: 'updating';
 }>;
 
 export type CourseAuthoringEvidenceCheckpoint = Readonly<{

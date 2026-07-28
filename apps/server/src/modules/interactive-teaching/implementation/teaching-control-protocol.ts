@@ -90,7 +90,7 @@ export function renderTeachingControlProtocol(context: TeachingContextPackage): 
     'status=completed 表示该知识点的必要讲解已经完成，且当前没有尚未处理的相关疑问、回答错误、误解或不理解。知识点互动不是完成前提；本知识点没有发出互动邀请时，interactionStatus 可保持 pending。',
     '如果已经发出尚待学习者回应的互动邀请，保持 status=learning、interactionStatus=pending；学习者响应后使用 interactionStatus=completed，明确不展开或跳过互动时使用 interactionStatus=skipped。',
     '每轮最多新完成一个主链知识点，而且只能完成本轮开始时的 activeKnowledgePointRef。完成当前点后可以把 activeKnowledgePointRef 切换到相邻下一点，但未在本轮可见回复中展开的下一主链节点保持 pending；只有回复确实属于某知识点时，才能把该点设为 learning 或 completed。',
-    '完成最后一个知识点后可以清除 activeKnowledgePointRef，将 lessonPhase 设为 comprehensive_application；本轮可见回复不得同时展开综合应用。',
+    '完成最后一个知识点后可以清除 activeKnowledgePointRef，将 lessonPhase 设为 comprehensive_application；本轮 comprehensiveApplication 保持 pending，可见回复不得同时展开综合应用。下一轮实际展开综合应用时再设为 learning。',
     'difficultySignals 只上报当前用户原话对具体知识点产生的新信号，每项含 knowledgePointRef、sourceMessageId、kind；kind∈answer_error|misunderstanding|not_understood|request_deeper_explanation。',
     '四类信号独立计数；同一消息可上报不同 kind、不可重复同一 kind。延伸、脑洞或相邻探索不计；无新信号时省略。',
     '用户跳过整个知识点时使用 status=skipped 且 interactionStatus=skipped；只跳过已经发出的知识点互动时，必要讲解和相关阻塞项处理完成后使用 status=completed、interactionStatus=skipped。',

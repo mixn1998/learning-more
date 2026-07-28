@@ -253,24 +253,6 @@ for (const file of files) {
         }
       });
     }
-    if (relative.endsWith(`06-历史统计与学习画像${path.sep}学习画像.html`) && viewportName === 'desktop') {
-      const insightTopGaps = await page.locator('.insight-card').evaluateAll((nodes) => nodes.map((node) => {
-        const cardTop = node.getBoundingClientRect().top;
-        const indexLabel = node.querySelector('.insight-index span');
-        const body = node.querySelector('.insight-body');
-        const title = body?.querySelector('h3');
-        return {
-          index: indexLabel ? indexLabel.getBoundingClientRect().top - cardTop : null,
-          body: title ? title.getBoundingClientRect().top - cardTop : null,
-          minHeight: body ? getComputedStyle(body).minHeight : null,
-        };
-      }));
-      insightTopGaps.forEach((gaps, index) => {
-        if (gaps.index === null || gaps.body === null || gaps.index > 22 || gaps.body > 22 || gaps.minHeight !== '0px') {
-          failures.push(`${relative} [${viewportName}] spacing: insight-${index + 1} expected top-gap<=22px and adaptive height, got ${gaps.index}/${gaps.body}, min-height=${gaps.minHeight}`);
-        }
-      });
-    }
     await page.close();
   }
 }

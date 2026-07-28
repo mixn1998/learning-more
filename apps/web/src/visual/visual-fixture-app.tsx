@@ -15,7 +15,6 @@ import {
   WeeklyReportFixture,
 } from './history-fixture.js';
 import { PlanFlowFixture, PlanningFixture } from './planning-fixture.js';
-import { PortraitFixture } from './profile-fixture.js';
 import { RuntimeFixture } from './runtime-fixture.js';
 import { MathPlotFixture } from './math-plot-fixture.js';
 import {
@@ -172,10 +171,6 @@ export function VisualFixtureApp(props: { readonly fixtureId: string }) {
       case 'weekly-report-expanded':
         content = <WeeklyReportFixture />;
         initialEntry = '/history?tab=weekly';
-        break;
-      case 'portrait-completed':
-        content = <PortraitFixture />;
-        initialEntry = '/profile';
         break;
       case 'runtime-ready':
         content = <RuntimeFixture />;

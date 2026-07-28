@@ -26,7 +26,7 @@ export function HistoryCalendarWorkspace(props: {
   readonly records: readonly HistoryCalendarRecord[];
   readonly initialMonth: string;
   readonly initialSelectedDate: string;
-  readonly onSectionChange: (section: 'statistics' | 'calendar' | 'portrait') => void;
+  readonly onSectionChange: (section: 'statistics' | 'calendar') => void;
   readonly onOpenRecord: (record: HistoryCalendarRecord) => void;
 }) {
   const [initialYear, initialMonth] = props.initialMonth.split('-').map(Number) as [number, number];

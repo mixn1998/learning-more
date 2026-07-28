@@ -15,6 +15,10 @@ import {
   type LearningSessionRouteOptions,
 } from '../http/routes/learning-sessions.js';
 import {
+  registerLearningNoteRoutes,
+  type LearningNoteRouteOptions,
+} from '../http/routes/learning-notes.js';
+import {
   registerReviewClosureRoutes,
   type ReviewClosureRouteOptions,
 } from '../http/routes/review-closure.js';
@@ -24,7 +28,6 @@ import {
   type LearningFactsRouteOptions,
 } from '../http/routes/learning-facts.js';
 import { registerProfileRoutes, type ProfileRouteOptions } from '../http/routes/profile.js';
-import { registerPortraitRoutes, type PortraitRouteOptions } from '../http/routes/portraits.js';
 import { registerRuntimeRoutes, type RuntimeRouteOptions } from '../http/routes/runtime.js';
 
 export interface ServerDependencies {
@@ -34,11 +37,11 @@ export interface ServerDependencies {
   readonly generationFrameLog?: GenerationFrameLog;
   readonly localSecurity?: Readonly<{ allowedOrigin: string; csrfToken: string }>;
   readonly learningSession?: LearningSessionRouteOptions;
+  readonly learningNotes?: LearningNoteRouteOptions;
   readonly reviewClosure?: ReviewClosureRouteOptions;
   readonly planning?: PlanningRouteOptions;
   readonly learningFacts?: LearningFactsRouteOptions;
   readonly profile?: ProfileRouteOptions;
-  readonly portraits?: PortraitRouteOptions;
   readonly runtimeControl?: RuntimeRouteOptions;
 }
 
@@ -76,6 +79,9 @@ export async function buildApp(
   if (dependencies.learningSession !== undefined) {
     await registerLearningSessionRoutes(app, dependencies.learningSession);
   }
+  if (dependencies.learningNotes !== undefined) {
+    await registerLearningNoteRoutes(app, dependencies.learningNotes);
+  }
   if (dependencies.reviewClosure !== undefined) {
     await registerReviewClosureRoutes(app, dependencies.reviewClosure);
   }
@@ -87,9 +93,6 @@ export async function buildApp(
   }
   if (dependencies.profile !== undefined) {
     await registerProfileRoutes(app, dependencies.profile);
-  }
-  if (dependencies.portraits !== undefined) {
-    await registerPortraitRoutes(app, dependencies.portraits);
   }
   if (dependencies.runtimeControl !== undefined) {
     await registerRuntimeRoutes(app, dependencies.runtimeControl);

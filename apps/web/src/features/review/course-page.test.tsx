@@ -245,11 +245,7 @@ describe('CoursePage', () => {
   });
 
   it('[EQ-COURSE-06] confirms the irreversible cascade once and delegates successful home navigation', async () => {
-    let resolveDelete!: (value: {
-      courseId: string;
-      deletedAt: string;
-      portraitRefresh: 'updating';
-    }) => void;
+    let resolveDelete!: (value: { courseId: string; deletedAt: string }) => void;
     const deleteCourse = vi.fn().mockReturnValue(
       new Promise((resolve) => {
         resolveDelete = resolve;
@@ -286,7 +282,6 @@ describe('CoursePage', () => {
     expect(dialog).toHaveTextContent('Review');
     expect(dialog).toHaveTextContent('排期');
     expect(dialog).toHaveTextContent('历史统计');
-    expect(dialog).toHaveTextContent('学习画像');
     expect(screen.queryByRole('textbox', { name: /课程名称/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
@@ -302,7 +297,6 @@ describe('CoursePage', () => {
     resolveDelete({
       courseId: 'course_01',
       deletedAt: '2026-07-13T08:01:00.000Z',
-      portraitRefresh: 'updating',
     });
     await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('课程及关联记录已永久删除'));
   });

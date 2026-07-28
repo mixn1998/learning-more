@@ -50,7 +50,7 @@ export interface LearningClient {
   deleteCourse(
     courseId: string,
     resourceVersion: number,
-  ): Promise<{ courseId: string; deletedAt: string; portraitRefresh: 'updating' }>;
+  ): Promise<{ courseId: string; deletedAt: string }>;
   start(lessonId: string): Promise<{
     lessonId: string;
     sessionId: string;

@@ -59,12 +59,13 @@ describe('local application composition boundaries', () => {
     );
     expect(assembly).toContain('courseAuthoring: course.routes');
     expect(assembly).toContain('learningSession: learning.routes');
+    expect(assembly).toContain('learningNotes');
     expect(assembly).toContain('reviewClosure: review.routes');
     expect(assembly).toContain('planning: planningRuntime.routes');
     expect(assembly).toContain('learningFacts: {');
     expect(assembly).toContain('...insights.routes');
     expect(assembly).toContain('profile: profile.profileRoutes');
-    expect(assembly).toContain('portraits: profile.portraitRoutes');
+    expect(assembly).not.toContain('portraitRoutes');
     expect(assembly).toContain('runtimeControl: generation.runtimeControl');
   });
 });

@@ -733,5 +733,6 @@ describe('teaching completion gate', () => {
     });
 
     expect(next.lessonPhase).toBe('comprehensive_application');
+    expect(next.comprehensiveCheck).toBe('pending');
   });
 });

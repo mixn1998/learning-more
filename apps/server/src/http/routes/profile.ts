@@ -3,23 +3,8 @@ import { z } from 'zod';
 
 import { CourseModeSchema, ReasoningElicitationSchema } from '@learning-more/contracts';
 
-export type ProfileEvidenceRecord = Readonly<{
-  evidenceId: string;
-  summary: string;
-  sourceGroup: string;
-  sourceGroupId: string;
-  dependentSourceGroupIds: readonly string[];
-  sourceRefs: readonly string[];
-  dataKeys: readonly string[];
-  observedAt: string;
-  strength: Readonly<{ score: number; rationale: string }>;
-  polarity: string;
-  status: string;
-}>;
-
 export type ProfileRouteOptions = Readonly<{
   getGlobalProfile(): Promise<unknown>;
-  listEvidence(): Promise<readonly ProfileEvidenceRecord[]>;
   listReasoningEpisodes?(): Promise<readonly unknown[]>;
   refreshReasoningAnalysis?(filter: {
     windowStart?: string;
@@ -31,11 +16,6 @@ export type ProfileRouteOptions = Readonly<{
   }): Promise<unknown | undefined>;
   getReasoningAnalysis?(snapshotId: string): Promise<unknown | undefined>;
 }>;
-
-const EvidenceQuerySchema = z.strictObject({
-  pageSize: z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.string().min(1).optional(),
-});
 
 const ReasoningAnalysisBodySchema = z.strictObject({
   windowStart: z.iso.datetime({ offset: true }).optional(),
@@ -52,35 +32,6 @@ export async function registerProfileRoutes(
 ): Promise<void> {
   app.get('/api/v1/profile-facts', async (_request, reply) => {
     return reply.code(200).send(await options.getGlobalProfile());
-  });
-
-  app.get('/api/v1/portrait-evidence', async (request, reply) => {
-    reply.header('deprecation', 'true');
-    const query = EvidenceQuerySchema.parse(request.query);
-    const sorted = [...(await options.listEvidence())].sort((left, right) =>
-      left.evidenceId.localeCompare(right.evidenceId),
-    );
-    const remaining =
-      query.cursor === undefined
-        ? sorted
-        : sorted.filter((candidate) => candidate.evidenceId > query.cursor!);
-    const selected = remaining.slice(0, query.pageSize);
-    const last = selected.at(-1);
-    const nextCursor = remaining.length > selected.length ? last?.evidenceId : undefined;
-    return reply.code(200).send({
-      entries: selected.map((candidate) => ({
-        evidenceId: candidate.evidenceId,
-        summary: candidate.summary,
-        sourceGroup: candidate.sourceGroup,
-        sourceGroupId: candidate.sourceGroupId,
-        dependentSourceGroupIds: candidate.dependentSourceGroupIds,
-        observedAt: candidate.observedAt,
-        strength: candidate.strength,
-        polarity: candidate.polarity,
-        status: candidate.status,
-      })),
-      ...(nextCursor === undefined ? {} : { nextCursor }),
-    });
   });
 
   if (options.listReasoningEpisodes !== undefined) {

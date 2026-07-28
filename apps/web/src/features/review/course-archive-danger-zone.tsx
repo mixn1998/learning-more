@@ -54,7 +54,7 @@ export function CourseArchiveDangerZone(props: {
             与课程排期。
           </p>
           <p className="delete-course-note">
-            此操作不可恢复。历史统计与学习画像会从底层事实中扣除此课程，并基于剩余记录重新计算。
+            此操作不可恢复。历史统计会从底层事实中扣除此课程，并基于剩余记录重新计算。
           </p>
           {error === undefined ? null : <p role="alert">{error}</p>}
         </div>

@@ -48,8 +48,39 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   padding: 13px 17px;
   border-bottom: 1px solid var(--line);
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   background: var(--paper-2);
+}
+.lesson-session-controls,
+.lesson-session-compact-actions,
+.lesson-session-compact-timer {
+  display: flex;
+  align-items: center;
+}
+.lesson-session-controls {
+  min-width: 0;
+  gap: 14px;
+}
+.lesson-session-compact-timer {
+  gap: 10px;
+  white-space: nowrap;
+}
+.lesson-session-compact-timer strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.lesson-session-compact-actions {
+  gap: 7px;
+}
+.lesson-session-compact-actions .lm-btn {
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 11px;
+}
+.lesson-session-outline-button {
+  color: var(--muted);
 }
 .lesson-session-stream {
   min-height: 0;
@@ -68,11 +99,11 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   position: sticky;
   top: 86px;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   height: 100%;
   max-height: none;
-  overflow-y: auto;
-  align-content: start;
+  overflow: hidden;
   align-self: start;
   overscroll-behavior: contain;
 }
@@ -88,6 +119,106 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.65;
+}
+.lesson-session-side .lesson-notes-panel {
+  display: grid;
+  min-height: 0;
+  padding: 15px;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.lesson-notes-head,
+.lesson-note-compose-actions,
+.lesson-note-item-actions {
+  display: flex;
+  align-items: center;
+}
+.lesson-notes-head {
+  justify-content: space-between;
+  gap: 10px;
+}
+.lesson-notes-head h3 {
+  margin: 0;
+}
+.lesson-notes-head a {
+  color: var(--accent-dark);
+  font-size: 10px;
+  text-decoration: none;
+}
+.lesson-note-compose {
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.lesson-note-compose textarea,
+.lesson-note-item textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.55;
+  resize: vertical;
+}
+.lesson-note-compose-actions {
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+}
+.lesson-note-compose-actions small,
+.lesson-note-item time {
+  color: var(--muted);
+  font-size: 9px;
+}
+.lesson-note-compose-actions .lm-btn,
+.lesson-note-item-actions .lm-btn {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 10px;
+}
+.lesson-note-error {
+  margin: 8px 0 0;
+  color: var(--danger) !important;
+}
+.lesson-note-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.lesson-note-empty {
+  margin: 12px 0 0;
+}
+.lesson-note-item {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.lesson-note-item:last-child {
+  border-bottom: 0;
+}
+.lesson-note-item p {
+  margin: 5px 0 8px;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.lesson-note-item-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+.lesson-note-text-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  font-size: 10px;
+  cursor: pointer;
+}
+.lesson-note-text-button.danger {
+  color: var(--danger);
 }
 .lesson-session-side .lesson-session-timer {
   padding: 18px;
@@ -373,9 +504,13 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   .lesson-session-side {
     position: static;
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: none;
     height: auto;
     max-height: none;
     overflow: visible;
+  }
+  .lesson-session-side .lesson-notes-panel {
+    min-height: 380px;
   }
 }
 @media (max-width: 600px) {
@@ -392,6 +527,16 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
     display: grid;
     width: 100%;
     grid-template-columns: 1fr 1fr;
+  }
+  .lesson-session-controls {
+    align-items: flex-start;
+    width: 100%;
+    flex-direction: column;
+  }
+  .lesson-session-compact-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .lesson-session-topbar > .lm-topbar-tools > .lm-pill {
     display: none;

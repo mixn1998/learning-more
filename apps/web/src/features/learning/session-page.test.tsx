@@ -108,6 +108,48 @@ describe('learning SessionPage', () => {
     expect(screen.getByText('重难点')).toBeInTheDocument();
   });
 
+  it('keeps comprehensive application pending when the last knowledge-point reply only prepares it', async () => {
+    const getSession = vi.fn().mockResolvedValue({
+      resourceVersion: 5,
+      learning: { progress: 'in_progress', session: { id: 'session_01', state: 'active' } },
+      messages: [
+        {
+          id: 'message_assistant_last_point',
+          role: 'assistant',
+          markdown: '规则到行动的转化链已经建立，下一轮可以进入完整场景。',
+          knowledgePointRef: 'knowledge:kp_2',
+        },
+      ],
+      teachingProgress: {
+        ledgerVersion: 4,
+        observationStatus: 'current',
+        lessonPhase: 'comprehensive_application',
+        comprehensiveCheck: 'learning',
+        closureInquiry: 'pending',
+        summaryStatus: 'pending',
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '治理工具的功能差异',
+            progress: 'completed',
+            interactionStatus: 'completed',
+          },
+          {
+            ref: 'knowledge:kp_2',
+            title: '规则到行动的转化链',
+            progress: 'completed',
+            interactionStatus: 'completed',
+          },
+        ],
+      },
+    });
+
+    render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
+
+    expect(await screen.findByText('等待综合应用开始')).toBeInTheDocument();
+    expect(screen.queryByText('正在进行跨知识点应用')).not.toBeInTheDocument();
+  });
+
   it('offers system continuation without sending a learner message', async () => {
     let continued = false;
     const continueTeaching = vi.fn().mockImplementation(async () => {
@@ -1075,7 +1117,7 @@ describe('learning SessionPage', () => {
     });
     render(<SessionPage lessonId="lesson_01" client={api} />);
 
-    const input = await screen.findByRole('textbox');
+    const input = await screen.findByRole('textbox', { name: '学习输入' });
     fireEvent.change(input, { target: { value: 'Explain the boundary.' } });
     fireEvent.submit(input.closest('form')!);
 

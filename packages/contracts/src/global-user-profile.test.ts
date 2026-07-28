@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   GlobalUserProfileSnapshotSchema,
   GovernedProfileEvidenceCandidateSchema,
-  PersonalizationViewSchema,
   ReasoningBehaviorAnalysisSnapshotSchema,
   ReasoningBehaviorEpisodeSchema,
   ReasoningDimensionDefinitionSchema,
@@ -186,29 +185,5 @@ describe('global user profile contracts', () => {
 
     expect(snapshot.activeEvidenceIds).toEqual(['evidence_1']);
     expect('portraitMarkdown' in snapshot).toBe(false);
-  });
-
-  it('returns a purpose-limited personalization view with evidence limitations', () => {
-    const view = PersonalizationViewSchema.parse({
-      profileVersion: 3,
-      purpose: 'interactive_teaching',
-      courseId: 'course_1',
-      lessonId: 'lesson_1',
-      signals: [
-        {
-          evidenceId: 'evidence_1',
-          summary: evidence.summary,
-          explicitness: 'user_declared',
-          sourceRefs: evidence.sourceRefs,
-          limitations: ['Observed in one lesson session.'],
-        },
-      ],
-      completeness: 'limited',
-      sourceSnapshotHash: hash,
-      createdAt: '2026-07-14T00:02:00.000Z',
-    });
-
-    expect(view.signals[0]?.limitations).toEqual(['Observed in one lesson session.']);
-    expect('portraitMarkdown' in view).toBe(false);
   });
 });

@@ -28,11 +28,11 @@ describe('contract registries', () => {
   it('contains the approved module boundary names', () => {
     expect(COMMAND_TYPES).toContain('ConfirmOutlineCandidate');
     expect(COMMAND_TYPES).toContain('CommitFinalReview');
-    expect(COMMAND_TYPES).toContain('RequestPortraitRefresh');
+    expect(COMMAND_TYPES).not.toContain('RequestPortraitRefresh');
     expect(QUERY_TYPES).toContain('GetCourseArchive');
     expect(QUERY_TYPES).toContain('GetProjectionHealth');
     expect(EVENT_TYPES).toContain('CourseReviewFinalized');
-    expect(EVENT_TYPES).toContain('PortraitVersionCommitted');
+    expect(EVENT_TYPES).not.toContain('PortraitVersionCommitted');
   });
 });
 

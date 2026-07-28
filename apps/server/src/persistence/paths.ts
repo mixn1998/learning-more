@@ -15,6 +15,7 @@ const entityTypes = [
   'plan-flows',
   'materials',
   'weekly-reports',
+  'learning-notes',
 ] as const;
 
 const directorySegments = [
@@ -43,7 +44,6 @@ const directorySegments = [
   ['global-profile', 'artifact-index'],
   ['global-profile', 'cursors'],
   ['portrait-evidence'],
-  ['portraits'],
   ['work'],
   ['quarantine'],
 ] as const;

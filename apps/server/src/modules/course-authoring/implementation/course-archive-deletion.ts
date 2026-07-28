@@ -30,7 +30,6 @@ export function createCourseArchiveDeletion(options: {
   store: CourseArchiveStore;
   unitOfWork: UnitOfWork;
   outbox: Outbox;
-  requestPortraitRefresh(input: { courseId: string; idempotencyKey: string }): Promise<void>;
   nextEventId(): string;
   now(): Date;
 }) {
@@ -68,7 +67,6 @@ export function createCourseArchiveDeletion(options: {
               kind: 'course-archive-deleted',
               courseId: command.courseId,
               deletedAt,
-              portraitRefresh: 'updating',
             },
           };
           const event: LearningEventEnvelope = {
@@ -94,14 +92,6 @@ export function createCourseArchiveDeletion(options: {
         },
       );
 
-      if (execution.newlyDeleted) {
-        await options
-          .requestPortraitRefresh({
-            courseId: command.courseId,
-            idempotencyKey: `course-delete-refresh:${context.idempotencyKey}`,
-          })
-          .catch(() => undefined);
-      }
       return execution.result;
     },
   };

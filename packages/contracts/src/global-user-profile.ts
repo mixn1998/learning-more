@@ -253,25 +253,6 @@ export const GlobalUserProfileSnapshotSchema = z.strictObject({
   createdAt: z.iso.datetime({ offset: true }),
 });
 
-export const PersonalizationSignalSchema = z.strictObject({
-  evidenceId: IdentifierSchema,
-  summary: z.string().trim().min(1).max(10_000),
-  explicitness: z.enum(['user_declared', 'ai_observed']),
-  sourceRefs: z.array(SourceRefSchema).min(1),
-  limitations: z.array(z.string().trim().min(1).max(2_000)),
-});
-
-export const PersonalizationViewSchema = z.strictObject({
-  profileVersion: z.number().int().nonnegative(),
-  purpose: z.literal('interactive_teaching'),
-  courseId: IdentifierSchema,
-  lessonId: IdentifierSchema,
-  signals: z.array(PersonalizationSignalSchema),
-  completeness: z.enum(['insufficient', 'limited', 'complete']),
-  sourceSnapshotHash: Sha256Schema,
-  createdAt: z.iso.datetime({ offset: true }),
-});
-
 export const UserProfileCheckpointManifestSchema = z.strictObject({
   checkpointId: IdentifierSchema,
   checkpointReason: z.union([
@@ -311,8 +292,6 @@ export type ReasoningBehaviorAnalysisSnapshot = Readonly<
   z.infer<typeof ReasoningBehaviorAnalysisSnapshotSchema>
 >;
 export type GlobalUserProfileSnapshot = Readonly<z.infer<typeof GlobalUserProfileSnapshotSchema>>;
-export type PersonalizationSignal = Readonly<z.infer<typeof PersonalizationSignalSchema>>;
-export type PersonalizationView = Readonly<z.infer<typeof PersonalizationViewSchema>>;
 export type UserProfileCheckpointManifest = Readonly<
   z.infer<typeof UserProfileCheckpointManifestSchema>
 >;

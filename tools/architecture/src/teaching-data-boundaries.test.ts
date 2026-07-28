@@ -60,7 +60,8 @@ describe('interactive teaching and reasoning-data architecture boundaries', () =
     expect(profileRuntime).toContain('filter.courseIds.length > 0');
     expect(learningRuntime).toMatch(/interactiveTeachingRuntime\s*\.recoverSession/u);
     expect(learningRuntime).toContain("projectionStatus = 'degraded'");
-    expect(profileRoutes).toContain("header('deprecation', 'true')");
+    expect(profileRoutes).toContain("app.get('/api/v1/profile-facts'");
+    expect(profileRoutes).not.toContain('portrait-evidence');
   });
 
   it('cascades the new ledger and reasoning data on permanent course deletion', () => {

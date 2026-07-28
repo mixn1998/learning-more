@@ -126,7 +126,7 @@ async function checkProfileGovernance(root: string): Promise<ProfileGovernanceIs
 
 const currentFile = fileURLToPath(import.meta.url);
 const repositoryRoot = path.resolve(path.dirname(currentFile), '../../..');
-const dataKeyIssues = checkDataKeys(DATA_KEYS, 273);
+const dataKeyIssues = checkDataKeys(DATA_KEYS, 268);
 const importIssues = await checkRepositoryImports(repositoryRoot);
 const profileGovernanceIssues = await checkProfileGovernance(repositoryRoot);
 

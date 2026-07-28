@@ -320,7 +320,6 @@ describe('CourseAuthoring HTTP contract', () => {
         kind: 'course-archive-deleted',
         courseId: 'course_01',
         deletedAt: '2026-07-13T08:01:00.000Z',
-        portraitRefresh: 'updating',
       },
     });
     const response = await appWith(execute).inject({
@@ -333,7 +332,6 @@ describe('CourseAuthoring HTTP contract', () => {
     expect(response.json()).toEqual({
       courseId: 'course_01',
       deletedAt: '2026-07-13T08:01:00.000Z',
-      portraitRefresh: 'updating',
     });
     expect(execute).toHaveBeenCalledWith(
       { type: 'DeleteCourseArchive', courseId: 'course_01' },

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 describe('profile data architecture boundaries', () => {
   const root = process.cwd();
 
-  it('[EQ-HIS-09] keeps provider, latency, error, page, network, and write-lease telemetry outside facts and profile inputs', () => {
+  it('[EQ-HIS-09] keeps telemetry outside facts and profile inputs', () => {
     const mapping = readFileSync(
       path.join(root, 'apps/server/src/modules/learning-facts/implementation/event-to-fact.ts'),
       'utf8',
@@ -25,26 +25,24 @@ describe('profile data architecture boundaries', () => {
     );
   });
 
-  it('[EQ-POR-09] exposes no portrait candidate feedback/rejection event or profile-page control', () => {
+  it('removes the portrait product chain while retaining the upstream profile layer', () => {
     expect(EVENT_TYPES).not.toContain('PortraitCandidateRejected');
-    const profilePage = readFileSync(
-      path.join(root, 'apps/web/src/features/profile/profile-page.tsx'),
+    const router = readFileSync(path.join(root, 'apps/web/src/router.tsx'), 'utf8');
+    const assembly = readFileSync(
+      path.join(root, 'apps/server/src/bootstrap/local-application/assemble.ts'),
       'utf8',
     );
-    const portraitWorkspace = readFileSync(
-      path.join(root, 'apps/web/src/features/profile/portrait-workspace.tsx'),
+    const scenarios = readFileSync(
+      path.join(root, 'apps/server/src/modules/generation-runtime/scenario-registry.ts'),
       'utf8',
     );
-    expect(`${profilePage}\n${portraitWorkspace}`).not.toMatch(
-      /candidate.?reject|portrait.?feedback|拒绝候选|画像反馈/iu,
-    );
+    expect(router).not.toContain("path: '/profile'");
+    expect(assembly).not.toContain('portraitRoutes');
+    expect(scenarios).not.toContain("'learning-portrait'");
+    expect(assembly).toContain('profile: profile.profileRoutes');
   });
 
-  it('[EQ-POR-10] exposes re-abstracted global dimensions without template copy', () => {
-    const workspaceModel = readFileSync(
-      path.join(root, 'apps/web/src/features/profile/portrait-workspace-model.ts'),
-      'utf8',
-    );
+  it('preserves re-abstracted reasoning evidence in the upstream profile layer', () => {
     const projector = readFileSync(
       path.join(
         root,
@@ -56,10 +54,9 @@ describe('profile data architecture boundaries', () => {
       path.join(root, 'apps/server/src/bootstrap/local-application/profile-runtime.ts'),
       'utf8',
     );
-    expect(workspaceModel).toContain('evidence.summary.trim()');
-    expect(workspaceModel).not.toContain('在这次学习中，你也出现了与上面描述相符的做法。');
     expect(projector).toContain('representativeRationale');
     expect(projector).not.toContain('combineReasoningBehaviorSummaries');
-    expect(profileRuntime).toContain('reasoningEvidenceSummaryForRead');
+    expect(profileRuntime).toContain('createReasoningEvidenceProjector');
+    expect(profileRuntime).not.toContain('learning-portrait');
   });
 });
