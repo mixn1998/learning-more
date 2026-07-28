@@ -514,7 +514,7 @@ export function applyTeachingDirective(
       currentActiveBefore === 'pending' &&
       directive.activeKnowledgePointRef === currentActive;
     const preparedAfterCurrent =
-      currentPhase === 'knowledge_point' &&
+      (currentPhase === 'warmup' || currentPhase === 'knowledge_point') &&
       activePoint?.status === 'pending' &&
       currentSettledThisTurn &&
       directive.activeKnowledgePointRef === nextUnsettledRef;

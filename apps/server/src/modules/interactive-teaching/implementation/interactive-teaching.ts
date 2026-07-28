@@ -508,9 +508,10 @@ export function createInteractiveTeaching(options: {
         });
         if (
           (input.assembled.teachingState.lessonPhase ?? 'warmup') === 'warmup' &&
-          validatedTeachingState?.lessonPhase === 'knowledge_point'
+          validatedTeachingState !== undefined &&
+          validatedTeachingState.lessonPhase !== 'warmup'
         ) {
-          messageKnowledgePointRef = validatedTeachingState.activeKnowledgePointRef;
+          messageKnowledgePointRef = input.assembled.teachingState.knowledgePoints[0]?.ref;
         }
         directiveValidated = true;
         assertCurrentTask(accepted.taskId);
@@ -912,12 +913,25 @@ export function createInteractiveTeaching(options: {
     const firstKnowledgePoint = next.knowledgePoints.find(
       (point) => point.ref === firstKnowledgePointRef,
     );
-    if (
-      firstKnowledgePointRef === undefined ||
-      next.lessonPhase !== 'knowledge_point' ||
-      next.activeKnowledgePointRef !== firstKnowledgePointRef ||
-      firstKnowledgePoint?.progress !== 'learning'
-    ) {
+    const firstPointIsActive =
+      next.lessonPhase === 'knowledge_point' &&
+      next.activeKnowledgePointRef === firstKnowledgePointRef &&
+      firstKnowledgePoint?.progress === 'learning';
+    const nextUnsettledPoint = next.knowledgePoints
+      .slice(1)
+      .find((point) => point.progress !== 'completed' && point.progress !== 'skipped');
+    const firstPointIsSettled =
+      firstKnowledgePoint?.progress === 'completed' || firstKnowledgePoint?.progress === 'skipped';
+    const nextPointIsPrepared =
+      firstPointIsSettled &&
+      ((nextUnsettledPoint !== undefined &&
+        next.lessonPhase === 'knowledge_point' &&
+        next.activeKnowledgePointRef === nextUnsettledPoint.ref &&
+        nextUnsettledPoint.progress === 'pending') ||
+        (nextUnsettledPoint === undefined &&
+          next.lessonPhase === 'comprehensive_application' &&
+          next.activeKnowledgePointRef === undefined));
+    if (firstKnowledgePointRef === undefined || (!firstPointIsActive && !nextPointIsPrepared)) {
       throw new Error('teaching_directive_first_point_transition_required');
     }
     return next;

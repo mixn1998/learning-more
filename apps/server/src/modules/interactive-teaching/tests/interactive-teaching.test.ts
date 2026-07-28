@@ -63,6 +63,7 @@ async function fixture(
     frameDeltaFailsOnce?: boolean;
     agentDirective?: TeachingDirective;
     agentDirectives?: readonly TeachingDirective[];
+    coreKnowledgePoints?: readonly Readonly<{ ref: string; text: string }>[];
     legacyRecoveredTaskSourceId?: string;
     recoveredTaskStatus?: GenerationTask['status'];
     recoveredTaskMarkdown?: string;
@@ -159,7 +160,7 @@ async function fixture(
           outlineVersionId: 'outline_1',
           title: 'Conditioning',
           objective: 'Understand conditioning.',
-          coreKnowledgePoints: [
+          coreKnowledgePoints: options.coreKnowledgePoints ?? [
             { ref: 'knowledge:kp_1', text: 'Conditioning changes the sample space.' },
           ],
         },
@@ -722,6 +723,76 @@ describe('InteractiveTeaching deep module', () => {
       lessonPhase: 'knowledge_point',
       activeKnowledgePointRef: 'knowledge:kp_1',
       knowledgePoints: [{ ref: 'knowledge:kp_1', progress: 'learning' }],
+    });
+  });
+
+  it('keeps the continuation handoff when the warmup response completes the first knowledge point', async () => {
+    const { module, drainObservations, messageLog, sessionModule } = await fixture({
+      coreKnowledgePoints: [
+        { ref: 'knowledge:kp_1', text: 'Conditioning changes the sample space.' },
+        { ref: 'knowledge:kp_2', text: 'Conditional probability rescales outcomes.' },
+      ],
+      agentDirectives: [
+        {
+          schemaVersion: 2,
+          lessonPhase: 'warmup',
+          turnHandoff: 'invite_response',
+        },
+        {
+          schemaVersion: 3,
+          lessonPhase: 'knowledge_point',
+          activeKnowledgePointRef: 'K2',
+          knowledgePoints: [{ ref: 'K1', status: 'completed' }],
+          turnHandoff: 'offer_continue',
+        },
+      ],
+    });
+
+    await module.openLesson(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    const afterOpening = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_before_completed_first_point',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+    await module.advanceTurn(
+      {
+        courseId: 'course_1',
+        lessonId: 'lesson_1',
+        sessionId: 'session_1',
+        userMessageId: 'message_user_1',
+        userContentArtifactRef: 'artifact:user:1',
+      },
+      {
+        ...commandContext,
+        commandId: 'complete_first_point_after_warmup',
+        idempotencyKey: 'complete_first_point_after_warmup',
+        expectedVersion: afterOpening.resourceVersion,
+      },
+    );
+    await drainObservations('session_1');
+
+    expect(await messageLog.list('session_1')).toContainEqual(
+      expect.objectContaining({
+        id: 'message_ai_2',
+        knowledgePointRef: 'knowledge:kp_1',
+      }),
+    );
+    await expect(module.getTeachingState('session_1')).resolves.toMatchObject({
+      lessonPhase: 'knowledge_point',
+      activeKnowledgePointRef: 'knowledge:kp_2',
+      turnHandoff: 'offer_continue',
+      knowledgePoints: [
+        { ref: 'knowledge:kp_1', progress: 'completed' },
+        { ref: 'knowledge:kp_2', progress: 'pending' },
+      ],
     });
   });
 
