@@ -329,8 +329,8 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
           <p>进入任意课节，即可在课堂右侧记录第一条学习笔记。</p>
         </section>
       ) : (
-        <div className="notes-workspace">
-          <aside className="lm-card notes-directory">
+        <div className="lm-card notes-workspace">
+          <aside className="notes-directory">
             <header>
               <div>
                 <span>知识目录</span>
@@ -486,7 +486,7 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                     </header>
                     <div className="notes-stream">
                       {group.notes.map((note) => (
-                        <article className="lm-card notes-item" key={note.id}>
+                        <article className="notes-item" key={note.id}>
                           <header>
                             <div>
                               <strong>{note.lessonTitle}</strong>
