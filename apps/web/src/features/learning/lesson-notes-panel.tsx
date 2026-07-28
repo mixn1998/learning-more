@@ -24,13 +24,19 @@ function noteTime(value: string): string {
 export function LessonNotesPanel(props: {
   readonly courseId: string;
   readonly lessonId: string;
+  readonly lessonTitle: string;
   readonly client?: LearningNotesClient;
 }) {
   const api = props.client ?? learningNotesClient;
   const storageKey = draftKey(props.courseId, props.lessonId);
+  const titleStorageKey = `${storageKey}:title`;
   const [notes, setNotes] = useState<LearningNoteView[]>([]);
   const [draft, setDraft] = useState(() => localStorage.getItem(storageKey) ?? '');
+  const [titleDraft, setTitleDraft] = useState(
+    () => localStorage.getItem(titleStorageKey) ?? props.lessonTitle,
+  );
   const [editingId, setEditingId] = useState<string>();
+  const [editingTitleDraft, setEditingTitleDraft] = useState('');
   const [editingDraft, setEditingDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -55,8 +61,14 @@ export function LessonNotesPanel(props: {
     localStorage.setItem(storageKey, draft);
   }, [draft, storageKey]);
 
+  useEffect(() => {
+    if (titleDraft === props.lessonTitle) localStorage.removeItem(titleStorageKey);
+    else localStorage.setItem(titleStorageKey, titleDraft);
+  }, [props.lessonTitle, titleDraft, titleStorageKey]);
+
   const save = async () => {
     const markdown = draft.trim();
+    const title = titleDraft.trim() || props.lessonTitle;
     if (markdown === '' || busy) return;
     setBusy(true);
     setError(undefined);
@@ -64,11 +76,14 @@ export function LessonNotesPanel(props: {
       const note = await api.create({
         courseId: props.courseId,
         lessonId: props.lessonId,
+        title,
         markdown,
       });
       setNotes((current) => [note, ...current]);
+      setTitleDraft(props.lessonTitle);
       setDraft('');
       localStorage.removeItem(storageKey);
+      localStorage.removeItem(titleStorageKey);
     } catch {
       setError('保存失败，草稿已保留。');
     } finally {
@@ -78,13 +93,15 @@ export function LessonNotesPanel(props: {
 
   const submitEdit = async (note: LearningNoteView) => {
     const markdown = editingDraft.trim();
-    if (markdown === '' || busy) return;
+    const title = editingTitleDraft.trim();
+    if (title === '' || markdown === '' || busy) return;
     setBusy(true);
     setError(undefined);
     try {
-      const updated = await api.update(note, markdown);
+      const updated = await api.update(note, { title, markdown });
       setNotes((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setEditingId(undefined);
+      setEditingTitleDraft('');
       setEditingDraft('');
     } catch {
       setError('修改失败，原笔记未改变。');
@@ -115,6 +132,12 @@ export function LessonNotesPanel(props: {
         <a href="/notes">全部笔记</a>
       </div>
       <div className="lesson-note-compose">
+        <input
+          aria-label="笔记标题"
+          maxLength={200}
+          value={titleDraft}
+          onChange={(event) => setTitleDraft(event.target.value)}
+        />
         <textarea
           aria-label="记录本课笔记"
           placeholder="记下此刻的重要理解……"
@@ -153,6 +176,12 @@ export function LessonNotesPanel(props: {
             <article className="lesson-note-item" key={note.id}>
               {editingId === note.id ? (
                 <>
+                  <input
+                    aria-label="编辑笔记标题"
+                    maxLength={200}
+                    value={editingTitleDraft}
+                    onChange={(event) => setEditingTitleDraft(event.target.value)}
+                  />
                   <textarea
                     aria-label="编辑笔记"
                     rows={4}
@@ -163,13 +192,18 @@ export function LessonNotesPanel(props: {
                     <button
                       className="lm-btn"
                       type="button"
-                      onClick={() => setEditingId(undefined)}
+                      onClick={() => {
+                        setEditingId(undefined);
+                        setEditingTitleDraft('');
+                      }}
                     >
                       取消
                     </button>
                     <button
                       className="lm-btn primary"
-                      disabled={busy || editingDraft.trim() === ''}
+                      disabled={
+                        busy || editingTitleDraft.trim() === '' || editingDraft.trim() === ''
+                      }
                       type="button"
                       onClick={() => void submitEdit(note)}
                     >
@@ -179,7 +213,10 @@ export function LessonNotesPanel(props: {
                 </>
               ) : (
                 <>
-                  <time dateTime={note.createdAt}>{noteTime(note.createdAt)}</time>
+                  <div className="lesson-note-item-head">
+                    <strong>{note.title}</strong>
+                    <time dateTime={note.createdAt}>{noteTime(note.createdAt)}</time>
+                  </div>
                   <p>{note.markdown}</p>
                   <div className="lesson-note-item-actions">
                     <button
@@ -187,6 +224,7 @@ export function LessonNotesPanel(props: {
                       type="button"
                       onClick={() => {
                         setEditingId(note.id);
+                        setEditingTitleDraft(note.title);
                         setEditingDraft(note.markdown);
                       }}
                     >

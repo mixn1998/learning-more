@@ -218,7 +218,9 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   padding: 10px 0 12px;
   border-bottom: 1px solid var(--line);
 }
+.lesson-note-compose input,
 .lesson-note-compose textarea,
+.lesson-note-item input,
 .lesson-note-item textarea {
   box-sizing: border-box;
   width: 100%;
@@ -230,6 +232,14 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   font: inherit;
   font-size: 10px;
   line-height: 1.55;
+}
+.lesson-note-compose input,
+.lesson-note-item input {
+  margin-bottom: 7px;
+  font-weight: 700;
+}
+.lesson-note-compose textarea,
+.lesson-note-item textarea {
   resize: vertical;
 }
 .lesson-note-compose textarea {
@@ -270,6 +280,23 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
 }
 .lesson-note-item:last-child {
   border-bottom: 0;
+}
+.lesson-note-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lesson-note-item-head strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lesson-note-item-head time {
+  flex: 0 0 auto;
 }
 .lesson-note-item p {
   margin: 5px 0 8px;

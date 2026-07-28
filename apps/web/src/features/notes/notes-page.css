@@ -374,7 +374,7 @@
   margin-left: auto;
 }
 
-.notes-item-source,
+.notes-item-title,
 .notes-item-meta {
   display: flex;
   min-width: 0;
@@ -382,11 +382,11 @@
   gap: 8px;
 }
 
-.notes-item-source strong {
+.notes-item-title strong {
   min-width: 0;
   overflow: hidden;
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -417,15 +417,26 @@
   white-space: pre-wrap;
 }
 
+.notes-item input,
 .notes-item textarea {
   box-sizing: border-box;
   width: 100%;
-  margin: 12px 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: var(--paper-2);
   color: var(--ink);
+  font: inherit;
+}
+
+.notes-item input {
+  margin: 12px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.notes-item textarea {
+  margin: 8px 0 12px;
   line-height: 1.65;
   resize: vertical;
 }

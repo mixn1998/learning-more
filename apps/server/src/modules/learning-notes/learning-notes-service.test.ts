@@ -52,6 +52,30 @@ function fixture() {
 }
 
 describe('learning notes service', () => {
+  it('uses the lesson title for legacy notes that predate customizable titles', async () => {
+    const setup = fixture();
+    setup.records.set('note_legacy', {
+      id: 'note_legacy',
+      markdown: '旧笔记内容',
+      discipline: '数学',
+      courseId: 'course_01',
+      courseTitle: '微积分',
+      lessonId: 'lesson_01',
+      lessonTitle: '单侧极限',
+      createdAt: '2026-07-27T08:00:00.000Z',
+      updatedAt: '2026-07-27T08:00:00.000Z',
+      resourceVersion: 1,
+    });
+    const service = createLearningNotesService({
+      repository: setup.repository,
+      unitOfWork: setup.unitOfWork,
+      courses: setup.courses,
+      now: () => new Date('2026-07-28T08:00:00.000Z'),
+    });
+
+    await expect(service.list()).resolves.toMatchObject([{ title: '单侧极限' }]);
+  });
+
   it('snapshots course metadata so notes remain readable without the source course', async () => {
     const setup = fixture();
     const service = createLearningNotesService({
@@ -68,6 +92,7 @@ describe('learning notes service', () => {
     });
 
     expect(created).toMatchObject({
+      title: '单侧极限',
       markdown: '左右极限都存在且相等，双侧极限才存在。',
       discipline: '数学',
       courseTitle: '微积分',
@@ -92,8 +117,16 @@ describe('learning notes service', () => {
       markdown: '原始笔记',
     });
 
-    const updated = await service.update(created.id, '修订笔记', created.resourceVersion);
-    expect(updated).toMatchObject({ markdown: '修订笔记', resourceVersion: 2 });
+    const updated = await service.update(
+      created.id,
+      { title: '左右极限的单侧判据', markdown: '修订笔记' },
+      created.resourceVersion,
+    );
+    expect(updated).toMatchObject({
+      title: '左右极限的单侧判据',
+      markdown: '修订笔记',
+      resourceVersion: 2,
+    });
 
     await service.remove(updated.id, updated.resourceVersion);
     expect(await service.list()).toEqual([]);

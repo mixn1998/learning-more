@@ -70,6 +70,7 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [editingId, setEditingId] = useState<string>();
+  const [editingTitleDraft, setEditingTitleDraft] = useState('');
   const [editingDraft, setEditingDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState('');
@@ -177,7 +178,7 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
         (note) =>
           noteMatchesScope(note, selectedScope) &&
           (normalizedQuery === '' ||
-            `${note.markdown} ${note.courseTitle} ${note.lessonTitle}`
+            `${note.title} ${note.markdown} ${note.courseTitle} ${note.lessonTitle}`
               .toLocaleLowerCase()
               .includes(normalizedQuery)),
       ),
@@ -201,13 +202,17 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
   };
 
   const saveEdit = async (note: LearningNoteView) => {
-    if (busy || editingDraft.trim() === '') return;
+    if (busy || editingTitleDraft.trim() === '' || editingDraft.trim() === '') return;
     setBusy(true);
     setError(undefined);
     try {
-      const updated = await api.update(note, editingDraft.trim());
+      const updated = await api.update(note, {
+        title: editingTitleDraft.trim(),
+        markdown: editingDraft.trim(),
+      });
       setNotes((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setEditingId(undefined);
+      setEditingTitleDraft('');
     } catch {
       setError('修改失败，原笔记未改变。');
     } finally {
@@ -368,8 +373,8 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                 {visibleNotes.map((note) => (
                   <article className="notes-item" key={note.id}>
                     <header>
-                      <div className="notes-item-source">
-                        <strong>{note.lessonTitle}</strong>
+                      <div className="notes-item-title">
+                        <strong>{note.title}</strong>
                       </div>
                       <div className="notes-item-meta">
                         {editingId === note.id ? null : (
@@ -379,6 +384,7 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                               type="button"
                               onClick={() => {
                                 setEditingId(note.id);
+                                setEditingTitleDraft(note.title);
                                 setEditingDraft(note.markdown);
                               }}
                             >
@@ -398,6 +404,12 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                     </header>
                     {editingId === note.id ? (
                       <>
+                        <input
+                          aria-label="编辑笔记标题"
+                          maxLength={200}
+                          value={editingTitleDraft}
+                          onChange={(event) => setEditingTitleDraft(event.target.value)}
+                        />
                         <textarea
                           aria-label="编辑学习笔记"
                           rows={6}
@@ -408,13 +420,18 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                           <button
                             className="lm-btn"
                             type="button"
-                            onClick={() => setEditingId(undefined)}
+                            onClick={() => {
+                              setEditingId(undefined);
+                              setEditingTitleDraft('');
+                            }}
                           >
                             取消
                           </button>
                           <button
                             className="lm-btn primary"
-                            disabled={busy || editingDraft.trim() === ''}
+                            disabled={
+                              busy || editingTitleDraft.trim() === '' || editingDraft.trim() === ''
+                            }
                             type="button"
                             onClick={() => void saveEdit(note)}
                           >

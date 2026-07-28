@@ -14,6 +14,7 @@ import { RepositoryVersionConflictError } from './repository-errors.js';
 
 const LearningNoteRecordSchema = z.strictObject({
   id: z.string().min(1),
+  title: z.string().min(1).optional(),
   markdown: z.string().min(1),
   discipline: z.string().min(1),
   courseId: z.string().min(1),

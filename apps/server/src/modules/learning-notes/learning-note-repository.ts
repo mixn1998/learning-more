@@ -2,6 +2,7 @@ import type { TransactionContext } from '../../persistence/unit-of-work.js';
 
 export type LearningNoteRecord = Readonly<{
   id: string;
+  title?: string;
   markdown: string;
   discipline: string;
   courseId: string;

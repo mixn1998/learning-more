@@ -12,6 +12,7 @@ import { LessonNotesPanel } from './lesson-notes-panel.js';
 function note(id: string, markdown: string, resourceVersion = 1): LearningNoteView {
   return {
     id,
+    title: '单侧极限',
     markdown,
     discipline: '数学',
     courseId: 'course_01',
@@ -45,14 +46,31 @@ describe('LessonNotesPanel', () => {
     const api = client({
       create: vi.fn().mockResolvedValue(note('note_02', '双侧极限要求左右结果一致。')),
     });
-    render(<LessonNotesPanel courseId="course_01" lessonId="lesson_01" client={api} />);
+    render(
+      <LessonNotesPanel
+        courseId="course_01"
+        lessonId="lesson_01"
+        lessonTitle="单侧极限"
+        client={api}
+      />,
+    );
 
     expect(await screen.findByText('左右两侧需要分别观察。')).toBeVisible();
+    expect(screen.getByRole('textbox', { name: '笔记标题' })).toHaveValue('单侧极限');
+    fireEvent.change(screen.getByRole('textbox', { name: '笔记标题' }), {
+      target: { value: '双侧极限的单侧判据' },
+    });
     fireEvent.change(screen.getByRole('textbox', { name: '记录本课笔记' }), {
       target: { value: '双侧极限要求左右结果一致。' },
     });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
+    expect(api.create).toHaveBeenCalledWith({
+      courseId: 'course_01',
+      lessonId: 'lesson_01',
+      title: '双侧极限的单侧判据',
+      markdown: '双侧极限要求左右结果一致。',
+    });
     expect(await screen.findByText('双侧极限要求左右结果一致。')).toBeVisible();
     expect(screen.getByText('左右两侧需要分别观察。')).toBeVisible();
     expect(screen.getByRole('textbox', { name: '记录本课笔记' })).toHaveValue('');
@@ -60,7 +78,14 @@ describe('LessonNotesPanel', () => {
 
   it('retains the lesson draft when saving fails', async () => {
     const api = client({ create: vi.fn().mockRejectedValue(new Error('offline')) });
-    render(<LessonNotesPanel courseId="course_01" lessonId="lesson_01" client={api} />);
+    render(
+      <LessonNotesPanel
+        courseId="course_01"
+        lessonId="lesson_01"
+        lessonTitle="单侧极限"
+        client={api}
+      />,
+    );
 
     const composer = screen.getByRole('textbox', { name: '记录本课笔记' });
     fireEvent.change(composer, { target: { value: '尚未保存的重要理解' } });
@@ -82,7 +107,14 @@ describe('LessonNotesPanel', () => {
       remove: vi.fn().mockResolvedValue(undefined),
     });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<LessonNotesPanel courseId="course_01" lessonId="lesson_01" client={api} />);
+    render(
+      <LessonNotesPanel
+        courseId="course_01"
+        lessonId="lesson_01"
+        lessonTitle="单侧极限"
+        client={api}
+      />,
+    );
 
     await screen.findByText('第一条');
     const firstItem = screen.getByText('第一条').closest('article')!;

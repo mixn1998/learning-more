@@ -18,6 +18,7 @@ function note(
     | 'courseTitle'
     | 'lessonId'
     | 'lessonTitle'
+    | 'title'
     | 'markdown'
     | 'createdAt'
   >,
@@ -37,6 +38,7 @@ const notes: LearningNoteView[] = [
     courseTitle: '微积分',
     lessonId: 'lesson_limit',
     lessonTitle: '单侧极限',
+    title: '单侧极限',
     markdown: '左右两侧需要分别观察。',
     createdAt: '2026-07-27T08:00:00.000Z',
   }),
@@ -46,6 +48,7 @@ const notes: LearningNoteView[] = [
     courseTitle: '微积分',
     lessonId: 'lesson_continuity',
     lessonTitle: '连续性',
+    title: '连续性',
     markdown: '函数值与极限值需要建立一致关系。',
     createdAt: '2026-07-28T08:00:00.000Z',
   }),
@@ -55,6 +58,7 @@ const notes: LearningNoteView[] = [
     courseTitle: '数据结构与算法',
     lessonId: 'lesson_graph',
     lessonTitle: '图结构',
+    title: '图结构',
     markdown: '拓扑排序依赖有向无环图。',
     createdAt: '2026-07-26T08:00:00.000Z',
   }),
@@ -96,11 +100,9 @@ describe('NotesPage', () => {
 
     const limitNote = screen.getByText('左右两侧需要分别观察。').closest('article')!;
     const noteHeader = limitNote.querySelector('header')!;
-    const noteSource = noteHeader.querySelector('.notes-item-source')!;
-    expect(noteSource).toHaveTextContent('单侧极限');
-    expect(noteSource).not.toHaveTextContent('来源');
-    expect(noteSource).not.toHaveTextContent('数学');
-    expect(noteSource).not.toHaveTextContent('微积分');
+    const noteTitle = noteHeader.querySelector('.notes-item-title')!;
+    expect(noteTitle).toHaveTextContent('单侧极限');
+    expect(noteTitle.querySelector('strong')).toBeVisible();
     expect(within(noteHeader).getByRole('button', { name: '编辑' })).toBeVisible();
     expect(within(noteHeader).getByRole('button', { name: '删除' })).toBeVisible();
     expect(screen.getByText('左右两侧需要分别观察。')).toBeVisible();
@@ -125,6 +127,7 @@ describe('NotesPage', () => {
     const api = client({
       update: vi.fn().mockResolvedValue({
         ...notes[1]!,
+        title: '函数值与极限值的区别',
         markdown: '连续要求函数值与极限值相等。',
         resourceVersion: 2,
       }),
@@ -141,6 +144,9 @@ describe('NotesPage', () => {
     const noteText = await screen.findByText('函数值与极限值需要建立一致关系。');
     const item = noteText.closest('article')!;
     fireEvent.click(within(item).getByRole('button', { name: '编辑' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '编辑笔记标题' }), {
+      target: { value: '函数值与极限值的区别' },
+    });
     fireEvent.change(screen.getByRole('textbox', { name: '编辑学习笔记' }), {
       target: { value: '连续要求函数值与极限值相等。' },
     });
@@ -149,6 +155,7 @@ describe('NotesPage', () => {
     expect(
       await screen.findByText('连续要求函数值与极限值相等。', { selector: 'p' }),
     ).toBeVisible();
+    expect(screen.getByText('函数值与极限值的区别', { selector: 'strong' })).toBeVisible();
     const updatedItem = screen
       .getByText('连续要求函数值与极限值相等。', { selector: 'p' })
       .closest('article')!;

@@ -9,14 +9,23 @@ import type { LearningNoteRecord, LearningNoteRepository } from './learning-note
 export type LearningNotesService = Readonly<{
   list(filter?: Readonly<{ courseId?: string; lessonId?: string }>): Promise<LearningNoteView[]>;
   create(
-    input: Readonly<{ courseId: string; lessonId: string; markdown: string }>,
+    input: Readonly<{
+      courseId: string;
+      lessonId: string;
+      title?: string | undefined;
+      markdown: string;
+    }>,
   ): Promise<LearningNoteView>;
-  update(noteId: string, markdown: string, expectedVersion: number): Promise<LearningNoteView>;
+  update(
+    noteId: string,
+    input: Readonly<{ title: string; markdown: string }>,
+    expectedVersion: number,
+  ): Promise<LearningNoteView>;
   remove(noteId: string, expectedVersion: number): Promise<void>;
 }>;
 
 function view(note: LearningNoteRecord): LearningNoteView {
-  return { ...note };
+  return { ...note, title: note.title?.trim() || note.lessonTitle };
 }
 
 export function createLearningNotesService(
@@ -43,6 +52,7 @@ export function createLearningNotesService(
       const timestamp = input.now().toISOString();
       const record: LearningNoteRecord = {
         id: `note_${randomUUID()}`,
+        title: command.title?.trim() || lesson.title,
         markdown: command.markdown.trim(),
         discipline: outline?.disciplineTag.trim() || '未分类学科',
         courseId: course.id,
@@ -58,14 +68,15 @@ export function createLearningNotesService(
       );
       return view({ ...record, resourceVersion: 1 });
     },
-    async update(noteId, markdown, expectedVersion) {
+    async update(noteId, command, expectedVersion) {
       const current = await input.repository.get(noteId);
       if (current === undefined) {
         throw Object.assign(new Error('resource_not_found'), { code: 'resource_not_found' });
       }
       const updated: LearningNoteRecord = {
         ...current,
-        markdown: markdown.trim(),
+        title: command.title.trim(),
+        markdown: command.markdown.trim(),
         updatedAt: input.now().toISOString(),
       };
       await input.unitOfWork.execute({ transactionId: `tx_learning_note_${randomUUID()}` }, (tx) =>

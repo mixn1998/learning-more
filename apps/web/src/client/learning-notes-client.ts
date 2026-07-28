@@ -9,9 +9,17 @@ import { apiRequest, createCommandAttempt } from './api-client.js';
 export type LearningNotesClient = Readonly<{
   list(filter?: Readonly<{ courseId?: string; lessonId?: string }>): Promise<LearningNoteView[]>;
   create(
-    input: Readonly<{ courseId: string; lessonId: string; markdown: string }>,
+    input: Readonly<{
+      courseId: string;
+      lessonId: string;
+      title?: string | undefined;
+      markdown: string;
+    }>,
   ): Promise<LearningNoteView>;
-  update(note: LearningNoteView, markdown: string): Promise<LearningNoteView>;
+  update(
+    note: LearningNoteView,
+    input: Readonly<{ title: string; markdown: string }>,
+  ): Promise<LearningNoteView>;
   remove(note: LearningNoteView): Promise<void>;
 }>;
 
@@ -37,11 +45,11 @@ export const learningNotesClient: LearningNotesClient = {
       })
     ).data;
   },
-  async update(note, markdown) {
+  async update(note, input) {
     return (
       await apiRequest(`/api/v1/learning-notes/${encodeURIComponent(note.id)}`, {
         method: 'PATCH',
-        body: { markdown },
+        body: input,
         command: createCommandAttempt(),
         resourceVersion: note.resourceVersion,
         schema: LearningNoteSchema,

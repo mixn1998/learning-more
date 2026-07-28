@@ -74,7 +74,7 @@ export async function registerLearningNoteRoutes(
       const { noteId } = LearningNoteParamsSchema.parse(request.params);
       const body = UpdateLearningNoteBodySchema.parse(request.body);
       const note = LearningNoteSchema.parse(
-        await options.service.update(noteId, body.markdown, expectedVersion(request)),
+        await options.service.update(noteId, body, expectedVersion(request)),
       );
       return reply.header('etag', `"${note.resourceVersion}"`).code(200).send(note);
     } catch (error) {

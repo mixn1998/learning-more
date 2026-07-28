@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const LearningNoteSchema = z.strictObject({
   id: z.string().min(1),
+  title: z.string().trim().min(1).max(200),
   markdown: z.string().trim().min(1).max(20_000),
   discipline: z.string().min(1),
   courseId: z.string().min(1),
@@ -20,10 +21,12 @@ export const LearningNoteListResponseSchema = z.strictObject({
 export const CreateLearningNoteBodySchema = z.strictObject({
   courseId: z.string().min(1),
   lessonId: z.string().min(1),
+  title: z.string().trim().min(1).max(200).optional(),
   markdown: z.string().trim().min(1).max(20_000),
 });
 
 export const UpdateLearningNoteBodySchema = z.strictObject({
+  title: z.string().trim().min(1).max(200),
   markdown: z.string().trim().min(1).max(20_000),
 });
 

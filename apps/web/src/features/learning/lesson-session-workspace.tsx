@@ -440,7 +440,11 @@ export function LessonSessionWorkspace(props: {
                 ))}
               </ol>
             </section>
-            <LessonNotesPanel courseId={props.courseId} lessonId={props.lessonId} />
+            <LessonNotesPanel
+              courseId={props.courseId}
+              lessonId={props.lessonId}
+              lessonTitle={props.title}
+            />
           </aside>
         </div>
       </main>

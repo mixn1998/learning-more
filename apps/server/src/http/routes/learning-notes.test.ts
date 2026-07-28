@@ -7,6 +7,7 @@ import { registerLearningNoteRoutes } from './learning-notes.js';
 
 const savedNote: LearningNoteView = {
   id: 'note_01',
+  title: '单侧极限',
   markdown: '双侧极限要求左右结果一致。',
   discipline: '数学',
   courseId: 'course_01',
@@ -62,7 +63,7 @@ describe('learning note routes', () => {
     const missingVersion = await app.inject({
       method: 'PATCH',
       url: '/api/v1/learning-notes/note_01',
-      payload: { markdown: '修订' },
+      payload: { title: '单侧极限', markdown: '修订' },
     });
     expect(missingVersion.statusCode).toBe(428);
 
@@ -70,10 +71,14 @@ describe('learning note routes', () => {
       method: 'PATCH',
       url: '/api/v1/learning-notes/note_01',
       headers: { 'if-match': '"1"' },
-      payload: { markdown: '修订' },
+      payload: { title: '单侧极限的判断', markdown: '修订' },
     });
     expect(updated.statusCode).toBe(200);
-    expect(update).toHaveBeenCalledWith('note_01', '修订', 1);
+    expect(update).toHaveBeenCalledWith(
+      'note_01',
+      { title: '单侧极限的判断', markdown: '修订' },
+      1,
+    );
 
     const deleted = await app.inject({
       method: 'DELETE',
