@@ -451,6 +451,9 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).not.toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
     expect(prompt.match(/【教学目标】/gu)).toHaveLength(1);
     expect(prompt.indexOf('【教学目标】')).toBeLessThan(prompt.indexOf('【通用教学原则】'));
+    expect(prompt).toContain('面向学习者的正文使用简体中文');
+    expect(prompt).toContain('数学公式中的符号保留为 LaTeX');
+    expect(prompt).toContain('不要转义为 HTML 实体');
     expect(prompt).toContain('【当前教学阶段】');
     expect(prompt).not.toContain('本回合只处理');
     expect(fake.request()?.prompt).toContain('综合应用只提供一次');

@@ -222,6 +222,73 @@ function normalizeLatexMath(markdown: string) {
   return normalized.join('\n');
 }
 
+type HtmlAstNode = {
+  readonly type?: string;
+  value?: unknown;
+  readonly tagName?: string;
+  readonly properties?: Readonly<Record<string, unknown>>;
+  readonly children?: HtmlAstNode[];
+};
+
+function decodeMathHtmlEntities(value: string) {
+  return value
+    .replace(/&(?:lt|#0*60|#x0*3c);/giu, '<')
+    .replace(/&(?:gt|#0*62|#x0*3e);/giu, '>')
+    .replace(/&(?:quot|#0*34|#x0*22);/giu, '"')
+    .replace(/&(?:apos|#0*39|#x0*27);/giu, "'")
+    .replace(/&(?:amp|#0*38|#x0*26);/giu, '&');
+}
+
+function normalizeLearnerFacingChineseVariants(value: string) {
+  return value
+    .replace(/趨近於/gu, '趋近于')
+    .replace(/趨近于/gu, '趋近于')
+    .replace(/趨近/gu, '趋近');
+}
+
+function rehypeNormalizeLearnerFacingChinese() {
+  return (tree: HtmlAstNode) => {
+    const visit = (node: HtmlAstNode): void => {
+      if (node.type === 'element' && (node.tagName === 'code' || node.tagName === 'pre')) return;
+      if (node.type === 'text' && typeof node.value === 'string') {
+        node.value = normalizeLearnerFacingChineseVariants(node.value);
+      }
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+}
+
+/**
+ * Markdown entities are not decoded inside remark-math nodes. Repair only the
+ * generated math code elements before KaTeX reads them, without decoding
+ * prose, raw HTML, or authored code examples.
+ */
+function rehypeDecodeMathHtmlEntities() {
+  return (tree: HtmlAstNode) => {
+    const decodeText = (node: HtmlAstNode): void => {
+      if (node.type === 'text' && typeof node.value === 'string') {
+        node.value = decodeMathHtmlEntities(node.value);
+      }
+      node.children?.forEach(decodeText);
+    };
+    const visit = (node: HtmlAstNode): void => {
+      const className = node.properties?.className;
+      const classes = Array.isArray(className)
+        ? className.filter((value): value is string => typeof value === 'string')
+        : typeof className === 'string'
+          ? className.split(/\s+/u)
+          : [];
+      if (node.type === 'element' && node.tagName === 'code' && classes.includes('language-math')) {
+        node.children?.forEach(decodeText);
+        return;
+      }
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+}
+
 const LazyMathPlot = lazy(async () => {
   const module = await import('./math-plot.js');
   return { default: module.MathPlot };
@@ -265,7 +332,12 @@ export function AiContent(props: { readonly markdown: string; readonly className
         remarkPlugins={[remarkGfm, remarkMath]}
         // Sanitize authored Markdown before KaTeX expands math into HTML. This
         // keeps raw HTML out while allowing the trusted renderer output through.
-        rehypePlugins={[rehypeSanitize, rehypeKatex]}
+        rehypePlugins={[
+          rehypeNormalizeLearnerFacingChinese,
+          rehypeDecodeMathHtmlEntities,
+          rehypeSanitize,
+          rehypeKatex,
+        ]}
         components={{
           pre: ({ children, ...preProps }) => {
             const child = Children.count(children) === 1 ? Children.only(children) : undefined;

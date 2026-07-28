@@ -75,6 +75,36 @@ describe('AiContent', () => {
     expect(container.querySelector('.katex-display')).toBeInTheDocument();
   });
 
+  it('decodes HTML entities inside math without changing code examples', () => {
+    const { container } = render(
+      <AiContent
+        markdown={
+          '内联：\\(x&lt;a\\)，直接分隔符：$x&gt;a$。\n\n\\[\nf(x)=\\begin{cases}\nx+2,&amp;x&lt;0,\\\\\nx+5,&amp;x&gt;0.\n\\end{cases}\n\\]\n\n`\\(x&lt;a\\)`'
+        }
+      />,
+    );
+
+    const renderedMath = [...container.querySelectorAll('.katex')]
+      .map((element) => element.textContent ?? '')
+      .join(' ');
+    expect(container.querySelectorAll('.katex')).toHaveLength(3);
+    expect(container.querySelector('.katex-error')).toBeNull();
+    expect(renderedMath).not.toContain('amp;');
+    expect(renderedMath).not.toContain('lt;');
+    expect(renderedMath).not.toContain('gt;');
+    expect(container.querySelector('code')).toHaveTextContent('\\(x&lt;a\\)');
+  });
+
+  it('normalizes the traditional variant of 趋近 in learner-facing copy only', () => {
+    const { container } = render(
+      <AiContent markdown={'当 x 趨近於 a 时观察函数值。\n\n`术语：趨近於`'} />,
+    );
+
+    expect(container).toHaveTextContent('当 x 趋近于 a 时观察函数值。');
+    expect(container).not.toHaveTextContent('当 x 趨近於 a 时观察函数值。');
+    expect(container.querySelector('code')).toHaveTextContent('术语：趨近於');
+  });
+
   it('renders TeX display math inside Markdown blockquotes', () => {
     const { container } = render(
       <AiContent markdown={'> 给定函数，记作  \n> \\[\n> f:A\\to B.\n> \\]'} />,
