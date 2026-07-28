@@ -1,6 +1,14 @@
 import type { CourseMode } from '../model/commands.js';
 import type { AuthoringContext } from '../ports/authoring-agent.js';
 
+const MAX_ADJUSTMENT_CONVERSATION_CHARS = 3_900;
+const MAX_FIRST_USER_CHARS = 700;
+const MAX_LATEST_USER_CHARS = 1_000;
+const MAX_MIDDLE_USER_CHARS = 600;
+const MAX_FIRST_ASSISTANT_CHARS = 300;
+const MAX_LATEST_ASSISTANT_CHARS = 400;
+const COMPACTION_MARKER = ' …[中间重复展开已压缩]… ';
+
 const courseModeAttention: Readonly<Record<CourseMode, string>> = {
   standard: '以系统理解和稳固掌握为主要关注点，同时允许按学习需要切换解释方式。',
   brainstorm: '以发散联想和新可能为主要关注点，但不牺牲必要的知识结构与验证。',
@@ -36,16 +44,106 @@ export type CandidatePromptInput = Readonly<{
   }>;
 }>;
 
+type CandidateConversationMessage = CandidatePromptInput['conversation'][number];
+
+function normalizeConversationContent(content: string): string {
+  return content.replace(/\s+/gu, ' ').trim();
+}
+
+function compactContent(content: string, maxCharacters: number): string {
+  const normalized = normalizeConversationContent(content);
+  if (normalized.length <= maxCharacters) return normalized;
+  const available = Math.max(0, maxCharacters - COMPACTION_MARKER.length);
+  const headLength = Math.ceil(available * 0.7);
+  return `${normalized.slice(0, headLength)}${COMPACTION_MARKER}${normalized.slice(
+    normalized.length - (available - headLength),
+  )}`;
+}
+
+function renderedConversationLength(messages: readonly CandidateConversationMessage[]): number {
+  return messages.reduce(
+    (total, message) =>
+      total +
+      message.content.length +
+      (message.role === 'user' ? 'LEARNER:\n'.length : 'ASSISTANT:\n'.length) +
+      2,
+    0,
+  );
+}
+
+function compactAdjustmentConversation(
+  messages: AuthoringContext['messages'],
+): readonly CandidateConversationMessage[] {
+  const complete = messages
+    .filter((message) => message.status === 'complete')
+    .map((message, index) => ({
+      index,
+      role: message.role,
+      content: message.content,
+    }));
+  const users = complete.filter((message) => message.role === 'user');
+  const assistants = complete.filter((message) => message.role === 'assistant');
+  if (users.length === 0) return [];
+
+  const firstUser = users[0]!;
+  const latestUser = users.at(-1)!;
+  const firstAssistant = assistants[0];
+  const latestAssistant = assistants.at(-1);
+  const selected = new Map<
+    number,
+    Readonly<{ index: number; role: 'user' | 'assistant'; content: string }>
+  >();
+  const add = (
+    message: Readonly<{ index: number; role: 'user' | 'assistant'; content: string }> | undefined,
+    maxCharacters: number,
+  ) => {
+    if (message === undefined) return;
+    selected.set(message.index, {
+      ...message,
+      content: compactContent(message.content, maxCharacters),
+    });
+  };
+
+  add(firstUser, MAX_FIRST_USER_CHARS);
+  add(latestUser, MAX_LATEST_USER_CHARS);
+  add(firstAssistant, MAX_FIRST_ASSISTANT_CHARS);
+  add(latestAssistant, MAX_LATEST_ASSISTANT_CHARS);
+
+  for (const message of users.slice(1, -1).reverse()) {
+    const compacted = {
+      ...message,
+      content: compactContent(message.content, MAX_MIDDLE_USER_CHARS),
+    };
+    const next = [...selected.values(), compacted]
+      .sort((left, right) => left.index - right.index)
+      .map(({ role, content }) => ({ role, content }));
+    if (renderedConversationLength(next) > MAX_ADJUSTMENT_CONVERSATION_CHARS) continue;
+    selected.set(message.index, compacted);
+  }
+
+  return [...selected.values()]
+    .sort((left, right) => left.index - right.index)
+    .map(({ role, content }) => ({ role, content }));
+}
+
 export function buildCandidatePromptInput(context: AuthoringContext): CandidatePromptInput {
+  const candidateCreatedAt = context.candidate?.createdAt;
+  const unappliedAdjustmentMessages =
+    candidateCreatedAt === undefined
+      ? context.messages
+      : context.messages.filter((message) => message.createdAt > candidateCreatedAt);
   return {
     courseDirection: context.topic,
     learningApproach: courseModeAttention[context.courseMode],
-    conversation: context.messages
-      .filter((message) => message.status === 'complete')
-      .map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+    conversation:
+      context.pastVersionContext === undefined
+        ? context.messages
+            .filter((message) => message.status === 'complete')
+            .map((message) => ({
+              role: message.role,
+              content: message.content,
+            }))
+        : compactAdjustmentConversation(unappliedAdjustmentMessages),
     sources: [
       { sourceRef: 'source_topic', title: 'Initial course direction', excerpt: context.topic },
       ...context.materials,

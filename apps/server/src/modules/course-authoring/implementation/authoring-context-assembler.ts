@@ -96,6 +96,7 @@ export function createAuthoringContextAssembler(
         : {
             candidate: {
               candidateVersionId: candidate.id,
+              createdAt: candidate.createdAt,
               markdown: candidate.candidate.outlineMarkdown,
               outlineNodes: buildOutlineSemanticManifest(candidate.candidate.outlineMarkdown),
             },

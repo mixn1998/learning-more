@@ -1,6 +1,11 @@
 import { CandidateOutlineMetadataSchema } from './schemas/candidate-outline.js';
 import type { CandidatePromptInput } from './prompt-input-builder.js';
 
+const MAX_PAST_VERSION_CONTEXT_CHARS = 3_000;
+const MAX_PAST_DIALOGUE_DIGEST_CHARS = 900;
+const MAX_CURRENT_ADJUSTMENT_CONTEXT_CHARS = 5_000;
+const MAX_ADJUSTMENT_TARGET_NAMES_CHARS = 500;
+
 export const candidateOutlineOutputExample = {
   courseGoals: ['学习完成后能够解释并运用本课程的核心内容'],
   disciplineTag: '数学',
@@ -63,9 +68,24 @@ function renderSources(sources: CandidatePromptInput['sources']): string {
 }
 
 function renderConversation(conversation: CandidatePromptInput['conversation']): string {
+  if (conversation.length === 0) {
+    return 'No new adjustment dialogue has occurred since the current candidate was created.';
+  }
   return conversation
     .map((message) => `${message.role === 'user' ? 'LEARNER' : 'ASSISTANT'}:\n${message.content}`)
     .join('\n\n');
+}
+
+function compactPromptText(text: string, maxCharacters: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxCharacters) return trimmed;
+  const normalized = trimmed.replace(/\s+/gu, ' ');
+  const marker = ' … ';
+  const available = maxCharacters - marker.length;
+  const headLength = Math.ceil(available * 0.7);
+  return `${normalized.slice(0, headLength)}${marker}${normalized.slice(
+    normalized.length - (available - headLength),
+  )}`;
 }
 
 function renderPastVersionContext(
@@ -75,48 +95,60 @@ function renderPastVersionContext(
     context.frozenLessons.length === 0
       ? 'No lessons from a past version have been started.'
       : context.frozenLessons
-          .map((lesson) =>
-            [
-              `- Learning status: ${lesson.progress}`,
-              `  Stable semantic key: ${lesson.semanticKey}`,
-              `  Title: ${lesson.title}`,
-              `  Objective: ${lesson.objective}`,
-              `  Knowledge chain: ${lesson.knowledgeStructure.mainChain
-                .map((node) => node.content)
-                .join(' → ')}`,
-            ].join('\n'),
+          .map(
+            (lesson) =>
+              `- ${lesson.progress} | ${lesson.semanticKey} | ${compactPromptText(lesson.title, 80)}`,
           )
           .join('\n');
-  return [
-    'PART 1 — COMPRESSED OUTLINE-GENERATION DIALOGUE',
-    context.dialogueDigest || 'No historical authoring dialogue is available.',
+  const rendered = [
+    'PART 1 — HISTORICAL AUTHORING DECISIONS',
+    compactPromptText(
+      context.dialogueDigest || 'No historical authoring dialogue is available.',
+      MAX_PAST_DIALOGUE_DIGEST_CHARS,
+    ),
     '',
-    'PART 2 — FROZEN STARTED-LESSON OUTLINE SUMMARIES',
+    'PART 2 — FROZEN STARTED-LESSON ANCHORS',
     frozenLessons,
     '',
-    'Every listed lesson has already been started. It must appear exactly once in the revised outline with its stable semantic key, title, objective, and knowledge structure unchanged. Preserve its stated learning status. Do not rename, rewrite, replace, or duplicate it. Regenerate knowledge structures only for lessons that have not been started, around and after these frozen anchors.',
+    'Every listed lesson has already been started. Use the current candidate as the authoritative source for its full title, objective, and knowledge structure. Keep each stable semantic key and learning status, and preserve the lesson exactly once. Do not rename, rewrite, replace, or duplicate it. Regenerate knowledge structures only for lessons that have not been started, around and after these frozen anchors.',
   ].join('\n');
+  return compactPromptText(rendered, MAX_PAST_VERSION_CONTEXT_CHARS);
 }
 
 function renderAdjustmentTargets(input: CandidatePromptInput): string {
   const adjustment = input.requestedAdjustment;
-  if (adjustment === undefined || adjustment.action !== 'patch') {
-    return 'The learner requested a global restructuring. Rebuild the complete outline around the latest request.';
+  if (adjustment === undefined) {
+    return 'Apply the latest unapplied learner instructions to the current candidate.';
+  }
+  if (adjustment.action !== 'patch') {
+    return 'The learner requested a global restructuring. Rebuild the complete current candidate around the latest unapplied instructions.';
   }
   const nodes = input.currentCandidate?.outlineNodes ?? [];
   const targets = adjustment.targetModuleIds
     .map((ref) => nodes.find((node) => node.ref === ref))
     .filter((node): node is NonNullable<typeof node> => node !== undefined);
-  const targetNames = targets.map((node) => node.title);
+  const targetNames = compactPromptText(
+    targets.map((node) => node.title).join(', '),
+    MAX_ADJUSTMENT_TARGET_NAMES_CHARS,
+  );
   return [
-    `The learner's requested change primarily concerns: ${targetNames.join('、') || 'the complete current outline'}.`,
-    ...targets.map((node) => `Relevant current content (${node.title}):\n${node.excerpt}`),
+    `The learner's requested change primarily concerns: ${targetNames || 'the complete current outline'}.`,
     'Preserve unrelated content where it remains coherent. You may make additional coherent adjustments when they genuinely improve the outline; the application will disclose those changes separately instead of rejecting the candidate.',
   ].join('\n\n');
 }
 
+function renderCurrentAdjustmentContext(input: CandidatePromptInput): string {
+  const rendered = [
+    'PART 1 — CURRENT CHANGE SCOPE',
+    renderAdjustmentTargets(input),
+    '',
+    'PART 2 — UNAPPLIED ADJUSTMENT DIALOGUE',
+    renderConversation(input.conversation),
+  ].join('\n');
+  return compactPromptText(rendered, MAX_CURRENT_ADJUSTMENT_CONTEXT_CHARS);
+}
+
 export function buildCandidateGenerationPrompt(input: CandidatePromptInput): string {
-  const adjustment = input.requestedAdjustment;
   return [
     'COURSE_OUTLINE_CANDIDATE_V4',
     '',
@@ -148,17 +180,12 @@ export function buildCandidateGenerationPrompt(input: CandidatePromptInput): str
     '',
     ...(input.pastVersionContext === undefined
       ? ['', '[ORIGINAL CONVERSATION]', renderConversation(input.conversation)]
-      : [
-          '',
-          '[PAST VERSION CONTEXT]',
-          renderPastVersionContext(input.pastVersionContext),
-          '',
-          '[CURRENT ADJUSTMENT CONVERSATION]',
-          renderConversation(input.conversation),
-        ]),
+      : ['', '[PAST VERSION CONTEXT]', renderPastVersionContext(input.pastVersionContext)]),
     ...(input.currentCandidate === undefined
       ? []
       : ['', '[CURRENT CANDIDATE]', input.currentCandidate.markdown]),
-    ...(adjustment === undefined ? [] : ['', '[CURRENT REQUEST]', renderAdjustmentTargets(input)]),
+    ...(input.pastVersionContext === undefined
+      ? []
+      : ['', '[CURRENT ADJUSTMENT CONTEXT]', renderCurrentAdjustmentContext(input)]),
   ].join('\n');
 }

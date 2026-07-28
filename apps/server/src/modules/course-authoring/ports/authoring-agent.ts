@@ -30,6 +30,7 @@ export type AuthoringContext = Readonly<{
   }>;
   candidate?: Readonly<{
     candidateVersionId: string;
+    createdAt?: string | undefined;
     markdown: string;
     outlineNodes?: readonly Readonly<{
       ref: string;
