@@ -146,7 +146,7 @@ describe('learning SessionPage', () => {
 
     render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
 
-    expect(await screen.findByText('等待综合应用开始')).toBeInTheDocument();
+    expect(await screen.findByLabelText('综合应用，等待综合应用开始')).toBeInTheDocument();
     expect(screen.queryByText('正在进行跨知识点应用')).not.toBeInTheDocument();
   });
 
@@ -1366,7 +1366,7 @@ describe('learning SessionPage', () => {
     });
     render(<SessionPage lessonId="lesson_01" client={client({ getSession })} />);
 
-    expect(await screen.findByText('跳过综合应用')).toBeInTheDocument();
+    expect(await screen.findByLabelText('综合应用，跳过综合应用')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '结束本课' }));
 
     expect(screen.getByText('教学已闭环')).toBeInTheDocument();
@@ -1672,11 +1672,12 @@ describe('learning SessionPage', () => {
       'pending',
       'pending',
     ]);
-    expect(screen.getByText('该知识点已完成')).toBeInTheDocument();
-    expect(screen.getByText('正在学习中')).toBeInTheDocument();
-    expect(screen.getByText('跳过知识点')).toBeInTheDocument();
-    expect(screen.getByText('跳过知识点互动')).toBeInTheDocument();
-    expect(screen.getByText('待讲解')).toBeInTheDocument();
+    expect(screen.queryByText('该知识点已完成')).not.toBeInTheDocument();
+    expect(screen.queryByText('正在学习中')).not.toBeInTheDocument();
+    expect(screen.queryByText('跳过知识点')).not.toBeInTheDocument();
+    expect(screen.queryByText('跳过知识点互动')).not.toBeInTheDocument();
+    expect(screen.queryByText('待讲解')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('有限求和，正在学习中')).toBeInTheDocument();
   });
 
   it('does not poll the full session while background teaching observation is pending', async () => {

@@ -1,21 +1,22 @@
 .notes-page {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .notes-hero {
   display: flex;
-  min-height: 124px;
+  min-height: 104px;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 22px 27px;
+  padding: 18px 24px;
   border-top: 3px solid var(--accent);
 }
 
 .notes-hero h1 {
-  margin: 4px 0;
-  font-size: 28px;
+  margin: 2px 0 4px;
+  font-size: 25px;
+  letter-spacing: -0.02em;
 }
 
 .notes-hero p,
@@ -41,28 +42,28 @@
 
 .notes-workspace {
   display: grid;
-  min-height: 620px;
+  min-height: 590px;
   padding: 0;
-  grid-template-columns: minmax(220px, 255px) minmax(0, 1fr);
+  grid-template-columns: minmax(196px, 226px) minmax(0, 1fr);
   align-items: stretch;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .notes-directory {
   position: sticky;
   top: 86px;
-  height: min(650px, calc(100dvh - 106px));
-  min-height: 520px;
+  height: min(620px, calc(100dvh - 106px));
+  min-height: 500px;
   align-self: start;
-  padding: 17px 10px;
+  padding: 15px 9px;
   border-right: 1px solid var(--line);
   border-radius: 16px 0 0 16px;
-  background: color-mix(in srgb, var(--paper-2) 72%, var(--paper));
+  background: color-mix(in srgb, var(--paper-2) 48%, var(--paper));
   overflow: hidden;
 }
 
 .notes-directory > header {
-  padding: 0 9px 12px;
+  padding: 0 8px 10px;
 }
 
 .notes-directory > header > div,
@@ -81,10 +82,9 @@
 
 .notes-directory > header span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 850;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .notes-directory > header strong {
@@ -101,20 +101,17 @@
   scrollbar-gutter: stable;
 }
 
-.notes-directory button {
-  font: inherit;
-}
-
 .notes-directory-all,
 .notes-tree-row > button:last-child,
 .notes-tree-lesson {
   width: 100%;
   min-width: 0;
   justify-content: space-between;
-  gap: 9px;
-  padding: 7px 8px;
+  min-height: 29px;
+  gap: 7px;
+  padding: 5px 7px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 5px;
   background: transparent;
   color: var(--ink);
   text-align: left;
@@ -126,9 +123,9 @@
 }
 
 .notes-directory-all {
-  margin-bottom: 4px;
-  font-size: 11px;
-  font-weight: 800;
+  margin-bottom: 5px;
+  font-size: 10px;
+  font-weight: 750;
 }
 
 .notes-directory-all:hover,
@@ -140,7 +137,7 @@
 .notes-directory-all.active,
 .notes-tree-row > button:last-child.active,
 .notes-tree-lesson.active {
-  background: transparent;
+  background: color-mix(in srgb, var(--tint) 50%, transparent);
   color: var(--accent-dark);
   box-shadow: inset 2px 0 0 var(--accent);
 }
@@ -172,8 +169,8 @@
 
 .notes-tree ul {
   position: relative;
-  margin-left: 9px;
-  padding-left: 9px;
+  margin-left: 8px;
+  padding-left: 8px;
 }
 
 .notes-tree ul::before {
@@ -195,20 +192,21 @@
 }
 
 .notes-tree-discipline > button:last-child {
-  font-size: 11px;
-  font-weight: 850;
+  font-size: 10.5px;
+  font-weight: 800;
 }
 
 .notes-tree-course > button:last-child {
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 720;
 }
 
 .notes-tree-toggle {
   display: grid;
-  width: 19px;
-  height: 27px;
-  flex: 0 0 19px;
+  width: 17px;
+  height: 29px;
+  min-height: 0;
+  flex: 0 0 17px;
   padding: 0;
   border: 0;
   border-radius: 5px;
@@ -223,7 +221,7 @@
 }
 
 .notes-tree-toggle span {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
   transition: transform 150ms ease;
 }
@@ -234,60 +232,111 @@
 
 .notes-tree-lesson {
   position: relative;
-  padding-left: 8px;
-  font-size: 9px;
+  padding-left: 7px;
+  font-size: 9.5px;
+}
+
+.notes-tree-lesson.active {
+  background: transparent;
+  font-weight: 650;
 }
 
 .notes-content {
   min-width: 0;
-  padding: 23px 28px 32px;
+  padding: 22px 30px 30px;
 }
 
 .notes-content-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 22px;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
+  gap: 20px;
+  margin-bottom: 21px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--line);
 }
 
-.notes-content-head p {
-  margin: 0 0 4px;
+.notes-content-context {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.notes-current-path {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
-.notes-content-head h2 {
-  display: inline;
-  margin: 0;
-  font-size: 22px;
+.notes-current-path span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
 }
 
-.notes-content-head > div > span {
-  margin-left: 8px;
+.notes-current-path i {
+  color: color-mix(in srgb, var(--muted) 54%, transparent);
+  font-style: normal;
+}
+
+.notes-current-path b {
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-current-path span:last-child b {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.notes-content-context > span {
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: 9px;
 }
 
 .notes-search {
-  width: min(300px, 36%);
+  position: relative;
+  width: min(276px, 34%);
+}
+
+.notes-search svg {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--accent-dark);
+  stroke-linecap: round;
+  stroke-width: 1.8;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .notes-search input {
   width: 100%;
-  min-height: 37px;
-  padding: 8px 11px;
-  border: 1px solid transparent;
+  min-height: 35px;
+  padding: 7px 10px 7px 34px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
   border-radius: 9px;
   outline: 0;
-  background: var(--paper-2);
+  background: var(--paper);
   color: var(--ink);
+  box-shadow: 0 4px 14px rgb(65 47 30 / 5%);
 }
 
 .notes-search input:hover {
-  border-color: var(--line);
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
 }
 
 .notes-search input:focus {
@@ -298,7 +347,7 @@
 
 .notes-groups {
   display: grid;
-  gap: 28px;
+  gap: 24px;
 }
 
 .notes-group > header {
@@ -306,7 +355,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 2px 10px;
+  padding: 0 2px 9px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -327,7 +376,7 @@
 
 .notes-item {
   position: relative;
-  padding: 18px 3px 20px;
+  padding: 16px 3px 19px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   background: transparent;
   transition: background 140ms ease;
@@ -352,6 +401,10 @@
   gap: 12px;
 }
 
+.notes-item > header > time:only-child {
+  margin-left: auto;
+}
+
 .notes-item > header > div {
   display: flex;
   min-width: 0;
@@ -360,7 +413,7 @@
 }
 
 .notes-item > header strong {
-  font-size: 11px;
+  font-size: 11.5px;
 }
 
 .notes-item > header span,
@@ -375,10 +428,10 @@
 }
 
 .notes-item > p {
-  max-width: 920px;
-  margin: 12px 0 13px;
+  max-width: 860px;
+  margin: 11px 0 12px;
   color: var(--ink);
-  line-height: 1.8;
+  line-height: 1.78;
   white-space: pre-wrap;
 }
 
@@ -403,7 +456,7 @@
 }
 
 .notes-item-actions {
-  min-height: 17px;
+  min-height: 15px;
   opacity: 0.72;
   transition: opacity 140ms ease;
 }
@@ -414,6 +467,7 @@
 }
 
 .notes-item-actions button {
+  min-height: 0;
   padding: 0;
   border: 0;
   background: transparent;

@@ -420,7 +420,11 @@ export function LessonSessionWorkspace(props: {
               <h3>本课学习线索</h3>
               <ol aria-label="课节知识推进线索" className="learning-path">
                 {props.path.map((point) => (
-                  <li className={point.state} key={`${point.title}:${point.detail}`}>
+                  <li
+                    aria-label={`${point.title}，${point.detail}`}
+                    className={point.state}
+                    key={`${point.title}:${point.detail}`}
+                  >
                     <span className="node" />
                     <div>
                       <b>
@@ -431,7 +435,6 @@ export function LessonSessionWorkspace(props: {
                           </span>
                         )}
                       </b>
-                      <small>{point.detail}</small>
                     </div>
                   </li>
                 ))}

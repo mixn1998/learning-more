@@ -1215,7 +1215,12 @@ button:not(
   .weekly-report-day,
   .weekly-report-lesson,
   .course-choice,
-  .chat-user-action
+  .chat-user-action,
+  .notes-directory-all,
+  .notes-tree-toggle,
+  .notes-tree-label,
+  .notes-tree-lesson,
+  .notes-item-action
 ),
 .authoring-panel button,
 .home-page:not(.home-page--sample) button,
@@ -1257,7 +1262,12 @@ button:not(
     .weekly-report-day,
     .weekly-report-lesson,
     .course-choice,
-    .chat-user-action
+    .chat-user-action,
+    .notes-directory-all,
+    .notes-tree-toggle,
+    .notes-tree-label,
+    .notes-tree-lesson,
+    .notes-item-action
   ):hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 7px 16px rgb(65 47 30 / 8%);

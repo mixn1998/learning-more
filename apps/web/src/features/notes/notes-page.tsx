@@ -364,7 +364,9 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                           <span aria-hidden="true">›</span>
                         </button>
                         <button
-                          className={selectedScope.key === currentDisciplineKey ? 'active' : ''}
+                          className={`notes-tree-label${
+                            selectedScope.key === currentDisciplineKey ? ' active' : ''
+                          }`}
                           type="button"
                           onClick={() => {
                             selectScope(disciplineScope, [currentDisciplineKey]);
@@ -393,9 +395,9 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                                     <span aria-hidden="true">›</span>
                                   </button>
                                   <button
-                                    className={
-                                      selectedScope.key === currentCourseKey ? 'active' : ''
-                                    }
+                                    className={`notes-tree-label${
+                                      selectedScope.key === currentCourseKey ? ' active' : ''
+                                    }`}
                                     type="button"
                                     onClick={() =>
                                       selectScope(courseScope, [
@@ -451,12 +453,22 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
 
           <section className="notes-content">
             <header className="notes-content-head">
-              <div>
-                <p>{selectedScope.path.join(' / ')}</p>
-                <h2>{selectedScope.label}</h2>
+              <div className="notes-content-context">
+                <nav aria-label="当前笔记范围" className="notes-current-path">
+                  {selectedScope.path.map((part, index) => (
+                    <span key={`${part}:${index}`}>
+                      {index === 0 ? null : <i aria-hidden="true">/</i>}
+                      <b>{part}</b>
+                    </span>
+                  ))}
+                </nav>
                 <span>{visibleNotes.length} 条笔记</span>
               </div>
               <label className="notes-search">
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <circle cx="10.5" cy="10.5" r="5.75" />
+                  <path d="m15 15 4.25 4.25" />
+                </svg>
                 <span className="sr-only">搜索当前目录笔记</span>
                 <input
                   type="search"
@@ -480,18 +492,22 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
               <div className="notes-groups">
                 {noteGroups.map((group) => (
                   <section className="notes-group" key={group.key}>
-                    <header>
-                      <h3>{group.title}</h3>
-                      <span>{group.notes.length} 条</span>
-                    </header>
+                    {selectedScope.lessonId === undefined ? (
+                      <header>
+                        <h3>{group.title}</h3>
+                        <span>{group.notes.length} 条</span>
+                      </header>
+                    ) : null}
                     <div className="notes-stream">
                       {group.notes.map((note) => (
                         <article className="notes-item" key={note.id}>
                           <header>
-                            <div>
-                              <strong>{note.lessonTitle}</strong>
-                              <span>{note.courseTitle}</span>
-                            </div>
+                            {selectedScope.courseId === undefined ? (
+                              <div>
+                                <strong>{note.lessonTitle}</strong>
+                                <span>{note.courseTitle}</span>
+                              </div>
+                            ) : null}
                             <time dateTime={note.createdAt}>{formatDate(note.createdAt)}</time>
                           </header>
                           {editingId === note.id ? (
@@ -525,6 +541,7 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                               <p>{note.markdown}</p>
                               <div className="notes-item-actions">
                                 <button
+                                  className="notes-item-action"
                                   type="button"
                                   onClick={() => {
                                     setEditingId(note.id);
@@ -534,7 +551,7 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                                   编辑
                                 </button>
                                 <button
-                                  className="danger"
+                                  className="danger notes-item-action"
                                   type="button"
                                   onClick={() => void remove(note)}
                                 >

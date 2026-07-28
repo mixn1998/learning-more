@@ -81,7 +81,11 @@ describe('NotesPage', () => {
     render(<NotesPage client={client()} />);
 
     expect(await screen.findByRole('navigation', { name: '学习笔记知识目录' })).toBeVisible();
-    expect(await screen.findByRole('heading', { level: 2, name: '微积分' })).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByRole('navigation', { name: '当前笔记范围' })).toHaveTextContent(
+        '数学/微积分',
+      ),
+    );
     expect(screen.getByText('2 条笔记')).toBeVisible();
 
     const directory = screen.getByRole('navigation', { name: '学习笔记知识目录' });
@@ -90,7 +94,11 @@ describe('NotesPage', () => {
 
     fireEvent.click(within(directory).getByRole('button', { name: /单侧极限/ }));
 
-    expect(await screen.findByRole('heading', { level: 2, name: '单侧极限' })).toBeVisible();
+    expect(screen.getByRole('navigation', { name: '当前笔记范围' })).toHaveTextContent(
+      '数学/微积分/单侧极限',
+    );
+    const content = document.querySelector<HTMLElement>('.notes-content')!;
+    expect(within(content).getAllByText('单侧极限')).toHaveLength(1);
     expect(screen.getByText('左右两侧需要分别观察。')).toBeVisible();
     expect(screen.queryByText('函数值与极限值需要建立一致关系。')).not.toBeInTheDocument();
   });
@@ -121,7 +129,11 @@ describe('NotesPage', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<NotesPage client={api} />);
 
-    await screen.findByRole('heading', { level: 2, name: '微积分' });
+    await waitFor(() =>
+      expect(screen.getByRole('navigation', { name: '当前笔记范围' })).toHaveTextContent(
+        '数学/微积分',
+      ),
+    );
     const noteText = await screen.findByText('函数值与极限值需要建立一致关系。');
     const item = noteText.closest('article')!;
     fireEvent.click(within(item).getByRole('button', { name: '编辑' }));
