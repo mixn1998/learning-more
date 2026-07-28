@@ -236,7 +236,7 @@ describe('candidate generation coordinator', () => {
     });
   });
 
-  it('replaces an expired active candidate task on retry and completes the streamed outline', async () => {
+  it('reuses a recovered active candidate task and completes the streamed outline', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-candidate-retry-'));
     roots.push(directory);
     const dataRoot = DataRoot.create(directory);
@@ -325,18 +325,18 @@ describe('candidate generation coordinator', () => {
 
     await expect(
       coordinator.generate({ commandId: 'command_retry', outlineSessionId: 'session_retry' }),
-    ).resolves.toMatchObject({ taskId: 'task_retried', state: 'running' });
-    await expect(afterRestart.get('task_interrupted')).resolves.toMatchObject({
-      status: 'cancelled',
-      errorCode: 'generation_cancelled',
-    });
+    ).resolves.toMatchObject({ taskId: 'task_interrupted', state: 'running' });
     expect(background).toHaveLength(1);
 
     await background[0]!();
 
-    await expect(afterRestart.get('task_retried')).resolves.toMatchObject({
+    await expect(afterRestart.get('task_interrupted')).resolves.toMatchObject({
       status: 'completed',
       draftMarkdown: markdown,
+      attempts: [
+        { status: 'failed', errorCode: 'generation_interrupted' },
+        { status: 'completed', emittedDelta: true },
+      ],
     });
     await expect(authoring.candidateVersions.get('candidate_retried')).resolves.toBeDefined();
   });

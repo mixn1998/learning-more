@@ -798,12 +798,16 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
 
     await runtime.recoverExpiredLeases();
 
-    await expect(runtime.get('task_empty')).resolves.toMatchObject({ status: 'queued' });
-    await expect(runtime.get('task_partial')).resolves.toMatchObject({
+    const recoveredEmpty = await runtime.get('task_empty');
+    expect(recoveredEmpty).toMatchObject({ status: 'queued' });
+    expect(recoveredEmpty).not.toHaveProperty('leaseExpiresAt');
+    const recoveredPartial = await runtime.get('task_partial');
+    expect(recoveredPartial).toMatchObject({
       status: 'failed',
       errorCode: 'failed_recoverable',
       draftMarkdown: 'partial',
     });
+    expect(recoveredPartial).not.toHaveProperty('leaseExpiresAt');
   });
 
   it('serializes concurrent expired-lease recovery for the same task', async () => {
@@ -889,7 +893,7 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
     });
   });
 
-  it('replays an interrupted task after runtime recreation and drains the recovered queue', async () => {
+  it('closes the interrupted attempt before replaying the same task after runtime recreation', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'learning-more-generation-replay-'));
     try {
       const dataRoot = DataRoot.create(root);
@@ -948,13 +952,26 @@ describe('durable generation scheduler [EQ-GEN-01]', () => {
         now: () => new Date('2026-07-13T00:01:00.000Z'),
       });
       await restartedRuntime.recoverExpiredLeases();
-      await expect(restartedRuntime.get('task_replay')).resolves.toMatchObject({
+      const recoveredTask = await restartedRuntime.get('task_replay');
+      expect(recoveredTask).toMatchObject({
         status: 'queued',
+        attempts: [
+          {
+            status: 'failed',
+            errorCode: 'generation_interrupted',
+            completedAt: '2026-07-13T00:01:00.000Z',
+          },
+        ],
       });
+      expect(recoveredTask).not.toHaveProperty('leaseExpiresAt');
       await expect(restartedRuntime.drainQueued()).resolves.toBe(1);
       await expect(restartedRuntime.get('task_replay')).resolves.toMatchObject({
         status: 'completed',
         draftMarkdown: '# Replayed outline',
+        attempts: [
+          { status: 'failed', errorCode: 'generation_interrupted' },
+          { status: 'completed', emittedDelta: true },
+        ],
       });
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -544,13 +544,32 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
             continue;
           }
           const hasOutput = (task.draftMarkdown?.length ?? 0) > 0;
+          const recoveredAt = now().toISOString();
+          const attempts = task.attempts?.map((attempt, index, all) =>
+            index === all.length - 1 && attempt.status === 'running'
+              ? {
+                  ...attempt,
+                  status: 'failed' as const,
+                  completedAt: recoveredAt,
+                  errorCode: 'generation_interrupted',
+                }
+              : attempt,
+          );
+          const {
+            leaseExpiresAt: _expiredLease,
+            errorCode: _previousErrorCode,
+            ...recoverableTask
+          } = task;
+          void _expiredLease;
+          void _previousErrorCode;
           await persist({
-            ...task,
+            ...recoverableTask,
             status: hasOutput && task.taskGroup === 'interactive' ? 'failed' : 'queued',
             ...(hasOutput && task.taskGroup === 'interactive'
               ? { errorCode: 'failed_recoverable' }
               : {}),
-            updatedAt: now().toISOString(),
+            ...(attempts === undefined ? {} : { attempts }),
+            updatedAt: recoveredAt,
           });
           recovered += 1;
         }
