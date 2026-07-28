@@ -45,7 +45,7 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   overflow: hidden;
 }
 .lesson-session-head {
-  padding: 13px 17px;
+  padding: 11px 16px;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -61,26 +61,84 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
 }
 .lesson-session-controls {
   min-width: 0;
-  gap: 14px;
+  gap: 16px;
 }
 .lesson-session-compact-timer {
-  gap: 10px;
+  min-height: 40px;
+  gap: 9px;
+  padding: 6px 11px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
   white-space: nowrap;
 }
 .lesson-session-compact-timer strong {
-  font-size: 14px;
+  margin-top: 0;
+  color: var(--ink);
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.015em;
 }
 .lesson-session-compact-actions {
-  gap: 7px;
+  position: relative;
+  gap: 8px;
+  padding-left: 17px;
+}
+.lesson-session-compact-actions::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--line) 82%, transparent);
+  content: '';
 }
 .lesson-session-compact-actions .lm-btn {
-  min-height: 34px;
-  padding: 7px 11px;
-  font-size: 11px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  box-shadow: none;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+.lesson-session-compact-actions .lm-btn:hover:not(:disabled) {
+  box-shadow: 0 6px 15px rgb(65 47 30 / 9%);
+}
+.lesson-session-compact-actions .lesson-session-primary-action {
+  min-width: 92px;
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.lesson-session-compact-actions .lesson-session-primary-action:hover:not(:disabled) {
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 27%, transparent);
+}
+.lesson-session-pause-button {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--paper));
+  color: var(--accent-dark);
+}
+.lesson-session-end-button {
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--line));
+  background: color-mix(in srgb, var(--danger) 7%, var(--paper));
+  color: var(--danger);
+}
+.lesson-session-end-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 48%, var(--line));
+  background: color-mix(in srgb, var(--danger) 12%, var(--paper));
 }
 .lesson-session-outline-button {
+  border-color: transparent;
+  background: transparent;
   color: var(--muted);
+}
+.lesson-session-outline-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  color: var(--ink);
 }
 .lesson-session-stream {
   min-height: 0;
@@ -536,7 +594,15 @@ body:has(.lesson-session-workspace) .runtime-write-boundary {
   .lesson-session-compact-actions {
     display: grid;
     width: 100%;
+    padding-left: 0;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .lesson-session-compact-actions::before {
+    display: none;
+  }
+  .lesson-session-compact-actions .lm-btn {
+    min-width: 0;
+    padding-inline: 9px;
   }
   .lesson-session-topbar > .lm-topbar-tools > .lm-pill {
     display: none;

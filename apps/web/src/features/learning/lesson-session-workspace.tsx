@@ -213,20 +213,32 @@ export function LessonSessionWorkspace(props: {
                 </div>
                 <div className="lesson-session-compact-actions">
                   {props.abandoned ? (
-                    <button className="lm-btn primary" type="button" onClick={props.onRestore}>
+                    <button
+                      className="lm-btn primary lesson-session-primary-action"
+                      type="button"
+                      onClick={props.onRestore}
+                    >
                       恢复学习
                     </button>
                   ) : !props.writable ? (
-                    <button className="lm-btn" type="button" onClick={props.onTransfer}>
+                    <button
+                      className="lm-btn primary lesson-session-primary-action"
+                      type="button"
+                      onClick={props.onTransfer}
+                    >
                       接管写入权
                     </button>
                   ) : props.paused ? (
-                    <button className="lm-btn" type="button" onClick={props.onResume}>
+                    <button
+                      className="lm-btn primary lesson-session-primary-action"
+                      type="button"
+                      onClick={props.onResume}
+                    >
                       继续学习
                     </button>
                   ) : (
                     <button
-                      className="lm-btn"
+                      className="lm-btn lesson-session-pause-button"
                       disabled={props.generating}
                       type="button"
                       onClick={props.onPause}
@@ -235,7 +247,7 @@ export function LessonSessionWorkspace(props: {
                     </button>
                   )}
                   <button
-                    className="lm-btn danger"
+                    className="lm-btn lesson-session-end-button"
                     disabled={!props.writable || props.abandoned}
                     type="button"
                     onClick={() => setEndOpen(true)}
