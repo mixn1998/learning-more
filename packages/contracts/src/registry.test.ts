@@ -6,6 +6,7 @@ import {
   EVENT_TYPES,
   GENERATION_STREAM_EVENT_TYPES,
   GenerationStreamEventSchema,
+  LEGACY_EVENT_TYPES,
   LearningEventEnvelopeSchema,
   QUERY_TYPES,
   QueryEnvelopeSchema,
@@ -33,6 +34,7 @@ describe('contract registries', () => {
     expect(QUERY_TYPES).toContain('GetProjectionHealth');
     expect(EVENT_TYPES).toContain('CourseReviewFinalized');
     expect(EVENT_TYPES).not.toContain('PortraitVersionCommitted');
+    expect(LEGACY_EVENT_TYPES).toEqual(['PortraitVersionCommitted']);
   });
 });
 

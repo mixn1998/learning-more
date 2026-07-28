@@ -20,6 +20,10 @@ export function createEventDispatcher(): EventDispatcher {
     },
     async dispatch(event) {
       if (delivered.has(event.id)) return;
+      if (event.type === 'PortraitVersionCommitted') {
+        delivered.add(event.id);
+        return;
+      }
       for (const handler of handlers.get(event.type) ?? []) await handler(event);
       delivered.add(event.id);
     },

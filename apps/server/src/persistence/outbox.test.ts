@@ -30,6 +30,21 @@ function event(id: string): LearningEventEnvelope {
   };
 }
 
+function legacyPortraitEvent(id: string): LearningEventEnvelope {
+  return {
+    id,
+    schema_version: 1,
+    type: 'PortraitVersionCommitted',
+    occurred_at: '2026-07-13T00:00:00.000Z',
+    recorded_at: '2026-07-13T00:00:00.000Z',
+    source: 'learning-portrait',
+    target_refs: { portraitId: 'portrait_01' },
+    payload: { portraitVersion: 1 },
+    idempotency_key: 'legacy-portrait',
+    correlation_id: 'correlation_legacy',
+  };
+}
+
 async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-outbox-'));
   temporaryRoots.push(directory);
@@ -48,6 +63,15 @@ afterEach(async () => {
 });
 
 describe('Outbox', () => {
+  it('keeps retired portrait events readable without restoring an active portrait event type', async () => {
+    const { eventLog } = await fixture();
+    const legacy = legacyPortraitEvent('event_legacy_portrait');
+
+    await eventLog.append(legacy);
+
+    await expect(eventLog.readAll()).resolves.toEqual([legacy]);
+  });
+
   it('recovers a crash after event append and never appends the event id twice', async () => {
     const { dataRoot, unitOfWork, eventLog, dispatcher } = await fixture();
     const handled = vi.fn();

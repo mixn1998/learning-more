@@ -32,7 +32,9 @@ export const EVENT_TYPES = [
   'PlanFlowDeleted',
 ] as const;
 
-export const EventTypeSchema = z.enum(EVENT_TYPES);
+export const LEGACY_EVENT_TYPES = ['PortraitVersionCommitted'] as const;
+
+export const EventTypeSchema = z.enum([...EVENT_TYPES, ...LEGACY_EVENT_TYPES]);
 
 export const LearningEventEnvelopeSchema = z.strictObject({
   id: z.string().trim().min(1).max(200),

@@ -83,6 +83,7 @@ const mappings: Partial<Record<EventType, Mapping>> = {
 };
 
 export function eventToFacts(event: LearningEventEnvelope): readonly LearningFact[] {
+  if (event.type === 'PortraitVersionCommitted') return [];
   const mapping = mappings[event.type];
   if (mapping === undefined) return [];
   return [createLearningFact({ event, ...mapping })];
