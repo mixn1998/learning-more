@@ -77,7 +77,7 @@ afterEach(() => {
 });
 
 describe('NotesPage', () => {
-  it('organizes notes into a discipline, course, and lesson directory', async () => {
+  it('keeps the directory at discipline and course level and shows lesson provenance inside notes', async () => {
     render(<NotesPage client={client()} />);
 
     expect(await screen.findByRole('navigation', { name: '学习笔记知识目录' })).toBeVisible();
@@ -90,17 +90,16 @@ describe('NotesPage', () => {
 
     const directory = screen.getByRole('navigation', { name: '学习笔记知识目录' });
     expect(within(directory).getByRole('button', { name: '收起数学' })).toBeVisible();
-    expect(within(directory).getByRole('button', { name: '收起微积分' })).toBeVisible();
+    expect(within(directory).queryByRole('button', { name: '收起微积分' })).not.toBeInTheDocument();
+    expect(within(directory).queryByRole('button', { name: /单侧极限/ })).not.toBeInTheDocument();
 
-    fireEvent.click(within(directory).getByRole('button', { name: /单侧极限/ }));
-
-    expect(screen.getByRole('navigation', { name: '当前笔记范围' })).toHaveTextContent(
-      '数学/微积分/单侧极限',
-    );
-    const content = document.querySelector<HTMLElement>('.notes-content')!;
-    expect(within(content).getAllByText('单侧极限')).toHaveLength(1);
+    const limitNote = screen.getByText('左右两侧需要分别观察。').closest('article')!;
+    expect(within(limitNote).getByText('数学 / 微积分 / 单侧极限')).toBeVisible();
+    const noteHeader = limitNote.querySelector('header')!;
+    expect(within(noteHeader).getByRole('button', { name: '编辑' })).toBeVisible();
+    expect(within(noteHeader).getByRole('button', { name: '删除' })).toBeVisible();
     expect(screen.getByText('左右两侧需要分别观察。')).toBeVisible();
-    expect(screen.queryByText('函数值与极限值需要建立一致关系。')).not.toBeInTheDocument();
+    expect(screen.getByText('函数值与极限值需要建立一致关系。')).toBeVisible();
   });
 
   it('searches within the selected directory and can expand to all notes', async () => {

@@ -70,7 +70,7 @@
 .notes-directory-all,
 .notes-tree-row,
 .notes-tree-row > button:last-child,
-.notes-tree-lesson {
+.notes-tree-course-label {
   display: flex;
   align-items: center;
 }
@@ -103,7 +103,7 @@
 
 .notes-directory-all,
 .notes-tree-row > button:last-child,
-.notes-tree-lesson {
+.notes-tree-course-label {
   width: 100%;
   min-width: 0;
   justify-content: space-between;
@@ -130,13 +130,13 @@
 
 .notes-directory-all:hover,
 .notes-tree-row > button:last-child:hover,
-.notes-tree-lesson:hover {
+.notes-tree-course-label:hover {
   background: color-mix(in srgb, var(--tint) 44%, transparent);
 }
 
 .notes-directory-all.active,
 .notes-tree-row > button:last-child.active,
-.notes-tree-lesson.active {
+.notes-tree-course-label.active {
   background: color-mix(in srgb, var(--tint) 50%, transparent);
   color: var(--accent-dark);
   box-shadow: inset 2px 0 0 var(--accent);
@@ -144,7 +144,7 @@
 
 .notes-directory-all span,
 .notes-tree-row > button:last-child span,
-.notes-tree-lesson span {
+.notes-tree-course-label span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -153,7 +153,7 @@
 
 .notes-directory-all small,
 .notes-tree-row > button:last-child small,
-.notes-tree-lesson small {
+.notes-tree-course-label small {
   flex: 0 0 auto;
   color: #a3998f;
   font-size: 8px;
@@ -196,7 +196,7 @@
   font-weight: 800;
 }
 
-.notes-tree-course > button:last-child {
+.notes-tree-course-label {
   font-size: 10px;
   font-weight: 720;
 }
@@ -228,17 +228,6 @@
 
 .notes-tree-toggle[aria-expanded='true'] span {
   transform: rotate(90deg);
-}
-
-.notes-tree-lesson {
-  position: relative;
-  padding-left: 7px;
-  font-size: 9.5px;
-}
-
-.notes-tree-lesson.active {
-  background: transparent;
-  font-weight: 650;
 }
 
 .notes-content {
@@ -345,30 +334,6 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 11%, transparent);
 }
 
-.notes-groups {
-  display: grid;
-  gap: 24px;
-}
-
-.notes-group > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 2px 9px;
-  border-bottom: 1px solid var(--line);
-}
-
-.notes-group > header h3 {
-  margin: 0;
-  font-size: 14px;
-}
-
-.notes-group > header span {
-  color: var(--muted);
-  font-size: 9px;
-}
-
 .notes-stream {
   display: grid;
   gap: 0;
@@ -405,21 +370,32 @@
   margin-left: auto;
 }
 
-.notes-item > header > div {
+.notes-item-source,
+.notes-item-meta {
   display: flex;
   min-width: 0;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 
-.notes-item > header strong {
+.notes-item-source strong {
+  min-width: 0;
+  overflow: hidden;
   font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.notes-item > header span,
+.notes-item-source span,
 .notes-item time {
   color: var(--muted);
   font-size: 9px;
+}
+
+.notes-item-meta {
+  flex: 0 0 auto;
+  gap: 14px;
+  margin-left: auto;
 }
 
 .notes-item time {
@@ -431,6 +407,7 @@
   max-width: 860px;
   margin: 11px 0 12px;
   color: var(--ink);
+  font-size: 14px;
   line-height: 1.78;
   white-space: pre-wrap;
 }
@@ -451,37 +428,46 @@
 .notes-item-actions,
 .notes-edit-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 12px;
 }
 
 .notes-item-actions {
-  min-height: 15px;
-  opacity: 0.72;
-  transition: opacity 140ms ease;
-}
-
-.notes-item:hover .notes-item-actions,
-.notes-item:focus-within .notes-item-actions {
-  opacity: 1;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--paper-2) 72%, transparent);
 }
 
 .notes-item-actions button {
-  min-height: 0;
-  padding: 0;
+  min-width: 48px;
+  min-height: 28px;
+  padding: 4px 9px;
   border: 0;
+  border-radius: 7px;
   background: transparent;
   color: var(--accent-dark);
-  font-size: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
   cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
 }
 
 .notes-item-actions button:hover {
-  text-decoration: underline;
+  background: color-mix(in srgb, var(--tint) 72%, transparent);
 }
 
 .notes-item-actions button.danger {
   color: var(--danger);
+}
+
+.notes-item-actions button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
 .notes-no-results {
@@ -539,10 +525,19 @@
     width: 100%;
   }
 
-  .notes-item > header,
-  .notes-item > header > div {
+  .notes-item > header {
     align-items: flex-start;
     flex-direction: column;
-    gap: 3px;
+    gap: 7px;
+  }
+
+  .notes-item-source {
+    width: 100%;
+  }
+
+  .notes-item-meta {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
   }
 }
