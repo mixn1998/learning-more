@@ -416,7 +416,7 @@ export function LessonSessionWorkspace(props: {
             />
           </section>
           <aside className="lesson-session-side">
-            <section className="lm-card">
+            <section className="lm-card lesson-learning-path-panel">
               <h3>本课学习线索</h3>
               <ol aria-label="课节知识推进线索" className="learning-path">
                 {props.path.map((point) => (
