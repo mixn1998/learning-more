@@ -12,14 +12,11 @@ import './notes-page.css';
 type CourseGroup = Readonly<{
   id: string;
   title: string;
-  notes: readonly LearningNoteView[];
-  noteCount: number;
 }>;
 
 type DisciplineGroup = Readonly<{
   name: string;
   courses: readonly CourseGroup[];
-  noteCount: number;
 }>;
 
 type NoteScope = Readonly<{
@@ -103,19 +100,11 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
     const sortedNotes = [...notes].sort(
       (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
     );
-    const disciplineMaps = new Map<
-      string,
-      Map<string, { title: string; notes: LearningNoteView[] }>
-    >();
+    const disciplineMaps = new Map<string, Map<string, { title: string }>>();
 
     for (const note of sortedNotes) {
       const courses = disciplineMaps.get(note.discipline) ?? new Map();
-      const course = courses.get(note.courseId) ?? {
-        title: note.courseTitle,
-        notes: [],
-      };
-      course.notes.push(note);
-      courses.set(note.courseId, course);
+      courses.set(note.courseId, { title: note.courseTitle });
       disciplineMaps.set(note.discipline, courses);
     }
 
@@ -124,13 +113,10 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
         const courseGroups: CourseGroup[] = [...courses.entries()].map(([courseId, course]) => ({
           id: courseId,
           title: course.title,
-          notes: course.notes,
-          noteCount: course.notes.length,
         }));
         return {
           name: discipline,
           courses: courseGroups,
-          noteCount: courseGroups.reduce((total, course) => total + course.noteCount, 0),
         };
       },
     );
@@ -273,7 +259,6 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
             <header>
               <div>
                 <span>知识目录</span>
-                <strong>{notes.length} 条</strong>
               </div>
             </header>
             <nav aria-label="学习笔记知识目录">
@@ -283,7 +268,6 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                 onClick={() => selectScope(allScope)}
               >
                 <span>全部笔记</span>
-                <small>{notes.length}</small>
               </button>
               <ul className="notes-tree">
                 {navigation.disciplines.map((discipline) => {
@@ -312,7 +296,6 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                           }}
                         >
                           <span>{discipline.name}</span>
-                          <small>{discipline.noteCount}</small>
                         </button>
                       </div>
                       {disciplineExpanded ? (
@@ -330,7 +313,6 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                                   onClick={() => selectScope(courseScope, [currentDisciplineKey])}
                                 >
                                   <span>{course.title}</span>
-                                  <small>{course.noteCount}</small>
                                 </button>
                               </li>
                             );
@@ -387,10 +369,7 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
                   <article className="notes-item" key={note.id}>
                     <header>
                       <div className="notes-item-source">
-                        <span>来源</span>
-                        <strong>
-                          {note.discipline} / {note.courseTitle} / {note.lessonTitle}
-                        </strong>
+                        <strong>{note.lessonTitle}</strong>
                       </div>
                       <div className="notes-item-meta">
                         {editingId === note.id ? null : (

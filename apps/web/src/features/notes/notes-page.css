@@ -50,8 +50,7 @@
 }
 
 .notes-directory {
-  position: sticky;
-  top: 86px;
+  position: relative;
   height: min(620px, calc(100dvh - 106px));
   min-height: 500px;
   align-self: start;
@@ -85,11 +84,6 @@
   font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.04em;
-}
-
-.notes-directory > header strong {
-  color: var(--muted);
-  font-size: 9px;
 }
 
 .notes-directory nav {
@@ -149,15 +143,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.notes-directory-all small,
-.notes-tree-row > button:last-child small,
-.notes-tree-course-label small {
-  flex: 0 0 auto;
-  color: #a3998f;
-  font-size: 8px;
-  font-weight: 700;
 }
 
 .notes-tree,
@@ -381,15 +366,16 @@
 .notes-item-source strong {
   min-width: 0;
   overflow: hidden;
-  font-size: 11.5px;
+  font-size: 13px;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.notes-item-source span,
 .notes-item time {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .notes-item-meta {
@@ -434,32 +420,30 @@
 }
 
 .notes-item-actions {
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--paper-2) 72%, transparent);
+  gap: 12px;
 }
 
 .notes-item-actions button {
-  min-width: 48px;
-  min-height: 28px;
-  padding: 4px 9px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: 3px;
   background: transparent;
   color: var(--accent-dark);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.3;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: inherit;
   cursor: pointer;
   transition:
-    background 140ms ease,
-    color 140ms ease;
+    color 140ms ease,
+    text-decoration-color 140ms ease;
 }
 
 .notes-item-actions button:hover {
-  background: color-mix(in srgb, var(--tint) 72%, transparent);
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .notes-item-actions button.danger {
@@ -467,7 +451,7 @@
 }
 
 .notes-item-actions button.danger:hover {
-  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger);
 }
 
 .notes-no-results {

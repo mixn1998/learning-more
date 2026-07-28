@@ -92,10 +92,15 @@ describe('NotesPage', () => {
     expect(within(directory).getByRole('button', { name: '收起数学' })).toBeVisible();
     expect(within(directory).queryByRole('button', { name: '收起微积分' })).not.toBeInTheDocument();
     expect(within(directory).queryByRole('button', { name: /单侧极限/ })).not.toBeInTheDocument();
+    expect(within(directory).queryAllByText(/^\d+$/)).toHaveLength(0);
 
     const limitNote = screen.getByText('左右两侧需要分别观察。').closest('article')!;
-    expect(within(limitNote).getByText('数学 / 微积分 / 单侧极限')).toBeVisible();
     const noteHeader = limitNote.querySelector('header')!;
+    const noteSource = noteHeader.querySelector('.notes-item-source')!;
+    expect(noteSource).toHaveTextContent('单侧极限');
+    expect(noteSource).not.toHaveTextContent('来源');
+    expect(noteSource).not.toHaveTextContent('数学');
+    expect(noteSource).not.toHaveTextContent('微积分');
     expect(within(noteHeader).getByRole('button', { name: '编辑' })).toBeVisible();
     expect(within(noteHeader).getByRole('button', { name: '删除' })).toBeVisible();
     expect(screen.getByText('左右两侧需要分别观察。')).toBeVisible();
