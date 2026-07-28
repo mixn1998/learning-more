@@ -287,6 +287,47 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).not.toContain('【当前诉求｜用户原话】');
   });
 
+  it('preserves the learner answer and subsequent teaching when continuing', async () => {
+    const fake = runtime();
+    const base = context();
+    const continuation: TeachingContextPackage = {
+      ...base,
+      turnKind: 'continuation',
+      recentMessages: [
+        {
+          messageId: 'message_question',
+          role: 'assistant',
+          completionStatus: 'complete',
+          markdown: '比较三种修改，哪一种会让左右极限相等？',
+          sourceRef: 'message:message_question',
+        },
+        {
+          messageId: 'message_answer',
+          role: 'user',
+          completionStatus: 'complete',
+          markdown: '把右侧规则改成 x+1，左右两侧都会趋近于 2。',
+          sourceRef: 'message:message_answer',
+        },
+        {
+          messageId: 'message_explanation',
+          role: 'assistant',
+          completionStatus: 'complete',
+          markdown: '这说明连续要求左右极限相等，并且共同极限还要等于函数值。',
+          sourceRef: 'message:message_explanation',
+        },
+      ],
+    };
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(continuation, 'continuation:session_1');
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('学习者：把右侧规则改成 x+1，左右两侧都会趋近于 2。');
+    expect(prompt).toContain('教学助手：这说明连续要求左右极限相等，并且共同极限还要等于函数值。');
+    expect(prompt).toContain('不要用改写、重算或复述已有内容代替深化');
+    expect(prompt).not.toContain('【当前诉求｜用户原话】');
+  });
+
   it('marks future lessons as directional context and ignores placeholder chain edges', async () => {
     const fake = runtime();
     const base = context();

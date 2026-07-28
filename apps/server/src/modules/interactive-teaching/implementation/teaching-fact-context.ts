@@ -85,7 +85,9 @@ function priorConversation(context: TeachingContextPackage): string[] {
   const currentIndex = visible.findLastIndex(
     (message) => message.role === 'user' && message.completionStatus === 'complete',
   );
-  return visible.slice(0, Math.max(0, currentIndex)).map((message) => {
+  const prior =
+    context.turnKind === 'continuation' ? visible : visible.slice(0, Math.max(0, currentIndex));
+  return prior.map((message) => {
     const partial = message.completionStatus === 'interrupted' ? '（未完成）' : '';
     return `${message.role === 'user' ? '学习者' : '教学助手'}${partial}：${message.markdown.trim()}`;
   });
