@@ -304,16 +304,16 @@
 
 .notes-search {
   position: relative;
-  width: min(276px, 34%);
+  width: min(240px, 31%);
 }
 
 .notes-search svg {
   position: absolute;
   top: 50%;
-  left: 11px;
+  left: 9px;
   z-index: 1;
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   fill: none;
   stroke: var(--accent-dark);
   stroke-linecap: round;
@@ -324,13 +324,14 @@
 
 .notes-search input {
   width: 100%;
-  min-height: 35px;
-  padding: 7px 10px 7px 34px;
+  min-height: 30px;
+  padding: 5px 9px 5px 28px;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
   border-radius: 9px;
   outline: 0;
   background: var(--paper);
   color: var(--ink);
+  font-size: 11px;
   box-shadow: 0 4px 14px rgb(65 47 30 / 5%);
 }
 
