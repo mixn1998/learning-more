@@ -420,7 +420,7 @@ export function HomePage(props: {
             学习笔记
           </Button>
           <Button type="button" onClick={() => props.onNavigate('/history')}>
-            历史统计
+            历史记录
           </Button>
           {drafts.length > 0 ? (
             <Button type="button" onClick={() => setDraftsOpen(true)}>

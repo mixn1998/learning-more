@@ -148,9 +148,7 @@ export function HistoryPage(props: { readonly client?: HistoryClient }) {
   const [weeklyRetryPending, setWeeklyRetryPending] = useState(false);
   const [weeklyRetryError, setWeeklyRetryError] = useState<string>();
   const [section, setSection] = useState<HistorySection>(initialSection);
-  useAppShellBrandSubtitle(
-    showingWeekly ? '上周学习回顾' : section === 'calendar' ? '学习日历' : '历史统计',
-  );
+  useAppShellBrandSubtitle(showingWeekly ? '上周学习回顾' : '历史记录');
   useAppShellHeaderStatus(
     showingWeekly
       ? weeklyReport?.state === 'finalized'

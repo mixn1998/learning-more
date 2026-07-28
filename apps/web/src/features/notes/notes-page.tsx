@@ -242,9 +242,6 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
           <h1>学习笔记</h1>
           <p>沿着学科、课程与课时，重新找到课堂中形成的理解。</p>
         </div>
-        <a className="lm-btn" href="/">
-          返回首页
-        </a>
       </section>
       {error === undefined ? null : (
         <p className="notes-error" role="alert">
