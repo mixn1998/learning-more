@@ -34,7 +34,14 @@ function context(): TeachingContextPackage {
       objective: 'Explain conditioning.',
       coreKnowledgePoints: [{ ref: 'knowledge:kp_1', text: 'Sample-space change.' }],
     },
-    relevantFinalReviews: [],
+    relevantFinalReviews: [
+      {
+        sourceRef: 'review:prior',
+        version: '1',
+        markdown: '已建立：样本空间描述随机试验的全部可能结果。',
+        selectedBecause: '已完成课节“概率空间”的最终 Review。',
+      },
+    ],
     readingMaterialExcerpts: [],
     teachingState: createTeachingState({
       lessonId: 'lesson_1',
@@ -470,12 +477,18 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt.indexOf('建立两者的对应关系')).toBeLessThan(
       prompt.indexOf('再使用新表示继续推理'),
     );
+    expect(prompt).toContain('不能根据课程顺序、课节标题或先修关系推定概念已经建立');
+    expect(prompt).toContain('缺少证据时');
+    expect(prompt).toContain('补足理解当前内容所需的最小桥梁');
     expect(prompt).toContain('各独立语义条件共同如何充分刻画目标');
     expect(prompt).toContain('删减、放宽或替换条件后的反例');
     expect(prompt).toContain('不要求套用固定段落或逐项盘问');
     expect(prompt).toContain('当前结论如何产生新的问题');
     expect(prompt).toContain('下一概念为什么由此成为必要');
     expect(prompt).toContain('尚未学习的后续内容不能作为当前论证的未解释前提');
+    expect(prompt).toContain('【已完成课节学习证据】');
+    expect(prompt).toContain('已完成课节“概率空间”的最终 Review');
+    expect(prompt).toContain('样本空间描述随机试验的全部可能结果');
     expect(prompt).toContain('先判断缺失的是定义、判据、概念边界还是中间推理');
     expect(prompt).toContain('只有学习者参与会为后续教学带来真实信息或思考价值时才发起互动');
     expect(prompt).not.toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');

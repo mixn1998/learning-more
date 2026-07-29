@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import type { ReviewDocument } from '@learning-more/contracts';
+
 import { teachingPlayIntent } from '../../modules/interactive-teaching/implementation/teaching-play-intent.js';
 import { teachingWeightStatus } from '../../modules/course-authoring/implementation/teaching-weight-service.js';
 import type { TeachingContextSources } from '../../modules/interactive-teaching/ports/teaching-context-sources.js';
@@ -13,6 +15,20 @@ import { projectTeachingKnowledgeMap } from './teaching-knowledge-map.js';
 type LearningRepositories = ReturnType<typeof createLocalFileLearningSessionRepositories>;
 type MessageLog = ReturnType<typeof createLocalFileMessageLog>;
 type ArtifactStore = ReturnType<typeof createMarkdownArtifactStore>;
+
+export function projectCompletedLessonEvidence(
+  document: ReviewDocument | undefined,
+  legacyMarkdown: string | undefined,
+): string | undefined {
+  if (document?.kind === 'lesson-final') {
+    return [
+      `知识图谱：\n${document.knowledgeMap.markdown.trim()}`,
+      `核心思想：\n${document.coreInsight.trim()}`,
+    ].join('\n\n');
+  }
+  const fallback = legacyMarkdown?.trim();
+  return fallback === undefined || fallback.length === 0 ? undefined : fallback;
+}
 
 export function createLearningTeachingContext(input: {
   readonly course: LocalCourseRuntime['access'];
@@ -136,14 +152,16 @@ export function createLearningTeachingContext(input: {
         if (lesson.id === lessonId) continue;
         const learning = await input.getLearningRecord(lesson.id);
         if (learning?.finalReview === undefined) continue;
-        const markdown = (await input.artifactStore.read(learning.finalReview.artifactRef))
-          ?.content;
+        const markdown = projectCompletedLessonEvidence(
+          learning.finalReview.document,
+          (await input.artifactStore.read(learning.finalReview.artifactRef))?.content,
+        );
         if (markdown === undefined) continue;
         reviews.push({
           sourceRef: `review:${learning.finalReview.id}`,
           version: learning.finalReview.contentSha256,
           markdown,
-          selectedBecause: '同一课程中的已完成课节，可提供相关学习证据。',
+          selectedBecause: `已完成课节“${lesson.title}”（目标：${lesson.objective}）的最终 Review；只将其中明确出现的内容视为跨课节学习证据。`,
         });
       }
       return reviews;

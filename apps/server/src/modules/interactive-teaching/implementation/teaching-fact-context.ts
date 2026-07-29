@@ -92,6 +92,12 @@ function priorConversation(context: TeachingContextPackage): string[] {
   });
 }
 
+function priorLearningEvidence(context: TeachingContextPackage): string[] {
+  return context.relevantFinalReviews.map(
+    (review) => `${review.selectedBecause}\n${review.markdown.trim()}`,
+  );
+}
+
 function localCourseWindow(context: TeachingContextPackage) {
   const currentIndex = context.course.lessonMap.findIndex(
     (lesson) => lesson.relation === 'current' || lesson.lessonId === context.lesson.lessonId,
@@ -187,7 +193,8 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
     `【已知学习背景】\n课程：${context.course.title}\n课程目标：${localCourseGoals(context).join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
     knowledgeMapBackground(context),
     section('课程关系', relations),
-    `【课程关系使用边界】\n实际发生的对话决定哪些概念已经建立。前置、先前、相关和后续课节标题只描述知识关系；尤其后续课节标题只表示教学方向，不代表相关术语已经建立。`,
+    section('已完成课节学习证据', priorLearningEvidence(context)),
+    `【课程关系使用边界】\n实际发生的对话与已完成课节学习证据决定哪些概念已经建立。课程顺序、前置、先前、相关和后续课节标题只描述知识关系，不能单独证明相关概念已经学习；尤其后续课节标题只表示教学方向，不代表相关术语已经建立。`,
     context.course.playIntent === undefined
       ? undefined
       : `【互动关注】\n${context.course.playIntent}`,
