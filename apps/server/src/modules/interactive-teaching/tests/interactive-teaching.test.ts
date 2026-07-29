@@ -961,6 +961,59 @@ describe('InteractiveTeaching deep module', () => {
     expect(observedMessageBatches).toHaveLength(observedBeforeContinuation);
   });
 
+  it('continues after an interaction invitation without requiring a learner response', async () => {
+    const { module, drainObservations, messageLog, sessionModule, submittedContext } =
+      await fixture({
+        agentDirectives: [
+          {
+            schemaVersion: 2,
+            lessonPhase: 'warmup',
+            turnHandoff: 'invite_response',
+            interactionPromptExcerpt: 'Which condition would you inspect first?',
+          },
+          {
+            schemaVersion: 3,
+            lessonPhase: 'knowledge_point',
+            activeKnowledgePointRef: 'K1',
+            knowledgePoints: [{ ref: 'K1', status: 'learning' }],
+            turnHandoff: 'offer_continue',
+          },
+        ],
+      });
+    await module.openLesson(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      commandContext,
+    );
+    await drainObservations('session_1');
+    const beforeContinuation = await sessionModule.query(
+      { type: 'GetLessonLearning', lessonId: 'lesson_1' },
+      {
+        correlationId: 'query_before_invited_continue',
+        actor: 'local-user',
+        requestedAt: commandContext.requestedAt,
+        receivedAt: commandContext.receivedAt,
+      },
+    );
+
+    const continued = await module.continueTurn(
+      { courseId: 'course_1', lessonId: 'lesson_1', sessionId: 'session_1' },
+      {
+        ...commandContext,
+        commandId: 'continue_invited_turn',
+        idempotencyKey: 'continue_invited_turn',
+        expectedVersion: beforeContinuation.resourceVersion,
+      },
+    );
+    await drainObservations('session_1');
+
+    expect(continued.taskId).toBe('task_2');
+    expect(submittedContext()).toMatchObject({ turnKind: 'continuation' });
+    expect(await messageLog.list('session_1')).toEqual([
+      expect.objectContaining({ role: 'assistant' }),
+      expect.objectContaining({ role: 'assistant' }),
+    ]);
+  });
+
   it('forwards safe assistant reply deltas without replaying the full reply at completion', async () => {
     const { module, drainObservations, frames, ledgerRepository } = await fixture({
       streamReply: true,

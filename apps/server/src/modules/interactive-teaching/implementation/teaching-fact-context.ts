@@ -188,7 +188,7 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
     opening
       ? '这是学习者刚进入本课的课前热身。'
       : continuation
-        ? '这是学习者点击“继续讲解”触发的系统续讲事件；它不是学习者消息、理解证据或互动回应。'
+        ? '这是学习者点击“继续讲解”触发的系统续讲事件；它不是学习者消息或理解证据。若上一回复发出了互动邀请，表示学习者选择暂不回答并沿既有教学路径继续；不要伪造回应，也不要停留等待同一回应。'
         : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
     `【已知学习背景】\n课程：${context.course.title}\n课程目标：${localCourseGoals(context).join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
     knowledgeMapBackground(context),

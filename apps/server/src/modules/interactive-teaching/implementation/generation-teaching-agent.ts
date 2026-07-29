@@ -43,7 +43,7 @@ export function renderTeachingConversationInput(context: TeachingContextPackage)
     opening
       ? '直接面向学习者输出自然的开场教学，不复述栏目名或内部状态。'
       : context.turnKind === 'continuation'
-        ? '这是系统续讲回合。不要伪造学习者输入或声称学习者已经回应；直接继续当前教学。'
+        ? '这是系统续讲回合。不要伪造学习者输入或声称学习者已经回应；若上一回复邀请互动，视为学习者选择暂不回答，直接沿既有教学路径继续。'
         : '不要复述栏目名或内部状态，直接回应当前诉求。',
     renderTeachingControlProtocol(context),
   ]

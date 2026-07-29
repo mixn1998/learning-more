@@ -531,6 +531,7 @@ describe('learning SessionPage', () => {
     expect(
       await screen.findByText('如果程序需要根据年龄选择不同分支，你会先判断什么？'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续讲解' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '条件表达式的真假结果' })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('学习输入'), {

@@ -906,7 +906,7 @@ export function createInteractiveTeaching(options: {
       }
       return next;
     }
-    if (input.currentUserMessageId === undefined) {
+    if (input.currentUserMessageId === undefined && input.turnKind !== 'continuation') {
       throw new Error('teaching_warmup_requires_learner_response');
     }
     const firstKnowledgePointRef = base.knowledgePoints[0]?.ref;
@@ -1554,8 +1554,8 @@ export function createInteractiveTeaching(options: {
       }
       await observationQueue.drain(input.sessionId);
       const state = await initialState(input.courseId, input.lessonId, input.sessionId);
-      if (state.turnHandoff !== 'offer_continue' || state.lessonPhase === 'ready_to_close') {
-        throw Object.assign(new Error('teaching_continuation_not_offered'), {
+      if (state.lessonPhase === 'ready_to_close') {
+        throw Object.assign(new Error('teaching_continuation_unavailable'), {
           code: 'session_conflict',
         });
       }

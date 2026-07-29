@@ -184,6 +184,15 @@ function hasAssistantResponse(messages: readonly SessionMessageView[] | undefine
     );
 }
 
+function hasCompletedAssistantTurn(messages: readonly SessionMessageView[]): boolean {
+  const latest = messages.at(-1);
+  return (
+    latest?.role === 'assistant' &&
+    latest.completionStatus !== 'interrupted' &&
+    latest.markdown.trim() !== ''
+  );
+}
+
 function learnerTurnKnowledgePointRef(
   teachingProgress: TeachingProgress | undefined,
 ): string | undefined {
@@ -1786,8 +1795,10 @@ export function SessionPage(props: {
         }
         canStop={state.taskId !== undefined}
         canContinueTeaching={
-          state.teachingProgress?.turnHandoff === 'offer_continue' &&
-          state.teachingProgress.lessonPhase !== 'ready_to_close' &&
+          state.teachingProgress?.lessonPhase !== 'ready_to_close' &&
+          hasCompletedAssistantTurn(visibleStoredMessages) &&
+          state.pendingUserMessage === undefined &&
+          state.sendError === undefined &&
           state.phase === 'ready' &&
           state.editingMessageId === undefined
         }
