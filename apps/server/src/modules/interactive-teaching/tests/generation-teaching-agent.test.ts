@@ -463,6 +463,13 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain('再自然建立精确定义');
     expect(prompt).not.toContain('优先以精确定义建立共同基准');
     expect(prompt.indexOf('它针对什么困难')).toBeLessThan(prompt.indexOf('再自然建立精确定义'));
+    expect(prompt).toContain('当教学从已有对象切换到新的表示方式时');
+    expect(prompt).toContain('什么被重新表示、哪些信息或关系得到保留');
+    expect(prompt).toContain('新表示为什么更适合当前问题');
+    expect(prompt).toContain('随后进行的操作如何对应原对象');
+    expect(prompt.indexOf('建立两者的对应关系')).toBeLessThan(
+      prompt.indexOf('再使用新表示继续推理'),
+    );
     expect(prompt).toContain('各独立语义条件共同如何充分刻画目标');
     expect(prompt).toContain('删减、放宽或替换条件后的反例');
     expect(prompt).toContain('不要求套用固定段落或逐项盘问');
