@@ -240,7 +240,6 @@ export function NotesPage(props: { readonly client?: LearningNotesClient }) {
         <div>
           <div className="lm-kicker">Learning notes</div>
           <h1>学习笔记</h1>
-          <p>沿着学科、课程与课时，重新找到课堂中形成的理解。</p>
         </div>
       </section>
       {error === undefined ? null : (
