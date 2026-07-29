@@ -24,12 +24,19 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
             '本回复可以继续或完成当前节点；完成后可以把教学游标切换到相邻下一主链节点，但下一主链节点保持 pending，直到属于它的讲解真正开始。不要在同一可见回复中展开下一节点。最后一个主链节点完成后可以把下一阶段置为 comprehensive_application，但综合应用在下一轮展开。',
           ]
         : phase === 'comprehensive_application'
-          ? [
-              '全部知识点教学已经完成或由学习者明确跳过。当前进行一次跨知识点的综合应用。',
-              '综合应用应在具有实质差异的新问题、新条件中保留本课方法可能适用的底层结构，使学习者自主识别问题、选择并调整方法，再依据新条件形成判断。仅更换场景、复述结论或重现课堂推理不构成迁移。',
-              '若尚未提出综合应用，只提出一项非强制应用邀请；学习者可以回答或明确跳过。',
-              '若学习者回答，根据其真实表现自主组织回应、深化或纠偏；综合应用回应完成或被明确跳过后进入讨论答疑。此时不要输出最终课程总结。',
-            ]
+          ? context.turnKind === 'continuation'
+            ? [
+                '全部知识点教学已经完成或由学习者明确跳过。当前进行一次跨知识点的综合应用。',
+                '综合应用应在具有实质差异的新问题、新条件中保留本课方法可能适用的底层结构，使学习者自主识别问题、选择并调整方法，再依据新条件形成判断。仅更换场景、复述结论或重现课堂推理不构成迁移。',
+                '学习者在综合应用阶段点击“继续讲解”，等同于输入“直接讲解”。直接示范并讲清该综合应用，展示如何识别问题结构、选择和调整本课方法，并依据新条件形成判断；不要伪造学习者作答。',
+                '讲解完成后将 comprehensiveApplication 设为 completed，并进入 lessonPhase=discussion、closureInquiry=awaiting_confirmation；此时不要输出最终课程总结。',
+              ]
+            : [
+                '全部知识点教学已经完成或由学习者明确跳过。当前进行一次跨知识点的综合应用。',
+                '综合应用应在具有实质差异的新问题、新条件中保留本课方法可能适用的底层结构，使学习者自主识别问题、选择并调整方法，再依据新条件形成判断。仅更换场景、复述结论或重现课堂推理不构成迁移。',
+                '若尚未提出综合应用，只提出一项非强制应用邀请；学习者可以回答或明确跳过。',
+                '若学习者回答，根据其真实表现自主组织回应、深化或纠偏；综合应用回应完成或被明确跳过后进入讨论答疑。此时不要输出最终课程总结。',
+              ]
           : phase === 'discussion'
             ? context.turnKind === 'continuation'
               ? [
@@ -50,8 +57,6 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
                   '本课教学流程已经完成。回应当前诉求，并提示学习者可点击“结束本课”生成最终 Review。',
                 ];
   const supplementalLines =
-    phase === 'comprehensive_application'
-      ? ['不要虚构用户表现或声称用户已经掌握。']
-      : [];
+    phase === 'comprehensive_application' ? ['不要虚构用户表现或声称用户已经掌握。'] : [];
   return `【当前教学阶段】\n${[...lines, ...supplementalLines].join('\n')}`;
 }

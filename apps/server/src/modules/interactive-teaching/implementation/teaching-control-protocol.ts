@@ -74,6 +74,9 @@ function machineControlContext(context: TeachingContextPackage): string {
 export function renderTeachingControlProtocol(context: TeachingContextPackage): string {
   const discussionContinuation =
     context.turnKind === 'continuation' && context.teachingState.lessonPhase === 'discussion';
+  const comprehensiveApplicationContinuation =
+    context.turnKind === 'continuation' &&
+    context.teachingState.lessonPhase === 'comprehensive_application';
   const compactReferenceProtocol = [
     '知识点引用只使用当前机器状态中的 K1、K2 等短编号；不要复制或创造内部知识点长标识。',
     'difficultySignals.sourceMessageId 只使用当前机器状态允许的 U1；服务端会确定性映射回真实消息。',
@@ -102,7 +105,9 @@ export function renderTeachingControlProtocol(context: TeachingContextPackage): 
     '每轮必须返回 turnHandoff。只有可见回复确实向学习者发出具有教学价值的回应邀请时使用 invite_response，并同时返回 interactionPromptExcerpt；该字段必须逐字摘录可见回复中的邀请。其他情况使用 offer_continue，且不得返回 interactionPromptExcerpt。界面在每次完整回复后始终提供“继续讲解”，不以 turnHandoff 判定显隐。',
     discussionContinuation
       ? '答疑阶段点击“继续讲解”等同于明确确认没有其他疑问；输出最终总结并进入 ready_to_close，不产生新的理解证据。'
-      : '学习者未回答邀请而点击续讲时，不产生理解证据；若该邀请属于当前知识点互动则将 interactionStatus 更新为 skipped，并沿既有教学路径继续。',
+      : comprehensiveApplicationContinuation
+        ? '综合应用阶段点击“继续讲解”等同于输入“直接讲解”；直接完成综合应用讲解后，将 comprehensiveApplication 设为 completed 并进入 discussion、awaiting_confirmation，不产生学习者作答或理解证据。'
+        : '学习者未回答邀请而点击续讲时，不产生理解证据；若该邀请属于当前知识点互动则将 interactionStatus 更新为 skipped，并沿既有教学路径继续。',
     `当前机器状态：${machineControlContext(context)}`,
   ].join('\n');
 }

@@ -264,9 +264,7 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain(
       '发生了什么、关键主体处于什么关系、当前为何必须作出判断，以及分析对象如何由此前过程形成',
     );
-    expect(fake.request()?.prompt).not.toContain(
-      '首次引入不能仅凭名称理解的新对象、案例或议题时',
-    );
+    expect(fake.request()?.prompt).not.toContain('首次引入不能仅凭名称理解的新对象、案例或议题时');
     expect(fake.request()?.prompt).toContain('最后只提出一个');
     expect(fake.request()?.prompt).toContain('模块一：概率语言');
     expect(fake.request()?.prompt).toContain('本课是当前模块的第一课，也是整门课程的第一课');
@@ -341,6 +339,31 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain(
       '输出本课最终总结，并在同一轮把状态设为 ready_to_close、confirmed_no_questions、delivered',
     );
+    expect(prompt).not.toContain('表示学习者选择暂不回答并沿既有教学路径继续');
+  });
+
+  it('treats continuation during comprehensive application as a request for direct explanation', async () => {
+    const fake = runtime();
+    const base = context();
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(
+      {
+        ...base,
+        turnKind: 'continuation',
+        teachingState: {
+          ...base.teachingState,
+          lessonPhase: 'comprehensive_application',
+          comprehensiveCheck: 'learning',
+        },
+      },
+      'continuation:session_comprehensive_application',
+    );
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('综合应用阶段点击“继续讲解”等同于学习者输入“直接讲解”');
+    expect(prompt).toContain('直接示范并讲清该综合应用');
+    expect(prompt).toContain('不要把该操作记为学习者作答或理解证据');
     expect(prompt).not.toContain('表示学习者选择暂不回答并沿既有教学路径继续');
   });
 
