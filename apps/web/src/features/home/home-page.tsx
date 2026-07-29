@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
 import type { CourseMode } from '@learning-more/contracts';
-import { Button, ContentState, Dialog } from '@learning-more/ui';
+import { Button, ContentState, Dialog } from '@learning-more/ui/lite';
 
 import {
   courseAuthoringClient,
@@ -231,6 +231,8 @@ export function HomePage(props: {
   readonly draftSessions?: readonly HomeDraft[];
   readonly courses?: readonly HomeCourse[];
   readonly schedule?: readonly HomeScheduleItem[];
+  readonly pendingLessonCount?: number;
+  readonly overdueScheduleCount?: number;
   readonly loading?: boolean;
   readonly error?: boolean;
   readonly notice?: string;
@@ -245,7 +247,12 @@ export function HomePage(props: {
   const [topic, setTopic] = useState('');
   const [mode, setMode] = useState<CourseMode>('standard');
   const [materialFile, setMaterialFile] = useState<File>();
-  const [weekAnchor, setWeekAnchor] = useState(() => startOfWeek(now));
+  const initialWeekAnchor = useMemo(() => startOfWeek(now), [todayKey]);
+  const initialWeekKey = localDateKey(initialWeekAnchor);
+  const [weekAnchor, setWeekAnchor] = useState(initialWeekAnchor);
+  const [scheduleWindows, setScheduleWindows] = useState<
+    Readonly<Record<string, readonly HomeScheduleItem[]>>
+  >(() => ({ [initialWeekKey]: props.schedule ?? [] }));
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [chooserDiscipline, setChooserDiscipline] = useState('');
@@ -274,7 +281,8 @@ export function HomePage(props: {
     discipline: chooserDiscipline,
     courseMode: chooserMode,
   });
-  const schedule = (props.schedule ?? [])
+  const weekKey = localDateKey(weekAnchor);
+  const schedule = (scheduleWindows[weekKey] ?? [])
     .map((item) => scheduleOverrides[item.scheduleItemId] ?? item)
     .sort((left, right) => left.startAt.localeCompare(right.startAt));
   const selectedMode = useCourseModeTheme(mode);
@@ -286,21 +294,64 @@ export function HomePage(props: {
   const todayCount = schedule.filter(
     (item) => localDateKey(new Date(item.startAt)) === todayKey && isPendingSchedule(item, lessons),
   ).length;
-  const overdueCount = schedule.filter(
-    (item) => localDateKey(new Date(item.startAt)) < todayKey && isPendingSchedule(item, lessons),
-  ).length;
+  const overdueCount =
+    props.overdueScheduleCount ??
+    schedule.filter(
+      (item) => localDateKey(new Date(item.startAt)) < todayKey && isPendingSchedule(item, lessons),
+    ).length;
   const scheduledLessons = new Set(schedule.map((item) => item.lessonId));
-  const pendingCount = lessons.filter(
-    (lesson) => lesson.progress === 'not_started' && !scheduledLessons.has(lesson.lessonId),
-  ).length;
+  const pendingCount =
+    props.pendingLessonCount ??
+    lessons.filter(
+      (lesson) => lesson.progress === 'not_started' && !scheduledLessons.has(lesson.lessonId),
+    ).length;
   const canContinue = courses.length > 0;
 
   useEffect(() => {
-    const availableIds = new Set((props.schedule ?? []).map((item) => item.scheduleItemId));
+    setScheduleWindows((current) => ({
+      ...current,
+      [initialWeekKey]: props.schedule ?? [],
+    }));
+  }, [initialWeekKey, props.schedule]);
+
+  useEffect(() => {
+    if (scheduleWindows[weekKey] !== undefined) return undefined;
+    const controller = new AbortController();
+    const from = weekAnchor.toISOString();
+    const to = addDays(weekAnchor, 7).toISOString();
+    void scheduleApi
+      .getSchedule({ from, to })
+      .then((snapshot) => {
+        if (controller.signal.aborted) return;
+        setScheduleWindows((current) => ({
+          ...current,
+          [weekKey]: snapshot.items
+            .filter((item) => item.status === 'scheduled')
+            .map((item) => ({
+              scheduleItemId: item.id,
+              courseId: item.courseId,
+              lessonId: item.lessonId,
+              startAt: item.startAt,
+              endAt: item.endAt,
+              source: item.source,
+              locked: item.locked ?? false,
+            })),
+        }));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [scheduleApi, scheduleWindows, weekAnchor, weekKey]);
+
+  useEffect(() => {
+    const availableIds = new Set(
+      Object.values(scheduleWindows)
+        .flat()
+        .map((item) => item.scheduleItemId),
+    );
     setScheduleOverrides((current) =>
       Object.fromEntries(Object.entries(current).filter(([id]) => availableIds.has(id))),
     );
-  }, [props.schedule]);
+  }, [scheduleWindows]);
 
   useEffect(() => {
     if (rescheduleNotice === undefined) return undefined;

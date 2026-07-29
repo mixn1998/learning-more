@@ -129,6 +129,8 @@ function HomeRoute() {
             courses: dashboard.courses,
             draftSessions: dashboard.draftSessions,
             lessons: dashboard.lessons,
+            pendingLessonCount: dashboard.pendingLessonCount,
+            overdueScheduleCount: dashboard.overdueScheduleCount,
             schedule: dashboard.schedule,
           })}
       {...(notice === undefined ? {} : { notice })}

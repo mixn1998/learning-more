@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { ApplicationProblemSchema, type HomeDashboardView } from '@learning-more/contracts';
+import { ApplicationProblemSchema, type CatalogIndexView } from '@learning-more/contracts';
 import { ContentState } from '@learning-more/ui';
 
 import {
@@ -54,10 +54,10 @@ export function PlanningPage(props: {
   const initialContext = usesSharedCache ? planningContextCache.read() : undefined;
   const [items, setItems] = useState<readonly ScheduleItemView[]>(initialSchedule?.items ?? []);
   const [version, setVersion] = useState(initialSchedule?.resourceVersion ?? 0);
-  const [courses, setCourses] = useState<HomeDashboardView['courses']>(
+  const [courses, setCourses] = useState<CatalogIndexView['courses']>(
     initialContext?.courses ?? [],
   );
-  const [lessons, setLessons] = useState<HomeDashboardView['lessons']>(
+  const [lessons, setLessons] = useState<CatalogIndexView['lessons']>(
     initialContext?.lessons ?? [],
   );
   const [view, setView] = useState<'planner' | 'flow'>('planner');

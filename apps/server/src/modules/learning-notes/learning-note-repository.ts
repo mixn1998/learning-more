@@ -21,4 +21,5 @@ export interface LearningNoteRepository {
   ): AsyncIterable<LearningNoteRecord>;
   save(tx: TransactionContext, note: LearningNoteRecord, expectedVersion: number): Promise<void>;
   remove(tx: TransactionContext, noteId: string, expectedVersion: number): Promise<void>;
+  invalidateList(): void;
 }

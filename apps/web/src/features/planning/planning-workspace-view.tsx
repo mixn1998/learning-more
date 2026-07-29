@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import type { HomeDashboardView } from '@learning-more/contracts';
+import type { CatalogIndexView } from '@learning-more/contracts';
 
 import type { ScheduleItemView } from '../../client/planning-client.js';
 import { toBroadDisciplineLabel } from '../../discipline-label.js';
 
 import './planning-workspace.css';
 
-type HomeCourse = HomeDashboardView['courses'][number];
-type HomeLesson = HomeDashboardView['lessons'][number];
+type HomeCourse = CatalogIndexView['courses'][number];
+type HomeLesson = CatalogIndexView['lessons'][number];
 
 export type PlanningLessonMetadata = Readonly<{
   estimatedMinutes?: number;

@@ -94,6 +94,31 @@ describe('home page', () => {
     expect(screen.queryByRole('button', { name: '开始学习' })).not.toBeInTheDocument();
   });
 
+  it('loads another schedule week only when the learner navigates to it', async () => {
+    const getSchedule = vi.fn().mockResolvedValue({ items: [], resourceVersion: 2 });
+    render(
+      <HomePage
+        client={client()}
+        courses={[]}
+        lessons={[]}
+        planningApi={planningApi({ getSchedule })}
+        schedule={[]}
+        now={new Date('2026-07-15T08:00:00+08:00')}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    expect(getSchedule).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '下一周' }));
+
+    await waitFor(() =>
+      expect(getSchedule).toHaveBeenCalledWith({
+        from: '2026-07-19T16:00:00.000Z',
+        to: '2026-07-26T16:00:00.000Z',
+      }),
+    );
+  });
+
   it('shows completion only in the home timetable and today agenda', () => {
     const navigate = vi.fn();
     const { container } = render(

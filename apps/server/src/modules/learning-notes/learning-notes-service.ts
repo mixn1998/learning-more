@@ -66,6 +66,7 @@ export function createLearningNotesService(
       await input.unitOfWork.execute({ transactionId: `tx_learning_note_${randomUUID()}` }, (tx) =>
         input.repository.save(tx, record, 0),
       );
+      input.repository.invalidateList();
       return view({ ...record, resourceVersion: 1 });
     },
     async update(noteId, command, expectedVersion) {
@@ -82,12 +83,14 @@ export function createLearningNotesService(
       await input.unitOfWork.execute({ transactionId: `tx_learning_note_${randomUUID()}` }, (tx) =>
         input.repository.save(tx, updated, expectedVersion),
       );
+      input.repository.invalidateList();
       return view({ ...updated, resourceVersion: expectedVersion + 1 });
     },
     async remove(noteId, expectedVersion) {
       await input.unitOfWork.execute({ transactionId: `tx_learning_note_${randomUUID()}` }, (tx) =>
         input.repository.remove(tx, noteId, expectedVersion),
       );
+      input.repository.invalidateList();
     },
   };
 }

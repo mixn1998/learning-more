@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
-import { Badge, Button, StatusBanner, type StatusBannerStatus } from '@learning-more/ui';
+import { Badge, Button, StatusBanner, type StatusBannerStatus } from '@learning-more/ui/lite';
 
 import {
   fetchLauncherStatus,

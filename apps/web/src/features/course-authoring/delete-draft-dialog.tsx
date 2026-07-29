@@ -1,4 +1,4 @@
-import { Button, Dialog, Inline } from '@learning-more/ui';
+import { Button, Dialog, Inline } from '@learning-more/ui/lite';
 
 export function DeleteDraftDialog(props: {
   readonly open: boolean;

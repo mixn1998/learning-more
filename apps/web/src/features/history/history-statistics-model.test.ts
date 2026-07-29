@@ -11,6 +11,8 @@ import { buildStatisticsCourses, buildStatisticsSnapshot } from './history-stati
 
 const dashboard: HomeDashboardView = {
   generatedAt: '2026-07-14T00:00:00.000Z',
+  pendingLessonCount: 0,
+  overdueScheduleCount: 0,
   draftSessions: [],
   courses: [
     {

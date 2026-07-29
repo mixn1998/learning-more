@@ -24,6 +24,7 @@ function fixture() {
     async remove(_tx, noteId) {
       records.delete(noteId);
     },
+    invalidateList() {},
   };
   const transaction = {
     stageJson: async () => undefined,

@@ -11,6 +11,8 @@ describe('Home HTTP route', () => {
         etag: 'home:1',
         value: {
           generatedAt: '2026-07-13T00:00:00.000Z',
+          pendingLessonCount: 0,
+          overdueScheduleCount: 0,
           draftSessions: [
             {
               outlineSessionId: 'session_01',

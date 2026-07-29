@@ -38,6 +38,25 @@ export const ScheduleViewResponseSchema = z.strictObject({
   resourceVersion: z.number().int().nonnegative(),
 });
 
+export const ScheduleWindowQuerySchema = z
+  .strictObject({
+    from: utcInstant.optional(),
+    to: utcInstant.optional(),
+  })
+  .refine((value) => (value.from === undefined) === (value.to === undefined), {
+    message: 'from and to must be supplied together',
+  })
+  .refine(
+    (value) =>
+      value.from === undefined ||
+      value.to === undefined ||
+      Date.parse(value.to) > Date.parse(value.from),
+    {
+      message: 'to must be later than from',
+      path: ['to'],
+    },
+  );
+
 export type ScheduleViewResponse = Readonly<z.infer<typeof ScheduleViewResponseSchema>>;
 
 export const ClearScheduleBodySchema = z.strictObject({

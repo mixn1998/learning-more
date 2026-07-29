@@ -3,7 +3,7 @@ import {
   CatalogIndexResponseSchema,
   ScheduleAssignmentResponseSchema,
   ScheduleViewResponseSchema,
-  type HomeDashboardView,
+  type CatalogIndexView,
   type PlanFlowView,
   type ScheduleItemView as ContractScheduleItemView,
 } from '@learning-more/contracts';
@@ -23,8 +23,10 @@ type CreateScheduleInput = Readonly<{
 }>;
 
 export interface PlanningClient {
-  getSchedule(): Promise<{ items: readonly ScheduleItemView[]; resourceVersion: number }>;
-  getPlanningContext(): Promise<Pick<HomeDashboardView, 'courses' | 'lessons'>>;
+  getSchedule(
+    window?: Readonly<{ from: string; to: string }>,
+  ): Promise<{ items: readonly ScheduleItemView[]; resourceVersion: number }>;
+  getPlanningContext(): Promise<Pick<CatalogIndexView, 'courses' | 'lessons'>>;
   clearSchedule(
     scheduleItemIds: readonly string[],
     resourceVersion: number,
@@ -101,8 +103,13 @@ async function scheduleCommand(
 }
 
 export const planningClient: PlanningClient = {
-  async getSchedule() {
-    return (await apiRequest('/api/v1/schedule', { schema: ScheduleViewResponseSchema })).data;
+  async getSchedule(window) {
+    const query =
+      window === undefined
+        ? ''
+        : `?from=${encodeURIComponent(window.from)}&to=${encodeURIComponent(window.to)}`;
+    return (await apiRequest(`/api/v1/schedule${query}`, { schema: ScheduleViewResponseSchema }))
+      .data;
   },
   async getPlanningContext() {
     const view = (

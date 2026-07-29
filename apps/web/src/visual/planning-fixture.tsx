@@ -1,4 +1,4 @@
-import type { HomeDashboardView, PlanFlowView } from '@learning-more/contracts';
+import type { CatalogIndexView, PlanFlowView } from '@learning-more/contracts';
 
 import type { ScheduleItemView } from '../client/planning-client.js';
 import { PlanFlowPanel } from '../features/planning/plan-flow-panel.js';
@@ -20,7 +20,7 @@ const readyRuntime: RuntimeUiState = {
   version: { kind: 'compatible', writesAllowed: true },
 };
 
-const courses: HomeDashboardView['courses'] = [
+const courses: CatalogIndexView['courses'] = [
   {
     courseId: 'game-design',
     title: '游戏设计能力',
@@ -47,7 +47,7 @@ const courses: HomeDashboardView['courses'] = [
   },
 ];
 
-const lessons: HomeDashboardView['lessons'] = [
+const lessons: CatalogIndexView['lessons'] = [
   {
     courseId: 'data-structures',
     lessonId: 'tree-hierarchy',

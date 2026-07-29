@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 
-import type { HomeDashboardView } from '@learning-more/contracts';
+import type { CatalogIndexView } from '@learning-more/contracts';
 import { Badge, Button, ContentState, Inline, SectionHeader, Stack } from '@learning-more/ui';
 
 import type { ScheduleItemView } from '../../client/planning-client.js';
 import { PlanningDateFilter, type PlanningDateItem } from './planning-date-filter.js';
 
 type ScheduleDraft = Readonly<{ startAt: string; endAt: string }>;
-type LessonCandidate = HomeDashboardView['lessons'][number];
+type LessonCandidate = CatalogIndexView['lessons'][number];
 type BoardEntry = PlanningDateItem &
   Readonly<{
     courseId: string;

@@ -50,9 +50,12 @@ describe('import boundary checks', () => {
     expect(checkImport('apps/web/src/app.tsx', target)).toBeUndefined();
   });
 
-  it('allows the public design-system stylesheet export', () => {
-    expect(checkImport('apps/web/src/main.tsx', '@learning-more/ui/styles.css')).toBeUndefined();
-  });
+  it.each(['@learning-more/ui/styles.css', '@learning-more/ui/lite'])(
+    'allows the public design-system export %s',
+    (target) => {
+      expect(checkImport('apps/web/src/main.tsx', target)).toBeUndefined();
+    },
+  );
 
   it('finds static, dynamic, and re-export module specifiers', () => {
     const source = [

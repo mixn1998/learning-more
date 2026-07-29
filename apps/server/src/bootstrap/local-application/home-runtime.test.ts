@@ -62,7 +62,40 @@ describe('home runtime query', () => {
         },
       } as unknown as LocalLearningRuntime,
       planning: {
-        access: { listSchedule: async () => [] },
+        access: {
+          listSchedule: async () => [
+            {
+              id: 'schedule_previous',
+              courseId: 'course_01',
+              lessonId: 'lesson_01',
+              startAt: '2026-07-12T00:00:00.000Z',
+              endAt: '2026-07-12T01:00:00.000Z',
+              status: 'scheduled',
+              source: 'manual',
+              locked: false,
+            },
+            {
+              id: 'schedule_current',
+              courseId: 'course_01',
+              lessonId: 'lesson_02',
+              startAt: '2026-07-18T01:00:00.000Z',
+              endAt: '2026-07-18T02:00:00.000Z',
+              status: 'scheduled',
+              source: 'manual',
+              locked: false,
+            },
+            {
+              id: 'schedule_next',
+              courseId: 'course_01',
+              lessonId: 'lesson_03',
+              startAt: '2026-07-20T01:00:00.000Z',
+              endAt: '2026-07-20T02:00:00.000Z',
+              status: 'scheduled',
+              source: 'manual',
+              locked: false,
+            },
+          ],
+        },
       } as unknown as LocalPlanningRuntime,
     });
 
@@ -72,5 +105,11 @@ describe('home runtime query', () => {
     expect(getRecord).not.toHaveBeenCalled();
     expect(view.value.lessons.map((lesson) => lesson.lessonId)).toEqual(lessonIds);
     expect(view.value.courses[0]?.disciplineTag).toBe('政治');
+    expect(view.value.lessons[0]).not.toHaveProperty('objective');
+    expect(view.value.lessons[0]).not.toHaveProperty('coreKnowledgePoints');
+    expect(view.value.lessons[0]).not.toHaveProperty('estimatedMinutes');
+    expect(view.value.schedule.map((item) => item.scheduleItemId)).toEqual(['schedule_current']);
+    expect(view.value.pendingLessonCount).toBe(1);
+    expect(view.value.overdueScheduleCount).toBe(1);
   });
 });

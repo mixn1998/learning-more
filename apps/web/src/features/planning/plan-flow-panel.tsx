@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { ApplicationProblemSchema, type HomeDashboardView } from '@learning-more/contracts';
+import { ApplicationProblemSchema, type CatalogIndexView } from '@learning-more/contracts';
 
 import type { PlanFlowAction, PlanFlowPreviewView } from '../../client/planning-client.js';
 import { BrandIdentity } from '../../components/brand/brand-identity.js';
@@ -10,8 +10,8 @@ import './planning-workspace.css';
 const steps = ['学习节奏', '选择课程', '排期策略', '预览确认'] as const;
 const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] as const;
 
-type HomeCourse = HomeDashboardView['courses'][number];
-type HomeLesson = HomeDashboardView['lessons'][number];
+type HomeCourse = CatalogIndexView['courses'][number];
+type HomeLesson = CatalogIndexView['lessons'][number];
 type PlanSuggestion = PlanFlowPreviewView['suggestions'][number];
 
 type PreviewLesson = Readonly<{

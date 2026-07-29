@@ -6,6 +6,7 @@ import {
   CreateScheduleAssignmentBodySchema,
   PlanFlowActionBodySchema,
   RequestPlanFlowPreviewBodySchema,
+  ScheduleWindowQuerySchema,
   UpdateScheduleAssignmentBodySchema,
 } from '@learning-more/contracts';
 
@@ -121,10 +122,22 @@ export async function registerPlanningRoutes(
   });
 
   app.get('/api/v1/schedule', async (request, reply) => {
+    const query = ScheduleWindowQuerySchema.parse(request.query);
     const view = await options.planning.snapshot();
+    const value =
+      query.from === undefined || query.to === undefined
+        ? view
+        : {
+            ...view,
+            items: view.items.filter(
+              (item) =>
+                Date.parse(item.startAt) < Date.parse(query.to!) &&
+                Date.parse(item.endAt) > Date.parse(query.from!),
+            ),
+          };
     return sendConditionalJson(request, reply, {
-      etag: String(view.resourceVersion),
-      value: view,
+      etag: String(value.resourceVersion),
+      value,
       projectionStatus: 'current',
     });
   });

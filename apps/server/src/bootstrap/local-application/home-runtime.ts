@@ -15,6 +15,23 @@ async function collect<T>(source: AsyncIterable<T>): Promise<T[]> {
   return values;
 }
 
+const chinaOffsetMs = 8 * 60 * 60 * 1_000;
+const dayMs = 24 * 60 * 60 * 1_000;
+
+function chinaDayStart(value: Date): number {
+  const shifted = new Date(value.getTime() + chinaOffsetMs);
+  return (
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - chinaOffsetMs
+  );
+}
+
+function chinaWeekWindow(value: Date): Readonly<{ from: number; to: number }> {
+  const shifted = new Date(value.getTime() + chinaOffsetMs);
+  const mondayOffset = (shifted.getUTCDay() + 6) % 7;
+  const from = chinaDayStart(value) - mondayOffset * dayMs;
+  return { from, to: from + 7 * dayMs };
+}
+
 export function createHomeRouteOptions(
   input: Readonly<{
     now: () => Date;
@@ -27,14 +44,15 @@ export function createHomeRouteOptions(
 ): HomeRouteOptions {
   const snapshot = createSummarySnapshot({
     dataRoot: input.dataRoot,
-    name: 'home-dashboard-v3',
-    schemaVersion: 3,
+    name: 'home-dashboard-v4',
+    schemaVersion: 4,
     sourceRevision: () => input.readRevision.current(['catalog', 'learning', 'schedule']),
     parse: (value) => HomeDashboardResponseSchema.parse(value),
     build: buildHome,
   });
 
   async function buildHome() {
+    const generatedAt = input.now();
     const [draftRecords, courseRecords, lessonRecords, learningRecords, scheduleRecords] =
       await Promise.all([
         collect(input.course.access.listDraftSessions()),
@@ -76,9 +94,6 @@ export function createHomeRouteOptions(
             courseId: course.id,
             lessonId,
             title: lesson.title,
-            objective: lesson.objective,
-            coreKnowledgePoints: [...lesson.coreKnowledgePoints],
-            estimatedMinutes: lesson.estimatedMinutes,
             progress: learning?.learning.progress ?? ('not_started' as const),
             ...(learning?.learning.session?.id === undefined
               ? {}
@@ -126,13 +141,19 @@ export function createHomeRouteOptions(
       },
       8,
     );
+    const lessons = courseBundles.flatMap((bundle) => bundle.lessons);
+    const lessonProgress = new Map(lessons.map((lesson) => [lesson.lessonId, lesson.progress]));
+    const scheduled = scheduleRecords.filter((item) => item.status === 'scheduled');
+    const scheduledLessonIds = new Set(scheduled.map((item) => item.lessonId));
+    const week = chinaWeekWindow(generatedAt);
+    const todayStart = chinaDayStart(generatedAt);
     return {
-      generatedAt: input.now().toISOString(),
+      generatedAt: generatedAt.toISOString(),
       draftSessions,
       courses: courseBundles.map((bundle) => bundle.course),
-      lessons: courseBundles.flatMap((bundle) => bundle.lessons),
-      schedule: scheduleRecords
-        .filter((item) => item.status === 'scheduled')
+      lessons,
+      schedule: scheduled
+        .filter((item) => Date.parse(item.startAt) < week.to && Date.parse(item.endAt) > week.from)
         .map((item) => ({
           scheduleItemId: item.id,
           courseId: item.courseId,
@@ -142,6 +163,17 @@ export function createHomeRouteOptions(
           source: item.source,
           locked: item.locked ?? false,
         })),
+      pendingLessonCount: lessons.filter(
+        (lesson) => lesson.progress === 'not_started' && !scheduledLessonIds.has(lesson.lessonId),
+      ).length,
+      overdueScheduleCount: scheduled.filter((item) => {
+        const progress = lessonProgress.get(item.lessonId);
+        return (
+          progress !== 'completed' &&
+          progress !== 'abandoned' &&
+          Date.parse(item.startAt) < todayStart
+        );
+      }).length,
     };
   }
 

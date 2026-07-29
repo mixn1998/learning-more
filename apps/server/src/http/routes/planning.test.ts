@@ -57,6 +57,47 @@ describe('Planning HTTP routes', () => {
     expect(snapshot).toHaveBeenCalledTimes(1);
   });
 
+  it('returns only schedule items overlapping a requested time window', async () => {
+    const { app, snapshot } = fixture();
+    snapshot.mockResolvedValueOnce({
+      resourceVersion: 3,
+      items: [
+        {
+          id: 'schedule_before',
+          startAt: '2026-07-12T08:00:00.000Z',
+          endAt: '2026-07-12T09:00:00.000Z',
+        },
+        {
+          id: 'schedule_current',
+          startAt: '2026-07-15T08:00:00.000Z',
+          endAt: '2026-07-15T09:00:00.000Z',
+        },
+        {
+          id: 'schedule_after',
+          startAt: '2026-07-20T08:00:00.000Z',
+          endAt: '2026-07-20T09:00:00.000Z',
+        },
+      ],
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/schedule?from=2026-07-13T00%3A00%3A00.000Z&to=2026-07-20T00%3A00%3A00.000Z',
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toEqual({
+      items: [
+        {
+          id: 'schedule_current',
+          startAt: '2026-07-15T08:00:00.000Z',
+          endAt: '2026-07-15T09:00:00.000Z',
+        },
+      ],
+      resourceVersion: 3,
+    });
+  });
+
   it('creates manual schedule assignments and rejects invalid intervals', async () => {
     const { app, execute } = fixture();
     const invalid = await app.inject({

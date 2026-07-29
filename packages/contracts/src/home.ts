@@ -4,7 +4,7 @@ import { CourseModeSchema } from './course-authoring.js';
 
 const identifier = z.string().trim().min(1).max(200);
 
-export const HomeLessonSchema = z.strictObject({
+export const CatalogLessonSchema = z.strictObject({
   courseId: identifier,
   lessonId: identifier,
   title: z.string(),
@@ -29,6 +29,23 @@ export const HomeLessonSchema = z.strictObject({
   lastActivityAt: z.iso.datetime({ offset: true }).optional(),
 });
 
+export const HomeLessonSchema = CatalogLessonSchema.omit({
+  objective: true,
+  coreKnowledgePoints: true,
+  estimatedMinutes: true,
+});
+
+const HomeCourseSchema = z.strictObject({
+  courseId: identifier,
+  title: z.string(),
+  status: z.enum(['active', 'closed']),
+  courseMode: CourseModeSchema,
+  outlineVersionId: identifier,
+  disciplineTag: z.string().trim().min(1).optional(),
+  topicTags: z.array(z.string().trim().min(1)).optional(),
+  resourceVersion: z.number().int().nonnegative(),
+});
+
 export const HomeDashboardResponseSchema = z.strictObject({
   generatedAt: z.iso.datetime({ offset: true }),
   draftSessions: z.array(
@@ -40,18 +57,7 @@ export const HomeDashboardResponseSchema = z.strictObject({
       resourceVersion: z.number().int().nonnegative(),
     }),
   ),
-  courses: z.array(
-    z.strictObject({
-      courseId: identifier,
-      title: z.string(),
-      status: z.enum(['active', 'closed']),
-      courseMode: CourseModeSchema,
-      outlineVersionId: identifier,
-      disciplineTag: z.string().trim().min(1).optional(),
-      topicTags: z.array(z.string().trim().min(1)).optional(),
-      resourceVersion: z.number().int().nonnegative(),
-    }),
-  ),
+  courses: z.array(HomeCourseSchema),
   lessons: z.array(HomeLessonSchema),
   schedule: z.array(
     z.strictObject({
@@ -64,12 +70,14 @@ export const HomeDashboardResponseSchema = z.strictObject({
       locked: z.boolean(),
     }),
   ),
+  pendingLessonCount: z.number().int().nonnegative(),
+  overdueScheduleCount: z.number().int().nonnegative(),
 });
 
 export const CatalogIndexResponseSchema = z.strictObject({
   generatedAt: z.iso.datetime({ offset: true }),
-  courses: HomeDashboardResponseSchema.shape.courses,
-  lessons: HomeDashboardResponseSchema.shape.lessons,
+  courses: z.array(HomeCourseSchema),
+  lessons: z.array(CatalogLessonSchema),
 });
 
 export type HomeDashboardView = Readonly<z.infer<typeof HomeDashboardResponseSchema>>;
