@@ -1292,6 +1292,10 @@ export function SessionPage(props: {
   const continueTeaching = () =>
     once('continue-teaching', async () => {
       if (state.sessionId === undefined) return;
+      if (state.input.trim() !== '') {
+        await send();
+        return;
+      }
       setNavigationError(undefined);
       const attempt = generationAttempt.current + 1;
       generationAttempt.current = attempt;

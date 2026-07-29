@@ -260,9 +260,13 @@ describe('GenerationTeachingAgent', () => {
 
     expect(fake.request()?.prompt).toContain('环节目标是建立本课所需的理解背景');
     expect(fake.request()?.prompt).toContain('本课在当前模块和整门课程中的位置及学习意义');
-    expect(fake.request()?.prompt).toContain('当案例是本课的主要理解载体时');
-    expect(fake.request()?.prompt).toContain('关键链条与整体脉络');
-    expect(fake.request()?.prompt).toContain('使后续事实、判断和机制有清晰位置');
+    expect(fake.request()?.prompt).toContain('当具体事件、案例或议题承载本课分析时');
+    expect(fake.request()?.prompt).toContain(
+      '发生了什么、关键主体处于什么关系、当前为何必须作出判断，以及分析对象如何由此前过程形成',
+    );
+    expect(fake.request()?.prompt).not.toContain(
+      '首次引入不能仅凭名称理解的新对象、案例或议题时',
+    );
     expect(fake.request()?.prompt).toContain('最后只提出一个');
     expect(fake.request()?.prompt).toContain('模块一：概率语言');
     expect(fake.request()?.prompt).toContain('本课是当前模块的第一课，也是整门课程的第一课');
@@ -477,7 +481,7 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt.indexOf('建立两者的对应关系')).toBeLessThan(
       prompt.indexOf('再使用新表示继续推理'),
     );
-    expect(prompt).toContain('首次引入不能仅凭名称理解的新对象、案例或议题时');
+    expect(prompt).toContain('首次引入不能仅凭名称理解的新对象时');
     expect(prompt).toContain('它从何而来、与当前主线有何关系、为何此刻需要讨论');
     expect(prompt).toContain('不能根据课程顺序、课节标题或先修关系推定概念已经建立');
     expect(prompt).toContain('上一节课 Review 的核心思想');

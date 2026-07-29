@@ -240,6 +240,80 @@ describe('learning SessionPage', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it('submits a non-empty learner draft instead of treating it as system continuation', async () => {
+    const snapshot = {
+      resourceVersion: 4,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress' as const,
+        session: {
+          id: 'session_01',
+          state: 'active' as const,
+          messageIds: ['message_assistant_01'],
+          evidenceCheckpoint: true,
+        },
+        processedCommandIds: [],
+      },
+      teachingProgress: {
+        ledgerVersion: 2,
+        observationStatus: 'current' as const,
+        lessonPhase: 'knowledge_point' as const,
+        comprehensiveCheck: 'pending' as const,
+        closureInquiry: 'pending' as const,
+        summaryStatus: 'pending' as const,
+        turnHandoff: 'invite_response' as const,
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '关键概念',
+            progress: 'learning' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'explained' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        {
+          id: 'message_assistant_01',
+          role: 'assistant' as const,
+          createdAt: '',
+          markdown: '你会优先调查哪一种说法？',
+          completionStatus: 'complete' as const,
+        },
+      ],
+    };
+    const continueTeaching = vi.fn(() => new Promise<never>(() => undefined));
+    const sendMessage = vi.fn(() => new Promise<never>(() => undefined));
+
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({
+          continueTeaching,
+          getSession: vi.fn().mockResolvedValue(snapshot),
+          sendMessage,
+        })}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText('学习输入'), {
+      target: { value: '实施和服务拖累了体验' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '继续讲解' }));
+
+    await waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith({
+        sessionId: 'session_01',
+        markdown: '实施和服务拖累了体验',
+        resourceVersion: 4,
+      }),
+    );
+    expect(continueTeaching).not.toHaveBeenCalled();
+    expect(screen.getByText('实施和服务拖累了体验')).toBeInTheDocument();
+  });
+
   it('shows continuation thinking and its boundary before the request is accepted', async () => {
     const snapshot = {
       resourceVersion: 4,
