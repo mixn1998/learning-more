@@ -16,18 +16,26 @@ type LearningRepositories = ReturnType<typeof createLocalFileLearningSessionRepo
 type MessageLog = ReturnType<typeof createLocalFileMessageLog>;
 type ArtifactStore = ReturnType<typeof createMarkdownArtifactStore>;
 
-export function projectCompletedLessonEvidence(
+function legacyCoreInsight(markdown: string | undefined): string | undefined {
+  const lines = markdown?.split(/\r?\n/u) ?? [];
+  const headingIndex = lines.findIndex((line) => /^#{1,6}\s*核心思想\s*$/u.test(line.trim()));
+  if (headingIndex < 0) return undefined;
+  const remaining = lines.slice(headingIndex + 1);
+  const nextHeadingIndex = remaining.findIndex((line) => /^#{1,6}\s+/u.test(line.trim()));
+  const body = (nextHeadingIndex < 0 ? remaining : remaining.slice(0, nextHeadingIndex))
+    .join('\n')
+    .trim();
+  return body.length === 0 ? undefined : body;
+}
+
+export function projectPreviousLessonCoreInsight(
   document: ReviewDocument | undefined,
   legacyMarkdown: string | undefined,
 ): string | undefined {
   if (document?.kind === 'lesson-final') {
-    return [
-      `知识图谱：\n${document.knowledgeMap.markdown.trim()}`,
-      `核心思想：\n${document.coreInsight.trim()}`,
-    ].join('\n\n');
+    return document.coreInsight.trim();
   }
-  const fallback = legacyMarkdown?.trim();
-  return fallback === undefined || fallback.length === 0 ? undefined : fallback;
+  return legacyCoreInsight(legacyMarkdown);
 }
 
 export function createLearningTeachingContext(input: {
@@ -147,24 +155,26 @@ export function createLearningTeachingContext(input: {
       return collapseRetryDuplicateUserMessages(materialized);
     },
     async listRelevantFinalReviews(courseId, lessonId) {
-      const reviews = [];
-      for await (const lesson of input.course.listLessons(courseId)) {
-        if (lesson.id === lessonId) continue;
-        const learning = await input.getLearningRecord(lesson.id);
-        if (learning?.finalReview === undefined) continue;
-        const markdown = projectCompletedLessonEvidence(
-          learning.finalReview.document,
-          (await input.artifactStore.read(learning.finalReview.artifactRef))?.content,
-        );
-        if (markdown === undefined) continue;
-        reviews.push({
+      const lessons = [];
+      for await (const lesson of input.course.listLessons(courseId)) lessons.push(lesson);
+      const currentIndex = lessons.findIndex((lesson) => lesson.id === lessonId);
+      const previousLesson = currentIndex > 0 ? lessons[currentIndex - 1] : undefined;
+      if (previousLesson === undefined) return [];
+      const learning = await input.getLearningRecord(previousLesson.id);
+      if (learning?.finalReview === undefined) return [];
+      const markdown = projectPreviousLessonCoreInsight(
+        learning.finalReview.document,
+        (await input.artifactStore.read(learning.finalReview.artifactRef))?.content,
+      );
+      if (markdown === undefined) return [];
+      return [
+        {
           sourceRef: `review:${learning.finalReview.id}`,
           version: learning.finalReview.contentSha256,
           markdown,
-          selectedBecause: `已完成课节“${lesson.title}”（目标：${lesson.objective}）的最终 Review；只将其中明确出现的内容视为跨课节学习证据。`,
-        });
-      }
-      return reviews;
+          selectedBecause: `上一节已完成课节“${previousLesson.title}”的 Review 核心思想。`,
+        },
+      ];
     },
     async listRelevantMaterialExcerpts(lessonId) {
       const lesson = await input.course.getLesson(lessonId);
