@@ -465,18 +465,20 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain('以学习者形成清晰、准确、能够支撑后续理解的知识结构为最高目标');
     expect(prompt).toContain('自主选择此刻最有教学价值的教学动作');
     expect(prompt).toContain('讲解深度、表达方式、互动形式和衔接范围由你判断');
-    expect(prompt).toContain('先使学习者理解它针对什么困难、已有认识为什么不足');
+    expect(prompt).toContain('使学习者理解它针对什么困难、已有认识为什么不足');
     expect(prompt).toContain('它增加了什么判断或解决能力');
     expect(prompt).toContain('再自然建立精确定义');
     expect(prompt).not.toContain('优先以精确定义建立共同基准');
     expect(prompt.indexOf('它针对什么困难')).toBeLessThan(prompt.indexOf('再自然建立精确定义'));
-    expect(prompt).toContain('当教学从已有对象切换到新的表示方式时');
+    expect(prompt).toContain('若新对象是已有对象的新表示');
     expect(prompt).toContain('什么被重新表示、哪些信息或关系得到保留');
     expect(prompt).toContain('新表示为什么更适合当前问题');
     expect(prompt).toContain('随后进行的操作如何对应原对象');
     expect(prompt.indexOf('建立两者的对应关系')).toBeLessThan(
       prompt.indexOf('再使用新表示继续推理'),
     );
+    expect(prompt).toContain('首次引入不能仅凭名称理解的新对象、案例或议题时');
+    expect(prompt).toContain('它从何而来、与当前主线有何关系、为何此刻需要讨论');
     expect(prompt).toContain('不能根据课程顺序、课节标题或先修关系推定概念已经建立');
     expect(prompt).toContain('上一节课 Review 的核心思想');
     expect(prompt).toContain('缺少证据时');
