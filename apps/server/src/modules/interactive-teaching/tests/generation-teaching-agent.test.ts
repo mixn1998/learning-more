@@ -317,6 +317,33 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).not.toContain('【当前诉求｜用户原话】');
   });
 
+  it('treats continuation during discussion as explicit confirmation of no further questions', async () => {
+    const fake = runtime();
+    const base = context();
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(
+      {
+        ...base,
+        turnKind: 'continuation',
+        teachingState: {
+          ...base.teachingState,
+          lessonPhase: 'discussion',
+          comprehensiveCheck: 'completed',
+          closureInquiry: 'awaiting_confirmation',
+        },
+      },
+      'continuation:session_discussion',
+    );
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('答疑阶段点击“继续讲解”等同于明确确认没有其他疑问');
+    expect(prompt).toContain(
+      '输出本课最终总结，并在同一轮把状态设为 ready_to_close、confirmed_no_questions、delivered',
+    );
+    expect(prompt).not.toContain('表示学习者选择暂不回答并沿既有教学路径继续');
+  });
+
   it('marks future lessons as directional context and ignores placeholder chain edges', async () => {
     const fake = runtime();
     const base = context();

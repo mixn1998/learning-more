@@ -31,11 +31,16 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
               '若学习者回答，根据其真实表现自主组织回应、深化或纠偏；综合应用回应完成或被明确跳过后进入讨论答疑。此时不要输出最终课程总结。',
             ]
           : phase === 'discussion'
-            ? [
-                '综合应用已经回应完成或被学习者明确跳过；当前处于讨论答疑阶段，等待学习者确认是否还有本课疑问或其他讲解需求。',
-                '如果学习者提出疑问，继续答疑并保持 lessonPhase=discussion、closureInquiry=awaiting_confirmation；在学习者确认无需继续前，不要输出最终课程总结。',
-                '用户可以连续追问任意轮次。只有学习者本轮明确表示没有疑问、不需要继续讲解或可以结束时，才输出最终课程总结，并在同一轮把状态设为 ready_to_close、confirmed_no_questions、delivered。',
-              ]
+            ? context.turnKind === 'continuation'
+              ? [
+                  '学习者在答疑阶段点击“继续讲解”，等同于明确确认没有其他疑问。',
+                  '当前输出本课最终总结，并在同一轮把状态设为 ready_to_close、confirmed_no_questions、delivered；不要继续等待答疑回应或开启新的教学内容。',
+                ]
+              : [
+                  '综合应用已经回应完成或被学习者明确跳过；当前处于讨论答疑阶段，等待学习者确认是否还有本课疑问或其他讲解需求。',
+                  '如果学习者提出疑问，继续答疑并保持 lessonPhase=discussion、closureInquiry=awaiting_confirmation；在学习者确认无需继续前，不要输出最终课程总结。',
+                  '用户可以连续追问任意轮次。只有学习者本轮明确表示没有疑问、不需要继续讲解或可以结束时，才输出最终课程总结，并在同一轮把状态设为 ready_to_close、confirmed_no_questions、delivered。',
+                ]
             : phase === 'summary'
               ? [
                   '学习者已经明确表示没有其他疑问。当前只输出本课最终总结，概括核心知识、关系和本次学习形成的关键理解。',
