@@ -183,6 +183,24 @@ describe('AiContent', () => {
     expect(container).toHaveTextContent('正文');
   });
 
+  it('preserves a rendered math plot across an equivalent markdown rerender', async () => {
+    const source = JSON.stringify({
+      version: 1,
+      view: { type: 'cartesian2d', xRange: [-1, 5], yRange: [-2, 6] },
+      series: [{ kind: 'explicit', expression: 'x-2' }],
+    });
+    const markdown = `\`\`\`math-plot\n${source}\n\`\`\``;
+    const rendered = render(<AiContent markdown={markdown} />);
+    await waitFor(() =>
+      expect(rendered.container.querySelector('[data-testid="rendered-math-plot"]')).toBeTruthy(),
+    );
+    const initialPlot = rendered.container.querySelector('[data-testid="rendered-math-plot"]');
+
+    rendered.rerender(<AiContent markdown={markdown} />);
+
+    expect(rendered.container.querySelector('[data-testid="rendered-math-plot"]')).toBe(initialPlot);
+  });
+
   it('keeps invalid math plots readable without exposing executable HTML', () => {
     const source = '{"version":1,"view":{"type":"cartesian2d"},"series":[],"script":"alert(1)"}';
     const { container } = render(<AiContent markdown={`\`\`\`math-plot\n${source}\n\`\`\``} />);

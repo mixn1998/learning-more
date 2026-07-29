@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { parseMathPlotContract } from './math-plot-contract.js';
@@ -35,6 +35,7 @@ function contract(raw: unknown) {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -119,5 +120,57 @@ describe('MathPlot', () => {
     rendered.unmount();
 
     expect(graph.freeBoard).toHaveBeenCalledWith(graph.board);
+  });
+
+  it('keeps the existing board when a parent rerenders an equivalent plot contract', () => {
+    const raw = {
+      version: 1,
+      view: { type: 'cartesian2d', xRange: [-1, 5], yRange: [-2, 6] },
+      series: [
+        { kind: 'explicit', expression: 'x-2' },
+        { kind: 'explicit', expression: '4-x' },
+      ],
+      annotations: [{ x: 3, y: 1, label: '公共交点 (3,1)' }],
+    };
+    const rendered = render(<MathPlot spec={contract(raw)} />);
+
+    rendered.rerender(<MathPlot spec={contract(raw)} />);
+
+    expect(graph.initBoard).toHaveBeenCalledOnce();
+    expect(graph.freeBoard).not.toHaveBeenCalled();
+  });
+
+  it('resizes the renderer without rewriting the observed container size', () => {
+    let notifyResize: ResizeObserverCallback | undefined;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          notifyResize = callback;
+        }
+
+        observe() {}
+
+        disconnect() {
+          disconnect();
+        }
+      },
+    );
+    const spec = contract({
+      version: 1,
+      view: { type: 'cartesian2d', xRange: [-1, 5], yRange: [-2, 6] },
+      series: [{ kind: 'explicit', expression: 'x-2' }],
+    });
+
+    render(<MathPlot spec={spec} />);
+    const entry = { contentRect: { width: 800, height: 480 } } as ResizeObserverEntry;
+    act(() => {
+      notifyResize?.([entry], {} as ResizeObserver);
+      notifyResize?.([entry], {} as ResizeObserver);
+    });
+
+    expect(graph.board.resizeContainer).toHaveBeenCalledOnce();
+    expect(graph.board.resizeContainer).toHaveBeenCalledWith(800, 480, true);
   });
 });

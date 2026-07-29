@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useState } from 'react';
 import JXG from 'jsxgraph';
 
 import type { MathPlotContract, MathPlotSeries } from './math-plot-contract.js';
@@ -17,7 +17,7 @@ const automaticTones = ['accent', 'blue', 'green', 'purple', 'orange', 'red'] as
 
 interface PlotBoard {
   create(type: string, parents: unknown, attributes?: Record<string, unknown>): unknown;
-  resizeContainer?(width: number, height: number, dontSetCanvasSize?: boolean): void;
+  resizeContainer?(width: number, height: number, dontSetCssSize?: boolean): void;
 }
 
 interface PlotView3d {
@@ -315,7 +315,18 @@ function seriesSummary(series: MathPlotSeries): string {
   }
 }
 
-export function MathPlot(props: { readonly spec: MathPlotContract }): React.JSX.Element {
+interface MathPlotProps {
+  readonly spec: MathPlotContract;
+}
+
+function equivalentPlot(
+  previous: Readonly<MathPlotProps>,
+  next: Readonly<MathPlotProps>,
+): boolean {
+  return JSON.stringify(previous.spec) === JSON.stringify(next.spec);
+}
+
+function MathPlotView(props: MathPlotProps): React.JSX.Element {
   const reactId = useId();
   const boardId = useMemo(() => `lm-math-plot-${reactId.replaceAll(':', '')}`, [reactId]);
   const [error, setError] = useState(false);
@@ -323,6 +334,8 @@ export function MathPlot(props: { readonly spec: MathPlotContract }): React.JSX.
   useEffect(() => {
     let board: JXG.Board | undefined;
     let observer: ResizeObserver | undefined;
+    let measuredWidth = 0;
+    let measuredHeight = 0;
     try {
       board = createBoard(boardId, props.spec);
       const container = document.getElementById(boardId);
@@ -330,8 +343,14 @@ export function MathPlot(props: { readonly spec: MathPlotContract }): React.JSX.
         observer = new ResizeObserver(([entry]) => {
           const width = Math.floor(entry?.contentRect.width ?? 0);
           const height = Math.floor(entry?.contentRect.height ?? 0);
-          if (width > 0 && height > 0) {
-            (board as unknown as PlotBoard | undefined)?.resizeContainer?.(width, height);
+          if (
+            width > 0 &&
+            height > 0 &&
+            (width !== measuredWidth || height !== measuredHeight)
+          ) {
+            measuredWidth = width;
+            measuredHeight = height;
+            (board as unknown as PlotBoard | undefined)?.resizeContainer?.(width, height, true);
           }
         });
         observer.observe(container);
@@ -373,3 +392,5 @@ export function MathPlot(props: { readonly spec: MathPlotContract }): React.JSX.
     </figure>
   );
 }
+
+export const MathPlot = memo(MathPlotView, equivalentPlot);

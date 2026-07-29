@@ -1,5 +1,5 @@
 import { Children, isValidElement, lazy, Suspense } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import 'katex/dist/katex.min.css';
 import rehypeKatex from 'rehype-katex';
 import rehypeSanitize from 'rehype-sanitize';
@@ -324,6 +324,39 @@ function MathPlotBlock(props: { readonly source: string }) {
   );
 }
 
+const aiContentComponents: Components = {
+  pre: ({ children, ...preProps }) => {
+    const child = Children.count(children) === 1 ? Children.only(children) : undefined;
+    const childClassName = isValidElement<{ className?: string }>(child)
+      ? child.props.className
+      : undefined;
+    return childClassName && mathPlotLanguagePattern.test(childClassName) ? (
+      child
+    ) : (
+      <pre {...preProps}>{children}</pre>
+    );
+  },
+  table: ({ children, ...tableProps }) => (
+    <div className="lm-ai-table-wrap">
+      <table {...tableProps}>{children}</table>
+    </div>
+  ),
+  code: ({ children, className: codeClassName, ...codeProps }) => {
+    const isMermaid = Boolean(codeClassName && mermaidLanguagePattern.test(codeClassName));
+    const isMathPlot = Boolean(codeClassName && mathPlotLanguagePattern.test(codeClassName));
+    if (isMathPlot) return <MathPlotBlock source={String(children).trim()} />;
+    return (
+      <code
+        {...codeProps}
+        className={codeClassName}
+        data-diagram-fallback={isMermaid ? 'mermaid' : undefined}
+      >
+        {children}
+      </code>
+    );
+  },
+};
+
 export function AiContent(props: { readonly markdown: string; readonly className?: string }) {
   const className = ['lm-ai-content', props.className].filter(Boolean).join(' ');
   return (
@@ -338,40 +371,7 @@ export function AiContent(props: { readonly markdown: string; readonly className
           rehypeSanitize,
           rehypeKatex,
         ]}
-        components={{
-          pre: ({ children, ...preProps }) => {
-            const child = Children.count(children) === 1 ? Children.only(children) : undefined;
-            const childClassName = isValidElement<{ className?: string }>(child)
-              ? child.props.className
-              : undefined;
-            return childClassName && mathPlotLanguagePattern.test(childClassName) ? (
-              child
-            ) : (
-              <pre {...preProps}>{children}</pre>
-            );
-          },
-          table: ({ children, ...tableProps }) => (
-            <div className="lm-ai-table-wrap">
-              <table {...tableProps}>{children}</table>
-            </div>
-          ),
-          code: ({ children, className: codeClassName, ...codeProps }) => {
-            const isMermaid = Boolean(codeClassName && mermaidLanguagePattern.test(codeClassName));
-            const isMathPlot = Boolean(
-              codeClassName && mathPlotLanguagePattern.test(codeClassName),
-            );
-            if (isMathPlot) return <MathPlotBlock source={String(children).trim()} />;
-            return (
-              <code
-                {...codeProps}
-                className={codeClassName}
-                data-diagram-fallback={isMermaid ? 'mermaid' : undefined}
-              >
-                {children}
-              </code>
-            );
-          },
-        }}
+        components={aiContentComponents}
       >
         {normalizeLatexMath(normalizeCompactGfmTables(props.markdown))}
       </ReactMarkdown>

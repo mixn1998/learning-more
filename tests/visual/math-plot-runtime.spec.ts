@@ -25,5 +25,35 @@ test('formal-course math plots load the lazy runtime and render real SVG boards'
       }),
     ),
   ).toBe(true);
+
+  const initialGeometry = await page.locator('.lm-math-plot-board').evaluateAll((boards) =>
+    boards.map((board, index) => {
+      const svg = board.querySelector('svg');
+      svg?.setAttribute('data-stability-probe', `plot-${index}`);
+      const box = board.getBoundingClientRect();
+      return { width: box.width, height: box.height };
+    }),
+  );
+  await page.evaluate(() => {
+    for (let index = 0; index < 12; index += 1) {
+      window.dispatchEvent(new Event('lm:math-plot-fixture-rerender'));
+    }
+  });
+  await expect(page.locator('[data-math-plot-render-version="12"]')).toBeVisible();
+  await page.waitForTimeout(250);
+
+  expect(
+    await page.locator('.lm-math-plot-board svg').evaluateAll((svgs) =>
+      svgs.map((svg) => svg.getAttribute('data-stability-probe')),
+    ),
+  ).toEqual(['plot-0', 'plot-1', 'plot-2']);
+  expect(
+    await page.locator('.lm-math-plot-board').evaluateAll((boards) =>
+      boards.map((board) => {
+        const box = board.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      }),
+    ),
+  ).toEqual(initialGeometry);
   expect(pageErrors).toEqual([]);
 });

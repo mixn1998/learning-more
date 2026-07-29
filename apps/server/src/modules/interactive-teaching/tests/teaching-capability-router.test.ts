@@ -4,7 +4,11 @@ import { capabilitiesForTeachingTurn } from '../implementation/teaching-capabili
 import { createTeachingState } from '../implementation/teaching-state-reducer.js';
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
 
-function context(request: string, point = '商业市场分析'): TeachingContextPackage {
+function context(
+  request: string,
+  point = '商业市场分析',
+  courseTitle = '课程',
+): TeachingContextPackage {
   const state = createTeachingState({
     lessonId: 'lesson_1',
     sessionId: 'session_1',
@@ -15,7 +19,7 @@ function context(request: string, point = '商业市场分析'): TeachingContext
     course: {
       courseId: 'course_1',
       outlineVersionId: 'outline_1',
-      title: '课程',
+      title: courseTitle,
       courseMode: 'standard',
       goals: ['目标'],
       lessonMap: [{ lessonId: 'lesson_1', title: '课节', objective: '目标', relation: 'current' }],
@@ -61,6 +65,14 @@ describe('capabilitiesForTeachingTurn', () => {
     expect(capabilitiesForTeachingTurn(context('继续讲解', '市场场景分析')).has('math-plot')).toBe(
       false,
     );
+  });
+
+  it('makes geometric tools available throughout mathematical courses', () => {
+    expect(
+      capabilitiesForTeachingTurn(
+        context('继续讲解', '初等行变换的可逆性', '线性代数'),
+      ).has('math-plot'),
+    ).toBe(true);
   });
 
   it('continues the capability after a prior math-plot result', () => {

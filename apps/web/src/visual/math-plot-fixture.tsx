@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 import { AiContent } from '@learning-more/ui';
 
 const mathPlotMarkdown = `
@@ -23,8 +25,19 @@ const mathPlotMarkdown = `
 `;
 
 export function MathPlotFixture() {
+  const [renderVersion, setRenderVersion] = useState(0);
+
+  useEffect(() => {
+    const rerender = () => setRenderVersion((version) => version + 1);
+    window.addEventListener('lm:math-plot-fixture-rerender', rerender);
+    return () => window.removeEventListener('lm:math-plot-fixture-rerender', rerender);
+  }, []);
+
   return (
-    <main className="visual-page visual-page-narrow">
+    <main
+      className="visual-page visual-page-narrow"
+      data-math-plot-render-version={renderVersion}
+    >
       <AiContent markdown={mathPlotMarkdown} />
     </main>
   );
