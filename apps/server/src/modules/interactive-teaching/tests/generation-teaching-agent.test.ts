@@ -813,8 +813,8 @@ describe('GenerationTeachingAgent', () => {
   });
 });
 
-describe('comprehensive check variety', () => {
-  it('keeps the transfer purpose without prescribing a task form', () => {
+describe('comprehensive application transfer', () => {
+  it('requires method transfer instead of a reskinned repetition', () => {
     const base = context();
     const prompt = renderTeachingFlowPolicy({
       ...base,
@@ -825,7 +825,11 @@ describe('comprehensive check variety', () => {
       },
     });
 
-    expect(prompt).toContain('综合应用应连接本课核心知识关系并体现迁移');
+    expect(prompt).toContain(
+      '综合应用应在具有实质差异的新问题、新条件中保留本课方法可能适用的底层结构，使学习者自主识别问题、选择并调整方法，再依据新条件形成判断。仅更换场景、复述结论或重现课堂推理不构成迁移。',
+    );
+    expect(prompt).not.toContain('只提出一个能够连接本课核心关系并具有迁移价值的任务');
+    expect(prompt).not.toContain('综合应用应连接本课核心知识关系并体现迁移');
     expect(prompt).not.toContain('任务形式和反馈方式');
     expect(prompt).not.toContain('新情境决策、反例诊断、条件变化预测');
     expect(prompt).not.toContain('不要沿用课堂原题的对象、数字、叙述骨架和问法');

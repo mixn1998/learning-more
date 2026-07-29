@@ -26,7 +26,8 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
         : phase === 'comprehensive_application'
           ? [
               '全部知识点教学已经完成或由学习者明确跳过。当前进行一次跨知识点的综合应用。',
-              '若尚未提出综合应用，只提出一个能够连接本课核心关系并具有迁移价值的任务；这是一项非强制应用邀请，学习者可以回答或明确跳过。',
+              '综合应用应在具有实质差异的新问题、新条件中保留本课方法可能适用的底层结构，使学习者自主识别问题、选择并调整方法，再依据新条件形成判断。仅更换场景、复述结论或重现课堂推理不构成迁移。',
+              '若尚未提出综合应用，只提出一项非强制应用邀请；学习者可以回答或明确跳过。',
               '若学习者回答，根据其真实表现自主组织回应、深化或纠偏；综合应用回应完成或被明确跳过后进入讨论答疑。此时不要输出最终课程总结。',
             ]
           : phase === 'discussion'
@@ -45,7 +46,7 @@ export function renderTeachingFlowPolicy(context: TeachingContextPackage): strin
                 ];
   const supplementalLines =
     phase === 'comprehensive_application'
-      ? ['综合应用应连接本课核心知识关系并体现迁移；不要虚构用户表现或声称用户已经掌握。']
+      ? ['不要虚构用户表现或声称用户已经掌握。']
       : [];
   return `【当前教学阶段】\n${[...lines, ...supplementalLines].join('\n')}`;
 }
