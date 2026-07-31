@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { pruneReleaseCache } from './release-retention.js';
+import { shareCandidateContent } from './shared-content-store.js';
 
 const roots: string[] = [];
 
@@ -107,6 +108,49 @@ describe('Host release cache retention', () => {
     await expect(readdirNames(path.join(input.releasesRoot, '.activation-work'))).resolves.toEqual([
       'active-request',
     ]);
+  });
+
+  it('collects shared content that is no longer referenced by retained releases', async () => {
+    const input = await fixture();
+    await Promise.all([
+      managedRelease(input.releasesRoot, 'build-current'),
+      managedRelease(input.releasesRoot, 'build-previous'),
+      managedRelease(input.releasesRoot, 'build-old'),
+    ]);
+    await Promise.all([
+      writeFile(
+        path.join(input.releasesRoot, 'build-current', 'current.js'),
+        'shared-current',
+        'utf8',
+      ),
+      writeFile(
+        path.join(input.releasesRoot, 'build-previous', 'previous.js'),
+        'shared-current',
+        'utf8',
+      ),
+      writeFile(path.join(input.releasesRoot, 'build-old', 'old.js'), 'old-only', 'utf8'),
+    ]);
+    await shareCandidateContent(path.join(input.releasesRoot, 'build-current'), input.releasesRoot);
+    await shareCandidateContent(
+      path.join(input.releasesRoot, 'build-previous'),
+      input.releasesRoot,
+    );
+    const oldManifest = await shareCandidateContent(
+      path.join(input.releasesRoot, 'build-old'),
+      input.releasesRoot,
+    );
+    const oldHash = oldManifest.entries[0]?.sha256;
+    expect(oldHash).toBeDefined();
+
+    await pruneReleaseCache({
+      releasesRoot: input.releasesRoot,
+      activeBuildId: 'build-current',
+      previousBuildId: 'build-previous',
+    });
+
+    await expect(
+      readFile(path.join(input.releasesRoot, '.shared-content', 'code', oldHash!), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
 

@@ -16,6 +16,10 @@ coverage/
 !.env.example
 data-root/
 runtime/
+node.exe
+*.node
+.shared-runtime/
+.shared-content/
 !apps/server/src/runtime/
 !apps/server/src/runtime/**
 !apps/web/src/features/runtime/

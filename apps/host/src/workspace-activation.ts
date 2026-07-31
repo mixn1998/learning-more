@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { pruneReleaseCache } from './release-retention.js';
+import { shareCandidateContent } from './shared-content-store.js';
 import { shareCandidateRuntime } from './shared-runtime-store.js';
 import type { HostSupervisor } from './supervisor.js';
 import {
@@ -141,6 +142,7 @@ async function stageCandidate(expandedRoot: string, candidateRoot: string): Prom
     await rm(temporary, { recursive: true, force: true });
     await cp(expandedRoot, temporary, { recursive: true, dereference: true });
     await shareCandidateRuntime(temporary, path.dirname(candidateRoot));
+    await shareCandidateContent(temporary, path.dirname(candidateRoot));
     await rename(temporary, candidateRoot);
   } finally {
     await rm(temporary, { recursive: true, force: true });

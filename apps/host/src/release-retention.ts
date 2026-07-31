@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 
+import { pruneSharedContentStore } from './shared-content-store.js';
 import { pruneSharedRuntimeStore } from './shared-runtime-store.js';
 
 export type ReleaseRetentionResult = Readonly<{
@@ -71,6 +72,7 @@ export async function pruneReleaseCache(options: {
     removedActivationEntries.push(entry.name);
   }
   await pruneSharedRuntimeStore(releasesRoot, protectedBuildIds);
+  await pruneSharedContentStore(releasesRoot, protectedBuildIds);
 
   return {
     removedBuildIds: removedBuildIds.sort(),
