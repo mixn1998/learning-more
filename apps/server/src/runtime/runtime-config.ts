@@ -6,7 +6,11 @@ import { z } from 'zod';
 
 import { checksumJson } from '../persistence/json-codec.js';
 
+export const DeploymentModeSchema = z.enum(['local', 'platform']);
+export type DeploymentMode = z.infer<typeof DeploymentModeSchema>;
+
 export const RuntimeConfigSchema = z.strictObject({
+  deploymentMode: DeploymentModeSchema,
   dataRoot: z.string().min(1),
   timezone: z.string().min(1),
   launcherPort: z.number().int().min(1).max(65_535),
@@ -23,6 +27,7 @@ const PartialRuntimeConfigSchema = RuntimeConfigSchema.partial();
 type RuntimeConfigPatch = z.infer<typeof PartialRuntimeConfigSchema>;
 
 const defaults: RuntimeConfig = {
+  deploymentMode: 'local',
   dataRoot: path.resolve('.learning-more-data'),
   timezone: 'Asia/Shanghai',
   launcherPort: 43_119,
@@ -40,6 +45,9 @@ function environmentConfig(environment: NodeJS.ProcessEnv | undefined): RuntimeC
     return value === undefined ? undefined : Number(value);
   };
   return PartialRuntimeConfigSchema.parse({
+    ...(environment.LEARNING_MORE_DEPLOYMENT_MODE === undefined
+      ? {}
+      : { deploymentMode: environment.LEARNING_MORE_DEPLOYMENT_MODE }),
     ...(environment.LEARNING_MORE_DATA_ROOT === undefined
       ? {}
       : { dataRoot: environment.LEARNING_MORE_DATA_ROOT }),
@@ -79,6 +87,7 @@ export function resolveRuntimeConfig(input: {
 }
 
 const cliKeys: Readonly<Record<string, keyof RuntimeConfig>> = {
+  '--deployment-mode': 'deploymentMode',
   '--data-root': 'dataRoot',
   '--timezone': 'timezone',
   '--launcher-port': 'launcherPort',

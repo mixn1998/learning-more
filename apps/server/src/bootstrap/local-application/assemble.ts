@@ -1,4 +1,8 @@
 import type { ServerDependencies } from '../app.js';
+import {
+  createLocalRequestAccessAdapter,
+  LOCAL_APPLICATION_PRINCIPAL,
+} from '../../environment/request-access.js';
 import type { LocalApplication, LocalApplicationOptions } from './contracts.js';
 import { createLocalCourseRuntime } from './course-runtime.js';
 import { createLocalEventFactsRuntime } from './event-facts-runtime.js';
@@ -191,10 +195,13 @@ export async function assembleLocalApplication(
     profile: profile.profileRoutes,
     generationFrameLog: frameLog,
     runtimeControl: generation.runtimeControl,
-    localSecurity: {
-      allowedOrigin: options.allowedOrigin ?? 'http://127.0.0.1:5173',
-      csrfToken: options.csrfToken,
-    },
+    requestAccess:
+      options.requestAccess ??
+      createLocalRequestAccessAdapter({
+        allowedOrigin: options.allowedOrigin ?? 'http://127.0.0.1:5173',
+        csrfToken: options.csrfToken,
+        principal: LOCAL_APPLICATION_PRINCIPAL,
+      }),
   };
   return {
     close: async () => {

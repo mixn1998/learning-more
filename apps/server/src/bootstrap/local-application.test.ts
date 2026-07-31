@@ -35,6 +35,32 @@ afterEach(async () => {
 });
 
 describe('local CourseAuthoring application', () => {
+  it('exposes the fixed local principal through the environment request-access seam', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-more-local-environment-'));
+    roots.push(directory);
+    const local = await createLocalApplication({
+      dataRoot: directory,
+      csrfToken: 'test-csrf',
+    });
+
+    expect(local.dataRoot.absolutePath).toBe(path.resolve(directory));
+    await expect(
+      local.serverDependencies.requestAccess?.authorize({
+        method: 'GET',
+        host: '127.0.0.1:43120',
+        origin: 'http://127.0.0.1:5173',
+      }),
+    ).resolves.toMatchObject({
+      authorized: true,
+      principal: {
+        subjectId: 'local-user',
+        dataScopeId: 'local',
+      },
+    });
+
+    await local.close();
+  });
+
   it('removes obsolete outline lessons from live scheduling while preserving learning history', async () => {
     const directory = await mkdtemp(
       path.join(os.tmpdir(), 'learning-more-outline-live-reconcile-'),

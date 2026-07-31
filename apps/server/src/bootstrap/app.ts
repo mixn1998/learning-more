@@ -2,7 +2,8 @@ import type { RuntimeReady } from '@learning-more/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import type { GenerationFrameLog } from '../modules/generation-runtime/interface.js';
-import { registerLocalSecurity } from '../http/plugins/local-security.js';
+import type { RequestAccessAdapter } from '../environment/request-access.js';
+import { registerLocalSecurity, registerRequestAccess } from '../http/plugins/local-security.js';
 import {
   registerCourseAuthoringRoutes,
   type CourseAuthoringRouteOptions,
@@ -35,6 +36,7 @@ export interface ServerDependencies {
   readonly courseAuthoring?: CourseAuthoringRouteOptions;
   readonly home?: HomeRouteOptions;
   readonly generationFrameLog?: GenerationFrameLog;
+  readonly requestAccess?: RequestAccessAdapter;
   readonly localSecurity?: Readonly<{ allowedOrigin: string; csrfToken: string }>;
   readonly learningSession?: LearningSessionRouteOptions;
   readonly learningNotes?: LearningNoteRouteOptions;
@@ -63,7 +65,9 @@ export async function buildApp(
     });
   });
 
-  if (dependencies.localSecurity !== undefined) {
+  if (dependencies.requestAccess !== undefined) {
+    await registerRequestAccess(app, dependencies.requestAccess);
+  } else if (dependencies.localSecurity !== undefined) {
     await registerLocalSecurity(app, dependencies.localSecurity);
   }
   await registerHealthRoutes(app, dependencies);

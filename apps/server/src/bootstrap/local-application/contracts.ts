@@ -1,5 +1,6 @@
 import type { AiProvider } from '../../ai-providers/provider.js';
 import type { GenerationFrameLog } from '../../modules/generation-runtime/interface.js';
+import type { RequestAccessAdapter } from '../../environment/request-access.js';
 import { createGenerationRuntime } from '../../modules/generation-runtime/implementation/generation-runtime.js';
 import { createLocalFileCourseCreationRepositories } from '../../persistence/course-creation-repositories.js';
 import { DataRoot } from '../../persistence/data-root.js';
@@ -14,6 +15,7 @@ import type { ServerDependencies } from '../app.js';
 export type LocalApplicationOptions = Readonly<{
   dataRoot: string;
   csrfToken: string;
+  requestAccess?: RequestAccessAdapter;
   allowedOrigin?: string;
   mockFailOnce?: boolean;
   now?: () => Date;

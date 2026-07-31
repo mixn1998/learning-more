@@ -17,6 +17,7 @@ import { createCliProvider } from '../ai-providers/cli-provider.js';
 import { discoverCodexCliExecutable } from '../ai-providers/codex-cli-adapter.js';
 import type { SecretStore } from '../runtime/secret-store.js';
 import { createWindowsDpapiSecretStore } from '../runtime/windows-dpapi-secret-store.js';
+import { createApplicationEnvironment } from '../environment/application-environment.js';
 
 export async function startServer(
   dependencies?: ServerDependencies,
@@ -78,14 +79,22 @@ export async function startServer(
         : createEnvironmentSecretStore(process.env, {
             'provider/api-key': 'LEARNING_MORE_PROVIDER_API_KEY',
           });
+    const applicationEnvironment = createApplicationEnvironment({
+      mode: config.deploymentMode,
+      dataRoot: config.dataRoot,
+      allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
+      csrfToken: process.env.LEARNING_MORE_CSRF_TOKEN ?? 'development-csrf',
+      secretStore,
+    });
     const codexCliExecutable = await discoverCodexCliExecutable({
       ...(process.env.LEARNING_MORE_CODEX_CLI_EXECUTABLE === undefined
         ? {}
         : { override: process.env.LEARNING_MORE_CODEX_CLI_EXECUTABLE }),
     });
     const localApplication = await createLocalApplication({
-      dataRoot: config.dataRoot,
+      dataRoot: applicationEnvironment.dataScope.dataRoot,
       csrfToken: process.env.LEARNING_MORE_CSRF_TOKEN ?? 'development-csrf',
+      requestAccess: applicationEnvironment.requestAccess,
       allowedOrigin: process.env.LEARNING_MORE_ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173',
       mockFailOnce: process.env.LEARNING_MORE_MOCK_FAIL_ONCE === '1',
       initialProviderId: config.providerId,
@@ -130,7 +139,7 @@ export async function startServer(
               }),
             ]),
       ],
-      secretStore,
+      secretStore: applicationEnvironment.secretStore,
       providerConfigRepository: createLocalFileProviderConfigRepository(
         path.join(runtimeDirectory, 'provider-config.json'),
       ),

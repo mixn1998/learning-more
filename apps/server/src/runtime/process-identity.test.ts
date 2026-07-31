@@ -85,7 +85,22 @@ describe('RuntimeConfigResolver', () => {
         },
         file: { providerId: 'file-provider', serverPort: 43122, timezone: 'UTC' },
       }),
-    ).toMatchObject({ providerId: 'cli-provider', serverPort: 43121, timezone: 'UTC' });
+    ).toMatchObject({
+      deploymentMode: 'local',
+      providerId: 'cli-provider',
+      serverPort: 43121,
+      timezone: 'UTC',
+    });
+    expect(
+      resolveRuntimeConfig({
+        environment: { LEARNING_MORE_DEPLOYMENT_MODE: 'platform' },
+      }).deploymentMode,
+    ).toBe('platform');
+    expect(() =>
+      resolveRuntimeConfig({
+        environment: { LEARNING_MORE_DEPLOYMENT_MODE: 'public' },
+      }),
+    ).toThrow();
     expect(() =>
       resolveRuntimeConfig({ file: { providerId: 'mock', unexpected: true } }),
     ).toThrow();
