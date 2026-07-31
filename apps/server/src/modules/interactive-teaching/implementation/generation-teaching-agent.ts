@@ -6,12 +6,10 @@ import type { TeachingAgent, TeachingAgentCompletionObserver } from '../ports/te
 import type { TeachingContextPackage } from '../ports/teaching-context-sources.js';
 import { renderMathPlotCapability } from './math-plot-capability.js';
 import { capabilitiesForTeachingTurn } from './teaching-capability-router.js';
-import { renderTeachingBoundaryPolicy } from './teaching-boundary-policy.js';
-import { renderTeachingClosurePolicy } from './teaching-closure-policy.js';
 import {
   parseInterruptedTeachingMarkdown,
   parseTeachingAgentResult,
-  renderTeachingControlProtocol,
+  renderCompactTeachingControlProtocol,
 } from './teaching-control-protocol.js';
 import { renderTeachingCorePolicy } from './teaching-core-policy.js';
 import { renderTeachingFactContext } from './teaching-fact-context.js';
@@ -30,31 +28,14 @@ function sha256(value: string): string {
 }
 
 export function renderTeachingConversationInput(context: TeachingContextPackage): string {
-  const opening = context.turnKind === 'opening';
-  const discussionContinuation =
-    context.turnKind === 'continuation' && context.teachingState.lessonPhase === 'discussion';
-  const comprehensiveApplicationContinuation =
-    context.turnKind === 'continuation' &&
-    context.teachingState.lessonPhase === 'comprehensive_application';
   const capabilities = capabilitiesForTeachingTurn(context);
   return [
     renderTeachingGuidingPolicy(),
     renderTeachingCorePolicy(),
-    renderTeachingBoundaryPolicy(),
-    renderTeachingClosurePolicy(),
     capabilities.has('math-plot') ? renderMathPlotCapability() : undefined,
     renderTeachingFlowPolicy(context),
     renderTeachingFactContext(context),
-    opening
-      ? '直接面向学习者输出自然的开场教学，不复述栏目名或内部状态。'
-      : discussionContinuation
-        ? '这是学习者在答疑阶段点击“继续讲解”作出的明确流程选择，等同于确认没有其他疑问；不要伪造学习者原话。'
-        : comprehensiveApplicationContinuation
-          ? '综合应用阶段点击“继续讲解”等同于学习者输入“直接讲解”；直接示范并讲清该综合应用，不要伪造学习者作答。'
-          : context.turnKind === 'continuation'
-            ? '这是系统续讲回合。不要伪造学习者输入或声称学习者已经回应；若上一回复邀请互动，视为学习者选择暂不回答，直接沿既有教学路径继续。'
-            : '不要复述栏目名或内部状态，直接回应当前诉求。',
-    renderTeachingControlProtocol(context),
+    renderCompactTeachingControlProtocol(context),
   ]
     .filter((value): value is string => value !== undefined)
     .join('\n\n');

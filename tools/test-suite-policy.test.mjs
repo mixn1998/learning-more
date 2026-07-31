@@ -10,8 +10,9 @@ const capacitySource = await readFile(
 
 describe('test suite policy', () => {
   it('keeps performance and recovery drills out of daily test commands', () => {
-    expect(packageJson.scripts.test).toContain('--exclude tests/performance/**');
-    expect(packageJson.scripts.test).toContain('--exclude tests/recovery/**');
+    expect(packageJson.scripts.test).toContain('vitest run apps packages');
+    expect(packageJson.scripts.test).not.toContain('engineering');
+    expect(packageJson.scripts.test).not.toContain('operations');
     expect(packageJson.scripts['test:ci']).toContain('--exclude tests/performance/**');
     expect(packageJson.scripts['test:ci']).toContain('--exclude tests/recovery/**');
   });
@@ -19,7 +20,7 @@ describe('test suite policy', () => {
   it('composes release verification without recursively invoking daily verification', () => {
     expect(packageJson.scripts.verify).toBe('node tools/verify-change.mjs');
     expect(packageJson.scripts['verify:full']).toContain('corepack pnpm format:check');
-    expect(packageJson.scripts['verify:full']).toContain('corepack pnpm build');
+    expect(packageJson.scripts['verify:full']).toContain('corepack pnpm build:all');
     expect(packageJson.scripts['verify:release']).toContain('corepack pnpm verify:full');
     expect(packageJson.scripts['ci:local']).toContain('corepack pnpm verify:full');
     expect(packageJson.scripts['release:portable']).toContain('corepack pnpm verify:full');

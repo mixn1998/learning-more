@@ -86,3 +86,54 @@ describe('HistoryStatisticsWorkspace weekly trend', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('课节数量：3 节');
   });
 });
+
+describe('HistoryStatisticsWorkspace course filters', () => {
+  it('groups the filters and marks a custom-menu selection as active', () => {
+    render(
+      <HistoryStatisticsWorkspace
+        courses={[]}
+        getSnapshot={() => snapshot}
+        onOpenCourse={vi.fn()}
+        onSectionChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('group', { name: '历史课程筛选' })).toBeVisible();
+
+    const statusSelect = screen.getByRole('combobox', { name: '课程状态' });
+    const statusField = statusSelect.closest('[data-active]');
+    expect(statusField).toHaveAttribute('data-active', 'false');
+
+    fireEvent.click(statusSelect);
+    expect(statusSelect).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('listbox', { name: '课程状态选项' })).toBeVisible();
+    fireEvent.click(screen.getByRole('option', { name: '学习中' }));
+
+    expect(statusField).toHaveAttribute('data-active', 'true');
+    expect(statusSelect).toHaveTextContent('学习中');
+    expect(statusSelect).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('supports keyboard selection and dismissal', () => {
+    render(
+      <HistoryStatisticsWorkspace
+        courses={[]}
+        getSnapshot={() => snapshot}
+        onOpenCourse={vi.fn()}
+        onSectionChange={vi.fn()}
+      />,
+    );
+
+    const sortSelect = screen.getByRole('combobox', { name: '排序' });
+    fireEvent.keyDown(sortSelect, { key: 'ArrowDown' });
+    expect(sortSelect).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(sortSelect, { key: 'ArrowDown' });
+    fireEvent.keyDown(sortSelect, { key: 'Enter' });
+    expect(sortSelect).toHaveTextContent('最早完成');
+
+    fireEvent.click(sortSelect);
+    fireEvent.keyDown(sortSelect, { key: 'Escape' });
+    expect(sortSelect).toHaveAttribute('aria-expanded', 'false');
+  });
+});

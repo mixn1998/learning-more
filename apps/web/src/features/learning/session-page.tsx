@@ -215,10 +215,17 @@ function hasGenerationResponse(
   userMessageId?: string,
 ): boolean {
   if (messages === undefined) return false;
+  if (userMessageId === undefined) {
+    return messages.some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.generationTaskId === taskId &&
+        message.completionStatus !== 'interrupted' &&
+        message.markdown.trim() !== '',
+    );
+  }
   const userIndex =
-    userMessageId === undefined
-      ? messages.findLastIndex((message) => message.role === 'user')
-      : messages.findIndex((message) => message.role === 'user' && message.id === userMessageId);
+    messages.findIndex((message) => message.role === 'user' && message.id === userMessageId);
   if (userIndex < 0) return false;
   return messages
     .slice(userIndex + 1)
@@ -226,7 +233,7 @@ function hasGenerationResponse(
       (message) =>
         message.role === 'assistant' &&
         (message.generationTaskId === taskId ||
-          (message.generationTaskId === undefined && userMessageId !== undefined)) &&
+          message.generationTaskId === undefined) &&
         message.completionStatus !== 'interrupted' &&
         message.markdown.trim() !== '',
     );
@@ -1602,12 +1609,7 @@ export function SessionPage(props: {
         state.progress === 'in_progress' &&
         state.writable
       ) {
-        try {
-          await pause();
-        } catch {
-          setNavigationError('课程暂停失败，请重试后再返回课程大纲。');
-          return;
-        }
+        void pause().catch(() => undefined);
       }
       props.onNavigate?.(props.courseId === undefined ? '/' : `/courses/${props.courseId}`);
     });

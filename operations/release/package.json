@@ -1,0 +1,15 @@
+{
+  "name": "@learning-more/release",
+  "version": "0.0.0-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "policy:check": "node dist/check-supply-chain.js",
+    "portable": "node dist/build-portable.js",
+    "drill": "node dist/release-drill.js",
+    "smoke": "node dist/portable-smoke.js",
+    "test": "vitest run --root ../.. operations/release",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

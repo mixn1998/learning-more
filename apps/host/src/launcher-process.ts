@@ -172,19 +172,27 @@ export async function waitForLauncherReady(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const [control, readiness] = await Promise.all([
+      const [control, readiness, frontend] = await Promise.all([
         fetch('http://127.0.0.1:43119/control/v1/status', {
+          cache: 'no-store',
           headers: { accept: 'application/json', origin: 'http://127.0.0.1:43119' },
           signal: AbortSignal.timeout(1_000),
         }),
         fetch('http://127.0.0.1:43119/api/v1/runtime/ready', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(1_000),
+        }),
+        fetch(`http://127.0.0.1:43119/build-meta.json?activation=${Date.now()}`, {
+          cache: 'no-store',
           headers: { accept: 'application/json' },
           signal: AbortSignal.timeout(1_000),
         }),
       ]);
-      if (control.ok && readiness.ok) {
+      if (control.ok && readiness.ok && frontend.ok) {
         const status = (await control.json()) as Record<string, unknown>;
         const ready = (await readiness.json()) as Record<string, unknown>;
+        const web = (await frontend.json()) as Record<string, unknown>;
         const candidateIsServingTarget =
           expectedBuildId !== undefined &&
           status.state === 'rebuilding' &&
@@ -192,7 +200,8 @@ export async function waitForLauncherReady(
         if (
           (status.state === 'healthy' || candidateIsServingTarget) &&
           ready.status === 'ready' &&
-          (expectedBuildId === undefined || ready.buildId === expectedBuildId)
+          (expectedBuildId === undefined ||
+            (ready.buildId === expectedBuildId && web.buildId === expectedBuildId))
         ) {
           return;
         }

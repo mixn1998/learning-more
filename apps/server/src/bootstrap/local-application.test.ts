@@ -126,10 +126,12 @@ describe('local CourseAuthoring application', () => {
     const local = await createLocalApplication({ dataRoot: directory, csrfToken: 'test-csrf' });
     const app = await buildApp(local.serverDependencies);
 
-    await expect(schedules.get('schedule_obsolete')).resolves.toMatchObject({
-      status: 'removed',
-      cancelReason: 'outline_revised',
-    });
+    await expect
+      .poll(() => schedules.get('schedule_obsolete'), { timeout: 3_000, interval: 20 })
+      .toMatchObject({
+        status: 'removed',
+        cancelReason: 'outline_revised',
+      });
     await expect(learning.get('lesson_obsolete')).resolves.toMatchObject({
       learning: { session: { id: 'session_obsolete_history' } },
     });
@@ -629,11 +631,7 @@ describe('local CourseAuthoring application', () => {
         .entries.map((entry) => entry.factType),
     ).toEqual(expect.arrayContaining(['CourseCreatedFact', 'ScheduleConfirmedFact']));
     const profile = await app.inject({ method: 'GET', url: '/api/v1/profile-facts' });
-    expect(profile.statusCode).toBe(200);
-    expect(profile.json()).toMatchObject({
-      profileSchemaVersion: 1,
-      sufficiency: { status: 'insufficient' },
-    });
+    expect(profile.statusCode).toBe(404);
     for (const [index, lessonId] of course!.lessonIds.entries()) {
       const started = await app.inject({
         method: 'POST',

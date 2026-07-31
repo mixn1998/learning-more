@@ -3,6 +3,8 @@ import { access, cp, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { pruneReleaseCache } from './release-retention.js';
+import { shareCandidateRuntime } from './shared-runtime-store.js';
 import type { HostSupervisor } from './supervisor.js';
 import {
   activationFailure,
@@ -61,7 +63,7 @@ async function importReleaseModule<T>(projectRoot: string, relativePath: string)
 async function readWorkspaceIdentity(projectRoot: string): Promise<SourceIdentity> {
   const module = await importReleaseModule<{
     readSourceIdentity(root: string): Promise<SourceIdentity>;
-  }>(projectRoot, path.join('tools', 'release', 'dist', 'source-identity.js'));
+  }>(projectRoot, path.join('operations', 'release', 'dist', 'source-identity.js'));
   return module.readSourceIdentity(projectRoot);
 }
 
@@ -98,7 +100,7 @@ async function buildWorkspaceCandidate(
         writeWorkspaceManifest: false;
       }>,
     ): Promise<Readonly<{ expandedRoot: string; buildId: string }>>;
-  }>(projectRoot, path.join('tools', 'release', 'dist', 'build-portable.js'));
+  }>(projectRoot, path.join('operations', 'release', 'dist', 'build-portable.js'));
   return module.buildPortableRelease(projectRoot, {
     outputRoot: context.outputRoot,
     workRoot: context.workRoot,
@@ -117,6 +119,7 @@ async function stageCandidate(expandedRoot: string, candidateRoot: string): Prom
   try {
     await rm(temporary, { recursive: true, force: true });
     await cp(expandedRoot, temporary, { recursive: true, dereference: true });
+    await shareCandidateRuntime(temporary, path.dirname(candidateRoot));
     await rename(temporary, candidateRoot);
   } finally {
     await rm(temporary, { recursive: true, force: true });
@@ -134,7 +137,7 @@ async function commitWorkspaceManifest(
       sourceIdentity: SourceIdentity,
       committedBuildId: string,
     ): Promise<void>;
-  }>(projectRoot, path.join('tools', 'release', 'dist', 'source-identity.js'));
+  }>(projectRoot, path.join('operations', 'release', 'dist', 'source-identity.js'));
   await module.writeWorkspaceBuildManifest(projectRoot, identity, buildId);
 }
 
@@ -179,6 +182,12 @@ export function createWorkspaceActivationWorker(options: {
   ): Promise<Readonly<{ expandedRoot: string; buildId: string }>>;
   stageCandidate?(expandedRoot: string, candidateRoot: string): Promise<void>;
   commitWorkspaceManifest?(identity: SourceIdentity, buildId: string): Promise<void>;
+  pruneReleaseCache?(input: {
+    releasesRoot: string;
+    activeBuildId: string;
+    previousBuildId?: string;
+    preserveActivationRequestId?: string;
+  }): Promise<unknown>;
   now?(): Date;
   pollMs?: number;
 }): WorkspaceActivationWorker {
@@ -188,6 +197,7 @@ export function createWorkspaceActivationWorker(options: {
   const commitManifest =
     options.commitWorkspaceManifest ??
     ((identity, buildId) => commitWorkspaceManifest(options.projectRoot, identity, buildId));
+  const pruneCache = options.pruneReleaseCache ?? pruneReleaseCache;
   const now = options.now ?? (() => new Date());
   const manifestPath = path.join(options.projectRoot, '.learning-more-build.json');
   const statusStore = createWorkspaceActivationStatusStore({ statusPath: options.statusPath });
@@ -229,6 +239,7 @@ export function createWorkspaceActivationWorker(options: {
     const startedAt = now().toISOString();
     let sourceIdentity: SourceIdentity | undefined;
     let activeBuildId: string | undefined;
+    let previousBuildId: string | undefined;
     let targetBuildId: string | undefined;
 
     const publish = async (
@@ -258,6 +269,7 @@ export function createWorkspaceActivationWorker(options: {
       try {
         sourceIdentity = await readIdentity(options.projectRoot);
         activeBuildId = await readActiveBuildId();
+        previousBuildId = activeBuildId;
       } catch {
         const completedAt = now().toISOString();
         await publish('failed', 1, {
@@ -325,6 +337,11 @@ export function createWorkspaceActivationWorker(options: {
           await rm(attemptRoot, { recursive: true, force: true });
           const completedAt = now().toISOString();
           await publish('activated', attempt, { completedAt });
+          await pruneCache({
+            releasesRoot: options.releasesRoot,
+            activeBuildId,
+            ...(previousBuildId === undefined ? {} : { previousBuildId }),
+          }).catch(() => undefined);
           return;
         } catch (error) {
           await publish('cleaning', attempt).catch(() => undefined);
@@ -350,6 +367,12 @@ export function createWorkspaceActivationWorker(options: {
         }
       }
     } finally {
+      await rm(path.dirname(activationAttemptRoot(options.releasesRoot, request.requestId, 1)), {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      }).catch(() => undefined);
       inFlight = false;
     }
   };

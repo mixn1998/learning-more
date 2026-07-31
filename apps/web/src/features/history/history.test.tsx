@@ -229,6 +229,7 @@ describe('HistoryPage', () => {
 
     const domainFilter = await screen.findByRole('combobox', { name: '学科 / 领域' });
     expect(domainFilter).toHaveValue('');
+    fireEvent.click(domainFilter);
     expect(screen.getByRole('option', { name: '商业' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: '未分类领域' })).not.toBeInTheDocument();
   });

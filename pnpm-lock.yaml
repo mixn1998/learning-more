@@ -117,17 +117,39 @@ importers:
         specifier: 8.1.3
         version: 8.1.3(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.0)(yaml@2.9.0)
 
+  engineering/architecture:
+    dependencies:
+      '@learning-more/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  engineering/benchmarks: {}
+
+  engineering/test-kit:
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+
+  operations/maintenance: {}
+
+  operations/release: {}
+
   packages/contracts:
     dependencies:
       zod:
         specifier: 4.4.3
         version: 4.4.3
-
-  packages/test-kit:
-    devDependencies:
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
 
   packages/ui:
     dependencies:
@@ -174,28 +196,6 @@ importers:
       jsdom:
         specifier: 29.1.1
         version: 29.1.1
-
-  tools/architecture:
-    dependencies:
-      '@learning-more/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      yaml:
-        specifier: 2.9.0
-        version: 2.9.0
-    devDependencies:
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-
-  tools/benchmarks: {}
-
-  tools/cli: {}
-
-  tools/release: {}
 
 packages:
 

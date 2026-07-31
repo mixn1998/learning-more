@@ -6,6 +6,8 @@ import { createActivationRepository } from './activation-repository.js';
 import { acquireHostLease } from './host-lease.js';
 import { createHostManager, type HostManager } from './host-manager.js';
 import { startOrAdoptLauncher, waitForLauncherReady } from './launcher-process.js';
+import { createMaintenanceLoop, runMaintenanceProcess } from './maintenance-loop.js';
+import { pruneReleaseCache } from './release-retention.js';
 import { createHostSupervisor } from './supervisor.js';
 import { createWorkspaceActivationWorker } from './workspace-activation.js';
 import { createWorkspaceAutoActivationMonitor } from './workspace-auto-activation.js';
@@ -60,18 +62,21 @@ function layout(
   launcherEntry: string;
   serverEntry: string;
   webRoot: string;
+  maintenanceEntry: string;
 }> {
   const workspace = {
     hostEntry: path.join(projectRoot, 'apps', 'host', 'dist', 'main.js'),
     launcherEntry: path.join(projectRoot, 'apps', 'launcher', 'dist', 'main.js'),
     serverEntry: path.join(projectRoot, 'apps', 'server', 'dist', 'bootstrap', 'main.js'),
     webRoot: path.join(projectRoot, 'apps', 'web', 'dist'),
+    maintenanceEntry: path.join(projectRoot, 'operations', 'maintenance', 'dist', 'main.js'),
   };
   const portableLayout = {
     hostEntry: path.join(projectRoot, 'app', 'host', 'dist', 'main.js'),
     launcherEntry: path.join(projectRoot, 'app', 'launcher', 'dist', 'main.js'),
     serverEntry: path.join(projectRoot, 'app', 'server', 'main.js'),
     webRoot: path.join(projectRoot, 'app', 'web'),
+    maintenanceEntry: path.join(projectRoot, 'operations', 'maintenance', 'dist', 'main.js'),
   };
   return isPortable ? portableLayout : workspace;
 }
@@ -190,6 +195,7 @@ export async function runHost(projectRoot: string): Promise<void> {
     access(application.launcherEntry),
     access(application.serverEntry),
     access(application.webRoot),
+    access(application.maintenanceEntry),
   ]);
   const localApplicationData =
     process.env.LOCALAPPDATA ??
@@ -201,6 +207,9 @@ export async function runHost(projectRoot: string): Promise<void> {
   const dataRoot = identity.portable
     ? path.join(localApplicationData, 'Learning MORE', 'data')
     : path.join(resolvedRoot, '.learning-more-data');
+  const backupRoot = identity.portable
+    ? path.join(localApplicationData, 'Learning MORE', 'backups')
+    : path.join(resolvedRoot, '.learning-more-backups');
   const secretDirectory = path.join(localApplicationData, 'Learning MORE', 'secrets');
   const releasesRoot = path.join(hostRoot, 'releases');
   const activationRequestPath = path.join(hostRoot, 'workspace-activation-request.json');
@@ -219,6 +228,13 @@ export async function runHost(projectRoot: string): Promise<void> {
     initialActiveBuildId: 'workspace',
   });
   const recoveredActivation = await activation.recover();
+  await pruneReleaseCache({
+    releasesRoot,
+    activeBuildId: recoveredActivation.activeBuildId,
+    ...(recoveredActivation.previousBuildId === undefined
+      ? {}
+      : { previousBuildId: recoveredActivation.previousBuildId }),
+  });
   const activeReleaseRoot =
     recoveredActivation.activeBuildId === 'workspace'
       ? resolvedRoot
@@ -262,6 +278,16 @@ export async function runHost(projectRoot: string): Promise<void> {
     wait: async (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
     now: Date.now,
   });
+  const maintenance = createMaintenanceLoop({
+    run: () =>
+      runMaintenanceProcess({
+        executablePath: process.execPath,
+        maintenanceEntry: application.maintenanceEntry,
+        dataRoot,
+        backupRoot,
+        buildId: identity.buildId,
+      }),
+  });
   const stop = () => void supervisor.stop();
   const workspaceActivation = identity.portable
     ? undefined
@@ -284,6 +310,7 @@ export async function runHost(projectRoot: string): Promise<void> {
   try {
     workspaceActivation?.start();
     workspaceAutoActivation?.start();
+    maintenance.start();
     await supervisor.run(activeReleaseRoot);
     if (supervisor.status().state === 'blocked_restart_storm') {
       throw new Error('host_launcher_restart_storm');
@@ -291,6 +318,7 @@ export async function runHost(projectRoot: string): Promise<void> {
   } finally {
     workspaceActivation?.stop();
     workspaceAutoActivation?.stop();
+    await maintenance.stop();
     process.off('SIGINT', stop);
     process.off('SIGTERM', stop);
     await supervisor.stop();

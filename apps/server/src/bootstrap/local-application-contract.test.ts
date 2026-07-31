@@ -89,7 +89,6 @@ describe('local application public interface', () => {
         'queries',
       ]);
       expect(Object.keys(local.serverDependencies.profile!).sort()).toEqual([
-        'getGlobalProfile',
         'getReasoningAnalysis',
         'listReasoningEpisodes',
         'refreshReasoningAnalysis',

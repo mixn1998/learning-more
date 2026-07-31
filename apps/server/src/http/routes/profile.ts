@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { CourseModeSchema, ReasoningElicitationSchema } from '@learning-more/contracts';
 
 export type ProfileRouteOptions = Readonly<{
-  getGlobalProfile(): Promise<unknown>;
   listReasoningEpisodes?(): Promise<readonly unknown[]>;
   refreshReasoningAnalysis?(filter: {
     windowStart?: string;
@@ -30,10 +29,6 @@ export async function registerProfileRoutes(
   app: FastifyInstance,
   options: ProfileRouteOptions,
 ): Promise<void> {
-  app.get('/api/v1/profile-facts', async (_request, reply) => {
-    return reply.code(200).send(await options.getGlobalProfile());
-  });
-
   if (options.listReasoningEpisodes !== undefined) {
     app.get('/api/v1/profile/reasoning-behavior-episodes', async (_request, reply) => {
       return reply.code(200).send({ entries: await options.listReasoningEpisodes!() });

@@ -7,6 +7,8 @@ export default defineConfig({
     include: [
       'apps/**/*.test.{ts,tsx}',
       'packages/**/*.test.{ts,tsx}',
+      'operations/**/*.test.{ts,mjs}',
+      'engineering/**/*.test.{ts,mjs}',
       'tools/**/*.test.{ts,mjs}',
       'tests/**/*.test.{ts,tsx}',
     ],

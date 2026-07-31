@@ -14,7 +14,6 @@ export * from './learning-facts-http.js';
 export * from './learning-notes.js';
 export * from './metadata.js';
 export * from './planning.js';
-export * from './profile.js';
 export * from './queries.js';
 export * from './result.js';
 export * from './review-closure.js';

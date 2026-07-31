@@ -117,11 +117,17 @@ export function createCliProvider(options: {
     },
     async configure(config) {
       const record = config as Readonly<Record<string, unknown>>;
+      const configuredModel = configuredString(record, 'model');
+      const configuredReasoningEffort = configuredString(record, 'reasoningEffort');
+      if (configuredModel !== undefined && configuredReasoningEffort !== undefined) {
+        activeModel = configuredModel;
+        activeReasoningEffort = configuredReasoningEffort;
+        return;
+      }
       const probe = await adapter?.probe();
-      const model = configuredString(record, 'model') ?? probe?.models[0]?.id;
+      const model = configuredModel ?? probe?.models[0]?.id;
       const selected = probe?.models.find((candidate) => candidate.id === model);
-      const reasoningEffort =
-        configuredString(record, 'reasoningEffort') ?? selected?.defaultReasoningEffort;
+      const reasoningEffort = configuredReasoningEffort ?? selected?.defaultReasoningEffort;
       if (model !== undefined) activeModel = model;
       if (reasoningEffort !== undefined) activeReasoningEffort = reasoningEffort;
     },

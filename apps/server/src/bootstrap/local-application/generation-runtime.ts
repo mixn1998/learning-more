@@ -24,6 +24,8 @@ export type LocalGenerationRuntime = Readonly<{
   providerConfigService: ReturnType<typeof createProviderConfigService>;
   runtimeControl: RuntimeRouteOptions;
   getReadiness(): 'ready' | 'degraded';
+  runLifecycleMaintenance(): Promise<number>;
+  close(): Promise<void>;
 }>;
 
 export async function createLocalGenerationRuntime(
@@ -64,9 +66,10 @@ export async function createLocalGenerationRuntime(
     execution,
     providerId: 'current',
   });
+  const secrets = input.applicationOptions.secretStore ?? createMemorySecretStore(input.now);
   const providerConfigService = createProviderConfigService({
     runtime,
-    secrets: input.applicationOptions.secretStore ?? createMemorySecretStore(input.now),
+    secrets,
     repository:
       input.applicationOptions.providerConfigRepository ?? createMemoryProviderConfigRepository(),
     now: input.now,
@@ -75,15 +78,53 @@ export async function createLocalGenerationRuntime(
   const savedProviderConfiguration = await providerConfigService.getConfiguration();
   if (savedProviderConfiguration !== undefined) {
     try {
-      await providerConfigService.switchProvider({
-        providerId: savedProviderConfiguration.providerId,
-        publicConfig: savedProviderConfiguration.publicConfig,
-        secretHandles: savedProviderConfiguration.secretHandles,
-      });
+      const resolveSecret = async (name: string) => {
+        const handle = savedProviderConfiguration.secretHandles[name];
+        if (handle === undefined) return undefined;
+        return new TextDecoder('utf-8', { fatal: true }).decode(await secrets.get(handle));
+      };
+      // The persisted selection was validated when it was saved. Restore it locally during
+      // bootstrap and leave network/CLI health probing to the runtime status endpoint.
+      await runtime.switchProvider(
+        savedProviderConfiguration.providerId,
+        savedProviderConfiguration.publicConfig,
+        resolveSecret,
+      );
     } catch {
       readiness = 'degraded';
     }
   }
+
+  let lifecycleBarrier: Promise<number> | undefined;
+  const runLifecycleMaintenance = async () => {
+    if (lifecycleBarrier !== undefined) return lifecycleBarrier;
+    lifecycleBarrier = (async () => {
+      const compacted = await runtime.compactTerminalTasks();
+      for (let offset = 0; offset < compacted.length; offset += 16) {
+        await Promise.all(
+          compacted
+            .slice(offset, offset + 16)
+            .map((task) =>
+              frameLog.compactTerminal(
+                task.id,
+                task.status as 'completed' | 'failed' | 'cancelled' | 'timeout',
+              ),
+            ),
+        );
+      }
+      return compacted.length;
+    })();
+    try {
+      return await lifecycleBarrier;
+    } finally {
+      lifecycleBarrier = undefined;
+    }
+  };
+  const lifecycleTimer = setInterval(
+    () => void runLifecycleMaintenance().catch(() => undefined),
+    6 * 60 * 60 * 1_000,
+  );
+  lifecycleTimer.unref();
 
   return {
     runtime,
@@ -105,5 +146,10 @@ export async function createLocalGenerationRuntime(
       nextCorrelationId: () => `correlation_${randomUUID()}`,
     },
     getReadiness: () => readiness,
+    runLifecycleMaintenance,
+    async close() {
+      clearInterval(lifecycleTimer);
+      await lifecycleBarrier?.catch(() => undefined);
+    },
   };
 }

@@ -117,6 +117,7 @@ describe('TeachingContextAssembler', () => {
     expect(context.course.courseMode).toBe('standard');
     expect(context.course).not.toHaveProperty('playIntent');
     expect(JSON.stringify(context)).not.toContain('modeWeight');
+    expect(JSON.stringify(context).length).toBeLessThanOrEqual(6_000);
   });
 
   it('assembles an opening turn without inventing a current learner message', async () => {
@@ -175,7 +176,7 @@ describe('TeachingContextAssembler', () => {
     expect(context.teachingState.openLoops).toHaveLength(1);
   });
 
-  it('keeps a bounded recent window plus unresolved source messages', async () => {
+  it('keeps a bounded recent window and carries older unresolved meaning through the ledger', async () => {
     const base = sources('standard');
     const messages = Array.from({ length: 12 }, (_, index) => ({
       messageId: `message_${index + 1}`,
@@ -215,11 +216,122 @@ describe('TeachingContextAssembler', () => {
     });
 
     expect(context.recentMessages.map((message) => message.messageId)).toEqual([
-      'message_2',
       'message_9',
       'message_10',
       'message_11',
       'message_12',
     ]);
+    expect(context.teachingState.openLoops[0]?.summary).toBe('An unresolved early question.');
+  });
+
+  it('keeps only the latest completed assistant reply as raw continuation history by default', async () => {
+    const base = sources('standard');
+    const assembler = createTeachingContextAssembler({
+      sources: {
+        ...base,
+        async listMessages() {
+          return [
+            {
+              messageId: 'message_previous_assistant',
+              role: 'assistant' as const,
+              completionStatus: 'complete' as const,
+              markdown: 'Earlier teaching detail.',
+              sourceRef: 'message:message_previous_assistant',
+            },
+            {
+              messageId: 'message_latest_assistant',
+              role: 'assistant' as const,
+              completionStatus: 'complete' as const,
+              markdown: 'The latest explanation that the next continuation must deepen.',
+              sourceRef: 'message:message_latest_assistant',
+            },
+          ];
+        },
+      },
+    });
+
+    const context = await assembler.assemble({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      turnKind: 'continuation',
+      teachingState: {
+        ...state(),
+        recentLearnerSignals: [
+          {
+            entryId: 'signal_1',
+            summary: 'The learner can distinguish the two conditions but has not explained why.',
+            explicitness: 'ai_observed',
+            sourceRefs: ['message:message_previous_assistant'],
+          },
+        ],
+      },
+      unobservedMessageIds: [],
+    });
+
+    expect(context.recentMessages.map((message) => message.messageId)).toEqual([
+      'message_latest_assistant',
+    ]);
+    expect(context.teachingState.recentLearnerSignals[0]?.summary).toContain(
+      'has not explained why',
+    );
+  });
+
+  it('keeps the latest completed assistant reply as the continuation anchor under budget pressure', async () => {
+    const base = sources('standard');
+    const assembler = createTeachingContextAssembler({
+      sources: {
+        ...base,
+        async listMessages() {
+          return [
+            {
+              messageId: 'message_previous_assistant',
+              role: 'assistant' as const,
+              completionStatus: 'complete' as const,
+              markdown: 'Earlier teaching detail. '.repeat(80),
+              sourceRef: 'message:message_previous_assistant',
+            },
+            {
+              messageId: 'message_latest_assistant',
+              role: 'assistant' as const,
+              completionStatus: 'complete' as const,
+              markdown: 'The latest explanation that the next continuation must deepen.',
+              sourceRef: 'message:message_latest_assistant',
+            },
+          ];
+        },
+        async listRelevantMaterialExcerpts() {
+          return [
+            {
+              sourceRef: 'material:primary',
+              version: '1',
+              markdown: 'Primary background. '.repeat(80),
+              selectedBecause: 'Mapped to the current lesson.',
+            },
+            {
+              sourceRef: 'material:secondary',
+              version: '1',
+              markdown: 'Secondary background. '.repeat(80),
+              selectedBecause: 'Additional context.',
+            },
+          ];
+        },
+      },
+      maxContextCharacters: 1_800,
+      maxRecentMessages: 2,
+    });
+
+    const context = await assembler.assemble({
+      courseId: 'course_1',
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      turnKind: 'continuation',
+      teachingState: state(),
+      unobservedMessageIds: [],
+    });
+
+    expect(context.recentMessages.map((message) => message.messageId)).toContain(
+      'message_latest_assistant',
+    );
   });
 });

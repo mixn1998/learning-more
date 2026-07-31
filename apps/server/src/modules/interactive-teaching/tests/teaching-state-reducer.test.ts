@@ -2,6 +2,7 @@ import type { TeachingObservation } from '@learning-more/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
+  alignTeachingState,
   createTeachingState,
   reconcileTeachingObservations,
   reduceTeachingState,
@@ -61,6 +62,28 @@ describe('teaching state reducer', () => {
       'knowledge:z',
       'knowledge:a',
     ]);
+  });
+
+  it('clears a stale active knowledge point after the lesson leaves knowledge-point teaching', () => {
+    const initial = createTeachingState({
+      lessonId: 'lesson_1',
+      sessionId: 'session_1',
+      knowledgePointRefs: ['knowledge:kp_1'],
+    });
+    const stale = {
+      ...initial,
+      lessonPhase: 'comprehensive_application' as const,
+      activeKnowledgePointRef: 'knowledge:kp_1',
+      knowledgePoints: initial.knowledgePoints.map((point) => ({
+        ...point,
+        progress: 'completed' as const,
+      })),
+    };
+
+    const aligned = alignTeachingState(stale, ['knowledge:kp_1']);
+
+    expect(aligned.lessonPhase).toBe('comprehensive_application');
+    expect(aligned.activeKnowledgePointRef).toBeUndefined();
   });
 
   it('records learner evidence without changing teaching control state', () => {

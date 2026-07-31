@@ -165,5 +165,20 @@ export function createGenerationFrameLog(
         meta,
       };
     },
+    async compactTerminal(taskId, state) {
+      await serializeAppend(taskId, async () => {
+        let storedMeta: GenerationFrameMeta;
+        try {
+          storedMeta = await readMeta(taskId);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+          throw error;
+        }
+        const frames = await readFrames(taskId);
+        const meta = reconciledMeta(storedMeta, frames);
+        await writeAtomic(`${prefix(dataRoot, taskId)}.meta.json`, encodeJson({ ...meta, state }));
+        await rm(`${prefix(dataRoot, taskId)}.frames.ndjson`, { force: true });
+      });
+    },
   };
 }

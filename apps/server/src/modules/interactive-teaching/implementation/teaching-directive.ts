@@ -166,9 +166,15 @@ export function normalizeTeachingControlState(state: TeachingStateSnapshot): Tea
     (state.lessonPhase as string | undefined) === 'comprehensive_check'
       ? 'comprehensive_application'
       : state.lessonPhase;
+  const { activeKnowledgePointRef, ...stateWithoutActiveKnowledgePoint } = state;
+  const keepsActiveKnowledgePoint =
+    lessonPhase === undefined || lessonPhase === 'warmup' || lessonPhase === 'knowledge_point';
   return {
-    ...state,
+    ...stateWithoutActiveKnowledgePoint,
     lessonPhase,
+    ...(keepsActiveKnowledgePoint && activeKnowledgePointRef !== undefined
+      ? { activeKnowledgePointRef }
+      : {}),
     comprehensiveCheck: normalizedComprehensive(state.comprehensiveCheck),
     knowledgePoints: state.knowledgePoints.map((point) => ({
       ...point,

@@ -70,7 +70,7 @@ test('[EQ-SELF-03] blocks a foreign 43120 owner and never terminates it', async 
   const marker = path.join(root, 'foreign.marker');
   const foreign = spawn(
     process.execPath,
-    ['--import', 'tsx', 'tools/test-processes/foreign-port-owner.ts'],
+    ['--import', 'tsx', 'engineering/test-processes/foreign-port-owner.ts'],
     {
       cwd: process.cwd(),
       windowsHide: true,

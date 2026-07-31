@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -42,6 +42,7 @@ describe('workspace activation worker', () => {
       return { expandedRoot: 'D:\\candidate', buildId: 'build-new' };
     });
     const commitWorkspaceManifest = vi.fn().mockResolvedValue(undefined);
+    const pruneReleaseCache = vi.fn().mockResolvedValue(undefined);
     const worker = createWorkspaceActivationWorker({
       projectRoot: input.root,
       releasesRoot: path.join(input.root, 'releases'),
@@ -52,6 +53,7 @@ describe('workspace activation worker', () => {
       buildCandidate,
       stageCandidate: vi.fn().mockResolvedValue(undefined),
       commitWorkspaceManifest,
+      pruneReleaseCache,
       supervisor: {
         activateCandidate: vi
           .fn()
@@ -67,6 +69,14 @@ describe('workspace activation worker', () => {
       expect.objectContaining({ buildId: 'build-new' }),
       'build-new',
     );
+    expect(pruneReleaseCache).toHaveBeenCalledWith({
+      releasesRoot: path.join(input.root, 'releases'),
+      activeBuildId: 'build-new',
+      previousBuildId: 'build-old',
+    });
+    await expect(
+      access(path.join(input.root, 'releases', '.activation-work', 'request-1')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
       schemaVersion: 2,
       requestId: 'request-1',
@@ -87,6 +97,7 @@ describe('workspace activation worker', () => {
       .fn()
       .mockResolvedValue({ state: 'activated', activeBuildId: 'build-new' });
     const commitWorkspaceManifest = vi.fn().mockResolvedValue(undefined);
+    const pruneReleaseCache = vi.fn().mockResolvedValue(undefined);
     const worker = createWorkspaceActivationWorker({
       projectRoot: input.root,
       releasesRoot: path.join(input.root, 'releases'),
@@ -96,6 +107,7 @@ describe('workspace activation worker', () => {
       buildCandidate,
       stageCandidate,
       commitWorkspaceManifest,
+      pruneReleaseCache,
       supervisor: { activateCandidate },
     });
 
@@ -111,6 +123,7 @@ describe('workspace activation worker', () => {
     );
     expect(activateCandidate).toHaveBeenCalledWith('build-new');
     expect(commitWorkspaceManifest).toHaveBeenCalledOnce();
+    expect(pruneReleaseCache).toHaveBeenCalledOnce();
     expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
       schemaVersion: 2,
       requestId: 'request-1',
@@ -148,6 +161,7 @@ describe('workspace activation worker', () => {
   it('keeps the prior workspace manifest when activation rolls back', async () => {
     const input = await fixture();
     const commitWorkspaceManifest = vi.fn();
+    const pruneReleaseCache = vi.fn();
     const worker = createWorkspaceActivationWorker({
       projectRoot: input.root,
       releasesRoot: path.join(input.root, 'releases'),
@@ -158,6 +172,7 @@ describe('workspace activation worker', () => {
       buildCandidate: async () => ({ expandedRoot: 'D:\\candidate', buildId: 'build-new' }),
       stageCandidate: vi.fn().mockResolvedValue(undefined),
       commitWorkspaceManifest,
+      pruneReleaseCache,
       supervisor: {
         activateCandidate: vi.fn().mockResolvedValue({
           state: 'rolled-back',
@@ -171,6 +186,10 @@ describe('workspace activation worker', () => {
 
     expect(await readFile(input.manifestPath, 'utf8')).toBe('{"buildId":"build-old"}\n');
     expect(commitWorkspaceManifest).not.toHaveBeenCalled();
+    expect(pruneReleaseCache).not.toHaveBeenCalled();
+    await expect(
+      access(path.join(input.root, 'releases', '.activation-work', 'request-1')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     expect(JSON.parse(await readFile(input.statusPath, 'utf8'))).toMatchObject({
       schemaVersion: 2,
       phase: 'failed',

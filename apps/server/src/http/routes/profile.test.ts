@@ -12,7 +12,6 @@ describe('profile routes', () => {
     });
     const app = Fastify();
     await registerProfileRoutes(app, {
-      getGlobalProfile: async () => ({}),
       listReasoningEpisodes: async () => [{ episodeId: 'reasoning_episode_1' }],
       refreshReasoningAnalysis,
       getReasoningAnalysis: async (snapshotId) =>
@@ -51,6 +50,12 @@ describe('profile routes', () => {
         url: '/api/v1/profile/reasoning-behavior-analyses/reasoning_snapshot_1',
       }),
     ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: 'GET',
+        url: '/api/v1/profile-facts',
+      }),
+    ).resolves.toMatchObject({ statusCode: 404 });
     await app.close();
   });
 });

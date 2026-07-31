@@ -48,6 +48,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), buildMetaPlugin(buildId)],
+    build: {
+      outDir: process.env.VITE_OUT_DIR ?? 'dist',
+      emptyOutDir: true,
+    },
     server: {
       host: '127.0.0.1',
       port: visualMode ? 61_587 : e2eWebPort,

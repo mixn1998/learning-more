@@ -2,7 +2,7 @@ import type { TeachingContextPackage } from '../ports/teaching-context-sources.j
 import { normalizeTeachingControlState } from './teaching-directive.js';
 import { projectTeachingLedger } from './teaching-ledger-projection.js';
 
-const MAX_COURSE_RELATIONS = 8;
+const MAX_COURSE_RELATIONS = 3;
 const MAX_LOCAL_COURSE_GOALS = 3;
 const GENERIC_KNOWLEDGE_RELATIONS = new Set([
   '为下一步理解提供基础',
@@ -28,34 +28,29 @@ function knowledgeBackground(context: TeachingContextPackage): string[] {
     const definition = context.lesson.coreKnowledgePoints.find(
       (candidate) => candidate.ref === point.ref,
     );
-    const weight =
-      definition?.fixedImportance === 'key' ? '固定教学权重：重点' : '固定教学权重：普通';
-    const difficulty = point.adaptiveDifficulty === 'difficult' ? '会话难点：是' : '会话难点：否';
-    const delivery = point.delivery === 'explained' ? '已经讲解过' : '尚未讲解';
     const evidence =
       point.verification === 'supporting'
-        ? '学习者表现提供了支持性证据'
+        ? '理解证据：支持'
         : point.verification === 'limiting'
-          ? '仍有需要处理的理解障碍'
+          ? '理解证据：受限'
           : point.verification === 'mixed'
-            ? '现有表现相互混合，尚不能下结论'
-            : '尚未观察到足够的学习者证据';
+            ? '理解证据：混合'
+            : undefined;
     const progress =
       point.progress === 'completed'
         ? point.interactionStatus === 'skipped'
-          ? '该知识点教学已完成，学习者跳过了知识点互动'
-          : '该知识点教学已完成'
+          ? '已完成（互动跳过）'
+          : '已完成'
         : point.progress === 'skipped'
-          ? '学习者已跳过该知识点'
+          ? '已跳过'
           : point.progress === 'learning'
-            ? '正在学习中'
+            ? '学习中'
             : '待讲解';
-    const need =
-      point.verification === 'limiting' || point.verification === 'mixed'
-        ? '存在需要处理的理解缺口'
-        : point.progress === 'pending'
-          ? '教学责任尚未完成'
-          : '当前无新增阻塞';
+    const markers = [
+      definition?.fixedImportance === 'key' ? '重点' : undefined,
+      point.adaptiveDifficulty === 'difficult' ? '当前难点' : undefined,
+      evidence,
+    ].filter((value): value is string => value !== undefined);
     const relation =
       definition?.relationToNext === undefined ||
       GENERIC_KNOWLEDGE_RELATIONS.has(definition.relationToNext.trim())
@@ -67,7 +62,7 @@ function knowledgeBackground(context: TeachingContextPackage): string[] {
         : `；必要分支：${definition.branches
             .map((branch) => `${branch.content}（${branch.relation}）`)
             .join('；')}`;
-    return `- ${text}：${progress}；${weight}；${difficulty}；${delivery}；${evidence}；${need}${relation}${attachedBranches}`;
+    return `- ${text}：${progress}${markers.length === 0 ? '' : `；${markers.join('；')}`}${relation}${attachedBranches}`;
   });
 }
 
@@ -92,6 +87,13 @@ function priorConversation(context: TeachingContextPackage): string[] {
   });
 }
 
+function recentLearningSignals(context: TeachingContextPackage): string[] {
+  const summaries = context.teachingState.recentLearnerSignals
+    .map((signal) => signal.summary.trim())
+    .filter((summary) => summary.length > 0);
+  return [...new Set(summaries)].slice(-4).map((summary) => `- ${summary}`);
+}
+
 function priorLearningEvidence(context: TeachingContextPackage): string[] {
   return context.relevantFinalReviews.map(
     (review) => `${review.selectedBecause}\n${review.markdown.trim()}`,
@@ -108,7 +110,6 @@ function localCourseWindow(context: TeachingContextPackage) {
 }
 
 function localCourseGoals(context: TeachingContextPackage): readonly string[] {
-  if (context.course.knowledgeMap !== undefined) return context.course.goals;
   const currentIndex = context.course.lessonMap.findIndex(
     (lesson) => lesson.relation === 'current' || lesson.lessonId === context.lesson.lessonId,
   );
@@ -131,12 +132,6 @@ function knowledgeMapBackground(context: TeachingContextPackage): string | undef
   const map = context.course.knowledgeMap;
   if (map === undefined) return undefined;
   const module = map.currentModule;
-  const moduleLessons = module.lessons
-    .map(
-      (lesson, index) =>
-        `${index + 1}. ${lesson.title}${lesson.lessonId === context.lesson.lessonId ? '（本课）' : ''}：${lesson.objective}`,
-    )
-    .join('\n');
   const adjacentModules = [
     module.previousModuleTitle === undefined
       ? undefined
@@ -158,7 +153,6 @@ function knowledgeMapBackground(context: TeachingContextPackage): string | undef
     `当前模块：${module.title}；模块内第 ${module.lessonIndex} 课，共 ${module.lessonCount} 课`,
     startingPoint,
     adjacentModules.length === 0 ? undefined : adjacentModules,
-    `模块内课节：\n${moduleLessons}`,
   ]
     .filter((value): value is string => value !== undefined)
     .join('\n');
@@ -189,19 +183,19 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
   return [
     '【教学事实上下文】',
     opening
-      ? '这是学习者刚进入本课的课前热身。'
+      ? '开场回合。'
       : continuation
         ? discussionContinuation
-          ? '这是学习者在答疑阶段点击“继续讲解”触发的流程事件，等同于明确确认没有其他疑问；它不是学习内容或理解证据，不要伪造学习者原话。'
+          ? '答疑阶段续讲：视为确认无其他疑问；不是理解证据。'
           : comprehensiveApplicationContinuation
-            ? '这是学习者在综合应用阶段点击“继续讲解”触发的流程事件，等同于输入“直接讲解”；不要把该操作记为学习者作答或理解证据，也不要伪造学习者原话。'
-            : '这是学习者点击“继续讲解”触发的系统续讲事件；它不是学习者消息或理解证据。若上一回复发出了互动邀请，表示学习者选择暂不回答并沿既有教学路径继续；不要伪造回应，也不要停留等待同一回应。'
-        : '“当前诉求｜用户原话”是学习者本轮真实输入；其他部分只是已知背景，不要伪装成学习者刚刚说过的话。',
+            ? '综合应用续讲：视为“直接讲解”；不是学习者作答或理解证据。'
+            : '续讲流程事件：沿既有路径继续，不伪造学习者回应或理解证据。'
+        : '当前诉求是学习者本轮真实输入；其余内容仅为背景。',
     `【已知学习背景】\n课程：${context.course.title}\n课程目标：${localCourseGoals(context).join('；')}\n本课：${context.lesson.title}\n本课目标：${context.lesson.objective}`,
     knowledgeMapBackground(context),
     section('课程关系', relations),
     section('上一节课学习证据', priorLearningEvidence(context)),
-    `【课程关系使用边界】\n实际发生的对话与上一节课 Review 的核心思想决定哪些概念有已建立证据。课程顺序、前置、先前、相关和后续课节标题只描述知识关系，不能单独证明相关概念已经学习；尤其后续课节标题只表示教学方向，不代表相关术语已经建立。`,
+    `【课程关系边界】\n只有真实对话与上一节 Review 核心思想可证明已有理解；课序和标题仅表示知识关系。`,
     context.course.playIntent === undefined
       ? undefined
       : `【互动关注】\n${context.course.playIntent}`,
@@ -209,6 +203,7 @@ export function renderTeachingFactContext(context: TeachingContextPackage): stri
       ? undefined
       : `【学习起点】\n${context.learningStartSummary.trim()}`,
     section('当前教学窗口', knowledgeBackground(context)),
+    section('近期学习信号', recentLearningSignals(context)),
     section(
       '尚待处理的问题',
       context.teachingState.openLoops.map((loop) => `- ${loop.summary}`),

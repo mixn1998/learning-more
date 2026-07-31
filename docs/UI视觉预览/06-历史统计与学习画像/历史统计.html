@@ -86,8 +86,7 @@
         color: var(--muted);
         font-size: 12px;
       }
-      .filters,
-      .course-tools {
+      .filters {
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
@@ -221,23 +220,156 @@
       .course-panel {
         margin-top: 14px;
       }
-      .course-tools label {
+      .course-tools {
         display: grid;
-        gap: 4px;
+        grid-template-columns: repeat(4, minmax(130px, 1fr));
+        width: min(760px, 100%);
+        overflow: visible;
+        border: 1px solid #e7dbce;
+        border-radius: 12px;
+        background: var(--paper-2);
+        box-shadow: 0 8px 24px rgba(89, 61, 42, 0.05);
+        isolation: isolate;
       }
-      .course-tools span {
-        font-size: 11px;
-        color: var(--muted);
-        font-weight: 800;
+      .course-select {
+        position: relative;
+        min-width: 0;
       }
-      .course-tools select {
-        min-height: 42px;
-        padding: 0 32px 0 11px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #fff;
+      .course-select + .course-select {
+        border-left: 1px solid #e7dbce;
+      }
+      .course-select-trigger {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 52px;
+        padding: 5px 34px 5px 13px;
+        border: 0;
+        border-radius: 0;
+        appearance: none;
+        background: transparent;
+        box-shadow: none;
         color: var(--ink);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        outline: 0;
+        transition:
+          background 160ms ease,
+          box-shadow 160ms ease;
+      }
+      .course-select-trigger:hover {
+        background: rgba(255, 255, 255, 0.72);
+      }
+      .course-select-trigger:focus-visible,
+      .course-select[data-open='true'] .course-select-trigger {
+        z-index: 1;
+        background: rgba(255, 255, 255, 0.66);
+        box-shadow: inset 0 -2px var(--accent);
+      }
+      .course-select-trigger > span {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+      }
+      .course-select-trigger > strong {
+        display: block;
+        margin-top: 1px;
+        min-width: 0;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 750;
+        line-height: 1.35;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .course-select-trigger > i {
+        position: absolute;
+        top: 50%;
+        right: 14px;
+        width: 7px;
+        height: 7px;
+        border-right: 1.5px solid var(--muted);
+        border-bottom: 1.5px solid var(--muted);
+        transform: translateY(-70%) rotate(45deg);
+        transition: transform 160ms ease;
+      }
+      .course-select[data-open='true'] .course-select-trigger > i {
+        border-color: var(--accent-dark);
+        transform: translateY(-20%) rotate(225deg);
+      }
+      .course-select[data-active='true'] .course-select-trigger > span,
+      .course-select[data-active='true'] .course-select-trigger > strong {
+        color: var(--accent-dark);
+      }
+      .course-select-menu {
+        position: absolute;
+        top: calc(100% + 7px);
+        left: 8px;
+        z-index: 20;
+        width: max(calc(100% - 16px), 180px);
+        max-height: min(240px, calc(100vh - 176px));
+        padding: 4px;
+        overflow: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        border: 1px solid #e5d6c7;
+        border-radius: 10px;
+        background: #fffdf9;
+        box-shadow: 0 18px 38px rgba(83, 56, 38, 0.16);
+      }
+      .course-select-menu[hidden] {
+        display: none;
+      }
+      .course-select-option {
+        display: grid;
+        grid-template-columns: 11px minmax(0, 1fr);
+        gap: 7px;
+        align-items: center;
+        width: 100%;
+        min-height: 30px;
+        padding: 5px 8px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        box-shadow: none;
+        color: var(--ink);
+        font: inherit;
         font-size: 12px;
+        line-height: 1.25;
+        text-align: left;
+        cursor: pointer;
+      }
+      .course-select-option + .course-select-option {
+        border-top: 1px solid rgba(231, 219, 206, 0.62);
+      }
+      .course-select-option::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: transparent;
+        content: '';
+      }
+      .course-select-option:hover,
+      .course-select-option:focus-visible,
+      .course-select-option.highlighted {
+        background: #f7eee7;
+        color: var(--accent-dark);
+        outline: 0;
+      }
+      .course-select-option[aria-selected='true'] {
+        color: var(--accent-dark);
+        font-weight: 750;
+      }
+      .course-select-option[aria-selected='true']::before {
+        background: var(--accent);
       }
       .course-table {
         width: 100%;
@@ -325,6 +457,20 @@
         .panel-head {
           align-items: flex-start;
           flex-direction: column;
+        }
+        .course-tools {
+          width: 100%;
+        }
+      }
+      @media (max-width: 760px) {
+        .course-tools {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .course-tools .course-select:nth-child(3) {
+          border-left: 0;
+        }
+        .course-tools .course-select:nth-child(n + 3) {
+          border-top: 1px solid #e7dbce;
         }
       }
       @media (max-width: 620px) {
@@ -460,38 +606,225 @@
                 <h3>历史课程</h3>
                 <p><span id="courseCount">3 门课程</span></p>
               </div>
-              <div class="course-tools">
-                <label
-                  ><span>课程状态</span
-                  ><select id="courseStatus">
-                    <option value="">全部状态</option>
-                    <option>学习中</option>
-                    <option>已关闭</option>
-                  </select></label
-                ><label
-                  ><span>学科 / 领域</span
-                  ><select id="courseDomain">
-                    <option value="">全部领域</option>
-                    <option>计算机科学</option>
-                    <option>游戏设计</option>
-                    <option>产品设计</option>
-                  </select></label
-                ><label
-                  ><span>来源模式</span
-                  ><select id="courseMode">
-                    <option value="">全部模式</option>
-                    <option>标准模式</option>
-                    <option>案例研习</option>
-                    <option>决策分析</option>
-                  </select></label
-                ><label
-                  ><span>排序</span
-                  ><select id="courseSort">
-                    <option value="recent">最近完成</option>
-                    <option value="oldest">最早完成</option>
-                    <option value="duration">完成时长最多</option>
-                  </select></label
-                >
+              <div aria-label="历史课程筛选" class="course-tools" role="group">
+                <div class="course-select" data-active="false">
+                  <button
+                    aria-controls="courseStatusOptions"
+                    aria-expanded="false"
+                    aria-haspopup="listbox"
+                    aria-label="课程状态"
+                    class="course-select-trigger"
+                    data-value=""
+                    id="courseStatus"
+                    role="combobox"
+                    type="button"
+                  >
+                    <span>课程状态</span><strong>全部状态</strong><i aria-hidden="true"></i>
+                  </button>
+                  <div
+                    aria-label="课程状态选项"
+                    class="course-select-menu"
+                    hidden
+                    id="courseStatusOptions"
+                    role="listbox"
+                  >
+                    <button
+                      aria-selected="true"
+                      class="course-select-option highlighted"
+                      data-value=""
+                      role="option"
+                      type="button"
+                    >
+                      全部状态
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="学习中"
+                      role="option"
+                      type="button"
+                    >
+                      学习中
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="已关闭"
+                      role="option"
+                      type="button"
+                    >
+                      已关闭
+                    </button>
+                  </div>
+                </div>
+                <div class="course-select" data-active="false">
+                  <button
+                    aria-controls="courseDomainOptions"
+                    aria-expanded="false"
+                    aria-haspopup="listbox"
+                    aria-label="学科 / 领域"
+                    class="course-select-trigger"
+                    data-value=""
+                    id="courseDomain"
+                    role="combobox"
+                    type="button"
+                  >
+                    <span>学科 / 领域</span><strong>全部领域</strong><i aria-hidden="true"></i>
+                  </button>
+                  <div
+                    aria-label="学科 / 领域选项"
+                    class="course-select-menu"
+                    hidden
+                    id="courseDomainOptions"
+                    role="listbox"
+                  >
+                    <button
+                      aria-selected="true"
+                      class="course-select-option highlighted"
+                      data-value=""
+                      role="option"
+                      type="button"
+                    >
+                      全部领域
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="计算机科学"
+                      role="option"
+                      type="button"
+                    >
+                      计算机科学
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="游戏设计"
+                      role="option"
+                      type="button"
+                    >
+                      游戏设计
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="产品设计"
+                      role="option"
+                      type="button"
+                    >
+                      产品设计
+                    </button>
+                  </div>
+                </div>
+                <div class="course-select" data-active="false">
+                  <button
+                    aria-controls="courseModeOptions"
+                    aria-expanded="false"
+                    aria-haspopup="listbox"
+                    aria-label="来源模式"
+                    class="course-select-trigger"
+                    data-value=""
+                    id="courseMode"
+                    role="combobox"
+                    type="button"
+                  >
+                    <span>来源模式</span><strong>全部模式</strong><i aria-hidden="true"></i>
+                  </button>
+                  <div
+                    aria-label="来源模式选项"
+                    class="course-select-menu"
+                    hidden
+                    id="courseModeOptions"
+                    role="listbox"
+                  >
+                    <button
+                      aria-selected="true"
+                      class="course-select-option highlighted"
+                      data-value=""
+                      role="option"
+                      type="button"
+                    >
+                      全部模式
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="标准模式"
+                      role="option"
+                      type="button"
+                    >
+                      标准模式
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="案例研习"
+                      role="option"
+                      type="button"
+                    >
+                      案例研习
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="决策分析"
+                      role="option"
+                      type="button"
+                    >
+                      决策分析
+                    </button>
+                  </div>
+                </div>
+                <div class="course-select" data-active="false">
+                  <button
+                    aria-controls="courseSortOptions"
+                    aria-expanded="false"
+                    aria-haspopup="listbox"
+                    aria-label="排序"
+                    class="course-select-trigger"
+                    data-value="recent"
+                    id="courseSort"
+                    role="combobox"
+                    type="button"
+                  >
+                    <span>排序</span><strong>最近完成</strong><i aria-hidden="true"></i>
+                  </button>
+                  <div
+                    aria-label="排序选项"
+                    class="course-select-menu"
+                    hidden
+                    id="courseSortOptions"
+                    role="listbox"
+                  >
+                    <button
+                      aria-selected="true"
+                      class="course-select-option highlighted"
+                      data-value="recent"
+                      role="option"
+                      type="button"
+                    >
+                      最近完成
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="oldest"
+                      role="option"
+                      type="button"
+                    >
+                      最早完成
+                    </button>
+                    <button
+                      aria-selected="false"
+                      class="course-select-option"
+                      data-value="duration"
+                      role="option"
+                      type="button"
+                    >
+                      完成时长最多
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
             <table class="course-table">
@@ -672,11 +1005,112 @@
         setRange('custom');
         SampleUI.showToast('统计范围已更新', 'success');
       });
+      const courseStatus = document.getElementById('courseStatus');
+      const courseDomain = document.getElementById('courseDomain');
+      const courseMode = document.getElementById('courseMode');
+      const courseSort = document.getElementById('courseSort');
+      const courseSelectTriggers = [courseStatus, courseDomain, courseMode, courseSort];
+      function getCourseSelectOptions(trigger) {
+        return [...document.getElementById(trigger.getAttribute('aria-controls')).querySelectorAll('[role="option"]')];
+      }
+      function highlightCourseOption(trigger, index) {
+        const options = getCourseSelectOptions(trigger);
+        const nextIndex = (index + options.length) % options.length;
+        options.forEach((option, optionIndex) =>
+          option.classList.toggle('highlighted', optionIndex === nextIndex),
+        );
+      }
+      function closeCourseSelect(trigger) {
+        const select = trigger.closest('.course-select');
+        trigger.setAttribute('aria-expanded', 'false');
+        delete select.dataset.open;
+        document.getElementById(trigger.getAttribute('aria-controls')).hidden = true;
+      }
+      function closeOtherCourseSelects(current) {
+        courseSelectTriggers.forEach((trigger) => {
+          if (trigger !== current) closeCourseSelect(trigger);
+        });
+      }
+      function openCourseSelect(trigger, nextIndex) {
+        closeOtherCourseSelects(trigger);
+        const select = trigger.closest('.course-select');
+        const menu = document.getElementById(trigger.getAttribute('aria-controls'));
+        const options = getCourseSelectOptions(trigger);
+        const selectedIndex = Math.max(
+          0,
+          options.findIndex((option) => option.getAttribute('aria-selected') === 'true'),
+        );
+        menu.hidden = false;
+        select.dataset.open = 'true';
+        trigger.setAttribute('aria-expanded', 'true');
+        highlightCourseOption(trigger, nextIndex ?? selectedIndex);
+      }
+      function commitCourseOption(trigger, option) {
+        trigger.dataset.value = option.dataset.value;
+        trigger.querySelector('strong').textContent = option.textContent.trim();
+        getCourseSelectOptions(trigger).forEach((candidate) =>
+          candidate.setAttribute('aria-selected', String(candidate === option)),
+        );
+        closeCourseSelect(trigger);
+        trigger.focus();
+        updateCourses();
+      }
+      courseSelectTriggers.forEach((trigger) => {
+        const menu = document.getElementById(trigger.getAttribute('aria-controls'));
+        trigger.addEventListener('click', () => {
+          if (trigger.getAttribute('aria-expanded') === 'true') closeCourseSelect(trigger);
+          else openCourseSelect(trigger);
+        });
+        trigger.addEventListener('keydown', (event) => {
+          const options = getCourseSelectOptions(trigger);
+          const highlightedIndex = Math.max(
+            0,
+            options.findIndex((option) => option.classList.contains('highlighted')),
+          );
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (trigger.getAttribute('aria-expanded') !== 'true') {
+              openCourseSelect(trigger);
+            } else {
+              highlightCourseOption(trigger, highlightedIndex + (event.key === 'ArrowDown' ? 1 : -1));
+            }
+          } else if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            openCourseSelect(trigger, event.key === 'Home' ? 0 : options.length - 1);
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            if (trigger.getAttribute('aria-expanded') === 'true') {
+              commitCourseOption(trigger, options[highlightedIndex]);
+            } else {
+              openCourseSelect(trigger);
+            }
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            closeCourseSelect(trigger);
+          } else if (event.key === 'Tab') {
+            closeCourseSelect(trigger);
+          }
+        });
+        menu.querySelectorAll('[role="option"]').forEach((option, optionIndex) => {
+          option.addEventListener('pointermove', () => highlightCourseOption(trigger, optionIndex));
+          option.addEventListener('click', () => commitCourseOption(trigger, option));
+        });
+      });
+      document.addEventListener('pointerdown', (event) => {
+        if (!event.target.closest('.course-tools')) {
+          courseSelectTriggers.forEach(closeCourseSelect);
+        }
+      });
       const courseRowsList = [...courseRows.querySelectorAll('tr')];
       function updateCourses() {
-        const status = courseStatus.value,
-          domain = courseDomain.value,
-          mode = courseMode.value;
+        const status = courseStatus.dataset.value,
+          domain = courseDomain.dataset.value,
+          mode = courseMode.dataset.value,
+          sort = courseSort.dataset.value;
+        courseStatus.closest('.course-select').dataset.active = String(status !== '');
+        courseDomain.closest('.course-select').dataset.active = String(domain !== '');
+        courseMode.closest('.course-select').dataset.active = String(mode !== '');
+        courseSort.closest('.course-select').dataset.active = String(sort !== 'recent');
         const visible = courseRowsList.filter(
           (row) =>
             (!status || row.dataset.state === status) &&
@@ -684,9 +1118,9 @@
             (!mode || row.dataset.mode === mode),
         );
         visible.sort((a, b) =>
-          courseSort.value === 'duration'
+          sort === 'duration'
             ? Number(b.dataset.duration) - Number(a.dataset.duration)
-            : courseSort.value === 'oldest'
+            : sort === 'oldest'
               ? Number(a.dataset.date) - Number(b.dataset.date)
               : Number(b.dataset.date) - Number(a.dataset.date),
         );
@@ -694,9 +1128,6 @@
         visible.forEach((row) => courseRows.appendChild(row));
         courseCount.textContent = `${visible.length} 门课程`;
       }
-      [courseStatus, courseDomain, courseMode, courseSort].forEach((control) =>
-        control.addEventListener('change', updateCourses),
-      );
       setRange('year');
       updateCourses();
     </script>

@@ -9,30 +9,19 @@ function estimatedCharacters(value: unknown): number {
   return JSON.stringify(value).length;
 }
 
-function messageIdFromSourceRef(sourceRef: string): string | undefined {
-  return sourceRef.startsWith('message:') ? sourceRef.slice('message:'.length) : undefined;
-}
-
 function selectRecentMessages(input: {
   allMessages: readonly MaterializedTeachingMessage[];
   currentUserMessageId?: string;
+  continuationAnchorMessageId?: string;
   unobservedIds: ReadonlySet<string>;
-  teachingState: TeachingContextPackage['teachingState'];
   maxRecentMessages: number;
 }): MaterializedTeachingMessage[] {
   const protectedIds = new Set<string>();
   if (input.currentUserMessageId !== undefined) protectedIds.add(input.currentUserMessageId);
-  for (const messageId of input.unobservedIds) protectedIds.add(messageId);
-  const unresolvedSourceRefs = [
-    ...input.teachingState.openLoops.flatMap((loop) => loop.sourceRefs),
-    ...input.teachingState.explorationBranches
-      .filter((branch) => branch.status === 'active')
-      .flatMap((branch) => branch.sourceRefs),
-  ];
-  for (const sourceRef of unresolvedSourceRefs) {
-    const messageId = messageIdFromSourceRef(sourceRef);
-    if (messageId !== undefined) protectedIds.add(messageId);
+  if (input.continuationAnchorMessageId !== undefined) {
+    protectedIds.add(input.continuationAnchorMessageId);
   }
+  for (const messageId of input.unobservedIds) protectedIds.add(messageId);
 
   const recentStart = Math.max(0, input.allMessages.length - input.maxRecentMessages);
   return input.allMessages.filter(
@@ -84,14 +73,25 @@ export function createTeachingContextAssembler(options: {
       }
 
       const unobservedIds = new Set(input.unobservedMessageIds);
+      const continuationAnchor =
+        turnKind === 'continuation'
+          ? allMessages.findLast(
+              (message) => message.role === 'assistant' && message.completionStatus === 'complete',
+            )
+          : undefined;
       const recentMessages = selectRecentMessages({
         allMessages,
         ...(input.currentUserMessageId === undefined
           ? {}
           : { currentUserMessageId: input.currentUserMessageId }),
+        ...(continuationAnchor === undefined
+          ? {}
+          : { continuationAnchorMessageId: continuationAnchor.messageId }),
         unobservedIds,
-        teachingState: input.teachingState,
-        maxRecentMessages: Math.max(2, options.maxRecentMessages ?? 8),
+        maxRecentMessages: Math.max(
+          1,
+          options.maxRecentMessages ?? (turnKind === 'continuation' ? 1 : 2),
+        ),
       });
       let context: TeachingContextPackage = {
         schemaVersion: 1,
@@ -106,7 +106,7 @@ export function createTeachingContextAssembler(options: {
         unobservedMessages: allMessages.filter((message) => unobservedIds.has(message.messageId)),
       };
 
-      const budget = options.maxContextCharacters ?? 200_000;
+      const budget = options.maxContextCharacters ?? 6_000;
       if (estimatedCharacters(context) <= budget) return context;
 
       while (estimatedCharacters(context) > budget && context.relevantFinalReviews.length > 0) {
@@ -116,6 +116,7 @@ export function createTeachingContextAssembler(options: {
         const removableIndex = context.recentMessages.findIndex(
           (message) =>
             message.messageId !== input.currentUserMessageId &&
+            message.messageId !== continuationAnchor?.messageId &&
             !unobservedIds.has(message.messageId),
         );
         if (removableIndex === -1) break;
@@ -138,16 +139,21 @@ export function createTeachingContextAssembler(options: {
 
       const protectedMessages: readonly MaterializedTeachingMessage[] = [
         ...(currentMessage === undefined ? [] : [currentMessage]),
+        ...(continuationAnchor === undefined ? [] : [continuationAnchor]),
         ...context.unobservedMessages.filter(
-          (message) => message.messageId !== currentMessage?.messageId,
+          (message) =>
+            message.messageId !== currentMessage?.messageId &&
+            message.messageId !== continuationAnchor?.messageId,
         ),
       ];
       const protectedIds = new Set(protectedMessages.map((message) => message.messageId));
       if (
-        (currentMessage !== undefined &&
-          !context.recentMessages.some(
-            (message) => message.messageId === currentMessage.messageId,
-          )) ||
+        protectedMessages.some(
+          (protectedMessage) =>
+            !context.recentMessages.some(
+              (message) => message.messageId === protectedMessage.messageId,
+            ),
+        ) ||
         context.unobservedMessages.some((message) => !protectedIds.has(message.messageId))
       ) {
         throw new Error('protected_teaching_context_trimmed');

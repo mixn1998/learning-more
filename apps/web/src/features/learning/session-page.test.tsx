@@ -240,6 +240,100 @@ describe('learning SessionPage', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it('accepts a persisted continuation response when no learner message exists', async () => {
+    vi.useFakeTimers();
+    let continued = false;
+    const continueTeaching = vi.fn().mockImplementation(async () => {
+      continued = true;
+      return { taskId: 'task_continuation_without_user', resourceVersion: 3 };
+    });
+    const getSession = vi.fn().mockImplementation(async () => ({
+      resourceVersion: continued ? 4 : 2,
+      learning: {
+        lessonId: 'lesson_01',
+        progress: 'in_progress' as const,
+        session: {
+          id: 'session_01',
+          state: 'active' as const,
+          messageIds: continued
+            ? ['message_assistant_01', 'message_assistant_02']
+            : ['message_assistant_01'],
+          evidenceCheckpoint: true,
+        },
+        processedCommandIds: [],
+      },
+      teachingProgress: {
+        ledgerVersion: continued ? 3 : 2,
+        observationStatus: 'current' as const,
+        lessonPhase: 'knowledge_point' as const,
+        comprehensiveCheck: 'pending' as const,
+        closureInquiry: 'pending' as const,
+        summaryStatus: 'pending' as const,
+        turnHandoff: 'offer_continue' as const,
+        knowledgePoints: [
+          {
+            ref: 'knowledge:kp_1',
+            title: '关键概念',
+            progress: 'learning' as const,
+            interactionStatus: 'pending' as const,
+            delivery: 'explained' as const,
+            verification: 'not_observed' as const,
+            unresolvedQuestionCount: 0,
+          },
+        ],
+      },
+      messages: [
+        {
+          id: 'message_assistant_01',
+          role: 'assistant' as const,
+          createdAt: '',
+          markdown: '第一批讲解。',
+          completionStatus: 'complete' as const,
+          knowledgePointRef: 'knowledge:kp_1',
+        },
+        ...(continued
+          ? [
+              {
+                id: 'message_assistant_02',
+                role: 'assistant' as const,
+                createdAt: '',
+                markdown: '继续后的讲解。',
+                completionStatus: 'complete' as const,
+                generationTaskId: 'task_continuation_without_user',
+                knowledgePointRef: 'knowledge:kp_1',
+              },
+            ]
+          : []),
+      ],
+    }));
+    const stream = vi.fn().mockImplementation(async (_taskId, onEvent) => {
+      onEvent({ type: 'message.delta', data: { markdown: '继续后的讲解。' } });
+      onEvent({ type: 'task.completed', data: { resultRef: 'assistant-message:02' } });
+    });
+
+    render(
+      <SessionPage
+        lessonId="lesson_01"
+        client={client({ continueTeaching, getSession, stream })}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '继续讲解' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+
+    expect(screen.getByText('继续后的讲解。')).toBeInTheDocument();
+    expect(screen.queryByText('继续讲解失败，请重试。')).not.toBeInTheDocument();
+  });
+
   it('submits a non-empty learner draft instead of treating it as system continuation', async () => {
     const snapshot = {
       resourceVersion: 4,
@@ -1364,6 +1458,30 @@ describe('learning SessionPage', () => {
 
     expect(pause).toHaveBeenCalledWith('session_01', 1);
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('/'));
+  });
+
+  it('returns to the course outline while the pause request is stalled', async () => {
+    const pause = vi.fn().mockReturnValue(new Promise(() => undefined));
+    const onNavigate = vi.fn();
+    const api = client({ pause });
+    render(<SessionPage lessonId="lesson_01" client={api} onNavigate={onNavigate} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '返回课程大纲' }));
+
+    expect(pause).toHaveBeenCalledWith('session_01', 1);
+    expect(onNavigate).toHaveBeenCalledWith('/');
+  });
+
+  it('returns to the course outline when the pause request fails', async () => {
+    const pause = vi.fn().mockRejectedValue(new Error('service_unavailable'));
+    const onNavigate = vi.fn();
+    const api = client({ pause });
+    render(<SessionPage lessonId="lesson_01" client={api} onNavigate={onNavigate} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '返回课程大纲' }));
+
+    expect(pause).toHaveBeenCalledWith('session_01', 1);
+    expect(onNavigate).toHaveBeenCalledWith('/');
   });
 
   it('keeps resume available for a paused session', async () => {

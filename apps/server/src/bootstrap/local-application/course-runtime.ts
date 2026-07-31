@@ -9,6 +9,7 @@ import { createGenerationAuthoringAgent } from '../../modules/course-authoring/i
 import { createGenerationCandidateAlignmentPlanner } from '../../modules/course-authoring/implementation/generation-candidate-alignment-planner.js';
 import { ingestSelectedMaterial } from '../../modules/course-authoring/implementation/material-ingestion.js';
 import { createOutlineRevisionCleanup } from '../../modules/planning/implementation/outline-revision-cleanup.js';
+import type { PlanningOutlineRevisionInput } from '../../modules/planning/interface.js';
 import {
   createTeachingWeightService,
   teachingWeightStatus,
@@ -356,28 +357,30 @@ export function createLocalCourseRuntime(
     },
     courseRepositories,
     async reconcileOutlineLiveReferences() {
-      for await (const course of courseRepositories.courses.list()) {
-        const knownCourseLessonIds: string[] = [];
-        for await (const lesson of courseRepositories.lessons.listByCourse(course.id)) {
-          knownCourseLessonIds.push(lesson.id);
-        }
-        await input.unitOfWork.execute(
-          {
-            transactionId: `tx_outline_live_reconcile_${course.id}_${course.outlineVersionId}`,
-          },
-          (tx) =>
-            outlineRevisionLiveCleanup.retireOutlineReferences(
-              {
-                courseId: course.id,
-                retainedLessonIds: course.lessonIds,
-                knownCourseLessonIds,
-                commandId: `outline-live-reconcile:${course.outlineVersionId}`,
-                occurredAt: input.now().toISOString(),
-              },
-              tx,
-            ),
-        );
+      const lessonIdsByCourse = new Map<string, string[]>();
+      for await (const lesson of courseRepositories.lessons.list()) {
+        const lessonIds = lessonIdsByCourse.get(lesson.courseId) ?? [];
+        lessonIds.push(lesson.id);
+        lessonIdsByCourse.set(lesson.courseId, lessonIds);
       }
+      const revisions: PlanningOutlineRevisionInput[] = [];
+      for await (const course of courseRepositories.courses.list()) {
+        const knownCourseLessonIds = lessonIdsByCourse.get(course.id) ?? [];
+        const retained = new Set(course.lessonIds);
+        if (!knownCourseLessonIds.some((lessonId) => !retained.has(lessonId))) continue;
+        revisions.push({
+          courseId: course.id,
+          retainedLessonIds: course.lessonIds,
+          knownCourseLessonIds,
+          commandId: `outline-live-reconcile:${course.outlineVersionId}`,
+          occurredAt: input.now().toISOString(),
+        });
+      }
+      if (revisions.length === 0) return;
+      await input.unitOfWork.execute(
+        { transactionId: `tx_outline_live_reconcile_${input.now().getTime()}` },
+        (tx) => outlineRevisionLiveCleanup.retireOutlineReferencesBatch(revisions, tx),
+      );
     },
     recoverInterruptedAuthoringTurns: () => courseAuthoring.recoverInterruptedTurns(),
     async recoverGenerationTasks() {

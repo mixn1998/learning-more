@@ -40,7 +40,7 @@ export async function startLauncher(root: string): Promise<RuntimeHarness> {
   const projectRoot = process.cwd();
   const launcher = spawn(
     process.execPath,
-    ['--import', 'tsx', 'tools/test-processes/launcher-driver.ts'],
+    ['--import', 'tsx', 'engineering/test-processes/launcher-driver.ts'],
     {
       cwd: projectRoot,
       windowsHide: true,

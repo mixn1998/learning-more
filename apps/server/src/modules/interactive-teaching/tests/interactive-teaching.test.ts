@@ -2044,6 +2044,7 @@ describe('InteractiveTeaching deep module', () => {
   it.each([
     new Error('teaching_control_protocol_invalid'),
     Object.assign(new Error('invalid persisted directive'), { name: 'ZodError' }),
+    new SyntaxError('invalid escaped latex in persisted directive'),
   ])('does not let an invalid committed control block break read reconciliation', async (error) => {
     const { module, drainObservations, reconcileGeneration } = await fixture({
       agentReadError: error,

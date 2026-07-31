@@ -5,8 +5,11 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { doctorStore, type DoctorClassification } from '../../tools/cli/src/maintenance/doctor.js';
-import { quarantineIssues } from '../../tools/cli/src/maintenance/quarantine.js';
+import {
+  doctorStore,
+  type DoctorClassification,
+} from '../../operations/maintenance/src/maintenance/doctor.js';
+import { quarantineIssues } from '../../operations/maintenance/src/maintenance/quarantine.js';
 
 const roots: string[] = [];
 

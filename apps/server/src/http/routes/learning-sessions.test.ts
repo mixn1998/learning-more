@@ -76,10 +76,11 @@ const headers = {
 };
 
 describe('LearningSession HTTP contract', () => {
-  it('reconciles durable generation state before returning a session snapshot', async () => {
+  it('returns the durable snapshot when generation reconciliation fails', async () => {
     const calls: string[] = [];
     const reconcileSession = vi.fn().mockImplementation(async () => {
       calls.push('reconcile');
+      throw new SyntaxError('invalid hidden teaching directive');
     });
     const module: LearningSessionModule = {
       execute: vi.fn(),
@@ -114,7 +115,13 @@ describe('LearningSession HTTP contract', () => {
       expect.objectContaining({ sessionId: 'session_01', lessonId: 'lesson_01' }),
       'correlation_01',
     );
-    expect(calls).toEqual(['reconcile', 'query']);
+    expect(calls).toEqual(['query', 'reconcile']);
+    expect(response.json()).toMatchObject({
+      learning: {
+        lessonId: 'lesson_01',
+        session: { id: 'session_01', state: 'paused' },
+      },
+    });
   });
 
   it('starts one original session with Location and lease token', async () => {

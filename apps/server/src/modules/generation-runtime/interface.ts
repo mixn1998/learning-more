@@ -61,6 +61,10 @@ export interface GenerationFrameLog {
     frames: GenerationStreamEvent[];
     meta: GenerationFrameMeta;
   }>;
+  compactTerminal(
+    taskId: string,
+    state: Extract<GenerationFrameMeta['state'], 'completed' | 'failed' | 'cancelled' | 'timeout'>,
+  ): Promise<void>;
 }
 
 export interface GenerationExecution {

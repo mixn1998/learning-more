@@ -361,7 +361,12 @@ await check('历史统计范围与课程筛选', async () => {
   const page = await pageFor('06-历史统计与学习画像/历史统计.html');
   await page.locator('[data-range="30d"]').click();
   expect((await page.locator('#metricHours').innerText()) === '12.4 小时', '统计范围未更新指标');
-  await page.locator('#courseStatus').selectOption('学习中');
+  await page.locator('#courseStatus').click();
+  expect(
+    (await page.locator('#courseStatus').getAttribute('aria-expanded')) === 'true',
+    '课程状态菜单未展开',
+  );
+  await page.locator('#courseStatusOptions [data-value="学习中"]').click();
   expect((await page.locator('#courseCount').innerText()) === '1 门课程', '课程状态筛选未生效');
   await page.locator('[data-range="custom"]').click();
   expect(

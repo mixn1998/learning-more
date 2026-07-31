@@ -10,8 +10,6 @@ import { createAiProfileEvidenceExtractor } from '../../modules/profile-evidence
 import type { CandidateEvidence } from '../../modules/profile-evidence/interface.js';
 import { createProfileEvidenceAggregator } from '../../modules/profile-evidence/implementation/profile-evidence-aggregator.js';
 import { assembleProfileEvidenceContext } from '../../modules/profile-evidence/implementation/profile-evidence-context-assembler.js';
-import { createProfileEvidencePipeline } from '../../modules/profile-evidence/implementation/pipeline.js';
-import { queryGlobalLearningProfile } from '../../modules/profile-evidence/implementation/profile-query.js';
 import { createReasoningEvidenceProjector } from '../../modules/profile-evidence/implementation/reasoning-evidence-projector.js';
 import type { DataRoot } from '../../persistence/data-root.js';
 import { createLocalFileEvidenceRepositories } from '../../persistence/profile-evidence-repositories.js';
@@ -19,7 +17,6 @@ import { createLocalFileReasoningBehaviorRepository } from '../../persistence/re
 import { createLocalFileSemanticProfileCoreRepository } from '../../persistence/semantic-profile-core-repositories.js';
 import type { UnitOfWork } from '../../persistence/unit-of-work.js';
 import type { StructuredLogInput } from '../../runtime/logger.js';
-import type { LocalEventFactsRuntime } from './event-facts-runtime.js';
 import {
   createProfileEvidenceCheckpointRecovery,
   PROFILE_EVIDENCE_EXTRACTOR_VERSION,
@@ -31,7 +28,6 @@ export type LocalProfileRuntime = Readonly<{
   reasoningBehaviorSink: ReturnType<typeof createReasoningBehaviorModule>;
   profileRoutes: ProfileRouteOptions;
   recoverReasoningAnalysis(): Promise<void>;
-  getProjectionStatus(): 'ready' | 'degraded';
   start(): void;
   close(): Promise<void>;
 }>;
@@ -42,7 +38,6 @@ export function createLocalProfileRuntime(
     unitOfWork: UnitOfWork;
     now: () => Date;
     generation: LocalGenerationRuntime;
-    events: LocalEventFactsRuntime;
     logProjectionEvent?: (input: StructuredLogInput) => Promise<void>;
   }>,
 ): LocalProfileRuntime {
@@ -97,7 +92,6 @@ export function createLocalProfileRuntime(
     nextTransactionId: () => `tx_profile_evidence_${randomUUID()}`,
   });
   let profileEvidenceBarrier: Promise<void> = Promise.resolve();
-  let projectionStatus: 'ready' | 'degraded' = 'ready';
   const checkpointRecovery = createProfileEvidenceCheckpointRecovery({
     reasoning: reasoningBehaviorRepository,
     evidence: evidenceRepositories,
@@ -249,11 +243,8 @@ export function createLocalProfileRuntime(
         ignoredCandidateCount: extracted.candidates.length - projectedCandidateCount,
         updatedAt: extracted.extractedAt,
       });
-      projectionStatus = 'ready';
     });
-    profileEvidenceBarrier = queued.catch(() => {
-      projectionStatus = 'degraded';
-    });
+    profileEvidenceBarrier = queued.catch(() => undefined);
     await profileEvidenceBarrier;
   }
 
@@ -294,16 +285,14 @@ export function createLocalProfileRuntime(
 
   async function recoverReasoningAnalysis(): Promise<void> {
     try {
-      const analysis = await refreshAndProjectReasoningAnalysis();
-      if (analysis !== undefined) projectionStatus = 'ready';
+      await refreshAndProjectReasoningAnalysis();
     } catch (error) {
-      projectionStatus = 'degraded';
       await input
         .logProjectionEvent?.({
           level: 'error',
-          component: 'ProfileProjectionRecovery',
+          component: 'UserProfileRecovery',
           correlationId: 'recover_reasoning_analysis',
-          eventCode: 'profile_projection_recovery_failed',
+          eventCode: 'user_profile_recovery_failed',
           fields: { error },
         })
         .catch(() => undefined);
@@ -375,46 +364,7 @@ export function createLocalProfileRuntime(
     return semanticCoreBootstrapBarrier;
   }
 
-  const evidencePipeline = createProfileEvidencePipeline({
-    factRepository: input.events.factRepository,
-    repositories: evidenceRepositories,
-    unitOfWork: input.unitOfWork,
-    extractorVersion: 'facts@2',
-    now: input.now,
-    nextTransactionId: () => `tx_evidence_${randomUUID()}`,
-  });
-  let evidenceBarrier: Promise<void> = Promise.resolve();
-  async function syncProfileEvidence(): Promise<void> {
-    const synchronization = evidenceBarrier.then(async () => {
-      await input.events.flush();
-      let batch;
-      do {
-        batch = await evidencePipeline.processFacts({ limit: 100 });
-      } while (batch.processed > 0);
-    });
-    evidenceBarrier = synchronization.catch(() => undefined);
-    await synchronization;
-  }
-
-  function globalProfileWindow() {
-    return {
-      from: '1970-01-01T00:00:00.000Z',
-      to: new Date(input.now().getTime() + 86_400_000).toISOString(),
-    };
-  }
-
-  async function globalProfile() {
-    await syncProfileEvidence();
-    return queryGlobalLearningProfile({
-      factRepository: input.events.factRepository,
-      evidenceRepository: evidenceRepositories.evidence,
-      timeZone: 'Asia/Shanghai',
-      window: globalProfileWindow(),
-    });
-  }
-
   const profileRoutes: ProfileRouteOptions = {
-    getGlobalProfile: globalProfile,
     async listReasoningEpisodes() {
       const episodes = [];
       for await (const episode of reasoningBehaviorRepository.listEpisodes())
@@ -430,7 +380,6 @@ export function createLocalProfileRuntime(
     reasoningBehaviorSink: reasoningBehaviorModule,
     profileRoutes,
     recoverReasoningAnalysis,
-    getProjectionStatus: () => projectionStatus,
     start() {
       void bootstrapSemanticProfileCore().catch((error) => {
         void input
@@ -448,7 +397,6 @@ export function createLocalProfileRuntime(
       await Promise.allSettled([
         profileEvidenceBarrier,
         ...(semanticCoreBootstrapBarrier === undefined ? [] : [semanticCoreBootstrapBarrier]),
-        evidenceBarrier,
       ]);
     },
   };

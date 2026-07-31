@@ -118,7 +118,7 @@ flowchart LR
 | `packages/contracts`          | Zod Schema、错误码、OpenAPI 与流式协议 |
 | `packages/ui`                 | 可复用的产品 UI 基础组件               |
 | `apps/host` / `apps/launcher` | 本地守护、版本激活、健康检查与恢复     |
-| `tools/architecture`          | 架构边界、数据键和功能等价验证         |
+| `engineering/architecture`    | 架构边界、数据键和功能等价验证         |
 
 ## Quality evidence
 

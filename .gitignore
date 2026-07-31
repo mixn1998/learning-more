@@ -10,6 +10,8 @@ node_modules/
 .learning-more-local/
 .learning-more-runtime/
 .learning-more-runtime-debug/
+.learning-more-backups/
+release/.work/
 .learning-more-build.json
 dist/
 coverage/

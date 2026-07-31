@@ -86,6 +86,7 @@ const GenerationTaskSchema: z.ZodType<GenerationTask> = z.object({
   resultRef: z.string().optional(),
   errorCode: z.string().optional(),
   leaseExpiresAt: z.string().optional(),
+  compactedAt: z.string().optional(),
 });
 
 export interface InMemoryRepositoryBacking {

@@ -9,7 +9,6 @@ import { createLocalFileEvidenceRepositories } from '../../persistence/profile-e
 import { createLocalFileReasoningBehaviorRepository } from '../../persistence/reasoning-behavior-repositories.js';
 import { createLocalFileSemanticProfileCoreRepository } from '../../persistence/semantic-profile-core-repositories.js';
 import type { LocalApplicationOptions } from './contracts.js';
-import { createLocalEventFactsRuntime } from './event-facts-runtime.js';
 import { createLocalFoundation } from './foundation.js';
 import { createLocalGenerationRuntime } from './generation-runtime.js';
 import { createLocalProfileRuntime } from './profile-runtime.js';
@@ -32,10 +31,6 @@ async function createRuntime(directory: string) {
     now: foundation.now,
     applicationOptions,
   });
-  const events = await createLocalEventFactsRuntime({
-    dataRoot: foundation.dataRoot,
-    unitOfWork: foundation.unitOfWork,
-  });
   return {
     foundation,
     profile: createLocalProfileRuntime({
@@ -43,7 +38,6 @@ async function createRuntime(directory: string) {
       unitOfWork: foundation.unitOfWork,
       now: foundation.now,
       generation,
-      events,
     }),
   };
 }
@@ -180,7 +174,5 @@ describe('local profile runtime', () => {
     }
     expect(receipts).toHaveLength(2);
     expect(receipts.every((receipt) => receipt.resourceVersion === 1)).toBe(true);
-
-    expect(profile.getProjectionStatus()).toBe('ready');
   });
 });

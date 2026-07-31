@@ -84,6 +84,7 @@ const GenerationTaskSchema = z.strictObject({
   resultRef: z.string().optional(),
   errorCode: z.string().optional(),
   leaseExpiresAt: z.string().optional(),
+  compactedAt: timestampSchema.optional(),
 });
 
 export interface LocalFileRepositories {

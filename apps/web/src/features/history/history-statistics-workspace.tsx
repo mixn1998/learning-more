@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import { Page } from '@learning-more/ui';
 
+import { HistoryCompactSelect, type HistoryCompactSelectOption } from './history-compact-select.js';
 import {
   HistorySectionTabs,
   historySectionPanelAttributes,
@@ -49,8 +50,20 @@ export type HistoryStatisticsCourse = Readonly<{
 }>;
 
 type DateRange = Readonly<{ start: string; end: string }>;
+type CourseStatusFilter = '' | HistoryStatisticsCourse['status'];
+type CourseSort = 'recent' | 'oldest' | 'duration';
 
 const DISCIPLINE_PREVIEW_LIMIT = 8;
+const COURSE_STATUS_OPTIONS: readonly HistoryCompactSelectOption<CourseStatusFilter>[] = [
+  { value: '', label: '全部状态' },
+  { value: '学习中', label: '学习中' },
+  { value: '已关闭', label: '已关闭' },
+];
+const COURSE_SORT_OPTIONS: readonly HistoryCompactSelectOption<CourseSort>[] = [
+  { value: 'recent', label: '最近完成' },
+  { value: 'oldest', label: '最早完成' },
+  { value: 'duration', label: '完成时长最多' },
+];
 
 export function HistoryStatisticsWorkspace(props: {
   readonly getSnapshot: (
@@ -70,10 +83,10 @@ export function HistoryStatisticsWorkspace(props: {
   );
   const [draftCustom, setDraftCustom] = useState(custom);
   const [rangeError, setRangeError] = useState<string>();
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<CourseStatusFilter>('');
   const [domain, setDomain] = useState('');
   const [mode, setMode] = useState('');
-  const [sort, setSort] = useState<'recent' | 'oldest' | 'duration'>('recent');
+  const [sort, setSort] = useState<CourseSort>('recent');
   const [showAllDisciplines, setShowAllDisciplines] = useState(false);
   const [hoveredWeek, setHoveredWeek] = useState<number>();
   const [focusedWeek, setFocusedWeek] = useState<number>();
@@ -299,57 +312,41 @@ export function HistoryStatisticsWorkspace(props: {
                   <span>{visibleCourses.length} 门课程</span>
                 </p>
               </div>
-              <div className="history-stat-course-tools">
-                <label>
-                  <span>课程状态</span>
-                  <select
-                    aria-label="课程状态"
-                    value={status}
-                    onChange={(event) => setStatus(event.target.value)}
-                  >
-                    <option value="">全部状态</option>
-                    <option>学习中</option>
-                    <option>已关闭</option>
-                  </select>
-                </label>
-                <label>
-                  <span>学科 / 领域</span>
-                  <select
-                    aria-label="学科 / 领域"
-                    value={domain}
-                    onChange={(event) => setDomain(event.target.value)}
-                  >
-                    <option value="">全部领域</option>
-                    {domains.map((item) => (
-                      <option key={item}>{item}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>来源模式</span>
-                  <select
-                    aria-label="来源模式"
-                    value={mode}
-                    onChange={(event) => setMode(event.target.value)}
-                  >
-                    <option value="">全部模式</option>
-                    {modes.map((item) => (
-                      <option key={item}>{item}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>排序</span>
-                  <select
-                    aria-label="排序"
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value as typeof sort)}
-                  >
-                    <option value="recent">最近完成</option>
-                    <option value="oldest">最早完成</option>
-                    <option value="duration">完成时长最多</option>
-                  </select>
-                </label>
+              <div aria-label="历史课程筛选" className="history-stat-course-tools" role="group">
+                <HistoryCompactSelect
+                  active={status !== ''}
+                  label="课程状态"
+                  onChange={setStatus}
+                  options={COURSE_STATUS_OPTIONS}
+                  value={status}
+                />
+                <HistoryCompactSelect
+                  active={domain !== ''}
+                  label="学科 / 领域"
+                  onChange={setDomain}
+                  options={[
+                    { value: '', label: '全部领域' },
+                    ...domains.map((item) => ({ value: item, label: item })),
+                  ]}
+                  value={domain}
+                />
+                <HistoryCompactSelect
+                  active={mode !== ''}
+                  label="来源模式"
+                  onChange={setMode}
+                  options={[
+                    { value: '', label: '全部模式' },
+                    ...modes.map((item) => ({ value: item, label: item })),
+                  ]}
+                  value={mode}
+                />
+                <HistoryCompactSelect
+                  active={sort !== 'recent'}
+                  label="排序"
+                  onChange={setSort}
+                  options={COURSE_SORT_OPTIONS}
+                  value={sort}
+                />
               </div>
             </div>
             {props.catalogError === undefined ? (

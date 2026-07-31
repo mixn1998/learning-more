@@ -71,6 +71,31 @@ function machineControlContext(context: TeachingContextPackage): string {
   });
 }
 
+export function renderCompactTeachingControlProtocol(context: TeachingContextPackage): string {
+  const discussionContinuation =
+    context.turnKind === 'continuation' && context.teachingState.lessonPhase === 'discussion';
+  const comprehensiveApplicationContinuation =
+    context.turnKind === 'continuation' &&
+    context.teachingState.lessonPhase === 'comprehensive_application';
+  return [
+    '【机器控制协议｜不得展示】',
+    `${REPLY_START}{学习者可见 Markdown}${REPLY_END}`,
+    `${CONTROL_START}{schemaVersion=3 的稀疏 JSON 状态变更}${CONTROL_END}`,
+    '控制 JSON 使用 schemaVersion=3。lessonPhase 每轮必须返回；每轮必须返回 turnHandoff。其余字段只返回本轮变化。',
+    'lessonPhase∈warmup|knowledge_point|comprehensive_application|discussion|summary|ready_to_close；knowledgePoints 变化项使用机器状态中的 K 编号，字段可含 status∈pending|learning|completed|skipped、interactionStatus∈pending|completed|skipped、depthPreference∈default|condensed；activeKnowledgePointRef 变化时返回 K 编号或 null。',
+    '知识点仅在必要讲解完成且相关疑问或理解障碍已处理后 completed；待回应邀请保持 learning/pending，回应后 interactionStatus=completed，跳过邀请用 skipped。每轮最多完成本轮开始时的当前知识点；下一点未实际展开前保持 pending。',
+    '完成最后一个知识点后令 activeKnowledgePointRef=null；全部知识点终态后才进入 comprehensive_application，综合应用只提供一次且终态后进入 discussion；用户明确无疑问且最终总结已输出后才进入 ready_to_close，并令 closureInquiry=confirmed_no_questions、summaryStatus=delivered。终态不得倒退。',
+    'difficultySignals 只记录当前用户原话产生的新信号，使用 K 编号和允许的 U1，kind∈answer_error|misunderstanding|not_understood|request_deeper_explanation；无新信号则省略。',
+    '仅在可见回复确有教学价值的回应邀请时令 turnHandoff=invite_response，并逐字摘录 interactionPromptExcerpt；否则用 offer_continue 且省略摘录。继续讲解不产生虚构的用户原话或理解证据。',
+    discussionContinuation
+      ? '本次续讲等同用户确认没有其他疑问：输出最终总结并进入 ready_to_close。'
+      : comprehensiveApplicationContinuation
+        ? '本次续讲等同用户输入“直接讲解”：完成综合应用讲解后令 comprehensiveApplication=completed，并进入 discussion、closureInquiry=awaiting_confirmation。'
+        : '若本次续讲跳过了待回应的当前知识点互动，令 interactionStatus=skipped，并沿既有教学路径继续。',
+    `当前机器状态：${machineControlContext(context)}`,
+  ].join('\n');
+}
+
 export function renderTeachingControlProtocol(context: TeachingContextPackage): string {
   const discussionContinuation =
     context.turnKind === 'continuation' && context.teachingState.lessonPhase === 'discussion';

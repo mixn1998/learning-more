@@ -60,6 +60,15 @@ export type LocalLearningRuntime = Readonly<{
   getProjectionStatus(): 'ready' | 'degraded';
 }>;
 
+export function activeKnowledgePointRefForProgress(
+  state: TeachingStateSnapshot | undefined,
+  firstKnowledgePointRef: string | undefined,
+): string | undefined {
+  if (state?.activeKnowledgePointRef !== undefined) return state.activeKnowledgePointRef;
+  const phase = state?.lessonPhase ?? 'warmup';
+  return phase === 'warmup' || phase === 'knowledge_point' ? firstKnowledgePointRef : undefined;
+}
+
 export function createLocalLearningRuntime(
   input: Readonly<{
     dataRoot: DataRoot;
@@ -342,16 +351,16 @@ export function createLocalLearningRuntime(
         if (!(error instanceof Error) || error.message !== 'teaching_state_not_found') throw error;
       }
       const stateByRef = new Map(state?.knowledgePoints.map((point) => [point.ref, point]));
+      const activeKnowledgePointRef = activeKnowledgePointRefForProgress(
+        state,
+        facts.lesson.coreKnowledgePoints[0]?.ref,
+      );
       return {
         ledgerVersion: state?.ledgerVersion ?? 0,
         observationStatus: state?.observationStatus ?? 'current',
         teachingWeightStatus: teachingWeightStatus(weightMetadata),
         lessonPhase: state?.lessonPhase ?? 'warmup',
-        ...(state?.activeKnowledgePointRef === undefined
-          ? facts.lesson.coreKnowledgePoints[0] === undefined
-            ? {}
-            : { activeKnowledgePointRef: facts.lesson.coreKnowledgePoints[0].ref }
-          : { activeKnowledgePointRef: state.activeKnowledgePointRef }),
+        ...(activeKnowledgePointRef === undefined ? {} : { activeKnowledgePointRef }),
         comprehensiveCheck:
           state?.comprehensiveCheck === 'passed' || state?.comprehensiveCheck === 'completed'
             ? ('completed' as const)

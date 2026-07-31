@@ -25,6 +25,7 @@ export interface GenerationTask {
   readonly resultRef?: string | undefined;
   readonly errorCode?: string | undefined;
   readonly leaseExpiresAt?: string | undefined;
+  readonly compactedAt?: string | undefined;
 }
 
 export interface GenerationAttempt {

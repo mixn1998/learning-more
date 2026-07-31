@@ -21,7 +21,7 @@ const FORMAT_EXTENSIONS = new Set([
 ]);
 const TEST_FILE = /\.(?:contract\.)?test\.(?:[cm]?js|tsx?)$/u;
 const SPECIAL_TEST_PATH = /^(?:tests\/(?:performance|recovery))\//u;
-const WORKSPACE_BASES = ['apps', 'packages', 'tools'];
+const WORKSPACE_BASES = ['apps', 'packages', 'operations', 'engineering'];
 
 function slash(value) {
   return value.replaceAll('\\', '/');
@@ -143,7 +143,7 @@ function fullVerificationReason(files) {
   if (
     files.some(
       (file) =>
-        /^(?:apps|packages|tools)\/[^/]+\/(?:package\.json|tsconfig(?:\.[^/]+)?\.json)$/u.test(
+        /^(?:apps|packages|operations|engineering)\/[^/]+\/(?:package\.json|tsconfig(?:\.[^/]+)?\.json)$/u.test(
           file,
         ) || file.startsWith('.github/workflows/'),
     )
@@ -171,7 +171,7 @@ function conditionalGates(files) {
         file.startsWith('packages/contracts/src/') ||
         file.startsWith('apps/server/src/modules/') ||
         file.startsWith('apps/server/src/bootstrap/') ||
-        file.startsWith('tools/architecture/'),
+        file.startsWith('engineering/architecture/'),
     )
   ) {
     gates.push('architecture');

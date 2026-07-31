@@ -849,7 +849,9 @@ export function createInteractiveTeaching(options: {
     } catch (error) {
       if (
         error instanceof Error &&
-        (error.message === 'teaching_control_protocol_invalid' || error.name === 'ZodError')
+        (error.message === 'teaching_control_protocol_invalid' ||
+          error.name === 'ZodError' ||
+          error.name === 'SyntaxError')
       ) {
         return;
       }

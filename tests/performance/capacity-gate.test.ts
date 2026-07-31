@@ -2,8 +2,8 @@ import { performance } from 'node:perf_hooks';
 
 import { describe, expect, it } from 'vitest';
 
-import { benchmarkQueryLatency } from '../../tools/benchmarks/src/query-latency.js';
-import { benchmarkSseLatency } from '../../tools/benchmarks/src/sse-latency.js';
+import { benchmarkQueryLatency } from '../../engineering/benchmarks/src/query-latency.js';
+import { benchmarkSseLatency } from '../../engineering/benchmarks/src/sse-latency.js';
 
 const CAPACITY = {
   courses: 2_000,

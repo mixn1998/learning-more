@@ -16,6 +16,12 @@ import type {
 } from '../ports/generation-task-repository.js';
 import { ProviderExecutionError } from '../../../ai-providers/provider.js';
 import { reasoningEffortForScenario } from '../scenario-registry.js';
+import {
+  compactGenerationTask,
+  DEFAULT_GENERATION_TASK_LIFECYCLE_POLICY,
+  shouldCompactGenerationTask,
+  type GenerationTaskLifecyclePolicy,
+} from './generation-task-lifecycle.js';
 
 export interface GenerationRuntimeOptions {
   readonly repository: GenerationTaskRepository;
@@ -46,12 +52,17 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
     config: ProviderPublicConfig,
     secrets: SecretResolver,
   ): ReturnType<AiProvider['validateConfig']>;
-  switchProvider(providerId: string): Promise<void>;
+  switchProvider(
+    providerId: string,
+    config?: ProviderPublicConfig,
+    secrets?: SecretResolver,
+  ): Promise<void>;
   describeProvider(providerId: string): ReturnType<AiProvider['describe']>;
   checkProviderHealth(providerId: string): ReturnType<AiProvider['healthCheck']>;
   getProviderStatus(): Promise<{ currentProviderId: string; providers: readonly string[] }>;
   getProviderCatalog(options?: Readonly<{ refresh?: boolean }>): Promise<ProviderCatalog>;
   startProviderAuthentication(providerId: string): Promise<'started' | 'already_authenticated'>;
+  compactTerminalTasks(policy?: GenerationTaskLifecyclePolicy): Promise<readonly GenerationTask[]>;
 } {
   const providers = new Map(
     options.providers.map((provider) => [provider.describe().id, provider]),
@@ -574,6 +585,36 @@ export function createGenerationRuntime(options: GenerationRuntimeOptions): Gene
           recovered += 1;
         }
         return recovered;
+      });
+    },
+    async compactTerminalTasks(policy = DEFAULT_GENERATION_TASK_LIFECYCLE_POLICY) {
+      return withSchedulerBarrier(async () => {
+        const lifecycleNow = now();
+        const candidates = (await allTasks()).filter((task) =>
+          shouldCompactGenerationTask(task, lifecycleNow, policy),
+        );
+        const compacted: GenerationTask[] = [];
+        for (let offset = 0; offset < candidates.length; offset += 100) {
+          const batch = candidates
+            .slice(offset, offset + 100)
+            .map((task) => compactGenerationTask(task, lifecycleNow));
+          await options.unitOfWork.execute(
+            { transactionId: `tx_generation_lifecycle_${randomUUID()}` },
+            async (tx) => {
+              for (const task of batch) {
+                await options.repository.save(tx, task, task.resourceVersion);
+              }
+            },
+          );
+          for (const task of batch) {
+            const stored = await options.repository.get(task.id);
+            if (stored === undefined) throw new Error('GENERATION_TASK_NOT_PERSISTED');
+            (await indexedTasks()).set(stored.id, stored);
+            publish(stored);
+            compacted.push(stored);
+          }
+        }
+        return compacted;
       });
     },
     drainQueued,

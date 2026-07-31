@@ -599,43 +599,41 @@ export async function registerLearningSessionRoutes(
       const correlation = correlationId(request, options);
       try {
         const reference = await options.resolveSession(request.params.sessionId);
-        await options.reconcileSession?.(reference, correlation);
-        const view = await options.module.query(
-          { type: 'GetLessonLearning', lessonId: reference.lessonId },
-          buildQueryContext(correlation, options.now()),
-        );
-        const markdown =
+        const [view, storedMessages, teachingProgress] = await Promise.all([
+          options.module.query(
+            { type: 'GetLessonLearning', lessonId: reference.lessonId },
+            buildQueryContext(correlation, options.now()),
+          ),
+          options.listSessionMessages?.(request.params.sessionId) ?? Promise.resolve(undefined),
+          options.getTeachingProgress?.(request.params.sessionId).catch(() => undefined) ??
+            Promise.resolve(undefined),
+        ]);
+        const [markdown, messages] = await Promise.all([
           view.finalReview === undefined
-            ? undefined
-            : await options.loadArtifactMarkdown?.(view.finalReview.artifactRef);
-        const storedMessages =
-          options.listSessionMessages === undefined
-            ? undefined
-            : await options.listSessionMessages(request.params.sessionId);
-        const teachingProgress = await options.getTeachingProgress?.(request.params.sessionId);
-        const messages =
+            ? Promise.resolve(undefined)
+            : (options.loadArtifactMarkdown?.(view.finalReview.artifactRef) ??
+              Promise.resolve(undefined)),
           storedMessages === undefined
-            ? undefined
-            : collapseRetryDuplicateUserMessages(
-                await Promise.all(
-                  storedMessages.map(async (message) => ({
-                    id: message.id,
-                    role: message.role,
-                    createdAt: message.createdAt,
-                    markdown:
-                      (await options.loadArtifactMarkdown?.(message.contentArtifactRef)) ?? '',
-                    ...(message.completionStatus === undefined
-                      ? {}
-                      : { completionStatus: message.completionStatus }),
-                    ...(message.generationTaskId === undefined
-                      ? {}
-                      : { generationTaskId: message.generationTaskId }),
-                    ...(message.knowledgePointRef === undefined
-                      ? {}
-                      : { knowledgePointRef: message.knowledgePointRef }),
-                  })),
-                ),
-              );
+            ? Promise.resolve(undefined)
+            : Promise.all(
+                storedMessages.map(async (message) => ({
+                  id: message.id,
+                  role: message.role,
+                  createdAt: message.createdAt,
+                  markdown:
+                    (await options.loadArtifactMarkdown?.(message.contentArtifactRef)) ?? '',
+                  ...(message.completionStatus === undefined
+                    ? {}
+                    : { completionStatus: message.completionStatus }),
+                  ...(message.generationTaskId === undefined
+                    ? {}
+                    : { generationTaskId: message.generationTaskId }),
+                  ...(message.knowledgePointRef === undefined
+                    ? {}
+                    : { knowledgePointRef: message.knowledgePointRef }),
+                })),
+              ).then(collapseRetryDuplicateUserMessages),
+        ]);
         const sourceMessageIds =
           messages
             ?.filter((message) => message.completionStatus !== 'interrupted')
@@ -680,6 +678,9 @@ export async function registerLearningSessionRoutes(
                 },
               }),
         });
+        void Promise.resolve()
+          .then(() => options.reconcileSession?.(reference, correlation))
+          .catch(() => undefined);
         return reply.header('etag', `"${view.resourceVersion}"`).code(200).send(response);
       } catch (error) {
         const problem = mapApplicationError(error, correlation);

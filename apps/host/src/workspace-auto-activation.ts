@@ -9,14 +9,19 @@ const ROOT_FILES = new Set([
   'pnpm-workspace.yaml',
   'tsconfig.base.json',
 ]);
-const SOURCE_ROOTS = new Set(['apps', 'packages', 'tools']);
+const SOURCE_ROOTS = new Set(['apps', 'operations', 'packages']);
 const IGNORED_SEGMENTS = new Set([
   '.git',
   '.learning-more-data',
   '.learning-more-local',
   '.learning-more-runtime',
+  'coverage',
   'dist',
+  'fixtures',
   'node_modules',
+  'test',
+  'tests',
+  '__tests__',
 ]);
 
 export function isActivationRelevantPath(relativePath: string): boolean {
@@ -26,7 +31,8 @@ export function isActivationRelevantPath(relativePath: string): boolean {
   const sourceRoot = segments[0];
   if (sourceRoot === undefined || segments.length < 2 || !SOURCE_ROOTS.has(sourceRoot))
     return false;
-  return !segments.some((segment) => IGNORED_SEGMENTS.has(segment));
+  if (segments.some((segment) => IGNORED_SEGMENTS.has(segment.toLowerCase()))) return false;
+  return !/\.(?:test|spec)\.[^/]+$/u.test(segments.at(-1)?.toLowerCase() ?? '');
 }
 
 async function writeActivationRequest(requestPath: string, requestId: string): Promise<void> {

@@ -4,6 +4,29 @@ import { createCodexCliAdapter } from './codex-cli-adapter.js';
 import { createCliProvider } from './cli-provider.js';
 
 describe('real CLI provider', () => {
+  it('restores a complete persisted selection without probing the external CLI', async () => {
+    const probe = vi.fn(async () => {
+      throw new Error('external_probe_must_not_run_during_restore');
+    });
+    const provider = createCliProvider({
+      id: 'codex-cli',
+      executable: 'codex.exe',
+      adapter: {
+        probe,
+        validateSelection: vi.fn(),
+        startLogin: vi.fn(),
+        generate: vi.fn(),
+      },
+    });
+
+    await provider.configure?.(
+      { model: 'gpt-5.6-sol', reasoningEffort: 'high' },
+      async () => undefined,
+    );
+
+    expect(probe).not.toHaveBeenCalled();
+  });
+
   it('uses the live adapter catalog for health, selection, and generation', async () => {
     const longPrompt = 'Explain the topic. '.repeat(2_500);
     const run = vi.fn(async (_executable: string, arguments_: readonly string[]) => {

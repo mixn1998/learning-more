@@ -65,11 +65,11 @@ jobs:
         run: |
           $portable = (Resolve-Path 'release/dist/portable/Learning MORE').Path
           $smoke = Join-Path $env:RUNNER_TEMP 'Learning MORE 离线 发布验证'
-          $smokeReport = & node tools/release/dist/portable-smoke.js $portable $smoke
+          $smokeReport = & node operations/release/dist/portable-smoke.js $portable $smoke
           if ($LASTEXITCODE -ne 0) { throw 'portable smoke failed' }
           $smokeReport | Set-Content -LiteralPath artifacts/release/portable-smoke.json -Encoding utf8
           $runtime = Join-Path $portable 'runtime/node.exe'
-          $cli = Join-Path $portable 'tools/cli/dist/main.js'
+          $cli = Join-Path $portable 'operations/maintenance/dist/main.js'
           $data = Join-Path $smoke 'data'
           $backup = Join-Path $smoke 'backup-output'
           $verifyReport = & $runtime $cli verify $data

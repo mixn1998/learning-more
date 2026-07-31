@@ -211,8 +211,11 @@ describe('GenerationTeachingAgent', () => {
     const prompt = fake.request()?.prompt ?? '';
     expect(prompt).toContain('goal-5；goal-6；goal-7');
     expect(prompt).not.toContain('goal-0');
-    expect(prompt).toContain('lesson-title-3');
-    expect(prompt).toContain('lesson-title-10');
+    expect(prompt).toContain('lesson-title-5');
+    expect(prompt).toContain('lesson-title-6');
+    expect(prompt).toContain('lesson-title-7');
+    expect(prompt).not.toContain('lesson-title-3');
+    expect(prompt).not.toContain('lesson-title-10');
     expect(prompt).not.toContain('lesson-title-11');
   });
 
@@ -311,8 +314,47 @@ describe('GenerationTeachingAgent', () => {
     const prompt = fake.request()?.prompt ?? '';
     expect(prompt).toContain('学习者：把右侧规则改成 x+1，左右两侧都会趋近于 2。');
     expect(prompt).toContain('教学助手：这说明连续要求左右极限相等，并且共同极限还要等于函数值。');
-    expect(prompt).toContain('不要用改写、重算或复述已有内容代替深化');
+    expect(prompt).toContain('不得以改写和复述冒充深化');
     expect(prompt).not.toContain('【当前诉求｜用户原话】');
+  });
+
+  it('renders earlier learner meaning as compact ledger signals', async () => {
+    const fake = runtime();
+    const base = context();
+    const agent = createGenerationTeachingAgent({ runtime: fake.value, providerId: 'mock' });
+
+    await agent.submit(
+      {
+        ...base,
+        turnKind: 'continuation',
+        teachingState: {
+          ...base.teachingState,
+          recentLearnerSignals: [
+            {
+              entryId: 'signal_1',
+              summary: '学习者能区分左右条件，但还没有说明一致性为何必要。',
+              explicitness: 'ai_observed',
+              sourceRefs: ['message:message_earlier'],
+            },
+          ],
+        },
+        recentMessages: [
+          {
+            messageId: 'message_latest_assistant',
+            role: 'assistant',
+            completionStatus: 'complete',
+            markdown: '最近一批讲解原文。',
+            sourceRef: 'message:message_latest_assistant',
+          },
+        ],
+      },
+      'continuation:session_semantic_memory',
+    );
+
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('【近期学习信号】');
+    expect(prompt).toContain('学习者能区分左右条件，但还没有说明一致性为何必要。');
+    expect(prompt).toContain('教学助手：最近一批讲解原文。');
   });
 
   it('treats continuation during discussion as explicit confirmation of no further questions', async () => {
@@ -335,7 +377,7 @@ describe('GenerationTeachingAgent', () => {
     );
 
     const prompt = fake.request()?.prompt ?? '';
-    expect(prompt).toContain('答疑阶段点击“继续讲解”等同于明确确认没有其他疑问');
+    expect(prompt).toContain('在答疑阶段点击“继续讲解”，等同于明确确认没有其他疑问');
     expect(prompt).toContain(
       '输出本课最终总结，并在同一轮把状态设为 ready_to_close、confirmed_no_questions、delivered',
     );
@@ -361,9 +403,9 @@ describe('GenerationTeachingAgent', () => {
     );
 
     const prompt = fake.request()?.prompt ?? '';
-    expect(prompt).toContain('综合应用阶段点击“继续讲解”等同于学习者输入“直接讲解”');
+    expect(prompt).toContain('综合应用阶段点击“继续讲解”，等同于输入“直接讲解”');
     expect(prompt).toContain('直接示范并讲清该综合应用');
-    expect(prompt).toContain('不要把该操作记为学习者作答或理解证据');
+    expect(prompt).toContain('不是学习者作答或理解证据');
     expect(prompt).not.toContain('表示学习者选择暂不回答并沿既有教学路径继续');
   });
 
@@ -403,7 +445,7 @@ describe('GenerationTeachingAgent', () => {
 
     const prompt = fake.request()?.prompt ?? '';
     expect(prompt).toContain('后续课（尚未学习，仅用于理解方向）');
-    expect(prompt).toContain('后续课节标题只表示教学方向，不代表相关术语已经建立');
+    expect(prompt).toContain('课序和标题仅表示知识关系');
     expect(prompt).not.toContain('与下一节点的关系：为下一步理解提供基础');
   });
 
@@ -452,7 +494,6 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain('下一主链节点保持 pending');
     expect(prompt).toContain('不要在同一可见回复中展开下一节点');
     expect(prompt).not.toContain('把相邻下一点设为 learning');
-    expect(prompt).toContain('界面在每次完整回复后始终提供“继续讲解”');
     expect(prompt).not.toContain('直接在同一回复中自然衔接并开始下一知识点');
   });
 
@@ -486,7 +527,7 @@ describe('GenerationTeachingAgent', () => {
     const prompt = fake.request()?.prompt ?? '';
     expect(prompt).toContain('最后一个主链节点完成后可以把下一阶段置为 comprehensive_application');
     expect(prompt).toContain('综合应用在下一轮展开');
-    expect(prompt).toContain('完成最后一个知识点后可以清除 activeKnowledgePointRef');
+    expect(prompt).toContain('完成最后一个知识点后令 activeKnowledgePointRef=null');
   });
 
   it('submits materialized context with one stable capability contract and no scene template', async () => {
@@ -512,42 +553,22 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain(
       'Prefer concrete situations when they create a useful learning opportunity.',
     );
-    expect(fake.request()?.prompt).toContain('课程邻接探索');
-    expect(fake.request()?.prompt).toContain('把选择权交给学习者');
     const prompt = fake.request()?.prompt ?? '';
     expect(prompt).toContain('【教学目标】');
     expect(prompt).toContain('以学习者形成清晰、准确、能够支撑后续理解的知识结构为最高目标');
-    expect(prompt).toContain('自主选择此刻最有教学价值的教学动作');
-    expect(prompt).toContain('讲解深度、表达方式、互动形式和衔接范围由你判断');
-    expect(prompt).toContain('使学习者理解它针对什么困难、已有认识为什么不足');
-    expect(prompt).toContain('它增加了什么判断或解决能力');
-    expect(prompt).toContain('再自然建立精确定义');
-    expect(prompt).not.toContain('优先以精确定义建立共同基准');
-    expect(prompt.indexOf('它针对什么困难')).toBeLessThan(prompt.indexOf('再自然建立精确定义'));
-    expect(prompt).toContain('若新对象是已有对象的新表示');
-    expect(prompt).toContain('什么被重新表示、哪些信息或关系得到保留');
-    expect(prompt).toContain('新表示为什么更适合当前问题');
-    expect(prompt).toContain('随后进行的操作如何对应原对象');
-    expect(prompt.indexOf('建立两者的对应关系')).toBeLessThan(
-      prompt.indexOf('再使用新表示继续推理'),
-    );
-    expect(prompt).toContain('首次引入不能仅凭名称理解的新对象时');
-    expect(prompt).toContain('它从何而来、与当前主线有何关系、为何此刻需要讨论');
-    expect(prompt).toContain('不能根据课程顺序、课节标题或先修关系推定概念已经建立');
-    expect(prompt).toContain('上一节课 Review 的核心思想');
-    expect(prompt).toContain('缺少证据时');
-    expect(prompt).toContain('补足理解当前内容所需的最小桥梁');
-    expect(prompt).toContain('各独立语义条件共同如何充分刻画目标');
-    expect(prompt).toContain('删减、放宽或替换条件后的反例');
-    expect(prompt).toContain('不要求套用固定段落或逐项盘问');
-    expect(prompt).toContain('当前结论如何产生新的问题');
-    expect(prompt).toContain('下一概念为什么由此成为必要');
-    expect(prompt).toContain('尚未学习的后续内容不能作为当前论证的未解释前提');
+    expect(prompt).toContain('自主选择最有教学价值的动作');
+    expect(prompt).toContain('深度、表达、互动和衔接方式不套固定模板');
+    expect(prompt).toContain('它从何而来、解决什么不足、与当前主线如何相连');
+    expect(prompt).toContain('表示转换还要说明新旧对象的对应、保留信息和操作含义');
+    expect(prompt).toContain('不得仅凭课程顺序或标题假定前提已学');
+    expect(prompt).toContain('上一节 Review 核心思想');
+    expect(prompt).toContain('条件合起来为何充分、关键要素为何必要');
+    expect(prompt).toContain('让知识点沿问题与结论的关系推进');
     expect(prompt).toContain('【上一节课学习证据】');
     expect(prompt).toContain('上一节已完成课节“概率空间”的 Review 核心思想');
     expect(prompt).toContain('样本空间描述随机试验的全部可能结果');
-    expect(prompt).toContain('先判断缺失的是定义、判据、概念边界还是中间推理');
-    expect(prompt).toContain('只有学习者参与会为后续教学带来真实信息或思考价值时才发起互动');
+    expect(prompt).toContain('定位并修复真正缺失的定义、边界或中间推理');
+    expect(prompt).toContain('仅在学习者参与会带来真实教学信息或思考价值时发起互动');
     expect(prompt).not.toContain('语言表达、叙事节奏和互动方式应随课程大纲的目标');
     expect(prompt.match(/【教学目标】/gu)).toHaveLength(1);
     expect(prompt.indexOf('【教学目标】')).toBeLessThan(prompt.indexOf('【通用教学原则】'));
@@ -557,7 +578,7 @@ describe('GenerationTeachingAgent', () => {
     expect(prompt).toContain('【当前教学阶段】');
     expect(prompt).not.toContain('本回合只处理');
     expect(fake.request()?.prompt).toContain('综合应用只提供一次');
-    expect(fake.request()?.prompt).toContain('只有学习者明确没有疑问或无需继续讲解后');
+    expect(fake.request()?.prompt).toContain('用户明确无疑问且最终总结已输出后');
     expect(prompt).not.toContain('学习者已经实质回应互动或明确跳过互动');
     expect(prompt).not.toContain('首次完整讲解并发出互动邀请时必须');
     expect(prompt).not.toContain('形成可回应的互动');
@@ -577,13 +598,12 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).toContain(
       'warmup|knowledge_point|comprehensive_application|discussion|summary|ready_to_close',
     );
-    expect(fake.request()?.prompt).toContain('knowledgePoints 仅列变化项');
+    expect(fake.request()?.prompt).toContain('knowledgePoints 变化项');
     expect(fake.request()?.prompt).toContain('interactionStatus');
     expect(fake.request()?.prompt).toContain('difficultySignals');
     expect(fake.request()?.prompt).not.toContain('verificationSignals');
     expect(fake.request()?.prompt).not.toContain('连续两次回答正确');
     expect(fake.request()?.prompt).toContain('answer_error');
-    expect(fake.request()?.prompt).toContain('延伸、脑洞或相邻探索不计');
     expect(fake.request()?.prompt).toContain('"allowedDifficultySignalSourceMessageId":"U1"');
     expect(fake.request()?.prompt).toContain('"comprehensiveApplication":"pending"');
     expect(fake.request()?.prompt).toContain('"ref":"K1"');
@@ -591,6 +611,7 @@ describe('GenerationTeachingAgent', () => {
     expect(fake.request()?.prompt).not.toContain('TeachingScopeEnvelope');
     expect(fake.request()?.prompt).not.toContain('off_scope');
     expect(fake.request()?.prompt?.match(/Explain this systematically\./gu)).toHaveLength(1);
+    expect(prompt.length).toBeLessThan(4_000);
     for (const internalValue of [
       'courseId',
       'lessonId',
@@ -642,8 +663,10 @@ describe('GenerationTeachingAgent', () => {
       'message_user_visual',
     );
 
-    expect(fake.request()?.prompt).toContain('```math-plot');
-    expect(fake.request()?.prompt).toContain('vectorField2d');
+    const prompt = fake.request()?.prompt ?? '';
+    expect(prompt).toContain('```math-plot');
+    expect(prompt).toContain('vectorField2d');
+    expect(prompt.length).toBeLessThan(4_500);
     expect(fake.request()?.reasoningEffort).toBe('medium');
   });
 

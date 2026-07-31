@@ -37,7 +37,6 @@ export async function assembleLocalApplication(
     unitOfWork,
     now: runtimeNow,
     generation,
-    events,
     ...(options.logProjectionEvent === undefined
       ? {}
       : { logProjectionEvent: options.logProjectionEvent }),
@@ -51,7 +50,6 @@ export async function assembleLocalApplication(
     events,
     profile,
   });
-  await course.reconcileOutlineLiveReferences();
   const { courseRepositories } = course;
   const learning = createLocalLearningRuntime({
     dataRoot,
@@ -97,7 +95,6 @@ export async function assembleLocalApplication(
       ? {}
       : { reconcileIntervalMs: options.lessonClosureReconcileIntervalMs }),
   });
-  await review.recoverCommittingClosures();
   const insights = createLocalInsightsRuntime({
     dataRoot,
     unitOfWork,
@@ -108,19 +105,28 @@ export async function assembleLocalApplication(
     course,
     learning,
   });
-  await insights.start();
-  await generationRuntime.recoverExpiredLeases();
-  // Candidate tasks need the authoring coordinator after execution so their
-  // Markdown is compiled and the outline session is advanced. Resume both
-  // pending work and terminal tasks whose authoring projection was not saved.
-  const startupRecoveries = [
-    course.recoverInterruptedAuthoringTurns().catch(() => undefined),
-    course.recoverGenerationTasks().catch(() => undefined),
-    course.recoverTeachingWeightMetadata().catch(() => undefined),
-  ];
-  // Teaching observations are derived from durable session history. Rebuild them in the
-  // background so an unrelated historical session cannot delay course authoring or startup.
-  startupRecoveries.push(learning.recoverTeachingSessions().catch(() => undefined));
+  const startupRecovery = (async () => {
+    const recover = async (operation: () => Promise<unknown>) => {
+      try {
+        await operation();
+      } catch {
+        // Durable state remains available and the next startup/reconciler can retry.
+      }
+    };
+    // Only the transaction journal is recovered before HTTP starts. Historical cleanup,
+    // schedulers and resumable tasks are durable and can recover without blocking reads.
+    await recover(() => course.reconcileOutlineLiveReferences());
+    await recover(() => review.recoverCommittingClosures());
+    await recover(() => insights.start());
+    await recover(() => generationRuntime.recoverExpiredLeases());
+    await recover(() => generation.runLifecycleMaintenance());
+    await Promise.all([
+      recover(() => course.recoverInterruptedAuthoringTurns()),
+      recover(() => course.recoverGenerationTasks()),
+      recover(() => course.recoverTeachingWeightMetadata()),
+      recover(() => learning.recoverTeachingSessions()),
+    ]);
+  })();
   profile.start();
   let backgroundRecovery: Promise<void> | undefined;
   const startBackgroundRecovery = () => {
@@ -129,10 +135,7 @@ export async function assembleLocalApplication(
       await profile.recoverReasoningAnalysis();
     })().catch(() => undefined);
   };
-  const getProjectionStatus = () =>
-    learning.getProjectionStatus() === 'ready' && profile.getProjectionStatus() === 'ready'
-      ? ('ready' as const)
-      : ('degraded' as const);
+  const getProjectionStatus = () => learning.getProjectionStatus();
   const readiness = createRuntimeReadiness({
     runtimeIdentity: options.runtimeIdentity,
     instanceId: runtimeInstanceId,
@@ -196,12 +199,13 @@ export async function assembleLocalApplication(
   return {
     close: async () => {
       await Promise.allSettled([
-        ...startupRecoveries,
+        startupRecovery,
         ...(backgroundRecovery === undefined ? [] : [backgroundRecovery]),
       ]);
       await profile.close();
       await review.close();
       await insights.close();
+      await generation.close();
     },
     serverDependencies,
     courseRepositories,

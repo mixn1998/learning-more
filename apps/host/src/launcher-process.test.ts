@@ -66,6 +66,9 @@ describe('commandMatchesLauncher', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ state: 'healthy' }), { status: 200 }))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ status: 'ready', buildId: 'build-new' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ buildId: 'build-new' }), { status: 200 }),
       );
     vi.stubGlobal('fetch', fetch);
 
@@ -93,10 +96,34 @@ describe('commandMatchesLauncher', () => {
         )
         .mockResolvedValueOnce(
           new Response(JSON.stringify({ status: 'ready', buildId: 'build-new' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ buildId: 'build-new' }), { status: 200 }),
         ),
     );
 
     await expect(waitForLauncherReady('build-new', 100)).resolves.toBeUndefined();
+  });
+
+  it('rejects a candidate whose served frontend identity is stale', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/control/')) {
+          return new Response(JSON.stringify({ state: 'healthy' }), { status: 200 });
+        }
+        if (url.includes('/runtime/ready')) {
+          return new Response(
+            JSON.stringify({ status: 'ready', buildId: 'build-new' }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ buildId: 'development' }), { status: 200 });
+      }),
+    );
+
+    await expect(waitForLauncherReady('build-new', 25)).rejects.toThrow('launcher_ready_timeout');
   });
 
   it('does not report an adopted Launcher exit from a transient observation failure', async () => {

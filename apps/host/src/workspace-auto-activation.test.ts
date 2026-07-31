@@ -9,8 +9,11 @@ describe('workspace auto activation', () => {
   it('only treats runtime source and build configuration as activation relevant', () => {
     expect(isActivationRelevantPath('apps/server/src/main.ts')).toBe(true);
     expect(isActivationRelevantPath('packages/contracts/src/review.ts')).toBe(true);
+    expect(isActivationRelevantPath('operations/maintenance/src/main.ts')).toBe(true);
     expect(isActivationRelevantPath('pnpm-lock.yaml')).toBe(true);
     expect(isActivationRelevantPath('apps/server/dist/main.js')).toBe(false);
+    expect(isActivationRelevantPath('apps/server/src/main.test.ts')).toBe(false);
+    expect(isActivationRelevantPath('engineering/architecture/src/check.ts')).toBe(false);
     expect(isActivationRelevantPath('apps/server/node_modules/pkg/index.js')).toBe(false);
     expect(isActivationRelevantPath('docs/notes.md')).toBe(false);
     expect(isActivationRelevantPath('.learning-more-data/entities/task.json')).toBe(false);
