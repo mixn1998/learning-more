@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildHostManagementCommand,
   buildPortableStartCommand,
+  cleanupPortableWorkRoot,
   portableWebBuildSettings,
   resolvePortableBuildPaths,
 } from './build-portable.js';
@@ -56,5 +57,18 @@ describe('portable Windows entry commands', () => {
         VITE_OUT_DIR: 'D:\\runtime\\requests\\request_01\\attempt_1\\work\\web-dist',
       }),
     });
+  });
+
+  it('does not discard a completed candidate when disposable work-root cleanup is blocked', async () => {
+    const remove = async () => {
+      throw Object.assign(new Error('file_in_use'), { code: 'EPERM' });
+    };
+
+    await expect(
+      cleanupPortableWorkRoot(
+        'D:\\runtime\\requests\\request_01\\attempt_1\\work',
+        remove as typeof import('node:fs/promises').rm,
+      ),
+    ).resolves.toBeUndefined();
   });
 });

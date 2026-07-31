@@ -214,6 +214,18 @@ export type PortableBuildOptions = Readonly<{
   writeWorkspaceManifest?: boolean;
 }>;
 
+export async function cleanupPortableWorkRoot(
+  workRoot: string,
+  remove: typeof rm = rm,
+): Promise<void> {
+  await remove(workRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 200,
+  }).catch(() => undefined);
+}
+
 export function resolvePortableBuildPaths(
   projectRoot: string,
   options: PortableBuildOptions = {},
@@ -451,8 +463,8 @@ export async function buildPortableRelease(
   if (options.writeWorkspaceManifest ?? true) {
     await writeWorkspaceBuildManifest(projectRoot, sourceIdentity, buildId);
   }
+  await cleanupPortableWorkRoot(workRoot);
   process.stdout.write(`${JSON.stringify(result)}\n`);
-  await rm(workRoot, { recursive: true, force: true });
   return result;
 }
 
