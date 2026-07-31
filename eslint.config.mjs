@@ -7,18 +7,13 @@ import tseslint from 'typescript-eslint';
 export default defineConfig(
   globalIgnores([
     '.git/**',
+    '.local/**',
     '.corepack/**',
-    '.pnpm-home/**',
-    '.npm-cache/**',
-    '.playwright-browsers/**',
-    '.superpowers/**',
-    'artifacts/**',
+    '.learning-more-*/**',
     '**/coverage/**',
     '**/dist/**',
     'docs/**',
     'node_modules/**',
-    '**/playwright-report/**',
-    '**/test-results/**',
   ]),
   {
     files: ['**/*.{js,cjs,mjs}'],

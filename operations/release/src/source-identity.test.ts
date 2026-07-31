@@ -35,8 +35,8 @@ describe('release source identity', () => {
     expect(isProductSourcePath('apps/server/src/main.test.ts')).toBe(false);
     expect(isProductSourcePath('apps/server/tests/runtime.test.ts')).toBe(false);
     expect(isProductSourcePath('engineering/architecture/src/check.ts')).toBe(false);
-    expect(isProductSourcePath('tests/e2e/runtime.spec.ts')).toBe(false);
-    expect(isProductSourcePath('release/dist/package.zip')).toBe(false);
+    expect(isProductSourcePath('engineering/tests/e2e/runtime.spec.ts')).toBe(false);
+    expect(isProductSourcePath('.local/generated/release/package.zip')).toBe(false);
   });
 
   it('is deterministic for the same ordered workspace contents', async () => {

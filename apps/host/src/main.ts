@@ -259,7 +259,11 @@ export async function runHost(projectRoot: string): Promise<void> {
         ...(identity.portable ? {} : { activationRequestPath, activationStatusPath }),
         acceptedCommandMarkers:
           releaseRoot === resolvedRoot && !identity.portable
-            ? [selected.launcherEntry, path.join('tools', 'start-learning-more.mjs')]
+            ? [
+                selected.launcherEntry,
+                path.join('operations', 'scripts', 'start-learning-more.mjs'),
+                path.join('tools', 'start-learning-more.mjs'),
+              ]
             : [selected.launcherEntry],
         observeProcess: observeWindowsProcess,
       });

@@ -7,8 +7,7 @@ const EXPLICIT_VISUAL_REQUEST =
   /(?:画(?:一|个|张|下)?图|图示|作图|绘图|可视化|坐标图|函数图|曲线图|用图|看图)/u;
 const MATHEMATICAL_VISUAL_TOPIC =
   /(?:函数|图像|曲线|坐标(?:系|轴|表示)?|向量|几何|微积分|导数|积分|极限|切线|极值|标量场|向量场|相图|相轨迹|曲面|微分方程)/u;
-const MATHEMATICAL_COURSE =
-  /(?:数学|代数|微积分|几何|概率|统计|数理|方程|拓扑|解析|离散数学)/u;
+const MATHEMATICAL_COURSE = /(?:数学|代数|微积分|几何|概率|统计|数理|方程|拓扑|解析|离散数学)/u;
 
 function currentUserRequest(context: TeachingContextPackage): string {
   return (

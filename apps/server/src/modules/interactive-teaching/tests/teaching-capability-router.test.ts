@@ -69,9 +69,9 @@ describe('capabilitiesForTeachingTurn', () => {
 
   it('makes geometric tools available throughout mathematical courses', () => {
     expect(
-      capabilitiesForTeachingTurn(
-        context('继续讲解', '初等行变换的可逆性', '线性代数'),
-      ).has('math-plot'),
+      capabilitiesForTeachingTurn(context('继续讲解', '初等行变换的可逆性', '线性代数')).has(
+        'math-plot',
+      ),
     ).toBe(true);
   });
 

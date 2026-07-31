@@ -219,10 +219,10 @@ export function resolvePortableBuildPaths(
   options: PortableBuildOptions = {},
 ): Readonly<{ outputRoot: string; workRoot: string; expandedRoot: string }> {
   const outputRoot = path.win32.resolve(
-    options.outputRoot ?? path.win32.join(projectRoot, 'release', 'dist'),
+    options.outputRoot ?? path.win32.join(projectRoot, '.local', 'generated', 'release'),
   );
   const workRoot = path.win32.resolve(
-    options.workRoot ?? path.win32.join(projectRoot, 'release', '.work'),
+    options.workRoot ?? path.win32.join(projectRoot, '.local', 'generated', 'release', '.work'),
   );
   return {
     outputRoot,
@@ -367,7 +367,10 @@ export async function buildPortableRelease(
     `${JSON.stringify({ currentStoreSchemaVersion: 1, supportedMigrationFrom: [1] })}\n`,
     'utf8',
   );
-  await cp(path.join(projectRoot, 'release', 'README.txt'), path.join(expandedRoot, 'README.txt'));
+  await cp(
+    path.join(projectRoot, 'operations', 'release', 'assets', 'README.txt'),
+    path.join(expandedRoot, 'README.txt'),
+  );
   await writeFile(path.join(expandedRoot, 'START.cmd'), buildPortableStartCommand(), 'utf8');
   await writeFile(
     path.join(expandedRoot, 'INSTALL-AUTOSTART.cmd'),

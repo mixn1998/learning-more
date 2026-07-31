@@ -202,12 +202,18 @@ export function runEquivalenceCheck(
   repositoryRoot: string,
   options: Readonly<{ release?: boolean }> = {},
 ): number {
-  const matrixPath = path.join(repositoryRoot, 'docs/架构方案/equivalence-matrix.yaml');
-  const sourcePath = path.join(repositoryRoot, 'docs/基础模块功能等价清单与回归基线.md');
+  const matrixPath = path.join(
+    repositoryRoot,
+    'engineering/architecture/fixtures/equivalence-matrix.yaml',
+  );
+  const sourcePath = path.join(
+    repositoryRoot,
+    'engineering/architecture/fixtures/equivalence-baseline.md',
+  );
   const entries = readEquivalenceMatrix(matrixPath);
   const sourceEntries = extractEquivalenceSource(readFileSync(sourcePath, 'utf8'));
   const issues: unknown[] = [
-    ...checkEquivalence(entries, 72, (testPath) =>
+    ...checkEquivalence(entries, 71, (testPath) =>
       existsSync(path.resolve(repositoryRoot, testPath)),
     ),
     ...checkEquivalenceSource(entries, sourceEntries),

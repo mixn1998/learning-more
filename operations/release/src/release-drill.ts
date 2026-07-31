@@ -166,7 +166,13 @@ export async function executeReleaseDrill(
   const secondBuild = run('portable-build-2', ['release:portable']);
   const secondPortable = portableResult(secondBuild);
 
-  const unicodeRoot = path.join(projectRoot, 'release', 'dist', '全新 Windows 用户 空格路径');
+  const unicodeRoot = path.join(
+    projectRoot,
+    '.local',
+    'generated',
+    'release',
+    '全新 Windows 用户 空格路径',
+  );
   if (secondPortable !== undefined && secondBuild.status === 'passed') {
     const copiedPortable = path.join(unicodeRoot, 'Learning MORE');
     await rm(unicodeRoot, { recursive: true, force: true });
@@ -226,7 +232,7 @@ export async function executeReleaseDrill(
     },
     steps,
   };
-  const artifactDirectory = path.join(projectRoot, 'artifacts', 'release');
+  const artifactDirectory = path.join(projectRoot, '.local', 'artifacts', 'release');
   await mkdir(artifactDirectory, { recursive: true });
   await writeFile(
     path.join(artifactDirectory, 'release-drill.json'),

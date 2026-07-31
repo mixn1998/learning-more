@@ -36,18 +36,25 @@ afterEach(async () => {
 describe('commandMatchesLauncher', () => {
   it('accepts the direct Launcher entry and the verified workspace wrapper', () => {
     const launcherEntry = 'D:\\workspace\\Learning MORE\\apps\\launcher\\dist\\main.js';
-    const wrapperEntry = 'tools\\start-learning-more.mjs';
+    const wrapperEntry = 'operations\\scripts\\start-learning-more.mjs';
+    const legacyWrapperEntry = 'tools\\start-learning-more.mjs';
 
     expect(
       commandMatchesLauncher(
         '"C:\\Program Files\\nodejs\\node.exe" "D:\\workspace\\Learning MORE\\apps\\launcher\\dist\\main.js"',
-        [launcherEntry, wrapperEntry],
+        [launcherEntry, wrapperEntry, legacyWrapperEntry],
       ),
     ).toBe(true);
     expect(
       commandMatchesLauncher(
-        '"C:\\Program Files\\nodejs\\node.exe" tools/start-learning-more.mjs',
-        [launcherEntry, wrapperEntry],
+        '"C:\\Program Files\\nodejs\\node.exe" operations/scripts/start-learning-more.mjs',
+        [launcherEntry, wrapperEntry, legacyWrapperEntry],
+      ),
+    ).toBe(true);
+    expect(
+      commandMatchesLauncher(
+        '"C:\\Program Files\\nodejs\\node.exe" tools\\start-learning-more.mjs',
+        [launcherEntry, wrapperEntry, legacyWrapperEntry],
       ),
     ).toBe(true);
   });
@@ -114,10 +121,9 @@ describe('commandMatchesLauncher', () => {
           return new Response(JSON.stringify({ state: 'healthy' }), { status: 200 });
         }
         if (url.includes('/runtime/ready')) {
-          return new Response(
-            JSON.stringify({ status: 'ready', buildId: 'build-new' }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ status: 'ready', buildId: 'build-new' }), {
+            status: 200,
+          });
         }
         return new Response(JSON.stringify({ buildId: 'development' }), { status: 200 });
       }),
@@ -153,7 +159,10 @@ describe('commandMatchesLauncher', () => {
       serverEntry: path.join(root, 'apps', 'server', 'dist', 'bootstrap', 'main.js'),
       webRoot: path.join(root, 'apps', 'web', 'dist'),
       buildId: 'test-build',
-      acceptedCommandMarkers: ['tools\\start-learning-more.mjs'],
+      acceptedCommandMarkers: [
+        'operations\\scripts\\start-learning-more.mjs',
+        'tools\\start-learning-more.mjs',
+      ],
       observeProcess,
     });
 

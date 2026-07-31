@@ -60,7 +60,7 @@ function collectPlaywrightSuites(
     const reportedFile = typeof suite.file === 'string' ? suite.file : inheritedFile;
     const file =
       reportedFile !== undefined && !reportedFile.replaceAll('\\', '/').includes('/')
-        ? `tests/e2e/${reportedFile}`
+        ? `engineering/tests/e2e/${reportedFile}`
         : reportedFile;
     if (file !== undefined && Array.isArray(suite.specs)) {
       for (const spec of suite.specs) {
@@ -180,9 +180,12 @@ export function createEquivalenceReport(
 
 export function readExecutedTestReports(repositoryRoot: string): ExecutedTest[] {
   const reports = [
-    { path: 'artifacts/tests/unit.json', parser: parseVitestReport },
-    { path: 'artifacts/tests/playwright.json', parser: parsePlaywrightReport },
-    { path: 'artifacts/tests/playwright-runtime.json', parser: parsePlaywrightReport },
+    { path: '.local/artifacts/tests/unit.json', parser: parseVitestReport },
+    { path: '.local/artifacts/tests/playwright.json', parser: parsePlaywrightReport },
+    {
+      path: '.local/artifacts/tests/playwright-runtime.json',
+      parser: parsePlaywrightReport,
+    },
   ];
   return reports.flatMap((report) => {
     const absolute = path.join(repositoryRoot, report.path);

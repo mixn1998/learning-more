@@ -131,9 +131,7 @@ function parseMarkdown(markdown: string): Readonly<{
     if (list === null) continue;
     const parent = headingStack.at(-1);
     const listContent = list[1] ?? '';
-    const emphasizedTitle = /^(?:\*\*|__)(.+?)(?:\*\*|__)(?=\s|[（(]|$)/u.exec(
-      listContent,
-    )?.[1];
+    const emphasizedTitle = /^(?:\*\*|__)(.+?)(?:\*\*|__)(?=\s|[（(]|$)/u.exec(listContent)?.[1];
     nodes.push({
       kind: 'list',
       level: (parent?.level ?? 0) + 1,

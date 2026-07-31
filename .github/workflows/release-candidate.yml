@@ -43,41 +43,41 @@ jobs:
       - name: Build candidate first pass
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force artifacts/release | Out-Null
+          New-Item -ItemType Directory -Force .local/artifacts/release | Out-Null
           pnpm release:portable
-          $zip = Get-ChildItem release/dist -Filter '*.zip' | Select-Object -First 1
+          $zip = Get-ChildItem .local/generated/release -Filter '*.zip' | Select-Object -First 1
           $first = (Get-FileHash -Algorithm SHA256 $zip.FullName).Hash.ToLowerInvariant()
-          Set-Content -LiteralPath artifacts/release/first-sha256.txt -Value $first -Encoding utf8
+          Set-Content -LiteralPath .local/artifacts/release/first-sha256.txt -Value $first -Encoding utf8
           Copy-Item -LiteralPath $zip.FullName -Destination "$env:RUNNER_TEMP/learning-more-first.zip"
       - name: Rebuild and prove reproducibility
         shell: pwsh
         run: |
           pnpm release:portable
-          $zip = Get-ChildItem release/dist -Filter '*.zip' | Select-Object -First 1
-          $first = (Get-Content -LiteralPath artifacts/release/first-sha256.txt -Raw).Trim()
+          $zip = Get-ChildItem .local/generated/release -Filter '*.zip' | Select-Object -First 1
+          $first = (Get-Content -LiteralPath .local/artifacts/release/first-sha256.txt -Raw).Trim()
           $second = (Get-FileHash -Algorithm SHA256 $zip.FullName).Hash.ToLowerInvariant()
-          Set-Content -LiteralPath artifacts/release/second-sha256.txt -Value $second -Encoding utf8
+          Set-Content -LiteralPath .local/artifacts/release/second-sha256.txt -Value $second -Encoding utf8
           if ($first -ne $second) { throw "non-reproducible ZIP: $first != $second" }
       - name: Offline Unicode-path startup and maintenance reports
         shell: pwsh
         env:
           LEARNING_MORE_OFFLINE: '1'
         run: |
-          $portable = (Resolve-Path 'release/dist/portable/Learning MORE').Path
+          $portable = (Resolve-Path '.local/generated/release/portable/Learning MORE').Path
           $smoke = Join-Path $env:RUNNER_TEMP 'Learning MORE 离线 发布验证'
           $smokeReport = & node operations/release/dist/portable-smoke.js $portable $smoke
           if ($LASTEXITCODE -ne 0) { throw 'portable smoke failed' }
-          $smokeReport | Set-Content -LiteralPath artifacts/release/portable-smoke.json -Encoding utf8
+          $smokeReport | Set-Content -LiteralPath .local/artifacts/release/portable-smoke.json -Encoding utf8
           $runtime = Join-Path $portable 'runtime/node.exe'
           $cli = Join-Path $portable 'operations/maintenance/dist/main.js'
           $data = Join-Path $smoke 'data'
           $backup = Join-Path $smoke 'backup-output'
           $verifyReport = & $runtime $cli verify $data
           if ($LASTEXITCODE -ne 0) { throw 'verify-store failed' }
-          $verifyReport | Set-Content -LiteralPath artifacts/release/verify-store.json -Encoding utf8
+          $verifyReport | Set-Content -LiteralPath .local/artifacts/release/verify-store.json -Encoding utf8
           $backupReport = & $runtime $cli backup $data $backup --verify
           if ($LASTEXITCODE -ne 0) { throw 'backup verification failed' }
-          $backupReport | Set-Content -LiteralPath artifacts/release/backup-report.json -Encoding utf8
+          $backupReport | Set-Content -LiteralPath .local/artifacts/release/backup-report.json -Encoding utf8
       - name: Upload candidate, SBOM, checksums, policy and recovery reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,11 +86,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            release/dist/*.zip
-            release/dist/portable/Learning MORE/sbom.cdx.json
-            release/dist/portable/Learning MORE/checksums.sha256
-            artifacts/release/*.json
-            artifacts/release/*sha256.txt
-            artifacts/supply-chain/supply-chain-policy.json
-            playwright-report/
+            .local/generated/release/*.zip
+            .local/generated/release/portable/Learning MORE/sbom.cdx.json
+            .local/generated/release/portable/Learning MORE/checksums.sha256
+            .local/artifacts/release/*.json
+            .local/artifacts/release/*sha256.txt
+            .local/artifacts/supply-chain/supply-chain-policy.json
+            .local/artifacts/playwright/
             test-results/

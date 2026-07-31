@@ -58,8 +58,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            artifacts/tests/unit.json
-            artifacts/supply-chain/supply-chain-policy.json
+            .local/artifacts/tests/unit.json
+            .local/artifacts/supply-chain/supply-chain-policy.json
 
   main-integration:
     name: Main HTTP, SSE, React, recovery smoke
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.local/cache/playwright
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -95,8 +95,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            playwright-report/
-            test-results/
+            .local/artifacts/playwright/
 
   runtime-acceptance:
     name: Windows Launcher, HTTP, SSE, and runtime recovery
@@ -105,7 +104,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 35
     env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.local/cache/playwright
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -128,11 +127,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            playwright-report/
-            test-results/
+            .local/artifacts/playwright/
 
   visual-acceptance:
-    name: HTML, React visual and accessibility acceptance
+    name: React visual and accessibility acceptance
     needs: quality
     runs-on: windows-2025
     timeout-minutes: 60
@@ -149,9 +147,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install browser runtime
         run: pnpm exec playwright install chromium
-      - name: Audit all 29 HTML samples
-        run: pnpm ui-samples:verify
-      - name: Compare HTML and React baselines and run accessibility gate
+      - name: Run React visual and accessibility gate
         run: pnpm visual:test
       - name: Upload visual differences and retained traces
         if: always()
@@ -161,6 +157,4 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           path: |
-            artifacts/visual/
-            playwright-report/
-            test-results/
+            .local/artifacts/visual/

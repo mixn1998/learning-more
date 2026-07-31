@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 describe('authoritative data-definition synchronization', () => {
   it('[EQ-DATA-03] keeps every registered field in the data-source definition with flow, retention, and privacy rules', () => {
     const source = readFileSync(
-      path.join(process.cwd(), 'docs/历史统计与学习画像数据源定义清单.md'),
+      path.join(process.cwd(), 'engineering/architecture/fixtures/data-source-definition.md'),
       'utf8',
     );
     const documented = new Set(

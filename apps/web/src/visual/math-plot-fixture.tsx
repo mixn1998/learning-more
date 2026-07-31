@@ -34,10 +34,7 @@ export function MathPlotFixture() {
   }, []);
 
   return (
-    <main
-      className="visual-page visual-page-narrow"
-      data-math-plot-render-version={renderVersion}
-    >
+    <main className="visual-page visual-page-narrow" data-math-plot-render-version={renderVersion}>
       <AiContent markdown={mathPlotMarkdown} />
     </main>
   );

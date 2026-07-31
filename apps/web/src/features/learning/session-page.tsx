@@ -224,16 +224,16 @@ function hasGenerationResponse(
         message.markdown.trim() !== '',
     );
   }
-  const userIndex =
-    messages.findIndex((message) => message.role === 'user' && message.id === userMessageId);
+  const userIndex = messages.findIndex(
+    (message) => message.role === 'user' && message.id === userMessageId,
+  );
   if (userIndex < 0) return false;
   return messages
     .slice(userIndex + 1)
     .some(
       (message) =>
         message.role === 'assistant' &&
-        (message.generationTaskId === taskId ||
-          message.generationTaskId === undefined) &&
+        (message.generationTaskId === taskId || message.generationTaskId === undefined) &&
         message.completionStatus !== 'interrupted' &&
         message.markdown.trim() !== '',
     );

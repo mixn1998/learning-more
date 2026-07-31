@@ -35,7 +35,7 @@ async function runPnpmAudit(projectRoot: string): Promise<AuditExecution> {
 async function main(): Promise<void> {
   const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
   const projectRoot = path.resolve(sourceDirectory, '..', '..', '..');
-  const artifactsDirectory = path.join(projectRoot, 'artifacts', 'supply-chain');
+  const artifactsDirectory = path.join(projectRoot, '.local', 'artifacts', 'supply-chain');
   await mkdir(artifactsDirectory, { recursive: true });
 
   const components = await scanProductionDependencyGraph(path.join(projectRoot, 'apps', 'server'));

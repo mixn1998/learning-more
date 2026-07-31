@@ -12,13 +12,18 @@ describe('profile data architecture boundaries', () => {
       path.join(root, 'apps/server/src/modules/learning-facts/implementation/event-to-fact.ts'),
       'utf8',
     );
-    const profile = readFileSync(
-      path.join(
-        root,
-        'apps/server/src/modules/profile-evidence/implementation/profile-projection.ts',
-      ),
-      'utf8',
-    );
+    const profile = [
+      'profile-evidence-aggregator.ts',
+      'profile-evidence-context-assembler.ts',
+      'reasoning-evidence-projector.ts',
+    ]
+      .map((file) =>
+        readFileSync(
+          path.join(root, 'apps/server/src/modules/profile-evidence/implementation', file),
+          'utf8',
+        ),
+      )
+      .join('\n');
     expect(mapping).not.toMatch(/telemetry\./u);
     expect(profile).not.toMatch(
       /providerStatus|generationLatency|pageView|networkState|writeLease/u,

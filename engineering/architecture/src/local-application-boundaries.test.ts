@@ -50,7 +50,14 @@ describe('local application composition boundaries', () => {
     const imports = [...assembly.matchAll(/from '([^']+)'/gu)]
       .map((match) => match[1])
       .filter((entry): entry is string => entry !== undefined);
-    expect(imports.every((entry) => entry.startsWith('./') || entry === '../app.js')).toBe(true);
+    expect(
+      imports.every(
+        (entry) =>
+          entry.startsWith('./') ||
+          entry === '../app.js' ||
+          entry === '../../environment/request-access.js',
+      ),
+    ).toBe(true);
   });
 
   it('keeps the public interface stable and delegates each route group to its owning runtime', () => {

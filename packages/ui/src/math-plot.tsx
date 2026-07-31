@@ -319,10 +319,7 @@ interface MathPlotProps {
   readonly spec: MathPlotContract;
 }
 
-function equivalentPlot(
-  previous: Readonly<MathPlotProps>,
-  next: Readonly<MathPlotProps>,
-): boolean {
+function equivalentPlot(previous: Readonly<MathPlotProps>, next: Readonly<MathPlotProps>): boolean {
   return JSON.stringify(previous.spec) === JSON.stringify(next.spec);
 }
 
@@ -343,11 +340,7 @@ function MathPlotView(props: MathPlotProps): React.JSX.Element {
         observer = new ResizeObserver(([entry]) => {
           const width = Math.floor(entry?.contentRect.width ?? 0);
           const height = Math.floor(entry?.contentRect.height ?? 0);
-          if (
-            width > 0 &&
-            height > 0 &&
-            (width !== measuredWidth || height !== measuredHeight)
-          ) {
+          if (width > 0 && height > 0 && (width !== measuredWidth || height !== measuredHeight)) {
             measuredWidth = width;
             measuredHeight = height;
             (board as unknown as PlotBoard | undefined)?.resizeContainer?.(width, height, true);

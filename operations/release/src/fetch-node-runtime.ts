@@ -46,13 +46,15 @@ export async function resolvePinnedNodeRuntime(projectRoot: string): Promise<str
   }
   const executable = path.join(
     projectRoot,
-    '.release-cache',
+    '.local',
+    'cache',
+    'release',
     `node-v${nodeVersion}-win-x64`,
     'node.exe',
   );
   if ((await runtimeVersion(executable)) === `v${nodeVersion}`) return executable;
 
-  const cacheRoot = path.join(projectRoot, '.release-cache');
+  const cacheRoot = path.join(projectRoot, '.local', 'cache', 'release');
   const shasumsPath = path.join(cacheRoot, `SHASUMS256-v${nodeVersion}.txt`);
   let shasums = await readFile(shasumsPath, 'utf8').catch(() => undefined);
   if (shasums === undefined) {

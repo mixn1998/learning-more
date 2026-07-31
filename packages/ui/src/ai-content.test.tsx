@@ -198,7 +198,9 @@ describe('AiContent', () => {
 
     rendered.rerender(<AiContent markdown={markdown} />);
 
-    expect(rendered.container.querySelector('[data-testid="rendered-math-plot"]')).toBe(initialPlot);
+    expect(rendered.container.querySelector('[data-testid="rendered-math-plot"]')).toBe(
+      initialPlot,
+    );
   });
 
   it('keeps invalid math plots readable without exposing executable HTML', () => {

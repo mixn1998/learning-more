@@ -36,9 +36,9 @@ describe('local application public interface', () => {
         'learningFacts',
         'learningNotes',
         'learningSession',
-        'localSecurity',
         'planning',
         'profile',
+        'requestAccess',
         'reviewClosure',
         'runtimeControl',
       ]);
@@ -101,10 +101,7 @@ describe('local application public interface', () => {
         'startProviderAuthentication',
         'switchProvider',
       ]);
-      expect(Object.keys(local.serverDependencies.localSecurity!).sort()).toEqual([
-        'allowedOrigin',
-        'csrfToken',
-      ]);
+      expect(Object.keys(local.serverDependencies.requestAccess!).sort()).toEqual(['authorize']);
     } finally {
       await expect(local.close()).resolves.toBeUndefined();
       await expect(local.close()).resolves.toBeUndefined();
