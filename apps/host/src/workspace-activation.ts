@@ -201,6 +201,7 @@ export function createWorkspaceActivationWorker(options: {
     context: CandidateBuildContext,
   ): Promise<Readonly<{ expandedRoot: string; buildId: string }>>;
   stageCandidate?(expandedRoot: string, candidateRoot: string): Promise<void>;
+  shareReleaseContent?(releaseRoot: string, releasesRoot: string): Promise<unknown>;
   commitWorkspaceManifest?(identity: SourceIdentity, buildId: string): Promise<void>;
   pruneReleaseCache?(input: {
     releasesRoot: string;
@@ -214,6 +215,7 @@ export function createWorkspaceActivationWorker(options: {
   const readIdentity = options.readSourceIdentity ?? readWorkspaceIdentity;
   const buildCandidate = options.buildCandidate ?? buildWorkspaceCandidate;
   const stage = options.stageCandidate ?? stageCandidate;
+  const shareRelease = options.shareReleaseContent ?? shareCandidateContent;
   const commitManifest =
     options.commitWorkspaceManifest ??
     ((identity, buildId) => commitWorkspaceManifest(options.projectRoot, identity, buildId));
@@ -353,6 +355,16 @@ export function createWorkspaceActivationWorker(options: {
           }
           activeBuildId = result.activeBuildId;
           await publish('verifying-runtime', attempt);
+          if (
+            previousBuildId !== undefined &&
+            previousBuildId !== 'workspace' &&
+            previousBuildId !== activeBuildId
+          ) {
+            await shareRelease(
+              releaseRoot(options.releasesRoot, previousBuildId),
+              options.releasesRoot,
+            ).catch(() => undefined);
+          }
           await commitManifest(finalIdentity, candidate.buildId);
           await rm(attemptRoot, { recursive: true, force: true });
           const completedAt = now().toISOString();

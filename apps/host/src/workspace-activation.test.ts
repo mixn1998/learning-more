@@ -43,6 +43,7 @@ describe('workspace activation worker', () => {
     });
     const commitWorkspaceManifest = vi.fn().mockResolvedValue(undefined);
     const pruneReleaseCache = vi.fn().mockResolvedValue(undefined);
+    const shareReleaseContent = vi.fn().mockResolvedValue(undefined);
     const worker = createWorkspaceActivationWorker({
       projectRoot: input.root,
       releasesRoot: path.join(input.root, 'releases'),
@@ -52,6 +53,7 @@ describe('workspace activation worker', () => {
       readActiveBuildId: vi.fn().mockResolvedValue('build-old'),
       buildCandidate,
       stageCandidate: vi.fn().mockResolvedValue(undefined),
+      shareReleaseContent,
       commitWorkspaceManifest,
       pruneReleaseCache,
       supervisor: {
@@ -68,6 +70,10 @@ describe('workspace activation worker', () => {
     expect(commitWorkspaceManifest).toHaveBeenCalledWith(
       expect.objectContaining({ buildId: 'build-new' }),
       'build-new',
+    );
+    expect(shareReleaseContent).toHaveBeenCalledWith(
+      path.join(input.root, 'releases', 'build-old'),
+      path.join(input.root, 'releases'),
     );
     expect(pruneReleaseCache).toHaveBeenCalledWith({
       releasesRoot: path.join(input.root, 'releases'),

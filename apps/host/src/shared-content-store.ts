@@ -108,8 +108,13 @@ async function ensureSharedObject(source: string, target: string): Promise<void>
 }
 
 async function replaceWithHardLink(source: string, shared: string): Promise<void> {
-  await rm(source, { force: true });
-  await link(shared, source);
+  const temporary = `${source}.${randomUUID()}.link`;
+  try {
+    await link(shared, temporary);
+    await rename(temporary, source);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 async function candidateBuildId(candidateRoot: string): Promise<string> {
