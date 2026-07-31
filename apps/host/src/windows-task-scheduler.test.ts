@@ -9,7 +9,7 @@ const definition: HostTaskDefinition = {
   arguments: ['C:\\Learning MORE\\host\\main.js', 'run', '--project-root', 'D:\\Growth OS'],
   userId: 'WORKSTATION\\developer',
   trigger: 'logon',
-  runLevel: 'highest',
+  runLevel: 'limited',
   startWhenAvailable: true,
   allowStartOnBatteries: true,
   stopIfGoingOnBatteries: false,
@@ -53,8 +53,9 @@ describe('Windows Task Scheduler adapter', () => {
     expect(registration).toContain('DisallowHardTerminate');
     expect(registration).toContain('RestartInterval (New-TimeSpan -Minutes 1)');
     expect(registration).toContain('ExecutionTimeLimit ([TimeSpan]::Zero)');
-    expect(registration).toContain('RunLevel Highest');
-    expect(registration).not.toContain('RunLevel Limited');
+    expect(registration).toContain("$definition.runLevel -eq 'highest'");
+    expect(registration).toContain("'Highest'");
+    expect(registration).toContain("'Limited'");
     expect(registration).toContain('Stop-ScheduledTask');
     expect(registration.indexOf('Stop-ScheduledTask')).toBeLessThan(
       registration.indexOf('Register-ScheduledTask'),

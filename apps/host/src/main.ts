@@ -173,7 +173,7 @@ export function desiredHostTask(input: {
     }),
     userId: input.userId ?? currentUserId(),
     trigger: 'logon',
-    runLevel: 'highest',
+    runLevel: 'limited',
     startWhenAvailable: true,
     allowStartOnBatteries: true,
     stopIfGoingOnBatteries: false,

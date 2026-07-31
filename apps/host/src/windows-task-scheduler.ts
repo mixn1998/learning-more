@@ -203,7 +203,8 @@ $definition = $definitionJson | ConvertFrom-Json
 $action = New-ScheduledTaskAction -Execute $definition.executable -Argument $definition.argumentString
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $definition.userId
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -DisallowHardTerminate -MultipleInstances IgnoreNew -RestartCount $definition.restartCount -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
-$principal = New-ScheduledTaskPrincipal -UserId $definition.userId -LogonType Interactive -RunLevel Highest
+$runLevel = if ($definition.runLevel -eq 'highest') { 'Highest' } else { 'Limited' }
+$principal = New-ScheduledTaskPrincipal -UserId $definition.userId -LogonType Interactive -RunLevel $runLevel
 $existingTask = Get-ScheduledTask -TaskName $definition.name -ErrorAction SilentlyContinue
 if ($null -ne $existingTask -and $existingTask.State -eq 'Running') {
   Stop-ScheduledTask -TaskName $definition.name -ErrorAction Stop

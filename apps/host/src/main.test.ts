@@ -40,6 +40,7 @@ describe('Host CLI', () => {
     expect(script).toContain('Start-Sleep -Seconds 2');
     expect(script).not.toContain('Start-Process');
     expect(task.trigger).toBe('logon');
+    expect(task.runLevel).toBe('limited');
   });
 
   it('dispatches only the named management operation', async () => {
