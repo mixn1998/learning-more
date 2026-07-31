@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
-import { access, cp, mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { access, cp, mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 import { pruneReleaseCache } from './release-retention.js';
 import { shareCandidateRuntime } from './shared-runtime-store.js';
@@ -50,21 +51,38 @@ function execute(executable: string, arguments_: readonly string[], cwd: string)
     execFile(
       executable,
       [...arguments_],
-      { cwd, windowsHide: true, timeout: 10 * 60_000 },
+      { cwd, windowsHide: true, timeout: 10 * 60_000, maxBuffer: 32 * 1024 * 1024 },
       (error) => (error === null ? resolve() : reject(error)),
     );
   });
 }
 
-async function importReleaseModule<T>(projectRoot: string, relativePath: string): Promise<T> {
-  return import(pathToFileURL(path.join(projectRoot, relativePath)).href) as Promise<T>;
+function releaseBridgeEntry(projectRoot: string): string {
+  return path.join(projectRoot, 'operations', 'release', 'dist', 'workspace-bridge.js');
 }
 
 async function readWorkspaceIdentity(projectRoot: string): Promise<SourceIdentity> {
-  const module = await importReleaseModule<{
-    readSourceIdentity(root: string): Promise<SourceIdentity>;
-  }>(projectRoot, path.join('operations', 'release', 'dist', 'source-identity.js'));
-  return module.readSourceIdentity(projectRoot);
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'learning-more-identity-'));
+  const resultPath = path.join(temporaryRoot, `${randomUUID()}.json`);
+  try {
+    await execute(
+      process.execPath,
+      [releaseBridgeEntry(projectRoot), 'read-identity', projectRoot, resultPath],
+      projectRoot,
+    );
+    const value = JSON.parse(await readFile(resultPath, 'utf8')) as SourceIdentity;
+    if (
+      typeof value.buildId !== 'string' ||
+      typeof value.sourceRevision !== 'string' ||
+      typeof value.sourceFingerprint !== 'string' ||
+      !Array.isArray(value.files)
+    ) {
+      throw new Error('workspace_identity_invalid');
+    }
+    return value;
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 async function buildWorkspaceCandidate(
@@ -91,21 +109,24 @@ async function buildWorkspaceCandidate(
     ],
     projectRoot,
   );
-  const module = await importReleaseModule<{
-    buildPortableRelease(
-      root: string,
-      options: Readonly<{
-        outputRoot: string;
-        workRoot: string;
-        writeWorkspaceManifest: false;
-      }>,
-    ): Promise<Readonly<{ expandedRoot: string; buildId: string }>>;
-  }>(projectRoot, path.join('operations', 'release', 'dist', 'build-portable.js'));
-  return module.buildPortableRelease(projectRoot, {
-    outputRoot: context.outputRoot,
-    workRoot: context.workRoot,
-    writeWorkspaceManifest: false,
-  });
+  const resultPath = path.join(context.outputRoot, 'candidate-result.json');
+  await execute(
+    process.execPath,
+    [
+      releaseBridgeEntry(projectRoot),
+      'build-candidate',
+      projectRoot,
+      context.outputRoot,
+      context.workRoot,
+      resultPath,
+    ],
+    projectRoot,
+  );
+  const value = JSON.parse(await readFile(resultPath, 'utf8')) as Record<string, unknown>;
+  if (typeof value.expandedRoot !== 'string' || typeof value.buildId !== 'string') {
+    throw new Error('candidate_result_invalid');
+  }
+  return { expandedRoot: value.expandedRoot, buildId: value.buildId };
 }
 
 async function stageCandidate(expandedRoot: string, candidateRoot: string): Promise<void> {
@@ -128,17 +149,14 @@ async function stageCandidate(expandedRoot: string, candidateRoot: string): Prom
 
 async function commitWorkspaceManifest(
   projectRoot: string,
-  identity: SourceIdentity,
+  _identity: SourceIdentity,
   buildId: string,
 ): Promise<void> {
-  const module = await importReleaseModule<{
-    writeWorkspaceBuildManifest(
-      root: string,
-      sourceIdentity: SourceIdentity,
-      committedBuildId: string,
-    ): Promise<void>;
-  }>(projectRoot, path.join('operations', 'release', 'dist', 'source-identity.js'));
-  await module.writeWorkspaceBuildManifest(projectRoot, identity, buildId);
+  await execute(
+    process.execPath,
+    [releaseBridgeEntry(projectRoot), 'commit-manifest', projectRoot, buildId],
+    projectRoot,
+  );
 }
 
 function activationAttemptRoot(releasesRoot: string, requestId: string, attempt: 1 | 2): string {
